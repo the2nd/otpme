@@ -243,6 +243,22 @@ cmd_help = {
                                 },
                 },
 
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-group info {group} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set group info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-group dump_info {group}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump group info'),
+                                },
+                },
+
     'list_sync_users'   : {
                     '_cmd_usage_help' : _('Usage: otpme-group list_sync_users {group}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',

@@ -150,6 +150,22 @@ cmd_help = {
                                 },
                 },
 
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver info {resolver} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set resolver info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver dump_info {resolver}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump resolver info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },

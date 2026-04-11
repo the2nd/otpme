@@ -235,6 +235,22 @@ cmd_help = {
                                 },
                 },
 
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup info {accessgroup} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set accessgroup info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup dump_info {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump accessgroup info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },

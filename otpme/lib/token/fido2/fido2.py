@@ -225,7 +225,7 @@ class Fido2Token(Token):
         self.offline_unused_expiry = 0
         self.keep_session = False
         self.offline_pinnable = True
-        self.uv = "discouraged"
+        self.uv = "preferred"
         self.hmac_supported = False
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'fido2' ]

@@ -673,6 +673,8 @@ class YubikeyhmacToken(Token):
             msg = msg.format(slot=slot)
             callback.send(msg)
         self.slot = slot
+        msg = _("Yubikey HMAC token deployed successful.")
+        callback.send(msg)
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)

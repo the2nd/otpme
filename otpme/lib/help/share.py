@@ -262,6 +262,22 @@ cmd_help = {
                                 },
                 },
 
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share info {share} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set share info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share dump_info {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump share info'),
+                                },
+                },
+
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share config -d -a {share} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',

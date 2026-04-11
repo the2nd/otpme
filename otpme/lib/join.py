@@ -414,18 +414,13 @@ class JoinHandler(object):
             for x in sorted(add_list[object_type]):
                 object_id = add_list[object_type][x]
                 object_config = object_configs[object_id.full_oid]
-                current_object_config = backend.read_config(object_id)
-                if current_object_config:
-                    new_checksum = object_config['CHECKSUM']
-                    current_checksum = current_object_config['CHECKSUM']
-                    if current_checksum == new_checksum:
-                        continue
                 log_msg = _("Adding object: {object_id}", log=True)[1]
                 log_msg = log_msg.format(object_id=object_id)
                 logger.debug(log_msg)
                 # Write object to backend.
                 try:
                     backend.write_config(object_id=object_id,
+                                    full_data_update=True,
                                     full_index_update=True,
                                     full_acl_update=True,
                                     full_ldif_update=True,

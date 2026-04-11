@@ -319,7 +319,7 @@ def register_policy_object():
                     ]
     config.register_config_parameter(name="password_allowed_chars",
                                     ctype=str,
-                                    default_value=r"0-9A-Za-z!@#$%^&*()_+\-={}[]|\\:;<>.?/",
+                                    default_value=r"0-9A-Za-z!@#$%&*()_+-={}[]:;<>.?/",
                                     object_types=object_types)
 
 class PasswordPolicy(Policy):

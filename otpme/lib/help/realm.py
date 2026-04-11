@@ -222,6 +222,22 @@ cmd_help = {
                                 },
                 },
 
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-realm info {realm} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set realm info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-realm dump_info {realm}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump realm info'),
+                                },
+                },
+
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },

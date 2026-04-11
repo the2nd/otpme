@@ -471,7 +471,8 @@ commands = {
                 'exists'    : {
                     'method'            : 'deploy_token',
                     'oargs'             : ['token_name', 'token_type', 'smartcard_type', 'deploy_data', 'pre_deploy', 'pre_deploy_args', 'replace'],
-                    'job_type'          : 'process',
+                    # Cannot run in process because we need object from cache on the second run.
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -480,7 +481,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_name'],
-                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'enable_mschap', 'password', 'public_key'],
+                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'mode', 'enable_mschap', 'password', 'public_key'],
                     'job_type'          : 'process',
                     },
                 },
@@ -775,6 +776,23 @@ commands = {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_info',
+                    'oargs'             : ['info'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_info',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -4003,58 +4021,33 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        token = backend.get_object(object_type="token",
+        cur_token = backend.get_object(object_type="token",
                                     realm=self.realm,
                                     site=self.site,
                                     user=self.name,
                                     name=token_name)
-        if not token:
-            from otpme.lib.token import get_class
-            token_types = config.get_sub_object_types("token")
-            for x in token_types:
-                try:
-                    token_module = x.replace("-", "_")
-                    token_class = get_class(token_module)
-                    try:
-                        _token = token_class(name=token_name,
-                                            user=self.name,
-                                            realm=self.realm,
-                                            site=self.site)
-                    except Exception as e:
-                        msg = _("Failed to load token class: {e}")
-                        msg = msg.format(e=e)
-                        return callback.error(msg)
-                    # Stop if we found a token class that supports the given
-                    # hardware token type.
-                    if smartcard_type in _token.supported_hardware_tokens:
-                        token = _token
-                        break
-                except Exception as e:
-                    config.raise_exception()
-                    msg = _("Problem loading token type '{x}': {e}")
-                    msg = msg.format(x=x, e=e)
-                    return callback.error(msg)
+        if cur_token and cur_token.token_type != token_type:
+            if not replace:
+                msg = _("Cannot deploy existing token of type: {token_type}")
+                msg = msg.format(token_type=cur_token.token_type)
+                return callback.error(msg)
+            cur_token = None
 
-        if not token:
-            msg = _("Unable to find token class to deploy hardware token: {token_type}")
-            msg = msg.format(token_type=token_type)
-            return callback.error(msg)
-
-        if token.exists():
+        if cur_token:
             if replace:
                 msg = _("WARNING. Replacing the token will permanently delete all token data, including private key backups. Replace token?: ")
                 if not self.ask_change_confirmation(msg, force=force, callback=callback):
                     return callback.abort()
-                if not self.add_token(new_token=token,
+                if not self.add_token(new_token=cur_token,
                                     replace=replace,
                                     force=True,
                                     _caller=_caller,
                                     callback=callback):
                     return callback.error("Error replacing token.")
             else:
-                if smartcard_type not in token.supported_hardware_tokens:
+                if smartcard_type not in cur_token.supported_hardware_tokens:
                     msg = _("Existing token '{token_rel_path} ({token_token_type})' does not support hardware token type: {smartcard_type}")
-                    msg = msg.format(token_rel_path=token.rel_path, token_token_type=token.token_type, smartcard_type=smartcard_type)
+                    msg = msg.format(token_rel_path=cur_token.rel_path, token_token_type=cur_token.token_type, smartcard_type=smartcard_type)
                     return callback.error(msg)
                 msg = _("Re-deploy existing token?: ")
                 if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -4070,12 +4063,14 @@ class User(OTPmeObject):
                 callback.send(msg)
             if not self.add_token(token_name=token_name,
                                 token_type=token_type,
+                                replace=replace,
                                 force=True,
                                 _caller=_caller,
                                 callback=callback):
-                return callback.error("Error creating token object.")
-            # Override token test instance with new created token.
-            token = self.token(token_name)
+                return callback.error("Error creating deploy token object.")
+
+        # Get new added token.
+        token = self.token(token_name)
 
         deploy_args = {}
         if deploy_data:
@@ -4086,18 +4081,19 @@ class User(OTPmeObject):
                 return callback.error("Error decoding token data.")
 
         if pre_deploy:
-            return token.pre_deploy(pre_deploy_args=pre_deploy_args,
+            result = token.pre_deploy(pre_deploy_args=pre_deploy_args,
                                     verbose_level=verbose_level,
                                     callback=callback,
                                     _caller=_caller,
                                     **deploy_args)
+            return result
 
         if not token.deploy(verbose_level=verbose_level,
                             callback=callback,
                             _caller=_caller,
                             **deploy_args):
             return callback.error("Error deploying token.")
-        return callback.ok()
+        return self._cache(callback=callback)
 
     @check_acls(['add:token'])
     @object_lock()
@@ -4113,9 +4109,10 @@ class User(OTPmeObject):
         password: Union[str,None]=None,
         replace: bool=False,
         gen_qrcode: bool=True,
+        mode: str="mode2",
         no_token_infos: bool=False,
-        force: bool=False,
         enable_mschap: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
@@ -4222,19 +4219,21 @@ class User(OTPmeObject):
             cur_token.delete_used_data_objects()
             # Remove token object from backend WITHOUT removing its UUID from
             # any role etc.
-            try:
-                backend.delete_object(cur_token.oid, cluster=True)
-            except Exception as e:
-                config.raise_exception()
-                msg = _("Error removing token '{cur_token_name}': {e}")
-                msg = msg.format(cur_token_name=cur_token.name, e=e)
-                return callback.error(msg)
+            if not config.no_backend_writes:
+                try:
+                    backend.delete_object(cur_token.oid, cluster=True)
+                except Exception as e:
+                    config.raise_exception()
+                    msg = _("Error removing token '{cur_token_name}': {e}")
+                    msg = msg.format(cur_token_name=cur_token.name, e=e)
+                    return callback.error(msg)
         else:
             if cur_token and not new_token:
                 msg = _("Token already exists: {cur_token_rel_path}")
                 msg = msg.format(cur_token_rel_path=cur_token.rel_path)
                 return callback.error(msg)
 
+        token_add_status = None
         if new_token:
             if password is not None:
                 new_token.change_password(password=password,
@@ -4260,8 +4259,9 @@ class User(OTPmeObject):
                 return callback.error(msg)
 
             # Add the new token.
-            add_status = new_token.add(uuid=token_uuid,
+            token_add_status = new_token.add(uuid=token_uuid,
                                     owner_uuid=self.uuid,
+                                    mode=mode,
                                     gen_qrcode=gen_qrcode,
                                     password=password,
                                     enable_mschap=enable_mschap,
@@ -4270,15 +4270,17 @@ class User(OTPmeObject):
                                     no_token_infos=no_token_infos,
                                     destination_token_uuid=destination_token_uuid,
                                     verbose_level=verbose_level,
-                                    force=True,
+                                    force=replace,
                                     callback=callback,
                                     _caller=_caller,
                                     **kwargs)
-            if not add_status:
+            if not token_add_status:
                 return callback.error("Error creating token object.")
 
         # When replacing a token we just need to copy some token settings.
         if replace:
+            if config.no_backend_writes:
+                return callback.ok()
             msg = "Trying to preserve token ACLs..."
             callback.send(msg)
             for x in cur_token.acls:
@@ -4298,13 +4300,6 @@ class User(OTPmeObject):
                 new_token.auth_script = cur_token.auth_script
             if new_token.auth_script_enabled is not None:
                 new_token.auth_script_enabled = cur_token.auth_script_enabled
-            # FIXME: does calling _cache() work?
-            ## Write new token config.
-            #lock_caller = "replace_token"
-            #new_token.acquire_lock(lock_caller=lock_caller,
-            #                        callback=callback)
-            ##add_result = new_token._write(callback=callback)
-            #new_token.release_lock(lock_caller=lock_caller, callback=callback)
             add_result = new_token._cache(callback=callback)
             return add_result
 
@@ -4335,7 +4330,10 @@ class User(OTPmeObject):
             msg = msg.format(self_name=self.name, new_token_name=new_token.name)
             callback.send(msg)
 
-        return self._cache(callback=callback)
+        self._cache(callback=callback)
+        if _caller == "API":
+            return token_add_status
+        return callback.ok()
 
     @object_lock()
     @backend.transaction
@@ -4345,6 +4343,7 @@ class User(OTPmeObject):
         force: bool=False,
         keep_token: bool=False,
         run_policies: bool=True,
+        verify_acls: bool=True,
         remove_default_token: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4357,10 +4356,11 @@ class User(OTPmeObject):
 
         # FIXME: do we need this??? how to handle ACLs on token delete???
         # Check if the authenticated user tries to delete one of its own tokens.
-        check_acls = True
-        if config.auth_token:
-            if config.auth_token.owner_uuid == self.uuid:
-                check_acls = False
+        check_acls = False
+        if verify_acls:
+            if config.auth_token:
+                if config.auth_token.owner_uuid != self.uuid:
+                    check_acls = False
 
         if check_acls:
             if not self.verify_acl("delete:token"):
@@ -4405,6 +4405,7 @@ class User(OTPmeObject):
             # Delete token.
             del_status = token.delete(callback=callback,
                                     run_policies=run_policies,
+                                    verify_acls=verify_acls,
                                     force=force,
                                     **kwargs)
             # Check if user aborted token deletion.

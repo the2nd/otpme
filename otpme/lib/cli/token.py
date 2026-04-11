@@ -326,22 +326,24 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                     ag_data = role_ags_result
                 else:
                     ag_data = accessgroups_result
+                group_status_string = None
                 group_name = ag_data[group_uuid]['name']
                 group_site = ag_data[group_uuid]['site']
                 group_enabled = ag_data[group_uuid]['enabled']
                 if not group_enabled:
                     group_status_string = "(D)"
                 else:
-                    if user_is_blocked(user_uuid=owner_uuid,
-                                    access_group=group_name,
-                                    realm=realm, site=site):
-                        group_status_string = "(B)"
-                    else:
-                        group_failcount = user_failcount(owner_uuid, group_name)
-                        if group_failcount > 0:
-                            group_status_string = f" ({group_failcount})"
+                    if group_site == config.site:
+                        if user_is_blocked(user_uuid=owner_uuid,
+                                        access_group=group_name,
+                                        realm=realm, site=site):
+                            group_status_string = "(B)"
                         else:
-                            group_status_string = ""
+                            group_failcount = user_failcount(owner_uuid, group_name)
+                            if group_failcount > 0:
+                                group_status_string = f" ({group_failcount})"
+                            else:
+                                group_status_string = ""
 
                 if group_site == config.site:
                     group_string = group_name

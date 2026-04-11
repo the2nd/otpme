@@ -17,16 +17,16 @@ from otpme.lib.exceptions import *
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
-PROTOCOL_VERSION = "OTPme-auth-1.0"
+PROTOCOL_VERSION = "OTPme-sso-1.0"
 
 def register():
-    config.register_otpme_protocol("authd", PROTOCOL_VERSION)
+    config.register_otpme_protocol("ssod", PROTOCOL_VERSION)
 
-class OTPmeAuthP1(OTPmeClient1):
-    """ Class that implements client for protocol OTPme-auth-1.0. """
+class OTPmeSsoP1(OTPmeClient1):
+    """ Class that implements client for protocol OTPme-sso-1.0. """
     def __init__(self, **kwargs):
-        self.daemon = "authd"
+        self.daemon = "ssod"
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeAuthP1, self).__init__(self.daemon, **kwargs)
+        super(OTPmeSsoP1, self).__init__(self.daemon, **kwargs)

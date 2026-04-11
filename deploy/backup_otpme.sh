@@ -1,6 +1,8 @@
 #!/bin/bash
 
 OTPME_CONF="/etc/otpme/otpme.conf"
+source "$OTPME_CONF"
+
 BACKUP_DIR="/var/backups/otpme"
 BACKUP_INCLUDE="
 /etc/otpme
@@ -21,8 +23,6 @@ if [ ! -e "$OTPME_CONF" ] ; then
 	exit 1
 fi
 
-source "$OTPME_CONF"
-
 start_backup () {
 	local BACKUP_NAME="$1"
 	local DATE="`date +%Y-%m-%d-%s`"
@@ -42,7 +42,7 @@ start_backup () {
 	fi
 
 	echo "Writing $BACKUP_FILE..."
-	tar cfzp "$BACKUP_FILE" $BACKUP_INCLUDE
+	tar -c -z -p --exclude=/var/cache/otpme/backup -f "$BACKUP_FILE" $BACKUP_INCLUDE
 }
 
 restore_backup () {

@@ -1469,7 +1469,8 @@ class ObjectTransaction(BaseTransaction):
         cached_objects = []
         for object_id in list(self.modified_objects):
             o = cache.get_modified_object(object_id)
-            cache.remove_modified_object(object_id)
+            if not config.no_backend_writes:
+                cache.remove_modified_object(object_id)
             if not o or not o._modified:
                 continue
             cached_objects.append(o)

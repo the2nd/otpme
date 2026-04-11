@@ -148,7 +148,8 @@ class JobCallback(object):
         objects_written = []
         for object_id in self.modified_objects:
             o = cache.get_modified_object(object_id)
-            cache.remove_modified_object(object_id)
+            if not config.no_backend_writes:
+                cache.remove_modified_object(object_id)
             if not o or not o._modified:
                 continue
             log_msg = _("Writing modified object (Job): {}", log=True)[1]
@@ -268,8 +269,8 @@ class JobCallback(object):
         if self.api_mode:
             print(message)
             return
-        # No need to add message for API/RAPI calls.
-        if self.job._caller != "CLIENT":
+        # No need to add message for API calls.
+        if self.job._caller == "API":
             return message
         if message == '\0OTPME_NULL\0':
             return True
@@ -304,7 +305,7 @@ class JobCallback(object):
         if not self.enabled:
             return None
         # For API/RAPI calls we do not have to send the abort message.
-        if self.job._caller != "CLIENT":
+        if self.job._caller == "API":
             return None
         if message == '\0OTPME_NULL\0':
             return
@@ -327,7 +328,7 @@ class JobCallback(object):
                     raise_exception = False
 
             if message != '\0OTPME_NULL\0':
-                if self.job._caller == "CLIENT":
+                if self.job._caller != "API":
                     # Make sure message is string.
                     exit_info = str(message)
                     # Set jobs last error.

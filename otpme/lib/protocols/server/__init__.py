@@ -18,6 +18,7 @@ modules = [
             'otpme.lib.protocols.server.sync1',
             'otpme.lib.protocols.server.agent1',
             'otpme.lib.protocols.server.auth1',
+            'otpme.lib.protocols.server.sso1',
             'otpme.lib.protocols.server.backup1',
             'otpme.lib.protocols.server.cluster1',
         ]

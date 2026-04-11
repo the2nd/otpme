@@ -142,13 +142,18 @@ def show_compgen():
     for word in comp_words:
         if word not in sub_commands:
             continue
-        #word_counter += 1
-        #if word_counter > len(comp_words):
-        #    break
-        #prev_subcommand_word = comp_words[word_counter-1]
-        ## Parameter to the --type option may conflict with subcommands.
-        #if prev_subcommand_word == "--type":
-        #    break
+        prev_subcommand_word = comp_words[word_counter-2]
+        if prev_subcommand_word == "--type":
+            sub_command = None
+            found_subcommand = False
+            break
+        if len(comp_words) >= 3:
+            prev_subcommand_word = comp_words[word_counter-3]
+            if cur != "":
+                if prev_subcommand_word == "--type":
+                    sub_command = None
+                    found_subcommand = False
+                    break
         sub_command = word
         found_subcommand = True
 

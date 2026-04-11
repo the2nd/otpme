@@ -24,13 +24,58 @@
     </div>
     {% endif %}
 
-    <!-- FIDO2 Key Management -->
+    <!-- PIN Change -->
+    {% if show_pin_change %}
     <div class="settings-card">
-        <h3>Security Keys</h3>
-        <p class="settings-desc">Register a FIDO2 security key. This will replace your current login token.</p>
-        <button type="button" id="fido2RegisterBtn" onclick="fido2Deploy()" class="btn btn-secondary btn-small">Register Security Key</button>
-        <div class="status-msg" id="fido2RegStatus"></div>
-        <div class="error-msg" id="fido2RegError"></div>
+        <h3>Change PIN</h3>
+        <div class="settings-form">
+            <label for="currentPin">Current PIN</label>
+            <input type="password" id="currentPin" autocomplete="current-password" inputmode="numeric">
+
+            <label for="newPin">New PIN</label>
+            <input type="password" id="newPin" autocomplete="new-password" inputmode="numeric">
+
+            <label for="confirmPin">Confirm New PIN</label>
+            <input type="password" id="confirmPin" autocomplete="new-password" inputmode="numeric">
+
+            <button type="button" id="changePinBtn" onclick="changePin()" class="btn btn-primary" style="margin-top:8px;">Change PIN</button>
+            <div class="status-msg" id="pinStatus"></div>
+            <div class="error-msg" id="pinError"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Login Token Re-Deploy -->
+    <div class="settings-card">
+        <h3>Login Token</h3>
+        <p class="settings-desc">Re-deploy your login token. This will replace your current login token with a new one.</p>
+        <a href="{{ url_for('settings_redeploy', _external=True, _scheme='https') }}" class="btn btn-secondary btn-small">Re-deploy Login Token</a>
+    </div>
+
+    <!-- Device Tokens -->
+    <div class="settings-card">
+        <h3>Device Tokens</h3>
+        <p class="settings-desc" id="deviceRoleInfo"></p>
+        <p class="settings-desc device-disabled-hint" id="deviceDisabledHint" style="display:none;">
+            Device tokens are not available: <code>sso_token_role</code> is not configured.
+        </p>
+        <div class="settings-form" id="deviceAddForm">
+            <label for="deviceName">Device Name</label>
+            <input type="text" id="deviceName" placeholder="e.g. my-phone" autocomplete="off">
+            <button type="button" id="addDeviceBtn" onclick="addDeviceToken()" class="btn btn-primary" style="margin-top:8px;">Add Device Token</button>
+            <div class="status-msg" id="deviceStatus"></div>
+            <div class="error-msg" id="deviceError"></div>
+        </div>
+        <div id="deviceResult" class="device-token-reveal" style="display:none;">
+            <div>
+                <strong>New password:</strong>
+                <code id="devicePassword"></code>
+                <button type="button" class="btn btn-secondary btn-small" onclick="copyDevicePassword()" style="margin-left:8px;">Copy</button>
+            </div>
+            <span class="hint">This password is shown only once. Copy it now.</span>
+        </div>
+        <h4>Existing Device Tokens</h4>
+        <ul id="deviceTokenList" class="device-token-list"></ul>
     </div>
 </div>
 
@@ -84,125 +129,195 @@
         }
     }
 
-    function base64urlToBuffer(base64url) {
-        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - base64.length % 4) % 4);
-        const binary = atob(base64 + padding);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-        }
-        return bytes.buffer;
-    }
-
-    function bufferToBase64url(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (const byte of bytes) {
-            binary += String.fromCharCode(byte);
-        }
-        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-
-    async function fido2Deploy() {
-        const statusEl = document.getElementById('fido2RegStatus');
-        const errorEl = document.getElementById('fido2RegError');
+    async function changePin() {
+        const statusEl = document.getElementById('pinStatus');
+        const errorEl = document.getElementById('pinError');
         statusEl.textContent = '';
         errorEl.textContent = '';
 
-        if (!window.isSecureContext) {
-            errorEl.textContent = 'WebAuthn requires HTTPS.';
+        const currentPin = document.getElementById('currentPin').value;
+        const newPin = document.getElementById('newPin').value;
+        const confirmPin = document.getElementById('confirmPin').value;
+
+        if (!currentPin || !newPin || !confirmPin) {
+            errorEl.textContent = 'All fields are required.';
             return;
         }
-        if (!window.PublicKeyCredential) {
-            errorEl.textContent = 'WebAuthn is not supported in this browser.';
+        if (newPin !== confirmPin) {
+            errorEl.textContent = 'New PINs do not match.';
             return;
         }
 
-        const btn = document.getElementById('fido2RegisterBtn');
+        const btn = document.getElementById('changePinBtn');
         btn.disabled = true;
+        statusEl.textContent = 'Changing PIN...';
 
         try {
-            // Step 1: Create sso-deploy FIDO2 token.
-            statusEl.textContent = 'Preparing...';
-            const createResp = await fetch("{{ url_for('settings_fido2_begin', _external=True, _scheme='https') }}", {
+            const resp = await fetch("{{ url_for('change_pin', _external=True, _scheme='https') }}", {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({}),
+                body: JSON.stringify({
+                    current_pin: currentPin,
+                    new_pin: newPin,
+                    confirm_pin: confirmPin,
+                }),
             });
-            if (!createResp.ok) {
-                const err = await createResp.json();
-                throw new Error(err.error || 'Failed to create token.');
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'PIN change failed.');
             }
-
-            // Step 2: WebAuthn registration.
-            statusEl.textContent = 'Starting registration...';
-            const beginResp = await fetch("{{ url_for('fido2_register_begin', _external=True, _scheme='https') }}", {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({}),
-            });
-            if (!beginResp.ok) {
-                const err = await beginResp.json();
-                throw new Error(err.error || 'Failed to start registration.');
-            }
-            const options = await beginResp.json();
-
-            const publicKey = options.publicKey;
-            publicKey.challenge = base64urlToBuffer(publicKey.challenge);
-            publicKey.user.id = base64urlToBuffer(publicKey.user.id);
-            if (publicKey.excludeCredentials) {
-                publicKey.excludeCredentials = publicKey.excludeCredentials.map(cred => ({
-                    ...cred,
-                    id: base64urlToBuffer(cred.id),
-                }));
-            }
-
-            statusEl.textContent = 'Please touch your security key...';
-            const credential = await navigator.credentials.create({publicKey: publicKey});
-
-            const regResponse = {
-                id: credential.id,
-                rawId: bufferToBase64url(credential.rawId),
-                type: credential.type,
-                response: {
-                    attestationObject: bufferToBase64url(credential.response.attestationObject),
-                    clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                },
-                clientExtensionResults: credential.getClientExtensionResults(),
-            };
-
-            statusEl.textContent = 'Completing registration...';
-            const completeResp = await fetch("{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}", {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(regResponse),
-            });
-            if (!completeResp.ok) {
-                const err = await completeResp.json();
-                throw new Error(err.error || 'Registration failed.');
-            }
-
-            // Step 3: Move sso-deploy token to replace login token.
-            statusEl.textContent = 'Finalizing...';
-            const verifyResp = await fetch("{{ url_for('deploy_verify', _external=True, _scheme='https') }}", {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({}),
-            });
-            const verifyResult = await verifyResp.json();
-            if (!verifyResp.ok) {
-                throw new Error(verifyResult.error || 'Deployment failed.');
-            }
-
-            statusEl.textContent = 'Security key registered successfully! Reloading...';
-            setTimeout(() => { window.location.reload(); }, 1500);
+            statusEl.textContent = result.message || 'PIN changed successfully.';
+            document.getElementById('currentPin').value = '';
+            document.getElementById('newPin').value = '';
+            document.getElementById('confirmPin').value = '';
         } catch (e) {
-            errorEl.textContent = e.message || 'Registration failed.';
+            errorEl.textContent = e.message || 'PIN change failed.';
             statusEl.textContent = '';
         } finally {
             btn.disabled = false;
         }
     }
+
+    async function loadDeviceTokens() {
+        const listEl = document.getElementById('deviceTokenList');
+        listEl.innerHTML = '';
+        try {
+            const resp = await fetch("{{ url_for('list_device_tokens', _external=True, _scheme='https') }}");
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Failed to load device tokens.');
+            }
+            const roleInfoEl = document.getElementById('deviceRoleInfo');
+            roleInfoEl.textContent = result.role_info || '';
+            roleInfoEl.style.display = result.role_info ? '' : 'none';
+            const roleConfigured = !!result.role_configured;
+            const addForm = document.getElementById('deviceAddForm');
+            const disabledHint = document.getElementById('deviceDisabledHint');
+            const nameInput = document.getElementById('deviceName');
+            const addBtn = document.getElementById('addDeviceBtn');
+            if (roleConfigured) {
+                addForm.style.display = '';
+                disabledHint.style.display = 'none';
+                nameInput.disabled = false;
+                addBtn.disabled = false;
+            } else {
+                addForm.style.display = 'none';
+                disabledHint.style.display = '';
+                nameInput.disabled = true;
+                addBtn.disabled = true;
+            }
+            const tokens = result.device_tokens || [];
+            if (tokens.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = 'No device tokens yet.';
+                listEl.appendChild(li);
+                return;
+            }
+            for (const t of tokens) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'device-label';
+                label.textContent = t.device_name || t.name;
+                li.appendChild(label);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-secondary btn-small';
+                btn.textContent = 'Delete';
+                btn.addEventListener('click', () => deleteDeviceToken(t.name, t.device_name || t.name));
+                li.appendChild(btn);
+                listEl.appendChild(li);
+            }
+        } catch (e) {
+            const li = document.createElement('li');
+            li.className = 'error-msg';
+            li.textContent = e.message || 'Failed to load device tokens.';
+            listEl.appendChild(li);
+        }
+    }
+
+    async function addDeviceToken() {
+        const statusEl = document.getElementById('deviceStatus');
+        const errorEl = document.getElementById('deviceError');
+        const resultEl = document.getElementById('deviceResult');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+        resultEl.style.display = 'none';
+
+        const deviceName = document.getElementById('deviceName').value.trim();
+        if (!deviceName) {
+            errorEl.textContent = 'Device name is required.';
+            return;
+        }
+
+        const btn = document.getElementById('addDeviceBtn');
+        btn.disabled = true;
+        statusEl.textContent = 'Adding device token...';
+
+        try {
+            const resp = await fetch("{{ url_for('add_device_token', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device_name: deviceName}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Failed to add device token.');
+            }
+            statusEl.textContent = 'Device token created.';
+            document.getElementById('devicePassword').textContent = result.password || '';
+            resultEl.style.display = 'block';
+            document.getElementById('deviceName').value = '';
+            loadDeviceTokens();
+        } catch (e) {
+            errorEl.textContent = e.message || 'Failed to add device token.';
+            statusEl.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function deleteDeviceToken(name, label) {
+        if (!confirm('Delete device token "' + label + '"?')) {
+            return;
+        }
+        const statusEl = document.getElementById('deviceStatus');
+        const errorEl = document.getElementById('deviceError');
+        errorEl.textContent = '';
+        try {
+            const resp = await fetch("{{ url_for('del_device_token', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Failed to delete device token.');
+            }
+            // Hide any previously revealed password (it might belong to the
+            // token just deleted, and is no longer relevant anyway).
+            const resultEl = document.getElementById('deviceResult');
+            resultEl.style.display = 'none';
+            document.getElementById('devicePassword').textContent = '';
+            statusEl.textContent = 'Device token deleted.';
+            loadDeviceTokens();
+        } catch (e) {
+            errorEl.textContent = e.message || 'Failed to delete device token.';
+        }
+    }
+
+    async function copyDevicePassword() {
+        const pw = document.getElementById('devicePassword').textContent;
+        if (!pw) return;
+        try {
+            await navigator.clipboard.writeText(pw);
+            document.getElementById('deviceStatus').textContent = 'Password copied to clipboard.';
+        } catch (e) {
+            document.getElementById('deviceError').textContent = 'Failed to copy password.';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDeviceTokens);
+
 </script>
 {% endblock %}

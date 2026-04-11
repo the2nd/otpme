@@ -918,7 +918,10 @@ class Connection(object):
             log_msg = _("Closing connection to '{client}'", log=True)[1]
             log_msg = log_msg.format(client=self.client)
             self.logger.debug(log_msg)
-        self.send("quit", timeout=0.01)
+        try:
+            self.send("quit", timeout=0.01)
+        except OSError:
+            pass
         self.connected = False
         self._close()
 

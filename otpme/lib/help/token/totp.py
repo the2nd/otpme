@@ -18,10 +18,11 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token add [-r] {token}'),
-                    'cmd'   :   '-r :replace=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-token add [-r] [--mode <mode>] [--no-qrcode] {token}'),
+                    'cmd'   :   '-r :replace=True: --mode :mode: --no-qrcode :gen_qrcode=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
+                                    '--mode <mode>'         : _('Add token in mode <mode>.'),
                                     '-r'                    : _('Replace existing token and keep its UUID.'),
                                 },
                 },

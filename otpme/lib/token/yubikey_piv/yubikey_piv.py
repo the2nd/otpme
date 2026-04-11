@@ -693,6 +693,8 @@ class YubikeypivToken(Token):
             self.key_type = ssh_public_key_type
         if dot1x_secret:
             self.dot1x_secret = dot1x_secret
+        msg = _("Yubikey PIV token deployed successful.")
+        callback.send(msg)
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)

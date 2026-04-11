@@ -755,6 +755,7 @@ class PasswordToken(Token):
         password: Union[str,None]=None,
         enable_mschap: bool=False,
         force: bool=False,
+        _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -790,6 +791,9 @@ class PasswordToken(Token):
                             force=force,
                             verify_acls=False,
                             callback=callback)
+
+        if _caller == "API":
+            return new_pass
 
         return_message = ""
         if not enable_mschap:

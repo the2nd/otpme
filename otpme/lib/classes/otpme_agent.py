@@ -967,7 +967,7 @@ class OTPmeAgent(UnixDaemon):
         except:
             pass
 
-    def get_jwt(self, login_pid, challenge, use_dns=None):
+    def get_jwt(self, login_pid, realm, site, challenge, use_dns=None):
         """ Request JWT for the given login session. """
         login_user = self.login_sessions[login_pid]['login_user']
         login_realm = self.login_sessions[login_pid]['realm']
@@ -995,11 +995,12 @@ class OTPmeAgent(UnixDaemon):
             log_msg = log_msg.format(realm=login_realm, site=login_site, daemon=daemon, error=e)
             self.logger.error(log_msg, exc_info=True)
             return
+        jwt_access_group = f"{site}/{config.realm_access_group}"
         command = "get_jwt"
         command_args = {}
         command_args['jwt_reason'] = "REALM_LOGIN"
         command_args['jwt_challenge'] = challenge
-        command_args['jwt_accessgroup'] = config.realm_access_group
+        command_args['jwt_access_group'] = jwt_access_group
         # Send command.
         try:
             status, \
@@ -1050,7 +1051,7 @@ class OTPmeAgent(UnixDaemon):
 
         # Helper method to get JWT from within OTPmeClient().
         def _get_jwt(challenge, use_dns=use_dns):
-            return self.get_jwt(login_pid, challenge, use_dns=use_dns)
+            return self.get_jwt(login_pid, realm, site, challenge, use_dns=use_dns)
 
         # Get login handler.
         login_handler = LoginHandler()

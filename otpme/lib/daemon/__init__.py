@@ -18,6 +18,7 @@ modules = [
         'otpme.lib.daemon.clusterd',
         'otpme.lib.daemon.fsd',
         'otpme.lib.daemon.backupd',
+        'otpme.lib.daemon.ssod',
         ]
 
 def register():

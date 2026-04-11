@@ -70,6 +70,7 @@ read_value_acls = {
                                 "sso_fqdn",
                                 "sso_cert",
                                 "sso_key",
+                                "sso_host",
                                 "radius_cert",
                                 "radius_key",
                                 "radius_ca_cert",
@@ -95,11 +96,13 @@ write_value_acls = {
                     "add"       : [
                                 "unit",
                                 "trust",
+                                "sso_host",
                                 "fido2_ca_cert",
                                 ],
                     "delete"    : [
                                 "unit",
                                 "trust",
+                                "sso_host",
                                 "fido2_ca_cert",
                                 ],
                     "enable"    : [
@@ -484,6 +487,23 @@ commands = {
                     },
                 },
             },
+    'info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_info',
+                    'oargs'             : ['info'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_info',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'export'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -623,6 +643,14 @@ commands = {
                     },
                 },
             },
+    'list_fido2_ca_certs'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_fido2_ca_certs',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_trust'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -632,19 +660,29 @@ commands = {
                     },
                 },
             },
-    'list_fido2_ca_certs'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'get_fido2_ca_certs',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'del_trust'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_trust',
                     'args'              : ['site_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_sso_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_sso_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_sso_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_sso_host',
+                    'args'              : ['host_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1164,7 +1202,7 @@ def register_config():
                                     ctype=int,
                                     default_value=5,
                                     object_types=object_types)
-    # Auth JWT validity (default 24h).
+    # Auth JWT validity (default 1m).
     def auth_jwt_valid_setter(auth_jwt_valid, **kwargs):
         from otpme.lib.humanize import units
         try:
@@ -1185,6 +1223,29 @@ def register_config():
                                     ctype=int,
                                     setter=auth_jwt_valid_setter,
                                     getter=auth_jwt_valid_getter,
+                                    default_value=60,
+                                    object_types=['site'])
+    # SSO JWT validity (default 24h).
+    def sso_jwt_valid_setter(sso_jwt_valid, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            sso_jwt_valid = units.time2int(sso_jwt_valid, time_unit="s")
+        except Exception:
+            msg = _("Invalid SSO JWT validity.")
+            raise ValueError(msg)
+        return sso_jwt_valid
+    def sso_jwt_valid_getter(sso_jwt_valid, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            sso_jwt_valid = units.int2time(sso_jwt_valid, time_unit="s")[0]
+        except Exception:
+            msg = _("Invalid sso JWT validity.")
+            raise ValueError(msg)
+        return sso_jwt_valid
+    config.register_config_parameter(name="sso_jwt_valid",
+                                    ctype=int,
+                                    setter=sso_jwt_valid_setter,
+                                    getter=sso_jwt_valid_getter,
                                     default_value=86400,
                                     object_types=['site'])
     # Hosts accessgroup.
@@ -1255,6 +1316,48 @@ def register_config():
     config.register_config_parameter(name="vlan",
                                     ctype=str,
                                     object_types=object_types)
+    # Role devices tokens added by the SSO portal added to.
+    object_types = [
+                    'site',
+                    'unit',
+                    'user',
+                    ]
+    def sso_role_setter(role, callback=JobCallback, **kwargs):
+        if "/" in role:
+            role_site = role.split("/")[0]
+            role_name = role.split("/")[1]
+        else:
+            role_site = config.site
+            role_name = role
+        result = backend.search(object_type='role',
+                                attribute="name",
+                                value=role_name,
+                                realm=config.realm,
+                                site=role_site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown role: {role}")
+            msg = msg.format(role=role)
+            raise ValueError(msg)
+        role = result[0]
+        return role.uuid
+    def sso_role_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='role',
+                                attribute="uuid",
+                                value=uuid,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown role: {uuid}")
+            msg = msg.format(uuid=uuid)
+            raise ValueError(msg)
+        role = result[0]
+        role_path = f"{role.site}/{role.name}"
+        return role_path
+    config.register_config_parameter(name="sso_token_role",
+                                    ctype=str,
+                                    setter=sso_role_setter,
+                                    getter=sso_role_getter,
+                                    object_types=object_types)
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -1268,6 +1371,8 @@ def register_hooks():
     config.register_auth_on_action_hook("site", "renew_cert")
     config.register_auth_on_action_hook("site", "add_trust")
     config.register_auth_on_action_hook("site", "del_trust")
+    config.register_auth_on_action_hook("site", "add_sso_host")
+    config.register_auth_on_action_hook("site", "del_sso_host")
     config.register_auth_on_action_hook("site", "show_config_parameters")
 
 def register_oid():
@@ -1407,8 +1512,15 @@ class Site(OTPmeObject):
                             "USER_ROLE",
                             "AUTH_FQDN",
                             "MGMT_FQDN",
+                            "SSO_FQDN",
                             "ou",
-                            ]
+                            ],
+                        'sso_host'  : [
+                                "SSO_KEY",
+                                "SSO_CERT",
+                                "SSO_SECRET",
+                                "SSO_CSRF_SECRET",
+                                ],
                         },
 
                     'node'  : {
@@ -1433,9 +1545,10 @@ class Site(OTPmeObject):
                             "USER_ROLE",
                             "AUTH_FQDN",
                             "MGMT_FQDN",
+                            "SSO_FQDN",
                             "FIDO2_CA_CERTS",
                             "ou",
-                            ]
+                            ],
                         },
                     }
         # Register site users group.
@@ -1602,6 +1715,12 @@ class Site(OTPmeObject):
                                             'type'      : int,
                                             'required'  : False,
                                         },
+            'SSO_HOSTS'                 : {
+                                            'var_name'      : 'sso_hosts',
+                                            'type'          : list,
+                                            'required'      : False,
+                                        },
+
             'CLUSTER_KEY'               : {
                                             'var_name'  : 'cluster_key',
                                             'type'      : str,
@@ -2592,6 +2711,57 @@ class Site(OTPmeObject):
                 msg = _("Error writing UUID file: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg)
+
+        return self._write(callback=callback)
+
+    @check_acls(['add:sso_host'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_sso_host(
+        self,
+        host_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Add site sso_host relationship. """
+        if self.uuid != config.site_uuid:
+            msg = _("Permission denied.")
+            return callback.error(msg, exception=PermissionDenied)
+
+        result = backend.search(object_type="host",
+                                attribute="name",
+                                value=host_name,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown host: {host_name}")
+            msg = msg.format(host_name=host_name)
+            return callback.error(msg)
+
+        host_uuid = result[0]
+
+        if host_uuid in self.sso_hosts:
+            msg = _("Host already added to site: {host_name}")
+            msg = msg.format(host_namhost_name=host_name)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_sso_host",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_hosts.append(host_uuid)
+        # Update index.
+        self.add_index("sso_host", host_uuid)
 
         return self._write(callback=callback)
 
@@ -3980,6 +4150,24 @@ class Site(OTPmeObject):
         else:
             lines.append('ADDRESS=""')
 
+        if self.verify_acl("view:auth_fqdn") \
+        or self.verify_acl("edit:auth_fqdn"):
+            lines.append(f'AUTH_FQDN="{self.auth_fqdn}"')
+        else:
+            lines.append('AUTH_FQDN=""')
+
+        if self.verify_acl("view:mgmt_fqdn") \
+        or self.verify_acl("edit:mgmt_fqdn"):
+            lines.append(f'MGMT_FQDN="{self.mgmt_fqdn}"')
+        else:
+            lines.append('MGMT_FQDN=""')
+
+        if self.verify_acl("view:sso_fqdn") \
+        or self.verify_acl("edit:sso_fqdn"):
+            lines.append(f'SSO_FQDN="{self.sso_fqdn}"')
+        else:
+            lines.append('SSO_FQDN=""')
+
         if self.verify_acl("view:sso_secret") \
         or self.verify_acl("edit:sso_secret"):
             lines.append(f'SSO_SECRET="{self.sso_secret}"')
@@ -4033,6 +4221,19 @@ class Site(OTPmeObject):
         lines.append(f'ADMIN_TOKEN="{admin_token}"')
 
         lines.append(f'CLUSTER_KEY="{cluster_key}"')
+
+        sso_hosts = []
+        if self.verify_acl("view:trust") \
+        or self.verify_acl("add:trust") \
+        or self.verify_acl("delete:trust"):
+            for x in self.sso_hosts:
+                s = backend.get_object(object_type="host", uuid=x)
+                if s:
+                    sso_hosts.append(s.name)
+                else:
+                    sso_hosts.append(x)
+        lines.append(f'SSO_HOSTS="{",".join(sso_hosts)}"')
+
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

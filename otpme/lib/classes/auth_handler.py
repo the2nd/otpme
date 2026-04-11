@@ -1810,7 +1810,24 @@ class AuthHandler(object):
                 return
 
             # Verify outer JWT auth accessgroup.
-            if auth_accessgroup != self.access_group:
+            try:
+                auth_ag_site = auth_accessgroup.split("/")[0]
+                auth_ag_name = auth_accessgroup.split("/")[1]
+            except IndexError:
+                log_msg = _("Invalid accessgroup: {access_group}", log=True)[1]
+                log_msg = msg.format(access_group=access_group)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.auth_message = "AUTH_JWT_ACCESSGROUP_INVALID"
+                self.count_fails = False
+                return
+
+            auth_ag_missmatch = False
+            if auth_ag_site != config.site:
+                auth_ag_missmatch = True
+            if auth_ag_name != self.access_group:
+                auth_ag_missmatch = True
+            if auth_ag_missmatch:
                 log_msg = _("Outer JWT accessgroup mismatch: {access_group} <> {auth_accessgroup}", log=True)[1]
                 log_msg = log_msg.format(access_group=self.access_group, auth_accessgroup=auth_accessgroup)
                 self.logger.warning(log_msg)
@@ -2911,9 +2928,32 @@ class AuthHandler(object):
 
             # Get users login token.
             login_token_uuid = None
+            login_token_rel_path = None
+            login_token_type = None
+            login_token_pass_type = None
+            login_token_sso_deploy = None
             if self.auth_token:
+                login_token_type = self.auth_token.type
                 login_token_uuid = self.auth_token.uuid
+                login_token_rel_path = self.auth_token.rel_path
+                login_token_pass_type = self.auth_token.pass_type
+                login_token_sso_deploy = self.auth_token.sso_deploy
+            auth_response['login_token'] = login_token_rel_path
             auth_response['login_token_uuid'] = login_token_uuid
+            auth_response['login_token_type'] = login_token_type
+            auth_response['login_token_pass_type'] = login_token_pass_type
+            auth_response['login_token_sso_deploy'] = login_token_sso_deploy
+
+            login_user_uuid = None
+            login_user_name = None
+            login_user_site_uuid = None
+            if self.user:
+                login_user_uuid = self.user.uuid
+                login_user_name = self.user.name
+                login_user_site_uuid = self.user.site_uuid
+            auth_response['login_user_uuid'] = login_user_uuid
+            auth_response['login_user_name'] = login_user_name
+            auth_response['login_user_site_uuid'] = login_user_site_uuid
 
             if self.realm_login:
                 # Get users login script.

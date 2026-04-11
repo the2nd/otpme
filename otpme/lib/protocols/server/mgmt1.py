@@ -23,6 +23,7 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import json
 from otpme.lib import stuff
+from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backup
 from otpme.lib import backend
@@ -98,6 +99,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.job_queries = {}
         self.job_exit_status = {}
         self.job_callbacks = {}
+        self.use_cached_objects = False
         # Max jobs per client.
         self.max_jobs = 3
         # Mass add procs.
@@ -255,6 +257,11 @@ class OTPmeMgmtP1(OTPmeServer1):
         # API callers that are allowed from remote. Class methods use them to
         # decide e.g. which format the return value must have.
         api_callers = [ 'CLIENT', 'RAPI' ]
+
+        try:
+            config.no_backend_writes = command_args.pop("_no_backend_writes")
+        except KeyError:
+            config.no_backend_writes = False
 
         # Get global method args.
         for a in global_args:
@@ -2343,7 +2350,6 @@ class OTPmeMgmtP1(OTPmeServer1):
             response = self.handle_job(job_uuid=job_uuid,
                                     callbacks=callbacks,
                                     stop=stop)
-
             return self.build_response(status, response)
 
         if not config.use_api:
@@ -2693,6 +2699,14 @@ class OTPmeMgmtP1(OTPmeServer1):
         job_type = "thread"
         job_name = None
         o = None
+
+        # Make sure cached objects a thrown away.
+        try:
+            self.use_cached_objects = command_args.pop("_use_cached_objects")
+        except KeyError:
+            self.use_cached_objects = False
+        if not self.use_cached_objects:
+            cache.clear()
 
         # Try to get object identifier from command.
         try:

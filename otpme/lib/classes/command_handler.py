@@ -764,6 +764,10 @@ class CommandHandler(object):
             return self.handle_user_key_pass_command()
 
         # When editing a script we need to dump it to a local file first.
+        if subcommand == "info":
+            return self.handle_info_edit_command(command, subcommand, self.command_line)
+
+        # When editing a script we need to dump it to a local file first.
         if command == "script" and subcommand == "edit":
             return self.handle_script_edit_command()
 
@@ -5851,6 +5855,104 @@ class CommandHandler(object):
         # Nothing more to do for edit command
         return ""
 
+    def handle_info_edit_command(self, command, subcommand, command_line):
+        """ Handle object info edit command. """
+        register_module("otpme.lib.multiprocessing")
+        from otpme.lib import filetools
+        from subprocess import call
+        # Init otpme.
+        #init_otpme()
+        self.init()
+
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            return self.get_help(msg)
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+
+        if "info" in command_args:
+            result = self.send_command(command=command,
+                                            subcommand="info",
+                                            command_args=command_args,
+                                            object_list=[object_identifier],
+                                            parse_command_syntax=False,
+                                            client_type="RAPI")
+            return result
+
+        # Try to get users preferred editor.
+        try:
+            editor = os.environ['EDITOR']
+        except:
+            editor = "vim"
+
+        # Get object info.
+        info_content = self.send_command(command=command,
+                                        subcommand="dump_info",
+                                        object_list=[object_identifier],
+                                        parse_command_syntax=False,
+                                        client_type="RAPI")
+
+        # We always use the same filename/path for the temp file to allow
+        # vim features like "jump to the last cursor position".
+        tmp_file = f"{config.tmp_dir}/{stuff.gen_md5(command)}.tmp"
+        # Generate info md5sum before editing.
+        old_info_sum = stuff.gen_md5(info_content)
+        # Write info to temp file.
+        filetools.create_file(path=tmp_file,
+                            content=info_content,
+                            user=config.system_user(),
+                            mode=0o700)
+        # Start editor.
+        call([editor, tmp_file])
+        # Read file content.
+        fd = open(tmp_file, "r")
+        file_content = fd.read()
+        fd.close()
+        # Generate md5sum from edited info.
+        new_info_sum = stuff.gen_md5(file_content)
+        # Check if file has changed.
+        if new_info_sum == old_info_sum:
+            os.remove(tmp_file)
+            msg = "Nothing changed."
+            return msg
+
+        # Build final command to replace OTPme info with new one.
+        command_args = {'info':file_content}
+
+        # Add edited info.
+        try:
+            self.send_command(command=command,
+                            subcommand="info",
+                            command_args=command_args,
+                            parse_command_syntax=False,
+                            object_list=[object_identifier])
+        except Exception as e:
+            msg = f"Error updating info: {e}\n"
+            msg = f"{msg}Info saved to temporary file: {tmp_file}"
+            raise OTPmeException(msg)
+
+        # Remove temp file
+        os.remove(tmp_file)
+
+        # Nothing more to do for edit command
+        return ""
+
     def handle_user_key_pass_command(self):
         """ Handle user key pass command. """
         # Init otpme.
@@ -6375,6 +6477,7 @@ class CommandHandler(object):
         self.init()
 
         self.command_args['pre_deploy'] = True
+        self.command_args['_no_backend_writes'] = True
         pre_deploy_args = smartcard_client_handler.get_pre_deploy_args(command_handler=self,
                                                                     command_args=local_command_args)
         self.command_args['pre_deploy_args'] = pre_deploy_args
@@ -6414,9 +6517,11 @@ class CommandHandler(object):
 
         # Encode token deploy data (e.g. token keys)
         deploy_data = json.encode(deploy_args, encoding="hex")
+        self.command_args['_no_backend_writes'] = False
+        self.command_args['_use_cached_objects'] = True
         self.command_args['deploy_data'] = deploy_data
         self.command_args['pre_deploy'] = False
-        self.command_args['replace'] = False
+        self.command_args['replace'] = True
         self.command_args['force'] = True
         command_line = [ user_name, token_name, token_type ]
         deploy_message = self.send_command(daemon="mgmtd",

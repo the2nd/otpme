@@ -231,7 +231,23 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-site description {site} [description]'),
                     'cmd'   :   '<|object|> [description]',
                     '_help' :   {
-                                    'cmd'                   : _('set site description'),
+                                    'cmd'                   : _('Set site description'),
+                                },
+                },
+
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site info {site} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set site info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site dump_info {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump site info'),
                                 },
                 },
 
@@ -470,7 +486,6 @@ cmd_help = {
                                 },
                 },
 
-
     'address'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site address {site} [ip_address]'),
                     'cmd'   :   '<|object|> [address]',
@@ -535,4 +550,21 @@ cmd_help = {
                                     'cmd'                   : _('Disable synchronization with site'),
                                 },
                 },
+
+    'add_sso_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site add_sso_host {site} {host_name}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add SSO host.'),
+                                },
+                },
+
+    'del_sso_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site del_sso_host {site} {nost_name}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Delete SSO host.'),
+                                },
+                },
+
     }

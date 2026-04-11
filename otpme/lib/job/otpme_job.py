@@ -373,7 +373,8 @@ class OTPmeJob(object):
     def join(self):
         """ Stop multiprocessing manager and join job thread/process. """
         if not self.start_process:
-            return
+            if not self.start_thread:
+                return
         if self._child_joined:
             return
         # Join child thread/process.

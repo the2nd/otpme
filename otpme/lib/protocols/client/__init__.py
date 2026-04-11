@@ -8,6 +8,7 @@ REGISTER_AFTER = ["otpme.lib.encoding.base"]
 # Protocol modules to register.
 modules = [
             'otpme.lib.protocols.client.fs1',
+            'otpme.lib.protocols.client.sso1',
             'otpme.lib.protocols.client.auth1',
             'otpme.lib.protocols.client.join1',
             'otpme.lib.protocols.client.host1',

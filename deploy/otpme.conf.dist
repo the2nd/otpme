@@ -406,7 +406,39 @@ AGENT_KEEPALIVE_INTERVAL="5"
 # and a reload is needed.
 RELOAD_CONFIG_INTERVAL="10"
 
+# Is this a SSO server? If set to "True" ssod and httpd is started.
+SSO_SERVER="False"
+
 # Is this a backup server? If set to "True" backupd is started.
 BACKUP_SERVER="False"
 # Backup root dir. All backups repositories will be created in this directory.
 BACKUP_DIR="/var/backups"
+# Allow new repositories from this client cert DNs.
+# Can be a comma separated list of allowed cert CNs or set to False.
+ALLOW_NEW_BACKUP_REPOS="False"
+
+# Backup of nodes and shares must be configured via OTPme config parameters.
+# Settings in this config file are only used for OTPme hosts or non-otpme hosts.
+#
+# Backup respository e.g. backupserver1.site.realm:host_type/site/hostname.
+BACKUP_REPOSITORY=""
+# Backup mode. Can be "pack" or "tree".
+BACKUP_MODE="pack"
+# Repository password.
+BACKUP_REPO_PASS=""
+# Backup AES key used to encrypt backup (use "openssl rand -hex 32" to generate).
+BACKUP_KEY=""
+# Exclude special files.
+BACKUP_EXCLUDE_SPECIAL="True"
+# Backup excludes.
+BACKUP_EXCLUDES="proc,sys,var/backups,otpme-mounts,otpme,mnt,var/lib/containers,snap,tmp,var/tmp,run,swap,dev"
+# Backup includes.
+BACKUP_INCLUDES=""
+# For non-otpme hosts use client cert/key.
+# You can create a client cert/key with the following command:
+# 	otpme-ca create_client_cert SITE_CA host1.site.realm cert.pem key.pem
+# And you need to copy the CA data file from a node: /etc/otpme/ssl/ca.pem
+#
+#BACKUP_CLIENT_CERT="/etc/otpme/ssl/backup-cert.pem"
+#BACKUP_CLIENT_KEY="/etc/otpme/ssl/backup-key.pem"
+#BACKUP_CLIENT_CA="/etc/otpme/ssl/backup-ca.pem"

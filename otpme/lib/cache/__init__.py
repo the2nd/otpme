@@ -642,7 +642,6 @@ def add_modified_object(o):
 
 def get_modified_object(object_id):
     """ Get cached (modified) object. """
-    global modified_objects
     global modified_objects_cache
     read_oid = object_id.read_oid
     proc_id = multiprocessing.get_id()
@@ -692,9 +691,11 @@ def flush(commit=True, callback=default_callback, quiet=True):
         object_id = oid.get(x)
         o = get_modified_object(object_id)
         remove_modified_object(object_id)
-        if not o or not o._modified:
+        if not o:
             continue
         if commit:
+            if not o._modified:
+                continue
             log_msg = _("Writing modified object: {o}", log=True)[1]
             log_msg = log_msg.format(o=o)
             logger.debug(log_msg)

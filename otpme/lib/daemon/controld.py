@@ -27,6 +27,7 @@ from otpme.lib.messages import error_message
 from otpme.lib.register import register_modules
 
 from otpme.lib.daemon.fsd import FsDaemon
+from otpme.lib.daemon.ssod import SSODaemon
 from otpme.lib.daemon.authd import AuthDaemon
 from otpme.lib.daemon.mgmtd import MgmtDaemon
 from otpme.lib.daemon.syncd import SyncDaemon
@@ -510,6 +511,7 @@ class ControlDaemon(UnixDaemon):
                     'scriptd',
                     'syncd',
                     'authd',
+                    'ssod',
                     'clusterd',
                     'httpd',
                     'fsd',
@@ -526,16 +528,23 @@ class ControlDaemon(UnixDaemon):
             child_daemons["mgmtd"] = {}
             child_daemons["syncd"] = {}
             child_daemons["scriptd"] = {}
+            child_daemons["ssod"] = {}
             child_daemons["clusterd"] = {}
             child_daemons["backupd"] = {}
 
         if config.host_data['type'] == "host":
             # Daemons we have to handle and its start order.
             self.daemons = [ 'hostd' ]
+            if config.sso_server:
+                self.daemons.append("ssod")
+                self.daemons.append("httpd")
             if config.backup_server:
                 self.daemons.append("backupd")
             # Set child daemons.
             child_daemons['hostd'] = ""
+            if config.sso_server:
+                child_daemons["ssod"] = {}
+                child_daemons["httpd"] = {}
             if config.backup_server:
                 child_daemons["backupd"] = {}
 
@@ -1082,6 +1091,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = SyncDaemon
         elif daemon_name == "scriptd":
             daemon_class = ScriptDaemon
+        elif daemon_name == "ssod":
+            daemon_class = SSODaemon
         elif daemon_name == "fsd":
             daemon_class = FsDaemon
         elif daemon_name == "backupd":

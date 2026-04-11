@@ -475,6 +475,23 @@ commands = {
                     },
                 },
             },
+    'info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_info',
+                    'oargs'             : ['info'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_info',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'export'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -2906,7 +2923,6 @@ class Token(OTPmeObject):
                                             callback=callback,
                                             **kwargs)
         if self.password_hash is False and not temp:
-            print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
             msg = _("Token type '{token_type}' does not have a password.")
             msg = msg.format(token_type=self.token_type)
             return callback.error(msg)
@@ -3533,12 +3549,12 @@ class Token(OTPmeObject):
             return callback.error()
 
         # Call child class method (to do token specific stuff).
-        self._add(owner_uuid=owner_uuid,
-                force=force,
-                _caller=_caller,
-                callback=callback,
-                verbose_level=verbose_level,
-                **kwargs)
+        token_add_status = self._add(owner_uuid=owner_uuid,
+                                    force=force,
+                                    _caller=_caller,
+                                    callback=callback,
+                                    verbose_level=verbose_level,
+                                    **kwargs)
 
         # Add object using parent class.
         add_status = super(Token, self).add(verbose_level=verbose_level,
@@ -3546,7 +3562,11 @@ class Token(OTPmeObject):
                                             write=write,
                                             callback=callback,
                                             **kwargs)
-        return add_status
+        if not add_status:
+            return add_status
+
+        # Token add status may be the generated passsword of the new token.
+        return token_add_status
 
     def is_default_token(self, callback: JobCallback=default_callback):
         """ Check if token is users default token. """
@@ -3605,6 +3625,7 @@ class Token(OTPmeObject):
         force: bool=False,
         replace: bool=False,
         run_policies: bool=True,
+        verify_acls: bool=True,
         verbose_level: int=0,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -3765,6 +3786,7 @@ class Token(OTPmeObject):
                             new_token=self,
                             replace=replace,
                             force=True,
+                            verify_acls=verify_acls,
                             _caller=_caller,
                             callback=callback)
         except Exception as e:

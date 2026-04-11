@@ -96,13 +96,21 @@ PYTHON_MOD_CONFIG_TEMPLATE = '''
     }
     '''
 
+PYTHON_MOD_POSTAUTH_TEMPLATE = '''
+        post-auth {
+          python_otpme
+      }
+      '''
+
 def create_freeradius_conf():
     if config.use_radius_mod:
         PYTHON_MOD_CONFIG = PYTHON_MOD_CONFIG_TEMPLATE
+        PYTHON_MOD_POSTAUTH_CONFIG = PYTHON_MOD_POSTAUTH_TEMPLATE
         PASSWORD_CONFIG = PASSWORD_CONFIG_MOD
         MSCHAP_CONFIG = MSCHAP_CONFIG_MOD
     else:
         PYTHON_MOD_CONFIG = ""
+        PYTHON_MOD_POSTAUTH_CONFIG = ""
         PASSWORD_CONFIG = PASSWORD_CONFIG_CMD
         MSCHAP_CONFIG = MSCHAP_CONFIG_CMD
 
@@ -279,9 +287,7 @@ def create_freeradius_conf():
                 }
             }
         }
-        post-auth {
-          python_otpme
-      }
+        ''' + PYTHON_MOD_POSTAUTH_CONFIG + '''
     }
     '''
 

@@ -2215,9 +2215,9 @@ class OTPmeClient1(OTPmeClientBase):
         check_offline_pass_strength=None, offline_iterations_by_score={},
         offline_key_derivation_func=None, offline_key_func_opts=None,
         sync_token_data=False, request_jwt=None, verify_jwt=None,
-        jwt_challenge=None, jwt_key=None, jwt_auth=False,
+        jwt_challenge=None, jwt_key=None, jwt_auth=False, request_token=None,
         check_login_status=True, allow_untrusted=False, do_preauth=True,
-        check_connected_site=True, verify_preauth=None,
+        check_connected_site=True, verify_preauth=None, follow_redirect=True,
         login_redirect=False, backup_key=None, **kwargs):
         # Init parent class.
         super(OTPmeClient1, self).__init__(daemon, **kwargs)
@@ -2449,6 +2449,10 @@ class OTPmeClient1(OTPmeClientBase):
         # have returned.
         self.cleanup_method = cleanup_method
 
+        # Indicates if we should do redirect auth if server wants it.
+        self.follow_redirect = follow_redirect
+        # Indicates we need token data from peer.
+        self.request_token = request_token
         # Indicates that this connection received a login redirect.
         self.login_redirect = login_redirect
         # Will be set true if login to users home site was successful.
@@ -2695,6 +2699,12 @@ class OTPmeClient1(OTPmeClientBase):
         # to add the RSP of our site too.
         self.login_session_id = redirect_connection.login_session_id
         self.offline_session_key = redirect_connection.offline_session_key
+        # Get ssh agent script.
+        self.ssh_agent_script = redirect_connection.ssh_agent_script
+        self.ssh_agent_script_uuid = redirect_connection.ssh_agent_script_uuid
+        self.ssh_agent_script_path = redirect_connection.ssh_agent_script_path
+        self.ssh_agent_script_opts = redirect_connection.ssh_agent_script_opts
+        self.ssh_agent_script_signs = redirect_connection.ssh_agent_script_signs
 
         # Disable stuff already done by the redirected login.
         self.use_ssh_agent = False
@@ -2711,6 +2721,8 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Set requesting client.
         preauth_args['client'] = self.client
+        # Set if redirect is wanted.
+        preauth_args['redirect'] = self.follow_redirect
 
         # Add cluster key.
         if config.cluster_key:
@@ -2749,6 +2761,10 @@ class OTPmeClient1(OTPmeClientBase):
 
         if self.reneg or self.rsp or self.srp or self.slp:
             need_token = False
+
+        # Set if peer tokens are wanted.
+        if self.request_token is not None:
+            need_token = self.request_token
 
         # Indicates if we need the preauth response to include valid token
         # types that could be used to authenticate the user.
@@ -4393,17 +4409,18 @@ class OTPmeClient1(OTPmeClientBase):
                 self.logger.critical(log_msg)
 
         # Save users SSH/GPG agent script to disk.
-        try:
-            self._offline_token.save_script(script_id="ssh-agent",
-                                script=self.ssh_agent_script,
-                                script_uuid=self.ssh_agent_script_uuid,
-                                script_path=self.ssh_agent_script_path,
-                                script_options=self.ssh_agent_script_opts,
-                                script_signs=self.ssh_agent_script_signs)
-        except Exception as e:
-            log_msg = _("Error saving agent script: {e}", log=True)[1]
-            log_msg = log_msg.format(e=e)
-            self.logger.warning(log_msg)
+        if self.ssh_agent_script:
+            try:
+                self._offline_token.save_script(script_id="ssh-agent",
+                                    script=self.ssh_agent_script,
+                                    script_uuid=self.ssh_agent_script_uuid,
+                                    script_path=self.ssh_agent_script_path,
+                                    script_options=self.ssh_agent_script_opts,
+                                    script_signs=self.ssh_agent_script_signs)
+            except Exception as e:
+                log_msg = _("Error saving agent script: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
 
         # Save users key script to disk.
         try:

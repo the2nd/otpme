@@ -490,6 +490,7 @@ class OathToken(Token):
     @backend.transaction
     def _add(
         self,
+        mode: str="mode2",
         gen_qrcode: bool=True,
         no_token_infos: bool=False,
         verify_acls: bool=True,
@@ -497,17 +498,24 @@ class OathToken(Token):
         **kwargs,
         ):
         """ Add a token. """
+        # Set mode.
+        self.mode = mode
+        self.pin_enabled = True
         # Gen server secret.
-        #self.server_secret = pyotp.random_base32()
-        self.server_secret = stuff.gen_secret(self.secret_len, "base32")
+        if self.mode == "mode1":
+            token_secret = stuff.gen_secret(self.secret_len, "base32")
+            self.secret = token_secret
+        else:
+            self.server_secret = stuff.gen_secret(self.secret_len, "base32")
         # Gen PIN.
         pin = stuff.gen_pin(self.default_pin_len)
         self.pin = pin
         self.pin_len = self.default_pin_len
         # Get token secret.
-        token_secret = self.get_secret(pin=pin,
-                                    encoding=self.secret_encoding,
-                                    callback=callback)
+        if self.mode == "mode2":
+            token_secret = self.get_secret(pin=pin,
+                                        encoding=self.secret_encoding,
+                                        callback=callback)
         # Generate salt for used OTP hashes.
         self.used_otp_salt = stuff.gen_secret(32)
         return_message = None

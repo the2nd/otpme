@@ -102,6 +102,7 @@ global_read_value_acls = {
                                 "status",
                                 "config",
                                 "description",
+                                "info",
                                 "last_modified",
                                 "last_used",
                                 "create_time",
@@ -144,7 +145,7 @@ global_write_value_acls = {
                     "edit"      : [
                                 "config",
                                 "attribute",
-                                "description",
+                                "info",
                                 ],
 }
 
@@ -522,7 +523,7 @@ class OTPmeLockObject(object):
                     object_id = backend.get_oid(self.uuid,
                                                 instance=True,
                                                 object_type=self.type)
-                    if object_id != self.oid:
+                    if object_id and object_id != self.oid:
                         msg = _("Object renamed while waiting for lock: {obj}")
                         msg = msg.format(obj=self)
                         self._object_lock.release_lock(lock_caller=lock_caller)
@@ -957,12 +958,10 @@ class OTPmeBaseObject(OTPmeLockObject):
             if peer.uuid == self.uuid:
                 return sync_config
 
-        own_site = False
         relationship = "untrusted"
         # Check if this object is from peers site.
         if peer.site_uuid == self.site_uuid:
             relationship = "trusted"
-            own_site = True
         # Check if this object is peers site.
         elif peer.site_uuid == self.uuid:
             relationship = "trusted"
@@ -987,23 +986,19 @@ class OTPmeBaseObject(OTPmeLockObject):
         except KeyError:
             pass
 
-        if own_site:
-            try:
-                allowed_fields += list(self._base_sync_fields[peer.type]['own_site'])
-            except KeyError:
-                pass
-
         # Get object specific sync fields (e.g. GROUP, TOKENS...)
         try:
             allowed_fields += list(self.sync_fields[peer.type][relationship])
         except KeyError:
             pass
 
-        if own_site:
-            try:
-                allowed_fields += list(self.sync_fields[peer.type]['own_site'])
-            except KeyError:
-                pass
+        if peer.type == "host":
+            own_site = backend.get_object(uuid=config.site_uuid)
+            if peer.uuid in own_site.sso_hosts:
+                try:
+                    allowed_fields += list(self.sync_fields[peer.type]['sso_host'])
+                except KeyError:
+                    pass
 
         if allowed_fields:
             for f in dict(sync_config):
@@ -1964,6 +1959,7 @@ class OTPmeObject(OTPmeBaseObject):
         self._extensions = {}
         self.token_owner = None
         self.description = ""
+        self.info = ""
         self.secret = None
         self.secret_format_regex = None
         self.secret_format_warning = None
@@ -2517,6 +2513,12 @@ class OTPmeObject(OTPmeBaseObject):
                                             'required'      : False,
                                         },
 
+            'INFO'                      : {
+                                            'var_name'      : 'info',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+
             'RESOLVER'                  : {
                                             'var_name'      : 'resolver',
                                             'type'          : "uuid",
@@ -2792,6 +2794,16 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = _("Cannot write object with expired lock: {obj}")
                 msg = msg.format(obj=self)
                 return callback.error(msg)
+
+        if config.no_backend_writes:
+            if self._cached:
+                self._cached = False
+                if self.full_write_lock:
+                    try:
+                        self.release_lock(lock_caller="cached", callback=callback)
+                    except:
+                        pass
+            return callback.ok()
 
         # Check if we are within a transaction.
         transaction = None
@@ -4585,7 +4597,8 @@ class OTPmeObject(OTPmeBaseObject):
         if not policy.allow_multiple:
             policies = self.get_policies(policy_type=policy.policy_type)
             if len(policies) > 0:
-                msg = _("Policy of this type already exists.")
+                msg = _("Policy of this type already exists: {policy_type}")
+                msg = msg.format(policy_type=policy.policy_type)
                 return callback.error(msg)
 
         # Get policy options.
@@ -4746,15 +4759,23 @@ class OTPmeObject(OTPmeBaseObject):
             _return_type = "instance"
             if ignore_hooks:
                 _return_type = return_type
+            ## Search policies assigned to this object.
+            #search_result = backend.search(object_type="policy",
+            #                                attribute="uuid",
+            #                                value="*",
+            #                                attributes=search_attributes,
+            #                                join_object_type=self.type,
+            #                                join_search_attr="uuid",
+            #                                join_search_val=self.uuid,
+            #                                join_attribute="policy",
+            #                                return_type=_return_type)
+            # NOTE: we have to get policies by self.policies because on
+            #       token (pre) deploy, token object is not written to backend.
             # Search policies assigned to this object.
             search_result = backend.search(object_type="policy",
                                             attribute="uuid",
-                                            value="*",
+                                            values=self.policies,
                                             attributes=search_attributes,
-                                            join_object_type=self.type,
-                                            join_search_attr="uuid",
-                                            join_search_val=self.uuid,
-                                            join_attribute="policy",
                                             return_type=_return_type)
         result = []
         if ignore_hooks:
@@ -8183,6 +8204,58 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(acls=['edit:info'])
+    @object_lock()
+    @audit_log()
+    def change_info(
+        self,
+        info: str=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Change object info. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_info",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # Check if we got info as argument.
+        if info is None:
+            info = callback.ask(input_prefill=self.info,
+                                        message="New info: ")
+        self.info = str(info)
+
+        # Update extensions.
+        self.update_extensions("change_info",
+                            verbose_level=verbose_level,
+                            callback=callback)
+
+        return self._cache(callback=callback)
+
+    @check_acls(acls=['view:info'])
+    @object_lock()
+    @audit_log()
+    def dump_info(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Dump object info. """
+        return callback.ok(self.info)
+
     @object_lock()
     def add_default_policies(self, callback: JobCallback=default_callback):
         """ Add default policies to object. """
@@ -8311,12 +8384,13 @@ class OTPmeObject(OTPmeBaseObject):
         if handle_uuid:
             if self.uuid is None:
                 if uuid:
-                    for t in config.tree_object_types:
-                        x = backend.get_object(object_type=t, uuid=uuid)
-                        if x:
-                            msg = _("UUID conflict: {self_oid} <> {other_oid}")
-                            msg = msg.format(self_oid=self.oid, other_oid=x.oid)
-                            return callback.error(msg)
+                    if not config.no_backend_writes:
+                        for t in config.tree_object_types:
+                            x = backend.get_object(object_type=t, uuid=uuid)
+                            if x:
+                                msg = _("UUID conflict: {self_oid} <> {other_oid}")
+                                msg = msg.format(self_oid=self.oid, other_oid=x.oid)
+                                return callback.error(msg)
                     self.uuid = uuid
                 else:
                     self.uuid = stuff.gen_uuid()
@@ -9292,6 +9366,12 @@ class OTPmeObject(OTPmeBaseObject):
             lines.append(f'DESCRIPTION="{self.description}"')
         else:
             lines.append('DESCRIPTION=""')
+
+        if self.verify_acl("view:info") \
+        or self.verify_acl("edit:info"):
+            lines.append(f'INFO="{self.info}"')
+        else:
+            lines.append('INFO=""')
 
         origin = backend.get_object(uuid=self.origin)
         if not origin:

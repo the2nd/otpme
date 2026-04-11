@@ -10,7 +10,4 @@
 	notifempty
 	su root root
 	sharedscripts
-	postrotate
-		/usr/local/bin/otpme-controld reload > /dev/null
-	endscript
 }

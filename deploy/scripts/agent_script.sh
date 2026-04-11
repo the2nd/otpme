@@ -180,37 +180,38 @@ case $COMMAND in
 		done
 	;;
 
-	# Not used anymore. We restart gpg-agent with pinentry from otpme.conf.
-	#unlock)
-	#	if $0 status > /dev/null 2>&1 ; then
-	#		if [ "$SSH_AGENT_NAME" == "gpg-agent" ] ; then
-	#			if [ "$USE_GPG_SMARTCARD" = "" ] ; then
-	#				$0 restart
-	#			else
-	#				# When using gpg-agent with smartcard we have to make sure that the running agent
-	#				# is from this session (e.g. DISPLAY must be set for pinentry to work).
-	#				if pgrep -f "$SSH_AGENT_NAME" -u "$USER" > /dev/null 2>&1 ; then
-	#					# On screen unlock we must ensure gpg-agent will re-ask for the token pin.
-	#					# There are two ways to accomplish this:
-	#					#   gpgconf --kill scdaemon
-	#					#   gpg-connect-agent "SCD RESET" /bye
-	#					# Both do not work for me on debian bookworm with yubikey 5, so we kill scdaemon.
-	#					while pgrep -u "$USER" scdaemon > /dev/null 2>&1 ; do
-	#						pkill -9 -u "$USER" scdaemon > /dev/null 2>&1
-	#					done
-	#				else
-	#					# If the found gpg-agent is not from this session restart it.
-	#					$0 restart
-	#				fi
-	#			fi
-	#		else
-	#			# When using ssh-agent we just restart the agent.
-	#			$0 restart
-	#		fi
-	#	else
-	#		$0 start
-	#	fi
-	#;;
+	unlock)
+		if $0 status > /dev/null 2>&1 ; then
+			if [ "$SSH_AGENT_NAME" == "gpg-agent" ] ; then
+				if [ "$USE_GPG_SMARTCARD" = "" ] ; then
+					$0 restart
+				else
+					if pgrep -f "$SSH_AGENT_NAME" -u "$USER" > /dev/null 2>&1 ; then
+						# On screen unlock we must ensure gpg-agent will re-ask for the token pin.
+						# There seem to be some ways to accomplish this:
+						#   gpgconf --kill scdaemon
+						#   gpg-connect-agent "SCD RESET" /bye
+						#	gpg-connect-agent --no-autostart -S "$HOME/.gnupg/S.gpg-agent" "SCD RESET" /bye
+						#	gpg-connect-agent --no-autostart -S "$HOME/.gnupg/S.gpg-agent" "reloadagent" /bye
+						#	gpg-connect-agent --no-autostart -S "$HOME/.gnupg/S.gpg-agent" "SCD KILLSCD" /bye
+						#	gpg-connect-agent --no-autostart -S "$HOME/.gnupg/S.gpg-agent" "CLEARPASSPHRASE --mode=normal *" /bye
+						# All do not work for me. Maybe someone else can find out why.
+						while pgrep -u "$USER" scdaemon > /dev/null 2>&1 ; do
+							pkill -u "$USER" scdaemon > /dev/null 2>&1
+						done
+					else
+						# If the found gpg-agent is not from this session restart it.
+						$0 restart
+					fi
+				fi
+			else
+				# When using ssh-agent we just restart the agent.
+				$0 restart
+			fi
+		else
+			$0 start
+		fi
+	;;
 
 	restart)
 			$0 stop

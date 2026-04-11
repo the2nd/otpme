@@ -85,6 +85,7 @@ class PamHandler(object):
         self.do_dot1x = False
         self.dot1x_timeout = 10
         self.dot1x_token_type = None
+        self.dot1x_connection = "dot1x-lan"
         self.failed_message = "Login failed"
         self.auth_message = ""
         self.login_message = None
@@ -231,6 +232,8 @@ class PamHandler(object):
                     log_msg = _("Ignoring unknown value for dot1x_timeout: {value}", log=True)[1]
                     log_msg = log_msg.format(value=val)
                     self.logger.warning(log_msg)
+            if arg == "dot1x_connection":
+                self.dot1x_connection = val
             if arg == "dot1x_token_type":
                 self.dot1x_token_type = val
             if arg == "use_smartcard":
@@ -889,7 +892,7 @@ class PamHandler(object):
             self.logger.critical(msg)
             return
         # If connection link is down, do nothing (e.g. wlan or offline auth)..
-        if not stuff.get_link_status("dot1x-lan"):
+        if not stuff.get_link_status(self.dot1x_connection):
             return
         # In "auto" mode skip dot1x auth if network is up.
         if self.do_dot1x == "auto" or force_auth is False:
@@ -924,14 +927,14 @@ class PamHandler(object):
             dot1x_pass = self.get_password(prompt="Password: ")
         if self.do_dot1x == "force":
             if force_auth:
-                subprocess.run(["nmcli", "connection", "down", "dot1x-lan"])
+                subprocess.run(["nmcli", "connection", "down", self.dot1x_connection])
         if set_otp:
             subprocess.run(['nmcli', 'connection',
-                            'modify', 'dot1x-lan',
+                            'modify', self.dot1x_connection,
                             '802-1x.identity', self.username,
                             '802-1x.password', dot1x_pass])
-        #subprocess.run(["nmcli", "connection", "up", "dot1x-lan"])
-        subprocess.run(["timeout", str(self.dot1x_timeout), "nmcli", "connection", "up", "dot1x-lan"],
+        #subprocess.run(["nmcli", "connection", "up", self.dot1x_connection])
+        subprocess.run(["timeout", str(self.dot1x_timeout), "nmcli", "connection", "up", self.dot1x_connection],
                         capture_output=True)
 
     def load_offline_tokens(self, reload_token=False):

@@ -21,6 +21,7 @@
       <a href="/index">Home</a>
       {% if g.user.is_authenticated %}
         <span class="spacer"></span>
+        <span class="navbar-user" title="Logged in user">{{ g.user.name }}</span>
         <a href="{{ url_for('settings', _external=True, _scheme='https') }}">Settings</a>
         <a href="{{ url_for('logout', _external=True, _scheme='https') }}">Logout</a>
       {% endif %}

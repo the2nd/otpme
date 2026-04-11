@@ -32,6 +32,19 @@ start_ssh_agent			- start SSH agent at login.
 							- auto: decide to start SSH agent based on public keys received from server
 							- true: definitly start SSH agent.
 							- false: dont start SSH agent.
+do_dot1x				- do 802.1x port authentication on login
+						  You need to configure a network manager dummy connection before enabling this:
+						  	nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
+    								802-1x.eap peap \
+									802-1x.phase2-auth mschapv2 \
+									802-1x.identity "user" \
+									802-1x.password "pass"
+							- auto: do dot1x auth if default gw is not reachable (ping must be allowed).
+							- force: force dot1x auth on login. This will restart network connection on login.
+						  It is required to set dot1x_token_type to make this work.
+dot1x_token_type		- gen 802.1x port authentication OTP with this token type (currently supported: yubikey_piv and password)
+dot1x_connection		- network connection interface to  use.
+dot1x_timeout			- Wait <dot1x_timeout> seconds for 802.1x port authentication.
 show_errors 			- show OTPme login errors via PAM message
 connect_timeout			- timeout when connecting to OTPme servers
 connection_timeout		- connection timeout when waiting for answer from server

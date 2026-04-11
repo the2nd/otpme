@@ -987,6 +987,11 @@ class OTPmeServer1(object):
                                                 existing_logger=config.logger,
                                                 pid=True)
 
+        # Check if peer wants redirect.
+        try:
+            redirect = preauth_args['redirect']
+        except:
+            redirect = True
         # Check if peer wants JWT auth.
         try:
             jwt_auth = preauth_args['jwt_auth']
@@ -1018,6 +1023,7 @@ class OTPmeServer1(object):
                                 ecdh_client_pub=ecdh_client_pub,
                                 username=username,
                                 need_token=need_token,
+                                redirect=redirect,
                                 jwt_auth=jwt_auth,
                                 login=login,
                                 logout=logout)
@@ -1053,7 +1059,7 @@ class OTPmeServer1(object):
         return self.build_response(status, response, encrypt=False)
 
     def build_preauth_response(self, challenge=None, ecdh_client_pub=None,
-        username=None, login=False, logout=False,
+        username=None, login=False, logout=False, redirect=True,
         jwt_auth=False, need_token=False):
         """ Build preauth response. """
         # Sign preauth challenge.
@@ -1098,7 +1104,13 @@ class OTPmeServer1(object):
                 msg = msg.format(error=e)
                 raise OTPmeException(msg)
 
-        if not jwt_auth:
+        check_redirect = True
+        if not redirect:
+            check_redirect = False
+        if jwt_auth:
+            check_redirect = False
+
+        if check_redirect:
             preauth_done = False
             # For host/node preauth we are done here.
             if self.require_auth == "host":

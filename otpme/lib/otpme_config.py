@@ -230,6 +230,8 @@ class OTPmeConfig(object):
         self.register_config_var("site_init", bool, False)
         # Indicates an ongoing realm join.
         self.register_config_var("realm_join", bool, False)
+        # Indicates if we should write objects to the backend.
+        self.register_config_var("no_backend_writes", bool, False)
         # Indicates caching is enabled.
         self.register_config_var("cache_enabled", bool, False)
         # Indicates if locking is enabled.
@@ -266,6 +268,9 @@ class OTPmeConfig(object):
         # Session reneg timeout (--reneg-timeout).
         self.register_config_var("reneg_timeout", int, 30)
         self.register_config_var("daemons", list, [])
+        # Is this host a OTPme SSO server?
+        self.register_config_var("sso_server", bool, False,
+                                config_file_parameter="SSO_SERVER")
         # Is this host a OTPme backup server?
         self.register_config_var("backup_server", bool, False,
                                 config_file_parameter="BACKUP_SERVER")
@@ -597,6 +602,7 @@ class OTPmeConfig(object):
 
         self.register_config_var("controld_pidfile", str, None)
         self.register_config_var("authd_socket_path", str, None)
+        self.register_config_var("ssod_socket_path", str, None)
         self.register_config_var("mgmtd_socket_path", str, None)
         self.register_config_var("hostd_socket_path", str, None)
         self.register_config_var("clusterd_socket_path", str, None)
@@ -675,6 +681,7 @@ class OTPmeConfig(object):
                     'ldapd'     : '2026',
                     'fsd'       : '2027',
                     'backupd'   : '2028',
+                    'ssod'      : '2029',
                     }
         self.register_config_var("default_ports", dict, default_ports)
 
@@ -688,6 +695,7 @@ class OTPmeConfig(object):
                     'ldapd'     : '2026',
                     'fsd'       : '2027',
                     'backupd'   : '2028',
+                    'ssod'      : '2029',
                     }
         self.register_config_var("default_listen_ports", dict, default_listen_ports)
 
@@ -1081,6 +1089,7 @@ class OTPmeConfig(object):
         self.nsscache_pidfile = os.path.join(self.pidfile_dir, "nsscache-sync.pid")
 
         self.authd_socket_path = f"socket://{self.sockets_dir}/otpme-authd"
+        self.ssod_socket_path = f"socket://{self.sockets_dir}/otpme-ssod"
         self.mgmtd_socket_path = f"socket://{self.sockets_dir}/otpme-mgmtd"
         self.hostd_socket_path = f"socket://{self.sockets_dir}/otpme-hostd"
         self.clusterd_socket_path = f"socket://{self.sockets_dir}/otpme-clusterd"

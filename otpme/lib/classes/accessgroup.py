@@ -604,6 +604,23 @@ commands = {
                     },
                 },
             },
+    'info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_info',
+                    'oargs'             : ['info'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_info'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_info',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'export'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

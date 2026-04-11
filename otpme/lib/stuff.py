@@ -52,6 +52,26 @@ def start_with_timeout(function, timeout=3):
     with _timeout(timeout):
         return function()
 
+def start_with_timeout_thread(function, timeout=3):
+    """ Thread-safe alternative to start_with_timeout. """
+    import threading
+    result = []
+    exception = []
+    def wrapper():
+        try:
+            result.append(function())
+        except Exception as e:
+            exception.append(e)
+    t = threading.Thread(target=wrapper, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        msg = _("Timeout reached.")
+        raise TimeoutReached(msg)
+    if exception:
+        raise exception[0]
+    return result[0]
+
 def get_dict_size(obj, seen=None):
     """ Get recursive dict size. """
     if seen is None:

@@ -50,7 +50,7 @@ cmd_help = {
 
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--password <password>] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}'),
-                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --password :password: --attributes :[ldif_attributes]: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: <|object|>',
+                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --password :password: --attributes :[ldif_attributes]: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: --mode :mode: <|object|>',
                     '_help' :   {
                                     'cmd'                                   : _('Add new user.'),
                                     '--group <group>'                       : _('Users default group.'),
@@ -58,7 +58,8 @@ cmd_help = {
                                     '--role <default_role>'                 : _('Default role to add user\'s default token to.'),
                                     '--roles <role1,role2>'                 : _('Roles to add user to.'),
                                     '--no-default-token'                    : _('Do not create default token.'),
-                                    '--no-qrcode'                           : _('Do not generate default token qrcode.'),
+                                    '--no-qrcode'                           : _('Do not generate default token qrcode (TOTP/HOTP only).'),
+                                    '--mode <mode>'                         : _('Add token in mode <mode> (TOTP/HOTP only).'),
                                     '--default-token <token_name>'          : _('Get default token from TOKENSTORE.'),
                                     '--default-token-type <token_type>'     : _('Add default token of type <token_type>.'),
                                     '--password <password>'                 : _('Set password for default token (must be password token).'),
@@ -461,6 +462,22 @@ cmd_help = {
                     'cmd'   :   '<|object|> [description]',
                     '_help' :   {
                                     'cmd'                   : _('Set user description'),
+                                },
+                },
+
+    'info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user info {user} [info]'),
+                    'cmd'   :   '<|object|> [info]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set user info'),
+                                },
+                },
+
+    'dump_info'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user dump_info {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump user info'),
                                 },
                 },
 

@@ -31,6 +31,17 @@ a:hover { text-decoration: underline; }
 }
 .navbar a:hover { background: #f0f2f5; text-decoration: none; }
 .navbar .spacer { flex: 1; }
+.navbar-user {
+  font-size: 14px;
+  font-weight: 500;
+  color: #444;
+  padding: 6px 12px;
+  background: #f0f2f5;
+  border-radius: 6px;
+}
+.navbar-user::before {
+  content: "\1F464  ";
+}
 
 /* ---- Flash messages ---- */
 .flash-messages {
@@ -348,7 +359,8 @@ a:hover { text-decoration: underline; }
   color: #555;
   margin-bottom: 4px;
 }
-.settings-form input[type="password"] {
+.settings-form input[type="password"],
+.settings-form input[type="text"] {
   width: 100%;
   max-width: 360px;
   padding: 10px 12px;
@@ -359,9 +371,85 @@ a:hover { text-decoration: underline; }
   outline: none;
   transition: border-color .15s;
 }
-.settings-form input[type="password"]:focus {
+.settings-form input[type="password"]:focus,
+.settings-form input[type="text"]:focus {
   border-color: #4a7cff;
   box-shadow: 0 0 0 3px rgba(74,124,255,.15);
+}
+.settings-card h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin: 20px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid #eef0f3;
+}
+.device-token-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.device-token-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #e4e6ea;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #fafbfc;
+  font-size: 14px;
+}
+.device-token-list .btn {
+  flex: 0 0 auto;
+}
+.device-token-list li.empty,
+.device-token-list li.error-msg {
+  justify-content: flex-start;
+  background: transparent;
+  border: none;
+  padding: 6px 0;
+  color: #666;
+}
+.device-token-list .device-label {
+  font-weight: 500;
+  color: #222;
+}
+.device-token-reveal {
+  background: #f5f7fa;
+  border: 1px solid #dfe3ea;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.device-token-reveal code {
+  display: inline-block;
+  font-size: 15px;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  background: #fff;
+  border: 1px solid #dfe3ea;
+  padding: 6px 10px;
+  border-radius: 6px;
+  user-select: all;
+}
+.device-token-reveal .hint {
+  display: block;
+  color: #a0522d;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.status-msg {
+  color: #2a7f3f;
+  font-size: 13px;
+  margin-top: 6px;
+  min-height: 1em;
+}
+.error-msg {
+  color: #c0392b;
+  font-size: 13px;
+  margin-top: 6px;
+  min-height: 1em;
 }
 
 /* ---- Responsive ---- */

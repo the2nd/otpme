@@ -208,6 +208,7 @@ class AtomicFileLock(object):
         callback=None, log_wait_message=False, wait_message=None):
         from otpme.lib import stuff
         from otpme.lib import config
+        from otpme.lib import multiprocessing
         lock_status = self._acquire_lock_atomic(exclusive=exclusive, block=False)
         if lock_status:
             return lock_status
@@ -217,6 +218,9 @@ class AtomicFileLock(object):
                     self.logger.debug(wait_message)
             if callback:
                 callback.send(wait_message)
+        proc_type = multiprocessing.get_proc_type()
+        if proc_type == "thread":
+            timeout = None
         if timeout is None:
             result = self._acquire_lock_atomic(exclusive=exclusive, block=block)
             return result

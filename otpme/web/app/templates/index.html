@@ -57,8 +57,19 @@
                 openButton.addEventListener('click', () => {
                     const sotp_url = "{{ url_for('get_sotp', _external=True, _scheme='https') }}" + "?access_group=" + item.app_ag;
                     fetch(sotp_url)
-                      .then(response => response.json())
+                      .then(async response => {
+                        const data = await response.json();
+                        if (!response.ok) {
+                          if (data && data.redirect) {
+                            window.location.href = data.redirect;
+                            return null;
+                          }
+                          throw new Error((data && data.error) || 'Failed to get SOTP.');
+                        }
+                        return data;
+                      })
                       .then(sotp => {
+                        if (!sotp) return;
                         const login_data = {
                           username: {{ g.user.name|tojson }},
                           password: sotp,
