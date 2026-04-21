@@ -1094,7 +1094,7 @@ class Ca(OTPmeObject):
 
         # Create cert and key
         cert, \
-        key = self.create_cert(cn=cn, valid=valid,
+        key = self.create_cert(cn=cn, cn_alt=[cn], valid=valid,
                             self_signed=False, ext_key_usage=ext_key_usage,
                             key=key, key_len=key_len, key_usage=key_usage,
                             basic_constraints=basic_constraints, ou=ou,

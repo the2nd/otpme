@@ -122,10 +122,7 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
             if check_acl("view:role"):
                 role_access = True
                 get_roles = True
-        token_roles = {}
-        role_tokens_count = 0
         group_tokens_count = 0
-        role_tokens_result = []
         if get_roles:
             member_roles = []
             return_attrs = ['site', 'name', 'enabled']
@@ -153,21 +150,6 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                     role_string = f"{role_name} ({role_site}) {role_status_string}"
                 member_roles.append(role_string)
 
-                return_attrs = ['name', 'name', 'enabled']
-                role_tokens_count, \
-                role_tokens_result = backend.search(object_type="token",
-                                                attribute="uuid",
-                                                value="*",
-                                                join_object_type="role",
-                                                join_search_attr="uuid",
-                                                join_search_val=role_uuid,
-                                                join_attribute="token",
-                                                order_by="name",
-                                                max_results=max_tokens,
-                                                return_query_count=True,
-                                                return_attributes=return_attrs)
-                for token_uuid in role_tokens_result:
-                    token_roles[token_uuid] = role_uuid
                 processed_roles = len(member_roles)
                 if processed_roles == max_roles:
                     if roles_count > max_roles:

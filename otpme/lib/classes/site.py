@@ -71,6 +71,7 @@ read_value_acls = {
                                 "sso_cert",
                                 "sso_key",
                                 "sso_host",
+                                "site_cert",
                                 "radius_cert",
                                 "radius_key",
                                 "radius_ca_cert",
@@ -123,6 +124,7 @@ write_value_acls = {
                                 "auth_fqdn",
                                 "mgmt_fqdn",
                                 "sso_fqdn",
+                                "site_cert",
                                 "radius_cert",
                                 "radius_key",
                                 "radius_ca_cert",
@@ -553,6 +555,15 @@ commands = {
                     },
                 },
             },
+    'site_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_site_cert',
+                    'args'              : ['site_cert'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'radius_cert'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -948,6 +959,24 @@ def register_config():
                                     default_value=2048,
                                     object_types=object_types)
 
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'node',
+                    ]
+    # Floating IP interface.
+    def floating_ip_interface_setter(interface, **kwargs):
+        import netifaces
+        if interface not in netifaces.interfaces():
+            msg = _("Unknown interface: {interface}")
+            msg = msg.format(interface=interface)
+            raise OTPmeException(msg)
+        return interface
+    config.register_config_parameter(name="floating_ip_interface",
+                                    ctype=str,
+                                    setter=floating_ip_interface_setter,
+                                    object_types=object_types)
     # Object types our config parameter is valid for.
     object_types = [
                     'site',
@@ -1839,6 +1868,32 @@ class Site(OTPmeObject):
             return callback.error()
 
         return callback.ok()
+
+    @check_acls(['edit:site_cert'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def change_site_cert(
+        self,
+        site_cert: str=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Change site cert. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_site_cert",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.cert = site_cert
+        return self._cache(callback=callback)
 
     @check_acls(['edit:address'])
     @object_lock()

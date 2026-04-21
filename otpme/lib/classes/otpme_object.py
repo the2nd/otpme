@@ -883,7 +883,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         """ Set last used timestamp. """
         if not self.track_last_used:
             return
-        backend.set_last_used(self.type, self.uuid, timestamp)
+        backend.set_last_used(self.oid, self.uuid, timestamp)
 
     @property
     def last_backup(self):
@@ -3534,9 +3534,6 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.add_index('role', role_uuid)
 
-        # Clear cache.
-        assigned_role_cache.invalidate()
-
         return self._cache(callback=callback)
 
     @object_lock()
@@ -3608,9 +3605,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.roles.remove(role_uuid)
         # Update index.
         self.del_index('role', role_uuid)
-
-        # Clear cache.
-        assigned_role_cache.invalidate()
 
         return self._cache(callback=callback)
 
@@ -3894,9 +3888,6 @@ class OTPmeObject(OTPmeBaseObject):
         if login_interfaces:
             self.token_login_interfaces[token.uuid] = login_interfaces
 
-        # Clear cache.
-        assigned_token_cache.invalidate()
-
         return self._cache(callback=callback)
 
     @object_lock()
@@ -3999,9 +3990,6 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.del_index('token', token.uuid)
 
-        # Clear cache.
-        assigned_token_cache.invalidate()
-
         return self._cache(callback=callback)
 
     @check_acls(['add:host'])
@@ -4052,8 +4040,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.hosts.append(host_uuid)
         # Update index.
         self.add_index("host", host_uuid)
-        # Clear cache.
-        assigned_host_cache.invalidate()
         return self._cache(callback=callback)
 
     @check_acls(['remove:host'])
@@ -4101,9 +4087,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.hosts.remove(host.uuid)
         # Update index.
         self.del_index("host", host.uuid)
-        # Clear cache.
-        assigned_host_cache.invalidate()
-
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
@@ -4201,8 +4184,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.devices.append(device_uuid)
         # Update index.
         self.add_index("device", device_uuid)
-        # Clear cache.
-        assigned_device_cache.invalidate()
         return self._cache(callback=callback)
 
     @check_acls(['remove:device'])
@@ -4250,8 +4231,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.devices.remove(device.uuid)
         # Update index.
         self.del_index("device", device.uuid)
-        # Clear cache.
-        assigned_device_cache.invalidate()
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()

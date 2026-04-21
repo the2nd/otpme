@@ -89,6 +89,11 @@ def otpme_commands(no_debug=False):
     except Exception as e:
         raise
 
+    # Close audit logger.
+    if config.audit_logger:
+        for x in config.audit_logger.handlers:
+            x.close()
+
     if command == "auth":
         if subcommand == "verify":
             if exit_code == 0:

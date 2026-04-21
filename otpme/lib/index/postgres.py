@@ -17,7 +17,6 @@ from otpme.lib import config
 from otpme.lib import filetools
 from otpme.lib.backends.file.index import INDEX_DIR
 from otpme.lib.backends.file.index import create_db_indices
-from otpme.lib.third_party.dogpile_caching.caching_query import query_callable
 
 from otpme.lib.exceptions import *
 
@@ -620,6 +619,7 @@ def get_db_engine():
                         continue
                     x_region = _cache.get_dogpile_region(region_name)
                     cache_regions[region_name] = x_region
+            from otpme.lib.third_party.dogpile_caching.caching_query import query_callable
             query_cls = query_callable(cache_regions)
             sessionmaker_kwargs['query_cls'] = query_cls
 

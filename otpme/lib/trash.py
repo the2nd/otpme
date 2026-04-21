@@ -371,6 +371,7 @@ def restore(trash_id=None, objects=None, keep_trash=False,
                 restore_status = backup.restore_object(object_data,
                                                 callback=callback)
             except Exception as e:
+                config.raise_exception()
                 msg = _("Failed to restore object from trash: {x_oid}: {e}")
                 msg = msg.format(x_oid=x_oid, e=e)
                 return callback.error(msg)

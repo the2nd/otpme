@@ -7,8 +7,6 @@ import socket
 import psutil
 import setproctitle
 from multiprocessing import Event
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -33,7 +31,7 @@ class ListenSocket(object):
         timeout=1, banner=None, socket_handler=None, user=None,
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
-        proctitle=None, logger=None, max_conn=100):
+        proctitle=None, logger=None, max_conn=100, worker_count=0):
         # Check if we got all required paramters.
         if use_ssl:
             if not ssl_cert:
@@ -91,6 +89,8 @@ class ListenSocket(object):
         self.listen_process = None
         self._shutdown = None
         self.connection_closed_event = None
+        self.worker_count = worker_count
+        self.worker_procs = []
 
         # Save proctitle for later use (e.g. new client connection)
         if proctitle is None:
@@ -196,28 +196,6 @@ class ListenSocket(object):
             return
         self._shutdown.value = new_status
 
-    def parse_peer_cert(self, peer_cert):
-        cert = x509.load_der_x509_certificate(peer_cert, default_backend())
-        cert_cn = cert.subject.rfc4514_string()
-        for x in cert_cn.split(","):
-            if not x.startswith("CN="):
-                continue
-            cert_cn = x.split("=")[1]
-            break
-        cert_issuer = cert.issuer.rfc4514_string()
-        for x in cert_issuer.split(","):
-            if not x.startswith("CN="):
-                continue
-            cert_issuer = x.split("=")[1]
-            break
-        cert_serial_number = cert.serial_number
-        peer_cert = {
-                    'cn'            : cert_cn,
-                    'issuer'        : cert_issuer,
-                    'serial_number' : cert_serial_number,
-                    }
-        return peer_cert
-
     def add_connection_proc(self, client, proc):
         """ Send client to client handler. """
         # Add connection proc.
@@ -302,10 +280,6 @@ class ListenSocket(object):
         """
         Listen on a socket, unix or TCP, and start per connection child process.
         """
-        # Helper variables.
-        last_max_conn_warn = 0
-        max_conn_warn_count = 0
-
         # Set our name if none was given.
         if self.name is None:
             self.name = stuff.get_pid_name(os.getpid())
@@ -445,94 +419,173 @@ class ListenSocket(object):
             init_done.send("init_failed")
             return False
 
-        # Start thread to handle connection procs.
-        multiprocessing.start_thread(name=self.name,
-                            target=self.close_conn_procs)
+        if self.worker_count > 0:
+            # Pre-fork worker pool mode.
+            log_msg = _("Starting {count} pre-fork workers for '{uri}'", log=True)[1]
+            log_msg = log_msg.format(count=self.worker_count, uri=self.socket_uri)
+            self.logger.info(log_msg)
+            for i in range(self.worker_count):
+                worker_name = f"{self.name}-worker-{i}"
+                p = multiprocessing.start_process(name=worker_name,
+                                target=self._worker_loop,
+                                target_args=(i,),
+                                join=False)
+                self.worker_procs.append(p)
+            # Wait for shutdown signal.
+            while not self.shutdown:
+                # Respawn dead workers.
+                for i, p in enumerate(self.worker_procs):
+                    if p.is_alive():
+                        continue
+                    p.join()
+                    if self.shutdown:
+                        break
+                    log_msg = _("Worker {idx} died, respawning.", log=True)[1]
+                    log_msg = log_msg.format(idx=i)
+                    self.logger.warning(log_msg)
+                    worker_name = f"{self.name}-worker-{i}"
+                    new_p = multiprocessing.start_process(name=worker_name,
+                                    target=self._worker_loop,
+                                    target_args=(i,),
+                                    join=False)
+                    self.worker_procs[i] = new_p
+                time.sleep(0.5)
+            # Shutdown: wait for workers.
+            for p in self.worker_procs:
+                p.join(timeout=5)
+        else:
+            # Legacy fork-per-connection mode.
+            # Start thread to handle connection procs.
+            multiprocessing.start_thread(name=self.name,
+                                target=self.close_conn_procs)
+            self._accept_loop()
 
-        # Run in loop to accept connections:
+        if self.connection_closed_event:
+            self.connection_closed_event.set()
+
+        log_msg = _("Stopped listening on '{uri}'", log=True)[1]
+        log_msg = log_msg.format(uri=self.socket_uri)
+        self.logger.info(log_msg)
+        # Do multiprocessing cleanup.
+        multiprocessing.cleanup()
+
+    def _accept_connection(self):
+        """ Accept a single connection. Returns (new_connection, client) or (None, None). """
+        new_client_socket = None
+        try:
+            new_connection, new_client_socket = self._socket.accept()
+            # Disable Nagle's algorithm on accepted connection.
+            if self.protocol == "tcp":
+                new_connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # Perform SSL handshake manually to catch errors with client info
+            if self.use_ssl:
+                try:
+                    new_connection.do_handshake()
+                except Exception as ssl_error:
+                    # We have client info now, so log it with the error
+                    if self.protocol == "tcp":
+                        client_address, client_port = new_client_socket
+                        peer_cert = new_connection.getpeercert(binary_form=True)
+                        peer_cn = None
+                        if peer_cert:
+                            peer_cert = stuff.parse_peer_cert(peer_cert)
+                            peer_cn = peer_cert['cn']
+                        log_msg = _("Listen: SSL handshake failed from {client}:{port}: CN: {cn}: {error}", log=True)[1]
+                        log_msg = log_msg.format(client=client_address,
+                                                port=client_port,
+                                                cn=peer_cn,
+                                                error=ssl_error)
+                    else:
+                        log_msg = _("Listen: SSL handshake failed: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=ssl_error)
+                    self.logger.warning(log_msg)
+                    try:
+                        new_connection.close()
+                    except:
+                        pass
+                    return None, None
+        except socket.timeout:
+            return None, None
+        except Exception as e:
+            if self.use_ssl:
+                log_msg = _("Listen: SSL error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+            else:
+                log_msg = _("Listen: Connection error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return None, None
+
+        # Build client identifier string.
+        if self.protocol == "socket":
+            import struct
+            SO_PEERCRED = 17
+            creds = new_connection.getsockopt(socket.SOL_SOCKET,
+                                                SO_PEERCRED,
+                                                struct.calcsize('3i'))
+            client_pid, client_uid, client_gid = struct.unpack('3i',creds)
+            client_user = stuff.get_pid_user(client_pid)
+            client_proc = stuff.get_pid_name(client_pid)
+            if client_proc is None:
+                new_connection.close()
+                return None, None
+            client_proc = client_proc.split()[0]
+            client_id = stuff.gen_secret(len=32)
+            client = f"socket://{client_proc}:{client_pid}:{client_user}:{client_id}"
+        else:
+            client_address, client_port = new_client_socket
+            client = f"{client_address}:{client_port}"
+
+        return new_connection, client
+
+    def _worker_loop(self, worker_idx):
+        """ Pre-fork worker loop: accept and handle connections repeatedly. """
+        # Handle multiprocessing stuff.
+        multiprocessing.atfork(quiet=True)
+        # Setup logger.
+        if not self.got_logger:
+            self.logger = log.setup_logger(pid=os.getpid())
+        # Set process title.
+        new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
+        setproctitle.setproctitle(new_proctitle)
+
+        while not self.shutdown:
+            new_connection, client = self._accept_connection()
+            if new_connection is None:
+                continue
+            # Log new connection.
+            if config.debug_level() > 3:
+                log_msg = _("Worker {idx}: New connection from '{client}'", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, client=client)
+                self.logger.debug(log_msg)
+            # Set process title for duration of connection handling.
+            new_proctitle = f"{self.proctitle} Worker: {worker_idx} Client: {client}"
+            setproctitle.setproctitle(new_proctitle)
+            try:
+                self.handle_connection(new_connection, client,
+                                      self.connection_handler,
+                                      self.connection_closed_event,
+                                      _from_worker=True)
+            except Exception as e:
+                log_msg = _("Worker {idx}: Error handling connection: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.warning(log_msg)
+            # Reset process title.
+            new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
+            setproctitle.setproctitle(new_proctitle)
+
+    def _accept_loop(self):
+        """ Legacy fork-per-connection accept loop. """
+        last_max_conn_warn = 0
+        max_conn_warn_count = 0
+
         while True:
             if self.shutdown:
                 break
-            # Wait for client connection.
-            exception = None
-            new_client_socket = None
-            try:
-                new_connection, new_client_socket = self._socket.accept()
-                # Disable Nagle's algorithm on accepted connection.
-                if self.protocol == "tcp":
-                    new_connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                # Perform SSL handshake manually to catch errors with client info
-                if self.use_ssl:
-                    try:
-                        new_connection.do_handshake()
-                    except Exception as ssl_error:
-                        # We have client info now, so log it with the error
-                        if self.protocol == "tcp":
-                            client_address, client_port = new_client_socket
-                            peer_cert = new_connection.getpeercert(binary_form=True)
-                            peer_cn = None
-                            if peer_cert:
-                                peer_cert = self.parse_peer_cert(peer_cert)
-                                peer_cn = peer_cert['cn']
-                            log_msg = _("Listen: SSL handshake failed from {client}:{port}: CN: {cn}: {error}", log=True)[1]
-                            log_msg = log_msg.format(client=client_address,
-                                                    port=client_port,
-                                                    cn=peer_cn,
-                                                    error=ssl_error)
-                        else:
-                            log_msg = _("Listen: SSL handshake failed: {error}", log=True)[1]
-                            log_msg = log_msg.format(error=ssl_error)
-                        self.logger.warning(log_msg)
-                        try:
-                            new_connection.close()
-                        except:
-                            pass
-                        time.sleep(0.01)
-                        continue
-            except socket.timeout:
+            new_connection, client = self._accept_connection()
+            if new_connection is None:
                 time.sleep(0.01)
                 continue
-            except Exception as e:
-                exception = e
-                new_connection = None
-
-            # If we got no new connection there was an error.
-            if not new_connection:
-                if exception is not None:
-                    if self.use_ssl:
-                        log_msg = _("Listen: SSL error: {error}", log=True)[1]
-                        log_msg = log_msg.format(error=exception)
-                    else:
-                        log_msg = _("Listen: Connection error: {error}", log=True)[1]
-                        log_msg = log_msg.format(error=exception)
-                    self.logger.warning(log_msg)
-                time.sleep(0.01)
-                continue
-
-            # For TCP sockets we can get client address and port from socket
-            # instance. For unix sockets we generate a socket ID that will be
-            # used as dict key for self.connections.
-            if self.protocol == "socket":
-                # Get connecting PID and user infos.
-                # http://stackoverflow.com/questions/7982714/unix-socket-credential-passing-in-python
-                import struct
-                SO_PEERCRED = 17
-                creds = new_connection.getsockopt(socket.SOL_SOCKET,
-                                                    SO_PEERCRED,
-                                                    struct.calcsize('3i'))
-                client_pid, client_uid, client_gid = struct.unpack('3i',creds)
-                client_user = stuff.get_pid_user(client_pid)
-                client_proc = stuff.get_pid_name(client_pid)
-                # Ignore disconnected client.
-                if client_proc is None:
-                    continue
-                # Get executable of PID.
-                client_proc = client_proc.split()[0]
-                client_id = stuff.gen_secret(len=32)
-                client = f"socket://{client_proc}:{client_pid}:{client_user}:{client_id}"
-            else:
-                client_address, client_port = new_client_socket
-                client = f"{client_address}:{client_port}"
 
             # Handle max_conn.
             try:
@@ -565,38 +618,33 @@ class ListenSocket(object):
                 self.logger.debug(log_msg)
 
             # Start child process to handle new connection.
-            p = multiprocessing.start_process(name=self.name,
-                            target=self.handle_connection,
-                            target_args=(new_connection,
-                                        client,
-                                        self.connection_handler,
-                                        self.connection_closed_event),
-                            join=False)
+            try:
+                p = multiprocessing.start_process(name=self.name,
+                                target=self.handle_connection,
+                                target_args=(new_connection,
+                                            client,
+                                            self.connection_handler,
+                                            self.connection_closed_event),
+                                join=False)
+            except Exception as e:
+                log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                self.logger.warning(log_msg)
+            else:
+                # Add process to dict.
+                self.add_connection_proc(client, p)
             # Close connection in parent process to avoid file descriptor leak.
             new_connection.close()
-            # Add process to dict.
-            self.add_connection_proc(client, p)
 
-        if self.connection_closed_event:
-            self.connection_closed_event.set()
-
-        log_msg = _("Stopped listening on '{uri}'", log=True)[1]
-        log_msg = log_msg.format(uri=self.socket_uri)
-        self.logger.info(log_msg)
-        # Do multiprocessing cleanup.
-        multiprocessing.cleanup()
-
-    def handle_connection(self, client_conn, client, handler, close_event):
+    def handle_connection(self, client_conn, client, handler, close_event,
+        _from_worker=False):
         """ Handle a connection. """
-        # Handle multiprocessing stuff.
-        multiprocessing.atfork(quiet=True)
-        # Setup logger.
-        if not self.got_logger:
-            self.logger = log.setup_logger(pid=os.getpid())
-
-        # Set process title.
-        new_proctitle = f"{self.proctitle} Client: {client}"
-        setproctitle.setproctitle(new_proctitle)
+        if not _from_worker:
+            # Fork-per-connection mode: setup process.
+            multiprocessing.atfork(quiet=True)
+            if not self.got_logger:
+                self.logger = log.setup_logger(pid=os.getpid())
+            new_proctitle = f"{self.proctitle} Client: {client}"
+            setproctitle.setproctitle(new_proctitle)
 
         # Helper variables.
         peer_cert = None
@@ -606,13 +654,7 @@ class ListenSocket(object):
         if self.use_ssl:
             peer_cert = client_conn.getpeercert(binary_form=True)
             if peer_cert:
-                peer_cert = self.parse_peer_cert(peer_cert)
-
-        #print(repr(self.client_conn.getpeername()))
-        #print(self.client_conn.getpeercert()['subject'])
-        #print(repr(self.client_conn.getpeercert()))
-        #import pprint
-        #print(pprint.pformat(self.client_conn.getpeercert()))
+                peer_cert = stuff.parse_peer_cert(peer_cert)
 
         # Create conncection instance.
         connection = Connection(connection=client_conn,
@@ -629,7 +671,8 @@ class ListenSocket(object):
                 log_msg = _("Unable to send banner: {uri}: {error}", log=True)[1]
                 log_msg = log_msg.format(uri=self.socket_uri, error=e)
                 self.logger.warn(log_msg)
-                multiprocessing.cleanup()
+                if not _from_worker:
+                    multiprocessing.cleanup()
                 config.raise_exception()
                 return False
 
@@ -689,10 +732,11 @@ class ListenSocket(object):
         except:
             pass
 
-        # Cleanup locks etc.
-        multiprocessing.cleanup(keep_queues=True)
-        # Notify master process about closed connection.
-        close_event.set()
+        if not _from_worker:
+            # Fork-per-connection mode: full cleanup and notify.
+            multiprocessing.cleanup(keep_queues=True)
+            if close_event:
+                close_event.set()
 
         return True
 

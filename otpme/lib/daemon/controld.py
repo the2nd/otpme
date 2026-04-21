@@ -20,6 +20,7 @@ from otpme.lib import host
 from otpme.lib import stuff
 from otpme.lib import cache
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib import init_otpme
 from otpme.lib import multiprocessing
 #from otpme.lib.stuff import add_decorators
@@ -452,12 +453,18 @@ class ControlDaemon(UnixDaemon):
         comm_handler = self.comm_queue.get_handler(self.comm_id)
         return comm_handler
 
+    def get_floating_ip_interface(self):
+        own_host = backend.get_object(uuid=config.uuid)
+        interface = own_host.get_config_parameter("floating_ip_interface")
+        return interface
+
     def configure_floating_ip(self, address):
         """ Configure floating IP. """
         if address != self.floating_address:
             self.deconfigure_floating_ip()
+        interface = self.get_floating_ip_interface()
         try:
-            net.configure_floating_ip(address)
+            net.configure_floating_ip(address, interface=interface)
         except AddressAlreadyAssigned as e:
             log_msg = str(e)
             self.logger.warning(log_msg)
@@ -470,8 +477,9 @@ class ControlDaemon(UnixDaemon):
             log_msg = log_msg.format(site=config.site, error=e)
             self.logger.critical(log_msg)
             raise Exception(msg)
-        # Remember address we configured.
-        self.floating_address = address
+        finally:
+            # Remember address we configured.
+            self.floating_address = address
 
     def deconfigure_floating_ip(self, address=None):
         """ Deconfigure floating IP. """

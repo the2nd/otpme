@@ -1552,8 +1552,7 @@ class OTPmeServer1(object):
 
         return None
 
-    def get_valid_tokens(self, user, token_type=None, login=False,
-        pass_type=None, check_sf_tokens=False):
+    def get_valid_tokens(self, user, token_type=None, login=False, pass_type=None):
         """
         Get tokens that could be used to authenticate the user for the given
         access group.
@@ -1569,7 +1568,6 @@ class OTPmeServer1(object):
         valid_tokens = user.get_tokens(token_type=token_type,
                                         pass_type=pass_type,
                                         access_group=auth_group,
-                                        check_sf_tokens=check_sf_tokens,
                                         host=self.peer,
                                         return_type="instance",
                                         quiet=True)
@@ -1978,31 +1976,31 @@ class OTPmeServer1(object):
             # Verify JWT or clear-text request.
             try:
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
-                                            auth_type=auth_type,
-                                            client=client,
-                                            peer=self.peer,
-                                            realm_login=realm_login,
-                                            realm_logout=realm_logout,
-                                            unlock=auth_unlock,
-                                            access_group=self.access_group,
-                                            host_type=login_host_type,
-                                            host=login_host,
-                                            host_ip=login_host_ip,
-                                            redirect_challenge=self.redirect_challenge,
-                                            jwt_auth=jwt_auth,
-                                            jwt_challenge=jwt_challenge,
-                                            redirect_response=redirect_response,
-                                            rsp_ecdh_client_pub=rsp_ecdh_client_pub,
-                                            rsp_hash_type=rsp_hash_type,
-                                            allow_sotp_reuse=self.allow_sotp_reuse,
-                                            reneg=reneg,
-                                            client_offline_enc_type=client_offline_enc_type,
-                                            replace_sessions=replace_sessions,
-                                            login_interface=login_interface,
-                                            reneg_salt=reneg_salt,
-                                            ecdh_curve=self.ecdh_curve,
-                                            password=password,
-                                            verify_host=self.verify_host)
+                                        auth_type=auth_type,
+                                        client=client,
+                                        peer=self.peer,
+                                        realm_login=realm_login,
+                                        realm_logout=realm_logout,
+                                        unlock=auth_unlock,
+                                        access_group=self.access_group,
+                                        host_type=login_host_type,
+                                        host=login_host,
+                                        host_ip=login_host_ip,
+                                        redirect_challenge=self.redirect_challenge,
+                                        jwt_auth=jwt_auth,
+                                        jwt_challenge=jwt_challenge,
+                                        redirect_response=redirect_response,
+                                        rsp_ecdh_client_pub=rsp_ecdh_client_pub,
+                                        rsp_hash_type=rsp_hash_type,
+                                        allow_sotp_reuse=self.allow_sotp_reuse,
+                                        reneg=reneg,
+                                        client_offline_enc_type=client_offline_enc_type,
+                                        replace_sessions=replace_sessions,
+                                        login_interface=login_interface,
+                                        reneg_salt=reneg_salt,
+                                        ecdh_curve=self.ecdh_curve,
+                                        password=password,
+                                        verify_host=self.verify_host)
             except OTPmeException:
                 raise
             except Exception as e:
@@ -2020,32 +2018,32 @@ class OTPmeServer1(object):
             # Try to authenticate user.
             try:
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
-                                            auth_type=auth_type,
-                                            client=client,
-                                            peer=self.peer,
-                                            realm_login=realm_login,
-                                            realm_logout=realm_logout,
-                                            unlock=auth_unlock,
-                                            access_group=self.access_group,
-                                            user_token=user_token,
-                                            challenge=challenge,
-                                            response=response,
-                                            smartcard_data=smartcard_data,
-                                            host_type=login_host_type,
-                                            host=login_host,
-                                            host_ip=login_host_ip,
-                                            ecdh_curve=self.ecdh_curve,
-                                            verify_host=self.verify_host,
-                                            jwt_challenge=jwt_challenge,
-                                            rsp_ecdh_client_pub=rsp_ecdh_client_pub,
-                                            rsp_hash_type=rsp_hash_type,
-                                            reneg=reneg,
-                                            allow_sotp_reuse=self.allow_sotp_reuse,
-                                            reneg_salt=reneg_salt,
-                                            client_offline_enc_type=client_offline_enc_type,
-                                            replace_sessions=replace_sessions,
-                                            login_interface=login_interface,
-                                            password=password)
+                                        auth_type=auth_type,
+                                        client=client,
+                                        peer=self.peer,
+                                        realm_login=realm_login,
+                                        realm_logout=realm_logout,
+                                        unlock=auth_unlock,
+                                        access_group=self.access_group,
+                                        user_token=user_token,
+                                        challenge=challenge,
+                                        response=response,
+                                        smartcard_data=smartcard_data,
+                                        host_type=login_host_type,
+                                        host=login_host,
+                                        host_ip=login_host_ip,
+                                        ecdh_curve=self.ecdh_curve,
+                                        verify_host=self.verify_host,
+                                        jwt_challenge=jwt_challenge,
+                                        rsp_ecdh_client_pub=rsp_ecdh_client_pub,
+                                        rsp_hash_type=rsp_hash_type,
+                                        reneg=reneg,
+                                        allow_sotp_reuse=self.allow_sotp_reuse,
+                                        reneg_salt=reneg_salt,
+                                        client_offline_enc_type=client_offline_enc_type,
+                                        replace_sessions=replace_sessions,
+                                        login_interface=login_interface,
+                                        password=password)
             except OTPmeException:
                 raise
             except Exception as e:

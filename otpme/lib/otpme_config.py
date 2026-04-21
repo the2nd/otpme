@@ -65,6 +65,8 @@ class OTPmeConfig(object):
         # Users token (instance) that was used to authenticate the user of the current
         # connection.
         self.register_config_var("_auth_token", None, None)
+        # Audit logger instance.
+        self.register_config_var("audit_logger", None, None)
         # Main config file parameters.
         self.register_config_var("main_config", dict, None)
         # User config file path.
@@ -73,6 +75,8 @@ class OTPmeConfig(object):
         self.register_config_var("user_signers_dir", str, None)
         # Our pid.
         self.register_config_var("my_pid", int, None)
+        # DB session to use.
+        self.register_config_var("session", None, None)
         # Our host type.
         self.register_config_var("host_type", str, None)
         # Add objects in this order (e.g. on sync).
@@ -354,7 +358,7 @@ class OTPmeConfig(object):
         # The daemons debugging is enabled for (e.g. show method timings).
         self.register_config_var("debug_daemons", list, [])
         # The sorting field for cProfile.
-        self.register_config_var("debug_profile_sort", str, "cumtime")
+        self.register_config_var("debug_profile_sort", str, "tottime")
         # The functions debug timing is enabled for.
         self.register_config_var("debug_func_names", list, [])
         # The function debug timing starts at.
@@ -599,6 +603,9 @@ class OTPmeConfig(object):
                                 user_config_file_parameter="USE_MGMTD_SOCKET")
         self.register_config_var("use_socket", bool, False)
         self.register_config_var("socket_auth", bool, False)
+
+        self.register_config_var("authd_workers", int, 16,
+                                config_file_parameter="AUTHD_WORKERS")
 
         self.register_config_var("controld_pidfile", str, None)
         self.register_config_var("authd_socket_path", str, None)
@@ -1494,6 +1501,9 @@ class OTPmeConfig(object):
 
     def get_smartcard_handler(self, smartcard_type):
         """ Get supported smartcard handlers. """
+        if smartcard_type not in self.supported_smartcards:
+            from otpme.lib.register import register_module
+            register_module("otpme.lib.smartcard")
         try:
             client_handler = self.supported_smartcards[smartcard_type]['client_handler']
             server_handler = self.supported_smartcards[smartcard_type]['server_handler']
@@ -1505,6 +1515,9 @@ class OTPmeConfig(object):
 
     def get_supported_smartcards(self):
         """ Get list with supported smartcard types. """
+        if not self.supported_smartcards:
+            from otpme.lib.register import register_module
+            register_module("otpme.lib.smartcard")
         return list(self.supported_smartcards)
 
     def get_ldap_settings(self, object_type):

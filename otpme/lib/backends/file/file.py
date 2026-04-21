@@ -35,7 +35,6 @@ from otpme.lib.cache import object_list_cache
 from otpme.lib.cache import index_search_cache
 from otpme.lib.cache import oid_from_path_cache
 from otpme.lib.nsscache import NSSCACHE_OBJECT_TYPES
-from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
 
 # Imports (forwarded) to be imported from file backend module.
 from .index import get_class
@@ -47,6 +46,29 @@ from .transaction import get_transaction
 from .transaction import handle_transaction
 from .transaction import init as init_transactions
 from .transaction import cleanup as transaction_cleanup
+
+# Per-process uuid → object_type cache. A UUID uniquely maps to one object type
+# (types live in separate index tables), so once we've resolved it we can skip
+# probing every type on subsequent uuid lookups. Bounded LRU to avoid unbounded
+# growth in long-running processes.
+class _UUIDTypeCache(OrderedDict):
+    def __init__(self, maxsize=8192):
+        super().__init__()
+        self._maxsize = maxsize
+    def get(self, key, default=None):
+        if key in self:
+            self.move_to_end(key)
+            return super().__getitem__(key)
+        return default
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self._maxsize:
+            self.popitem(last=False)
+
+_uuid_type_cache = _UUIDTypeCache()
+_uuid_fastpath_stats = {"enter": 0, "hit": 0, "miss": 0, "populate": 0}
 
 from otpme.lib.exceptions import *
 
@@ -843,7 +865,7 @@ def rename(object_id, new_object_id, no_lock=False,
 
 def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
     no_index_writes=False, config_paths=None, no_exists_check=False,
-    cluster=False, no_transaction=False,
+    cluster=False, wait_for_cluster_writes=True, no_transaction=False,
     transaction_replay=False, update_nsscache=True):
     """ Delete object. """
     # Name of the file transaction.
@@ -955,7 +977,9 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
 
     if cluster:
         if object_uuid:
-            cluster_handler.cluster_delete(object_uuid, object_id)
+            cluster_handler.cluster_delete(object_uuid,
+                                        object_id,
+                                        wait_for_write=wait_for_cluster_writes)
 
     # Commit and delete transaction.
     if transaction_replay:
@@ -1075,6 +1099,18 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         msg = _("Need <value>, <values>, <or_values>, <greater_than>, <less_than> or <attributes>.")
         raise SearchException(msg)
 
+    # UUID → object_type fast-path: avoid probing every object type on
+    # uuid lookups by remembering which type a uuid belongs to.
+    if object_type is None and object_types is None \
+    and attribute == "uuid" and value is not None:
+        _uuid_fastpath_stats["enter"] += 1
+        cached_type = _uuid_type_cache.get(value)
+        if cached_type is not None:
+            _uuid_fastpath_stats["hit"] += 1
+            object_type = cached_type
+        else:
+            _uuid_fastpath_stats["miss"] += 1
+
     # Search for object types if none was given.
     if object_type is None:
         if object_types is None:
@@ -1190,6 +1226,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         o_result[t] = {}
                     for x in x_result[t]:
                         o_result[t][x] = x_result[t][x]
+            # Learn uuid → object_type mapping for future fast-path lookups.
+            if x_result and attribute == "uuid" and value is not None:
+                _uuid_type_cache[value] = x_object_type
+                _uuid_fastpath_stats["populate"] += 1
             if size_limit != 0 and len(o_result) >= size_limit:
                 raise SizeLimitExceeded("Size limit exceeded.")
         return o_result
@@ -1900,6 +1940,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
 
         # Handle dogpile caching.
         if config.dogpile_caching:
+            from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
             acl_q = acl_q.options(FromCache(cache_region))
 
         # Query to return all given ACLs of selected objects.
@@ -2009,6 +2050,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             q = q.limit(max_results)
         # Handle dogpile caching.
         if config.dogpile_caching:
+            from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
             q = q.options(FromCache(cache_region))
         # Get index result.
         query_result = q.all()
@@ -2123,6 +2165,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             if return_attributes:
                 _x_attr_q = _x_attr_q.filter(IndexObjectAttribute.name.in_(return_attributes))
             if config.dogpile_caching:
+                from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
                 _x_attr_q = _x_attr_q.options(FromCache(cache_region))
             x_result = _x_attr_q.all()
             attr_result += x_result
@@ -2586,8 +2629,8 @@ def index_add(object_id, object_paths=None, object_config=None,
                     #local_object = session.merge(a)
                     #session.add(local_object)
 
-        if autocommit:
-            session.commit()
+        #if autocommit:
+        #    session.commit()
 
     if use_index_journal and index_journal:
         # Get existing attributes.
@@ -2701,8 +2744,8 @@ def index_add(object_id, object_paths=None, object_config=None,
                                 value=raw_acl)
                 acls.append(a)
 
-        if autocommit:
-            session.commit()
+        #if autocommit:
+        #    session.commit()
 
     if use_acl_journal and acl_journal:
         # Get existing attributes.
@@ -2750,8 +2793,8 @@ def index_add(object_id, object_paths=None, object_config=None,
                     # Add attribute to list of ACLs for the new index object.
                     acls.append(a)
 
-        if autocommit:
-            session.commit()
+        #if autocommit:
+        #    session.commit()
 
     # Get object LDIF from index DB.
     update_object_ldif = False
@@ -3210,14 +3253,24 @@ def get_sites(realm, search_regex=None):
     site_list.sort()
     return site_list
 
-def get_last_used(uuid, **kwargs):
-    index_object = index_get_object(uuid=uuid)
-    if not index_object:
-        return
-    last_used = index_object.last_used
-    if last_used is None:
-        last_used = 0
-    return last_used
+@handle_transaction
+def get_last_used(uuid, object_type=None, session=None, **kwargs):
+    import json as _json
+    from sqlalchemy import text
+    if object_type is None:
+        object_id = get_oid(uuid, instance=True)
+        if not object_id:
+            return
+        object_type = object_id.object_type
+    table_name = f"{object_type}s"
+    uuid_json = _json.dumps(uuid)
+    row = session.execute(
+        text(f"SELECT last_used FROM {table_name} WHERE uuid = :uuid"),
+        {"uuid": uuid_json},
+    ).fetchone()
+    if not row or row[0] is None:
+        return 0
+    return row[0]
 
 @handle_transaction
 def set_last_used_times(object_type, updates, session=None, **kwargs):
@@ -3245,45 +3298,68 @@ def set_last_used_times(object_type, updates, session=None, **kwargs):
     session.commit()
 
 @handle_transaction
-def set_last_used(object_type, uuid, timestamp,
-    session=None, cluster=True, **kwargs):
-    from sqlalchemy import select
-    from sqlalchemy import update
+def set_last_used(object_id, uuid, timestamp, cluster=True,
+                  session=None, **kwargs):
+    import json as _json
+    from sqlalchemy import text
     from otpme.lib.daemon.clusterd import cluster_sync_object
-    try:
-        IndexObject, \
-        IndexObjectAttribute, \
-        IndexObjectACL = get_class(object_type)
-    except UnknownClass:
-        msg = _("Unknown object class: {object_type}")
-        msg = msg.format(object_type=object_type)
-        raise SearchException(msg)
-    # Update last used timestamp.
-    stmt = update(IndexObject)
-    stmt = stmt.where(IndexObject.uuid == uuid)
-    stmt = stmt.values(last_used=timestamp)
-    # Check for locked row. This may happen if a user tries
-    # to replace (add -r) the login token and gets asked
-    # for reauthentication.
-    check = select(IndexObject.uuid)
-    check = check.where(IndexObject.uuid == uuid)
-    check = check.with_for_update(skip_locked=True)
-    if not session.execute(check).first():
-      return
-    # Execute statement.
-    session.execute(stmt)
-    # Commit change.
+    table_name = f"{object_id.object_type}s"
+    uuid_json = _json.dumps(uuid)
+    session.execute(
+        text(f"UPDATE {table_name} SET last_used = :ts WHERE uuid = :uuid"),
+        {"ts": timestamp, "uuid": uuid_json},
+    )
     session.commit()
     if not cluster:
         return
     if config.host_type != "node":
         return
-    object_id = get_oid(uuid, instance=True)
     cluster_sync_object(action="last_used_write",
                         object_uuid=uuid,
                         object_id=object_id,
                         object_data=timestamp,
                         wait_for_write=False)
+
+#@handle_transaction
+#def set_last_used(object_type, uuid, timestamp,
+#    session=None, cluster=True, **kwargs):
+#    from sqlalchemy import select
+#    from sqlalchemy import update
+#    from otpme.lib.daemon.clusterd import cluster_sync_object
+#    try:
+#        IndexObject, \
+#        IndexObjectAttribute, \
+#        IndexObjectACL = get_class(object_type)
+#    except UnknownClass:
+#        msg = _("Unknown object class: {object_type}")
+#        msg = msg.format(object_type=object_type)
+#        raise SearchException(msg)
+#    # Update last used timestamp.
+#    stmt = update(IndexObject)
+#    stmt = stmt.where(IndexObject.uuid == uuid)
+#    stmt = stmt.values(last_used=timestamp)
+#    # Check for locked row. This may happen if a user tries
+#    # to replace (add -r) the login token and gets asked
+#    # for reauthentication.
+#    check = select(IndexObject.uuid)
+#    check = check.where(IndexObject.uuid == uuid)
+#    check = check.with_for_update(skip_locked=True)
+#    if not session.execute(check).first():
+#      return
+#    # Execute statement.
+#    session.execute(stmt)
+#    # Commit change.
+#    session.commit()
+#    if not cluster:
+#        return
+#    if config.host_type != "node":
+#        return
+#    object_id = get_oid(uuid, instance=True)
+#    cluster_sync_object(action="last_used_write",
+#                        object_uuid=uuid,
+#                        object_id=object_id,
+#                        object_data=timestamp,
+#                        wait_for_write=False)
 
 def get_last_used_times(object_types):
     last_used_data = {}

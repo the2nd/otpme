@@ -23,6 +23,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
+from otpme.lib.classes.auth_handler import AuthHandler
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
@@ -37,6 +38,7 @@ from otpme.lib.classes.otpme_object import \
 
 from otpme.lib.exceptions import *
 
+auth_handler = None
 logger = config.logger
 
 default_callback = config.get_callback()
@@ -490,8 +492,9 @@ class OTPmeDevice(OTPmeObject):
 
     def authenticate(self, **kwargs):
         """ Wrapper to call auth handler. """
-        from otpme.lib.classes.auth_handler import AuthHandler
-        auth_handler = AuthHandler()
+        global auth_handler
+        if auth_handler is None:
+            auth_handler = AuthHandler()
         start_time = time.time()
         auth_status = auth_handler.authenticate(user=self, **kwargs)
         end_time = time.time()
@@ -632,7 +635,7 @@ class Device(OTPmeDevice):
         ):
         """ Add a device. """
         # Run parent class stuff e.g. verify ACLs.
-        result = self._prepare_add(check_exists=False,
+        result = self._prepare_add(check_exists=True,
                                     callback=callback,
                                     **kwargs)
         if result is False:

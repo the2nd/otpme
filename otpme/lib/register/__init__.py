@@ -16,6 +16,7 @@ from otpme.lib.exceptions import *
 
 register_done = False
 registered_modules = []
+_mod_deps_cache = {}
 
 modules = [
 	'otpme.lib.cli',
@@ -75,6 +76,10 @@ def load_mod_files():
     return module_list
 
 def get_mod_deps(mod):
+    try:
+        return _mod_deps_cache[mod]
+    except KeyError:
+        pass
     x_module = importlib.import_module(mod)
     REGISTER_BEFORE = "REGISTER_BEFORE"
     REGISTER_AFTER = "REGISTER_AFTER"
@@ -90,6 +95,7 @@ def get_mod_deps(mod):
         msg = _("Missing {} in module: {}")
         msg = msg.format(REGISTER_AFTER, mod)
         raise OTPmeException(msg)
+    _mod_deps_cache[mod] = (before, after)
     return before, after
 
 def get_modules(_modules):

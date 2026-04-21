@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import atexit
+import socket
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -73,6 +74,7 @@ def close_connections(proc_id=None):
                     log_msg = log_msg.format(conn=conn, e=e)
                     logger.warning(log_msg)
                 connections[x_proc_id][daemon].pop(key)
+    connections.clear()
 atexit.register(close_connections)
 
 def add_connection(proc_id, daemon, key, connection):
@@ -111,7 +113,7 @@ def get_connection(**kwargs):
         raise ConnectionError(msg)
     return daemon_conn
 
-def get(daemon, **kwargs):
+def get(daemon, ping=True, **kwargs):
     """ Get connection to OTPme daemons. """
     global connections
 
@@ -237,6 +239,8 @@ def get(daemon, **kwargs):
         conn = None
     if conn is not None:
         if conn.connected:
+            if not ping:
+                return conn
             try:
                 # Result will return tuple of 3 with agent and 4 for daemon connection.
                 result = conn.send("ping", timeout=3)
@@ -453,9 +457,17 @@ def get(daemon, **kwargs):
             try:
                 connect_addresses = net.query_dns(site_fqdn, 'A')
             except Exception as e:
-                msg = _("Unable to resolve site FQDN: {e}")
-                msg = msg.format(e=e)
-                raise ConnectionError(msg)
+                log_msg = _("Unable to resolve site FQDN: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.info(log_msg)
+                connect_addresses = None
+            if not connect_addresses:
+                try:
+                    addr = socket.gethostbyname(site_fqdn)
+                except Exception:
+                    pass
+                else:
+                    connect_addresses = [addr]
         else:
             try:
                 site_address = stuff.get_site_address(realm, site)
@@ -473,9 +485,17 @@ def get(daemon, **kwargs):
             try:
                 connect_addresses = net.query_dns(site_fqdn, 'A')
             except Exception as e:
-                msg = _("Unable to resolve site FQDN: {e}")
-                msg = msg.format(e=e)
-                raise ConnectionError(msg)
+                log_msg = _("Unable to resolve site FQDN: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.info(log_msg)
+                connect_addresses = None
+            if not connect_addresses:
+                try:
+                    addr = socket.gethostbyname(site_fqdn)
+                except Exception:
+                    pass
+                else:
+                    connect_addresses = [addr]
         else:
             if not config.site_address:
                 raise OTPmeException(_("Unable to get site address."))
@@ -504,7 +524,6 @@ def get(daemon, **kwargs):
             log_msg = str(connect_exception)
             logger.warning(log_msg)
             continue
-
         connect_exception = None
         status, \
         status_code, \

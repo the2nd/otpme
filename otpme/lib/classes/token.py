@@ -889,6 +889,7 @@ def register_backend():
     config.register_index_attribute('token_type')
     config.register_index_attribute('owner_uuid')
     config.register_index_attribute('pass_type')
+    config.register_index_attribute('support_dot1x')
     # Register object to backend.
     class_getter = token.get_class
     class_getter_args = {'TOKEN_TYPE' : 'token_type'}
@@ -3146,6 +3147,25 @@ class Token(OTPmeObject):
             return self.verify_dot1x_mschap(**kwargs)
         return self.verify_dot1x_static(**kwargs)
 
+    def verify_dot1x_static(self, password=None, **kwargs):
+        if not self.support_dot1x:
+            log_msg = _("Token does not support dot1x: {token}", log=True)[1]
+            logger.info(log_msg)
+            return None, False, False
+        if not self.dot1x_secret:
+            log_msg = _("Token does not have a dot1x secret: {token}", log=True)[1]
+            logger.info(log_msg)
+            return None, False, False
+        try:
+            sotp_verify_status = sotp.verify(password_hash=self.dot1x_secret,
+                                            password=password)
+        except Exception as e:
+            sotp_verify_status = None
+            log_msg = _("Error verifying MSCHAP request (dot1x): {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
+        return sotp_verify_status
+
     def verify_dot1x_mschap(self, challenge=None, response=None, **kwargs):
         if not self.support_dot1x:
             log_msg = _("Token does not support dot1x: {token}", log=True)[1]
@@ -3531,6 +3551,7 @@ class Token(OTPmeObject):
         self.add_index('token_type', self.token_type)
         self.add_index('pass_type', self.pass_type)
         self.add_index('owner_uuid', self.owner_uuid)
+        self.add_index('support_dot1x', self.support_dot1x)
         ## Tokens should not inherit ACLs by default.
         #self.acl_inheritance_enabled = False
 

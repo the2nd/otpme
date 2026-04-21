@@ -35,7 +35,6 @@ from otpme.lib import filetools
 from otpme.lib import encryption
 from otpme.lib import otpme_pass
 from otpme.lib import mschap_util
-from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
@@ -108,7 +107,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'delete',
                     'oargs'             : ['recursive', 'force'],
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -398,13 +397,14 @@ class Session(OTPmeLockObject):
     @property
     def last_used(self):
         """ Get last used timestamp. """
-        last_used_timestamp = backend.get_last_used(self.uuid)
+        last_used_timestamp = backend.get_last_used(self.uuid,
+                                                    object_type="session")
         return last_used_timestamp
 
     @last_used.setter
     def last_used(self, timestamp):
         """ Set last used timestamp. """
-        backend.set_last_used(self.type, self.uuid, timestamp)
+        backend.set_last_used(self.oid, self.uuid, timestamp)
 
     @property
     def cache_expire_time(self):
@@ -616,10 +616,11 @@ class Session(OTPmeLockObject):
         # Write session config.
         try:
             backend.write_config(object_id=self.oid,
-                                instance=self,
-                                full_index_update=True,
-                                full_data_update=True,
-                                cluster=True)
+                            instance=self,
+                            full_index_update=True,
+                            full_data_update=True,
+                            wait_for_cluster_writes=False,
+                            cluster=True)
         except Exception as e:
             log_msg = _("Failed to write session: {session_oid}: {error}", log=True)[1]
             log_msg = log_msg.format(session_oid=self.oid, error=e)
@@ -699,15 +700,8 @@ class Session(OTPmeLockObject):
     def update_last_used_time(
         self,
         update_child_sessions: bool=False,
-        force: bool=False,
         ):
         """ Update the time this session was last used. """
-        if not force:
-            # Update last used timestamp only every 30 seconds to save some IOPS.
-            last_used_age = time.time() - self.last_used
-            if last_used_age < 30:
-                return
-
         log_msg = _("Updating last used timestamp of session: {session_name}", log=True)[1]
         log_msg = log_msg.format(session_name=self.name)
         logger.debug(log_msg)
@@ -742,8 +736,7 @@ class Session(OTPmeLockObject):
                 log_msg = log_msg.format(session_name=session.name)
                 logger.debug(log_msg)
                 continue
-            session.update_last_used_time(update_child_sessions=True,
-                                             force=force)
+            session.update_last_used_time(update_child_sessions=True)
 
     def expire_time(self):
         """ Return session expiration timestamp. """
@@ -1220,12 +1213,14 @@ class Session(OTPmeLockObject):
                 logger.debug(log_msg)
                 child_session.add()
 
-                # Check if child sessions should inherit timeouts from parent accessgroup.
+                # Only re-write the child config if the inherited timeouts
+                # changed it. Session.add() already persists the object, so
+                # an unconditional write_config() here duplicates a write and
+                # a full index update for every child session.
                 if start_group.timeout_pass_on:
                     child_session.timeout = start_group.session_timeout
                     child_session.unused_timeout = start_group.unused_session_timeout
-                # Write changes.
-                child_session.write_config()
+                    child_session.write_config()
                 # Add session to child sessions.
                 self.add_child_session(child_session.uuid)
 
@@ -1294,7 +1289,6 @@ class Session(OTPmeLockObject):
         return result
 
     @object_lock()
-    @audit_log(ignore_api_calls=True)
     def delete(
         self,
         force: bool=False,
@@ -1363,7 +1357,9 @@ class Session(OTPmeLockObject):
                                 verify_acls=verify_acls)
 
         try:
-            backend.delete_object(self.oid, cluster=True)
+            backend.delete_object(self.oid,
+                                cluster=True,
+                                wait_for_cluster_writes=False)
         except UnknownObject:
             pass
         except Exception as e:

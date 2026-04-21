@@ -153,6 +153,77 @@ def get_recursive_default_acls():
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
+def verify_attestation_cert(registration_data, site=None):
+    """ Verify fido2 attestation certificate from registration data.
+
+    Returns a list of informational messages on success.
+    Raises OTPmeException on any failure.
+    """
+    registration = RegistrationResponse.from_dict(registration_data)
+    attestation_object = registration.response.attestation_object
+    # x5c contains the certificate chain (DER-encoded), x5c[0] is the attestation cert.
+    x5c = attestation_object.att_stmt.get("x5c")
+    if not x5c:
+        msg = _("Registration data misses attestation certificate.")
+        raise OTPmeException(msg)
+    try:
+        attestation_cert = x509.load_der_x509_certificate(x5c[0])
+    except Exception as e:
+        msg = _("Failed to load attestation certificate: {error}")
+        msg = msg.format(error=e)
+        raise OTPmeException(msg)
+    messages = []
+    subject = attestation_cert.subject.rfc4514_string()
+    msg = _("Got attestation certificate: {subject}")
+    msg = msg.format(subject=subject)
+    messages.append(msg)
+    issuer = attestation_cert.issuer.rfc4514_string()
+    msg = _("Got attestation certificate issuer: {issuer}")
+    msg = msg.format(issuer=issuer)
+    messages.append(msg)
+    # Check attestation certificate validity.
+    now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
+    if attestation_cert.not_valid_before_utc > now:
+        msg = _("Attestation certificate not yet valid: {not_valid_before}")
+        msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
+        raise OTPmeException(msg)
+    if attestation_cert.not_valid_after_utc < now:
+        msg = _("Attestation certificate not valid anymore: {not_valid_after}")
+        msg = msg.format(not_valid_after=attestation_cert.not_valid_after_utc)
+        raise OTPmeException(msg)
+    # Try to get fido2 CA cert.
+    if site is None:
+        site = backend.get_object(uuid=config.site_uuid)
+        if not site:
+            msg = _("Failed to load site: {site_uuid}")
+            msg = msg.format(site_uuid=config.site_uuid)
+            raise OTPmeException(msg)
+    try:
+        ca_cert = site.fido2_ca_certs[issuer]
+    except KeyError:
+        msg = _("We dont have a fido2 CA cert to verify attestation certificate: {subject}: {issuer}")
+        msg = msg.format(subject=subject, issuer=issuer)
+        raise OTPmeException(msg)
+    try:
+        ca_cert = x509.load_pem_x509_certificate(ca_cert.encode())
+    except Exception as e:
+        msg = _("Failed to load fido2 CA cert: {subject}")
+        msg = msg.format(subject=subject)
+        raise OTPmeException(msg)
+    # Verify signature.
+    ca_cert_public_key = ca_cert.public_key()
+    try:
+        ca_cert_public_key.verify(attestation_cert.signature,
+                            attestation_cert.tbs_certificate_bytes,
+                            padding.PKCS1v15(),
+                            attestation_cert.signature_hash_algorithm)
+    except Exception as e:
+        msg = _("Failed to verify signature: {error}")
+        msg = msg.format(error=e)
+        raise OTPmeException(msg)
+    messages.append(_("Attestation certificate verified succesfully."))
+    return messages
+
 def register():
     """ Register object. """
     register_hooks()
@@ -374,72 +445,12 @@ class Fido2Token(Token):
             return callback.error(msg)
         check_attestation_cert = self.get_config_parameter("check_fido2_attestation_cert")
         if check_attestation_cert:
-            # Parse the response to access the attestation object
-            registration = RegistrationResponse.from_dict(registration_data)
-            attestation_object = registration.response.attestation_object
-            # x5c contains the certificate chain (DER-encoded), x5c[0] is the attestation cert.
-            x5c = attestation_object.att_stmt.get("x5c")
-            if not x5c:
-                msg = _("Registration data misses attestation certificate.")
-                return callback.error(msg)
             try:
-                attestation_cert = x509.load_der_x509_certificate(x5c[0])
-            except Exception as e:
-                msg = _("Failed to load attestation certificate: {error}")
-                msg = msg.format(error=e)
-                return callback.error(msg)
-            subject = attestation_cert.subject.rfc4514_string()
-            msg = _("Got attestation certificate: {subject}")
-            msg = msg.format(subject=subject)
-            callback.send(msg)
-            issuer = attestation_cert.issuer.rfc4514_string()
-            msg = _("Got attestation certificate issuer: {issuer}")
-            msg = msg.format(issuer=issuer)
-            callback.send(msg)
-            # Check attestation certificate validity.
-            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
-            if attestation_cert.not_valid_before_utc > now:
-                msg = _("Attestation certificate not yet valid: {not_valid_before}")
-                msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
-                return callback.error(msg)
-            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
-            if attestation_cert.not_valid_after_utc < now:
-                msg = _("Attestation certificate not valid anymore: {not_valid_before}")
-                msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
-                return callback.error(msg)
-            # Try to get fido2 CA cert.
-            own_site = backend.get_object(uuid=config.site_uuid)
-            if not own_site:
-                msg = _("Failed to load site: {site_uuid}")
-                msg = msg.format(site_uuid=config.site_uuid)
-                return callback.error(msg)
-            try:
-                ca_cert = own_site.fido2_ca_certs[issuer]
-            except KeyError:
-                msg = _("We dont have a fido2 CA cert to verify attestation certificate: {subject}: {issuer}")
-                msg = msg.format(subject=subject, issuer=issuer)
-                return callback.error(msg)
-            # Load fido2 CA cert.
-            ca_cert = ca_cert.encode()
-            try:
-                ca_cert = x509.load_pem_x509_certificate(ca_cert)
-            except Exception as e:
-                msg = _("Failed to load fido2 CA cert: {subject}")
-                msg = msg.format(subject=subject)
-                return callback.error(msg)
-            # Verify signature.
-            ca_cert_public_key = ca_cert.public_key()
-            try:
-                ca_cert_public_key.verify(attestation_cert.signature,
-                                    attestation_cert.tbs_certificate_bytes,
-                                    padding.PKCS1v15(),
-                                    attestation_cert.signature_hash_algorithm)
-            except Exception as e:
-                msg = _("Failed to verify signature: {error}")
-                msg = msg.format(error=e)
-                return callback.error(msg)
-            msg = _("Attestation certificate verified succesfully.")
-            callback.send(msg)
+                info_messages = verify_attestation_cert(registration_data)
+            except OTPmeException as e:
+                return callback.error(str(e))
+            for msg in info_messages:
+                callback.send(msg)
         # Set credential data.
         self.credential_data = encode(auth_data.credential_data, "hex")
         # Clear registration state.

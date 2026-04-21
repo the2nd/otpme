@@ -21,6 +21,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.cache.lru import LRUCache
 from otpme.lib.pickle import PickleHandler
 from otpme.lib.cache.funccache import FuncCache
+from otpme.lib.multiprocessing import register_atfork_method
 
 from otpme.lib.exceptions import *
 
@@ -33,7 +34,8 @@ LIST_CACHE_LOCK_TYPE = "cache.list"
 
 default_callback = config.get_callback()
 
-last_process_cache_clear_time = 0.0
+last_checksum_test = {}
+last_process_cache_clear_time = {}
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
@@ -59,6 +61,11 @@ def register():
     # Register cache modules.
     _register_modules(modules)
 
+def reset_last_process_cache_clear_time():
+    global last_process_cache_clear_time
+    last_process_cache_clear_time = {}
+register_atfork_method(reset_last_process_cache_clear_time)
+
 # All modified (cached) instances.
 modified_objects = {}
 modified_objects_cache = {}
@@ -80,24 +87,47 @@ index_cache = FuncCache(name="index_cache",
                         default_cache="default",
                         ignore_args=['session'],
                         ignore_classes=['OTPmeOid'])
-# Get cache handler.
-process_cache = LRUCache()
-
-caches = []
+index_search_cache = FuncCache(name="index_search_cache",
+                        default_cache="default",
+                        ignore_args=['session'],
+                        ignore_classes=['OTPmeOid'],
+                        copy_cache=True)
 # Methods to configure on init().
 ldif_cache = FuncCache(name="ldif_cache")
 config_cache = FuncCache(name="config_cache")
 #instance_cache = FuncCache(name="instance_cache")
 index_acl_cache = FuncCache(name="index_acl_cache")
-unit_members_cache = FuncCache(name="unit_members")
-object_list_cache = FuncCache(name="object_list_cache")
 ldap_search_cache = FuncCache(name="ldap_search_cache")
 supported_acls_cache = FuncCache(name="supported_acls")
-assigned_role_cache = FuncCache(name="assigned_role", shared=True)
-assigned_host_cache = FuncCache(name="assigned_host", shared=True)
-assigned_device_cache = FuncCache(name="assigned_device", shared=True)
-assigned_token_cache = FuncCache(name="assigned_token", shared=True)
-index_search_cache = FuncCache(name="index_search_cache", copy_cache=True)
+unit_members_cache = FuncCache(name="unit_members",
+                            clear_on_object_types=config.tree_object_types)
+object_list_cache = FuncCache(name="object_list_cache",
+                            clear_on_object_types=config.tree_object_types)
+assigned_host_cache = FuncCache(name="assigned_host",
+                            shared=True,
+                            default_cache="default",
+                            clear_on_object_types=['host', 'role', 'accessgroup'])
+assigned_role_cache = FuncCache(name="assigned_role",
+                            shared=True,
+                            default_cache="default",
+                            clear_on_object_types=['token', 'role', 'accessgroup'])
+assigned_device_cache = FuncCache(name="assigned_device",
+                            shared=True,
+                            default_cache="default",
+                            clear_on_object_types=['device', 'role', 'accessgroup'])
+assigned_token_cache = FuncCache(name="assigned_token",
+                            shared=True,
+                            default_cache="default",
+                            clear_on_object_types=['token', 'role', 'accessgroup'])
+user_tokens_cache = FuncCache(name="user_tokens",
+                            shared=True,
+                            default_cache="default",
+                            clear_on_object_types=['user', 'token', 'role', 'accessgroup'])
+
+# Get cache handler.
+process_cache = LRUCache()
+
+caches = []
 
 def enable():
     """ Enable caches. """
@@ -120,6 +150,7 @@ def init():
     global ldap_search_cache
     global object_list_cache
     global index_search_cache
+    global user_tokens_cache
     global assigned_role_cache
     global assigned_host_cache
     global assigned_token_cache
@@ -223,8 +254,10 @@ def init():
 
     # Add object list caches.
     def get_uniq_method_name(cls, func_name, func_args, func_kwargs):
-        """ Get uniq class name. """
-        method_id = (f"{cls.oid.full_oid} ({cls.__module__}.{cls.__class__.__name__}().{func_name}())")
+        """ Get uniq class name. Avoid whitespace so the key is usable with
+        memcached (the memcached protocol rejects keys containing whitespace
+        or control characters). """
+        method_id = f"{cls.oid.full_oid}|{cls.__module__}.{cls.__class__.__name__}.{func_name}"
         return method_id
     # LDIF cache.
     ldif_cache.cache_key_func = get_uniq_method_name
@@ -238,6 +271,10 @@ def init():
     supported_acls_cache.cache_key_func = get_uniq_method_name
     supported_acls_cache._cache_kwargs['ignore_args'] = ['callback']
     supported_acls_cache._cache_kwargs['ignore_classes'] = ['OTPmeBaseObject']
+    # Assigned role cache.
+    user_tokens_cache.cache_key_func = get_uniq_method_name
+    user_tokens_cache._cache_kwargs['ignore_args'] = ['callback']
+    user_tokens_cache._cache_kwargs['ignore_classes'] = ['OTPmeBaseObject']
     # Assigned role cache.
     assigned_role_cache.cache_key_func = get_uniq_method_name
     assigned_role_cache._cache_kwargs['ignore_args'] = ['callback']
@@ -268,6 +305,7 @@ def init():
             # ACL cache gets cleared by UUID and expiry.
             #index_acl_cache,
             pass_hash_cache,
+            user_tokens_cache,
             object_list_cache,
             ldap_schema_cache,
             index_search_cache,
@@ -278,19 +316,23 @@ def init():
             supported_acls_cache,
             ]
 
-def set_cache_clear_time(clear_time):
-    if not os.path.exists(config.cache_clear_file):
-        filetools.touch(config.cache_clear_file)
-    os.utime(config.cache_clear_file, (clear_time, clear_time))
+def set_cache_clear_time(object_type, clear_time):
+    global last_process_cache_clear_time
+    cache_clear_file = f"{config.cache_clear_file}.{object_type}"
+    if not os.path.exists(cache_clear_file):
+        filetools.touch(cache_clear_file)
+    last_process_cache_clear_time[object_type] = clear_time
+    os.utime(cache_clear_file, (clear_time, clear_time))
 
-def get_cache_clear_time():
-    if not os.path.exists(config.cache_clear_file):
-        filetools.touch(config.cache_clear_file)
-    clear_time = os.path.getmtime(config.cache_clear_file)
+def get_cache_clear_time(object_type):
+    cache_clear_file = f"{config.cache_clear_file}.{object_type}"
+    if not os.path.exists(cache_clear_file):
+        return
+    clear_time = os.path.getmtime(cache_clear_file)
     return clear_time
 
 # Shared cache uses pickle and pickle is to slow!!!!!    
-def add_instance(instance, skip_shared_cache=True):
+def add_instance(instance, skip_shared_cache=True, invalidate=True):
     """ Update instance caches. """
     from otpme.lib import config
     if not config.cache_enabled:
@@ -312,15 +354,16 @@ def add_instance(instance, skip_shared_cache=True):
     object_type = instance.type
     object_checksum = instance.checksum
 
-    ## Clear object cache.
-    #instance_cache.invalidate(object_type)
-    # Clear search cache.
-    search_cache.invalidate()
-    if object_type in config.tree_object_types:
-        # Clear ldif cache.
-        ldif_cache.invalidate()
-        # Clear LDAP cache.
-        ldap_search_cache.invalidate()
+    if invalidate:
+        ## Clear object cache.
+        #instance_cache.invalidate(object_type)
+        # Clear search cache.
+        search_cache.invalidate()
+        if object_type in config.tree_object_types:
+            # Clear ldif cache.
+            ldif_cache.invalidate()
+            # Clear LDAP cache.
+            ldap_search_cache.invalidate()
 
     # We will not update multiprocessing cache with an modified object.
     if instance._modified:
@@ -384,6 +427,7 @@ def get_instance(object_id, cache_type=None):
     """ Get instance from object cache. """
     from otpme.lib import config
     from otpme.lib import backend
+    global last_checksum_test
     global last_process_cache_clear_time
     if not config.cache_enabled:
         return
@@ -401,28 +445,27 @@ def get_instance(object_id, cache_type=None):
     if cache_type and cache_type != MULTIPROCESSING_CACHE:
         check_multiprocessing_cache = False
 
+    # FIXME: multiprocessing cache is slow. We dont use it.   
+    check_multiprocessing_cache = False
+
     # Try to get instance cache entry.
+    cache_entry = None
     if check_process_cache:
-        clear_time = get_cache_clear_time()
-        if last_process_cache_clear_time != clear_time:
-            clear(cache_type=PROCESS_CACHE, update_clear_time=False)
-            last_process_cache_clear_time = clear_time
+        clear_time = get_cache_clear_time(object_id.object_type)
+        try:
+            last_clear_time = last_process_cache_clear_time[object_id.object_type]
+        except KeyError:
+            last_clear_time = None
+        if last_clear_time is None:
+            last_clear_time = clear_time
+        if last_clear_time != clear_time:
+            clear(object_id=object_id, cache_type=PROCESS_CACHE, update_clear_time=False)
+            last_process_cache_clear_time[object_id.object_type] = clear_time
         try:
             cache_entry = process_cache[read_oid]
             _cache_type = PROCESS_CACHE
             cache_name = "memory"
         except:
-            cache_entry = None
-        # For modified objects from process cache we do
-        # not need any further checking.
-        try:
-            _instance = cache_entry['INSTANCE']
-        except:
-            _instance = None
-        #if _instance and _instance._modified:
-        if _instance:
-            return _instance
-        else:
             cache_entry = None
 
     # Try to get multiprocessing cache entry.
@@ -434,17 +477,31 @@ def get_instance(object_id, cache_type=None):
         except:
             cache_entry = None
 
-    # Get checksums of cached object.
-    try:
-        cached_checksum = cache_entry['CHECKSUM']
-    except:
-        return None
+    if not cache_entry:
+        return
 
-    # Remove outdated cache entry.
+    check_checksum = True
+    try:
+        last_checksum_test_time = last_checksum_test[object_id]
+    except KeyError:
+        pass
+    else:
+        now = time.time()
+        check_age = now - last_checksum_test_time
+        if check_age <= 10:
+            check_checksum = False
+
     object_outdated = False
-    object_checksum = backend.get_checksum(object_id)
-    if cached_checksum != object_checksum:
-        object_outdated = True
+    if check_checksum:
+        # Get checksums of cached object.
+        try:
+            cached_checksum = cache_entry['CHECKSUM']
+        except:
+            return None
+        last_checksum_test[object_id] = time.time()
+        object_checksum = backend.get_checksum(object_id)
+        if cached_checksum != object_checksum:
+            object_outdated = True
 
     if object_outdated:
         if _cache_type == PROCESS_CACHE:
@@ -452,7 +509,6 @@ def get_instance(object_id, cache_type=None):
                 process_cache.pop(read_oid)
             except:
                 pass
-
         if _cache_type == MULTIPROCESSING_CACHE:
             try:
                 multiprocessing.instance_cache.pop(read_oid)
@@ -510,7 +566,7 @@ def dump_instance_cache(object_id=None, search_regex=None):
             if add_object:
                 object_ids.append(o)
 
-    pickle_handler = PickleHandler("auto", encode=False)
+    pickle_handler = PickleHandler("auto")
 
     data = {}
     for o in object_ids:
@@ -714,16 +770,34 @@ def flush(commit=True, callback=default_callback, quiet=True):
             logger.debug(log_msg)
         x.invalidate()
 
-def clear(object_id=None, cache_type=None,
+def clear(object_id=None, cache_type=None, keep_func_caches=False,
     keep_modified=True, update_clear_time=True, quiet=True):
     """ Clear caches. """
     from otpme.lib import oid
     from otpme.lib import config
-    global last_process_cache_clear_time
+    global caches
     logger = config.logger
     if not quiet:
         log_msg = _("Clearing caches...", log=True)[1]
         logger.debug(log_msg)
+
+    # Flush caches.
+    object_type = None
+    if object_id:
+        object_type = object_id.object_type
+    if not keep_func_caches:
+        for x in caches:
+            if object_type:
+                if not x.clear_on_object_types:
+                    continue
+                if object_type not in x.clear_on_object_types:
+                    continue
+            if config.debug_level() > 5:
+                log_msg = _("Flushing cache: {x_name}", log=True)[1]
+                log_msg = log_msg.format(x_name=x.name)
+                logger.debug(log_msg)
+            x.invalidate()
+
     clear_cache_types = [
                         MULTIPROCESSING_CACHE,
                         PROCESS_CACHE,
@@ -735,8 +809,12 @@ def clear(object_id=None, cache_type=None,
     if PROCESS_CACHE in clear_cache_types:
         if update_clear_time:
             clear_time = time.time()
-            last_process_cache_clear_time = clear_time
-            set_cache_clear_time(clear_time)
+            if object_type is None:
+                object_types = config.object_types
+            else:
+                object_types = [object_type]
+            for x_type in object_types:
+                set_cache_clear_time(x_type, clear_time)
 
     if object_id is None:
         if ACL_CACHE in clear_cache_types:

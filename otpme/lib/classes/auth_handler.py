@@ -20,22 +20,32 @@ from otpme.lib import backend
 from otpme.lib import otpme_pass
 from otpme.lib.encryption.ec import ECKey
 from otpme.lib.encoding.base import decode
-from otpme.lib.audit import get_audit_logger
 from otpme.lib.classes.session import Session
 from otpme.lib.daemon.scriptd import run_script
 
 from otpme.lib.exceptions import *
 
+user_blocked_cache = {}
+
+_site_key_cache = {"uuid": None, "key": None}
+
+def preload_site_key():
+    """ Load site RSA key into module cache (call from authd parent before fork). """
+    if _site_key_cache["uuid"] == config.site_uuid and _site_key_cache["key"] is not None:
+        return _site_key_cache["key"]
+    my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    _site_key_cache["key"] = my_site._key
+    _site_key_cache["uuid"] = config.site_uuid
+    return _site_key_cache["key"]
+
 class AuthHandler(object):
     """ Authenticate user, do session creation etc. """
     def __init__(self):
-        # Load JWT signing key.
+        # Load JWT signing key (cached per process).
         try:
             self.site_key
-        except:
-            my_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-            self.site_key = my_site._key
+        except AttributeError:
+            self.site_key = preload_site_key()
 
         self.logger = config.logger
 
@@ -229,7 +239,7 @@ class AuthHandler(object):
 
         # If user of this request is not the token owner, authentication must
         # fail. Token().owner_uuid should reference back to UUID of user.
-        if self.auth_token.owner_uuid != self.user.uuid:
+        if self.auth_token.uuid not in self.user.tokens:
             # We found a token which is in list of user tokens but its
             # owner_uuid does not match uuid of this user. This should
             # normally not happen and is probably a configuration error.
@@ -489,12 +499,6 @@ class AuthHandler(object):
                                         uuid=session_uuid)
             if not session:
                 continue
-            # Outdate expired session.
-            try:
-                if not session.exists(outdate=True):
-                    continue
-            except LockWaitAbort:
-                continue
             realm_session_ids.append(session_id)
             # Add realm session childs to list.
             realm_sessions_childs += session.child_sessions
@@ -532,7 +536,7 @@ class AuthHandler(object):
                 session_master_childs += session.child_sessions
 
         # Get sessions for this user/accessgroup.
-        if self.auth_group.uuid != realm_access_group_uuid:
+        if self.verify_sessions and self.auth_group.uuid != realm_access_group_uuid:
             group_session_ids = backend.get_sessions(user=self.user.uuid,
                                             access_group=self.auth_group.uuid,
                                             return_attributes=return_attributes)
@@ -655,13 +659,6 @@ class AuthHandler(object):
             if self.access_group != config.realm_access_group:
                 kwargs['auth_ag'] = self.access_group
 
-            # Outdate expired session.
-            try:
-                if not session.exists(outdate=True):
-                    continue
-            except LockWaitAbort:
-                continue
-
             # Try to verify session.
             if self.verify_session(session, **kwargs) is not None:
                 self.verify_session_token(session)
@@ -684,13 +681,6 @@ class AuthHandler(object):
                                         uuid=session_uuid)
             if not session:
                 continue
-            # Outdate sessions.
-            try:
-                if not session.exists(outdate=True):
-                    continue
-            except LockWaitAbort:
-                continue
-            # Try to verify session.
             verify_response = session.verify(password=slp,
                                         check_auth=False,
                                         check_srp=False,
@@ -786,27 +776,6 @@ class AuthHandler(object):
             # Get host.
             self.auth_host = result[0]
             self.access_group = config.realm_access_group
-
-            # Check host policies.
-            if self.check_policies:
-                try:
-                    self.auth_host.run_policies("authenticate")
-                except PolicyException as e:
-                    log_msg = str(e)
-                    self.logger.warning(log_msg)
-                    self.auth_failed = True
-                    self.count_fails = False
-                    self.auth_message = "AUTH_DENIED_BY_POLICY"
-                    return
-                except Exception as e:
-                    config.raise_exception()
-                    log_msg = _("Internal server error", log=True)[1]
-                    log_msg = f"{log_msg}: {e}"
-                    self.logger.critical(log_msg)
-                    self.auth_failed = True
-                    self.count_fails = False
-                    self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
-                    return
             # Nothing more to do for host requests.
             return
 
@@ -821,9 +790,10 @@ class AuthHandler(object):
                                         value=self.client_ip,
                                         realm=config.realm,
                                         site=config.site,
-                                        return_type="name")
+                                        return_type="instance")
             if client_result:
-                self.client = client_result[0]
+                self.auth_client = client_result[0]
+                self.client = self.auth_client.name
 
         if not self.client:
             self.auth_failed = True
@@ -831,7 +801,8 @@ class AuthHandler(object):
             return
 
         # Create client instance for the client of this request.
-        self.auth_client = backend.get_object(object_type="client",
+        if not self.auth_client:
+            self.auth_client = backend.get_object(object_type="client",
                                                 realm=config.realm,
                                                 site=config.site,
                                                 name=self.client,
@@ -867,27 +838,6 @@ class AuthHandler(object):
                 self.logger.debug(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_CLIENT_NO_ACCESSGROUP"
-                return
-
-        # Check client policies.
-        if self.check_policies:
-            try:
-                self.auth_client.run_policies("authenticate")
-            except PolicyException as e:
-                log_msg = str(e)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.count_fails = False
-                self.auth_message = "AUTH_DENIED_BY_POLICY"
-                return
-            except Exception as e:
-                config.raise_exception()
-                log_msg = _("Internal server error", log=True)[1]
-                log_msg = f"{log_msg}: {e}"
-                self.logger.critical(log_msg)
-                self.auth_failed = True
-                self.count_fails = False
-                self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
                 return
 
     def check_accessgroup(self):
@@ -932,18 +882,22 @@ class AuthHandler(object):
             # to check for sessions created from access_group parents.
             if not self.auth_group.sessions_enabled:
                 self.create_sessions = False
-                log_msg = _("Session creation for accessgroup '{access_group}' is disabled. Verification of parent sessions will still be done.", log=True)[1]
-                log_msg = log_msg.format(access_group=self.access_group)
-                self.logger.debug(log_msg)
+                self.verify_sessions = False
 
     def check_user(self):
         """ Check user status. """
+        global user_blocked_cache
         # If auth is already failed no need to check user status.
         if self.auth_failed:
             return
+        # Make sure authentication with users site is not disabled.
+        self.user_site = backend.get_object(object_type="site",
+                                        uuid=self.user.site_uuid)
+        # Check user admin status.
+        self.user_is_admin = self.user.is_admin()
 
         # Make sure authentication with users realm is not disabled.
-        if not self.user.is_admin() \
+        if not self.user_is_admin \
         and not self.realm_logout \
         and not self.user.allow_disabled_login:
             user_realm = backend.get_object(object_type="realm",
@@ -957,12 +911,9 @@ class AuthHandler(object):
                 self.auth_message = "AUTH_REALM_DISABLED"
                 return
 
-            # Make sure authentication with users site is not disabled.
-            user_site = backend.get_object(object_type="site",
-                                    uuid=self.user.site_uuid)
-            if not user_site.auth_enabled:
+            if not self.user_site.auth_enabled:
                 log_msg = _("Authentication with site is disabled: {site_realm}/{site_name}", log=True)[1]
-                log_msg = log_msg.format(site_realm=user_site.realm, site_name=user_site.name)
+                log_msg = log_msg.format(site_realm=self.user_site.realm, site_name=self.user_site.name)
                 self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
@@ -970,7 +921,7 @@ class AuthHandler(object):
                 return
 
         # Make sure users unit is not disabled.
-        if not self.user.is_admin() \
+        if not self.user_is_admin \
         and not self.realm_logout \
         and not self.user.allow_disabled_login:
             users_unit = self.user.get_parent_object()
@@ -992,36 +943,34 @@ class AuthHandler(object):
             self.auth_message = "AUTH_USER_DISABLED"
             return
 
-        if self.user.is_blocked(self.access_group,
-                                realm=config.realm,
-                                site=config.site):
+        # Use user blocked cache.
+        now = time.time()
+        try:
+            blocked_data = user_blocked_cache[self.user.name]
+        except KeyError:
+            user_is_blocked = None
+        else:
+            cache_time = blocked_data['time']
+            cache_age = now - cache_time
+            if cache_age > 5:
+                user_is_blocked = None
+            else:
+                user_is_blocked = blocked_data['blocked']
+        if user_is_blocked is None:
+            user_is_blocked = self.user.is_blocked(self.access_group,
+                                                realm=config.realm,
+                                                site=config.site)
+            user_blocked_cache[self.user.name] = {}
+            user_blocked_cache[self.user.name]['time'] = now
+            user_blocked_cache[self.user.name]['blocked'] = user_is_blocked
+
+        if user_is_blocked:
             log_msg = _("User '{user_name}' is blocked for accessgroup '{access_group}'", log=True)[1]
             log_msg = log_msg.format(user_name=self.user.name, access_group=self.access_group)
             self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_USER_BLOCKED"
             self.count_fails = False
-
-        # Check user policies.
-        if self.check_policies:
-            try:
-                self.user.run_policies("authenticate")
-            except PolicyException as e:
-                log_msg = str(e)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.count_fails = False
-                self.auth_message = "AUTH_DENIED_BY_POLICY"
-                return
-            except Exception as e:
-                config.raise_exception()
-                log_msg = _("Internal server error", log=True)[1]
-                log_msg = f"{log_msg}: {e}"
-                self.logger.critical(log_msg)
-                self.auth_failed = True
-                self.count_fails = False
-                self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
-                return
 
     def get_user_tokens(self):
         """ Select user tokens based on request parameters. """
@@ -1044,15 +993,6 @@ class AuthHandler(object):
             log_msg = _("Verifying token from request: {token_path}", log=True)[1]
             log_msg = log_msg.format(token_path=token.rel_path)
             self.logger.debug(log_msg)
-            if not self.auth_group.is_assigned_token(token.uuid):
-                log_msg = _("Token '{token_path}' is not in accessgroup '{access_group}'. Authentication will fail.", log=True)[1]
-                log_msg = log_msg.format(token_path=token.rel_path, access_group=self.access_group)
-                self.logger.warning(log_msg)
-                # If the given token is not in the given accessgroup auth must
-                # fail.
-                self.auth_failed = True
-                self.auth_message = "AUTH_TOKEN_NOT_IN_GROUP"
-                return
 
             # Make sure we resolve token links.
             if token.destination_token:
@@ -1091,31 +1031,72 @@ class AuthHandler(object):
             log_msg = log_msg.format(access_group=self.access_group)
             self.logger.debug(log_msg)
 
-            select_otp_tokens = True
-            select_ssh_tokens = True
-            select_static_tokens = True
-            select_smartcard_tokens = True
-
             # Make sure we honor self.require_pass_types when selecting tokens.
+            select_tokens = ['otp', 'ssh', 'static', 'smartcard', 'dot1x']
             if self.auth_mode == "static" or self.auth_mode == "auto":
                 if self.require_pass_types \
                 and "static" not in self.require_pass_types:
-                    select_static_tokens = False
+                    try:
+                        select_tokens.remove('static')
+                    except ValueError:
+                        pass
 
             if self.auth_mode == "otp" or self.auth_mode == "auto":
                 if self.require_pass_types \
                 and "otp" not in self.require_pass_types:
-                    select_otp_tokens = False
+                    try:
+                        select_tokens.remove('otp')
+                    except ValueError:
+                        pass
 
             if self.auth_type == "ssh":
                 if self.require_pass_types \
                 and "ssh_key" not in self.require_pass_types:
-                    select_ssh_tokens = False
+                    try:
+                        select_tokens.remove('ssh')
+                    except ValueError:
+                        pass
+            else:
+                try:
+                    select_tokens.remove('ssh')
+                except ValueError:
+                    pass
 
             if self.auth_type == "smartcard":
                 if self.require_pass_types \
                 and "smartcard" not in self.require_pass_types:
-                    select_smartcard_tokens = False
+                    try:
+                        select_tokens.remove('smartcard')
+                    except ValueError:
+                        pass
+            else:
+                try:
+                    select_tokens.remove('smartcard')
+                except ValueError:
+                    pass
+
+            if self.auth_client and self.auth_client.dot1x_auth:
+                try:
+                    select_tokens.remove('otp')
+                except ValueError:
+                    pass
+                try:
+                    select_tokens.remove('ssh')
+                except ValueError:
+                    pass
+                try:
+                    select_tokens.remove('static')
+                except ValueError:
+                    pass
+                try:
+                    select_tokens.remove('smartcard')
+                except ValueError:
+                    pass
+            else:
+                try:
+                    select_tokens.remove('dot1x')
+                except ValueError:
+                    pass
 
             valid_ags = [self.auth_group]
             master_group = self.auth_group.get_master_group()
@@ -1123,97 +1104,42 @@ class AuthHandler(object):
                 if master_group.name != config.sso_access_group:
                     valid_ags += self.auth_group.parents(recursive=True,
                                                         return_type="instance")
+            # Get 802.1x tokens?
+            dot1x_tokens = False
+            if "dot1x" in select_tokens:
+                dot1x_tokens = True
 
             for ag in valid_ags:
-                # Select user tokens by pass type and self.require_token_types if
-                # given.
-                if select_static_tokens:
-                    self.valid_user_tokens_static += self.user.get_tokens(
-                                                    pass_type="static",
-                                                    token_types=self.require_token_types,
-                                                    access_group=ag,
-                                                    host=self.auth_host,
-                                                    client=self.auth_client,
-                                                    return_type="instance", quiet=False)
-                    self.valid_user_tokens_script_static += self.user.get_tokens(
-                                                    pass_type="script_static",
-                                                    access_group=ag,
-                                                    token_types=self.require_token_types,
-                                                    host=self.auth_host,
-                                                    client=self.auth_client,
-                                                    return_type="instance", quiet=False)
-
-                if select_otp_tokens:
-                    self.valid_user_tokens_otp += self.user.get_tokens(
-                                                    pass_type="otp",
-                                                    access_group=ag,
-                                                    token_types=self.require_token_types,
-                                                    host=self.auth_host,
-                                                    client=self.auth_client,
-                                                    return_type="instance", quiet=False)
-                    self.valid_user_tokens_script_otp += self.user.get_tokens(
-                                                    pass_type="script_otp",
-                                                    access_group=ag,
-                                                    token_types=self.require_token_types,
-                                                    host=self.auth_host,
-                                                    client=self.auth_client,
-                                                    return_type="instance", quiet=False)
-                    self.valid_user_tokens_otp_push += self.user.get_tokens(
-                                                    pass_type="otp_push",
-                                                    access_group=ag,
-                                                    token_types=self.require_token_types,
-                                                    host=self.auth_host,
-                                                    client=self.auth_client,
-                                                    return_type="instance", quiet=False)
-
-                if select_ssh_tokens:
-                    self.valid_user_tokens_ssh += self.user.get_tokens(
-                                                pass_type="ssh_key",
+                # Select user tokens by pass type and self.require_token_types if given.
+                ag_tokens = self.user.get_tokens(support_dot1x=dot1x_tokens,
                                                 access_group=ag,
-                                                token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
-                                                return_type="instance", quiet=False)
-
-                if select_smartcard_tokens:
-                    self.valid_user_tokens_smartcard += self.user.get_tokens(
-                                                    pass_type="smartcard",
-                                                    token_types=self.require_token_types,
-                                                    access_group=ag,
-                                                    host=self.auth_host,
-                                                    client=self.auth_client,
-                                                    return_type="instance", quiet=False)
-
-        if not self.user_default_token:
-            for token in list(self.valid_user_tokens_static):
-                if token.uuid == self.user.default_token:
-                    self.user_default_token = token
-                    self.valid_user_tokens_static.remove(token)
-        if not self.user_default_token:
-            for token in list(self.valid_user_tokens_otp):
-                if token.uuid == self.user.default_token:
-                    self.user_default_token = token
-                    self.valid_user_tokens_otp.remove(token)
-        if not self.user_default_token:
-            for token in list(self.valid_user_tokens_script_static):
-                if token.uuid == self.user.default_token:
-                    self.user_default_token = token
-                    self.valid_user_tokens_script_static.remove(token)
-        if not self.user_default_token:
-            for token in list(self.valid_user_tokens_script_otp):
-                if token.uuid == self.user.default_token:
-                    self.user_default_token = token
-                    self.valid_user_tokens_script_otp.remove(token)
-        if not self.user_default_token:
-            for token in list(self.valid_user_tokens_otp_push):
-                if token.uuid == self.user.default_token:
-                    self.user_default_token = token
-                    self.valid_user_tokens_otp_push.remove(token)
-        if not self.user_default_token:
-            for token in list(self.valid_user_tokens_ssh):
-                if token.uuid == self.user.default_token:
-                    self.user_default_token = token
-                    self.valid_user_tokens_ssh.remove(token)
+                                                return_type="instance",
+                                                quiet=False)
+                for token in ag_tokens:
+                    if not self.user_default_token:
+                        if token.uuid == self.user.default_token:
+                            self.user_default_token = token
+                            continue
+                    if dot1x_tokens:
+                        if token.support_dot1x:
+                            self.valid_user_tokens_dot1x.append(token)
+                    if self.require_token_types:
+                        if token.token_types not in self.require_token_types:
+                            continue
+                    if token.pass_type not in select_tokens:
+                        continue
+                    if token.pass_type == "static" or token.pass_type == "script_static":
+                        self.valid_user_tokens_static.append(token)
+                    if token.pass_type == "otp" \
+                    or token.pass_type == "script_otp" \
+                    or token.pass_type == "otp_push":
+                        self.valid_user_tokens_otp.append(token)
+                    if token.pass_type == "ssh_key":
+                        self.valid_user_tokens_ssh.append(token)
+                    if token.pass_type == "smartcard":
+                        self.valid_user_tokens_smartcard.append(token)
 
         # If no token was found log it and set authentication failed.
         if not self.valid_user_tokens_static \
@@ -1222,6 +1148,7 @@ class AuthHandler(object):
         and not self.valid_user_tokens_script_otp \
         and not self.valid_user_tokens_otp_push \
         and not self.valid_user_tokens_smartcard \
+        and not self.valid_user_tokens_dot1x \
         and not self.valid_user_tokens_ssh \
         and not self.user_default_token:
             log_msg = _("Unable to find a token to verify this request.", log=True)[1]
@@ -1480,8 +1407,6 @@ class AuthHandler(object):
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
                 otp_sent = False
-            # Reset failed login counter for this user/group.
-            self.reset_user_fail_counter()
             if otp_sent:
                 self.auth_message = "AUTH_OTP_PUSH"
                 # Authentication with otp_push tokens always fails but if
@@ -1730,9 +1655,7 @@ class AuthHandler(object):
     def verify_jwt(self):
         """ Verify received JWT. """
         # Get users site public key to verify the JWT.
-        user_site = backend.get_object(object_type="site",
-                                    uuid=self.user.site_uuid)
-        site_jwt_key = user_site._cert_public_key
+        site_jwt_key = self.user_site._cert_public_key
 
         # The JWT reason we need to check.
         if self.jwt_reason:
@@ -1921,12 +1844,12 @@ class AuthHandler(object):
             self.auth_message = "AUTH_JWT_UNKNOWN_TOKEN"
             return
 
-        if self.auth_token.realm != user_site.realm:
+        if self.auth_token.realm != self.user_site.realm:
             self.auth_failed = True
             self.auth_message = "AUTH_JWT_INVALID_TOKEN_REALM"
             return
 
-        if self.auth_token.site != user_site.name:
+        if self.auth_token.site != self.user_site.name:
             self.auth_failed = True
             self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
             return
@@ -1990,82 +1913,95 @@ class AuthHandler(object):
 
     def check_max_sessions(self):
         """ Check for max_sessions. """
-        # Get sessions of the user.
-        user_sessions = backend.get_sessions(user=self.user.uuid,
-                                access_group=self.auth_group.uuid)
-        # Walk through session list.
-        session_list = []
-        for session_uuid in user_sessions:
-            # Get session instance for already existing session.
-            session_x = backend.get_object(object_type="session",
-                                            uuid=session_uuid)
-            if not session_x:
-                continue
-            # Outdate sessions.
-            try:
-                if not session_x.exists(outdate=True):
-                    continue
-            except LockWaitAbort:
-                continue
-            if session_x.auth_token != self.auth_token.uuid:
-                continue
-            session_list.append(session_x)
-
-        # List that will hold all user session instances.
-        # Check if we would (+1) reach max_sessions when adding this session.
-        if (len(session_list) + 1) <= self.auth_group.max_sessions:
+        # Fetch all matching sessions together with their last_used timestamp
+        # in a single SQL query. Filtering by token at the backend avoids
+        # returning sessions that belong to other tokens. Outdating expired
+        # sessions is handled asynchronously by authd, so we only need the
+        # UUIDs and last_used timestamps here.
+        # Request 'uuid' together with 'last_used' so the backend returns
+        # a {uuid: {attr: value}} dict; passing 'last_used' alone would
+        # trigger the single-attribute shortcut and return a flat list.
+        session_data = backend.get_sessions(user=self.user.uuid,
+                                access_group=self.auth_group.uuid,
+                                token=self.auth_token.uuid,
+                                return_attributes=['uuid', 'last_used'])
+        # Fast path: below the limit, nothing to do.
+        if (len(session_data) + 1) <= self.auth_group.max_sessions:
             return
 
-        user_sessions = {}
         log_msg = _("Max sessions reached for this accessgroup: {max_sessions}", log=True)[1]
         log_msg = log_msg.format(max_sessions=self.auth_group.max_sessions)
         self.logger.debug(log_msg)
-        # If relogin timeout is set check if there is a session we can
-        # replace.
-        if (len(session_list) + 1) >= self.auth_group.max_sessions:
-            if self.auth_group.relogin_timeout > 0:
-                log_msg = _("Checking for sessions older than relogin timeout: {relogin_timeout}", log=True)[1]
-                log_msg = log_msg.format(relogin_timeout=self.auth_group.relogin_timeout)
-                self.logger.debug(log_msg)
-                # Walk through session list.
-                for session_x in session_list:
-                    # Add sessions to dict with a dict key that starts
-                    # with last used timestamp.
-                    dict_key = f"{session_x.last_used} {session_x.session_id}"
-                    dict_entry = { dict_key : session_x }
-                    user_sessions.update(dict_entry)
 
-                found_obsolete_session = False
-                # Walk through user sessions list reverse sorted by last
-                # used timestamp.
-                for dict_key in sorted(user_sessions, reverse=False):
-                    session_x = user_sessions[dict_key]
-                    if not session_x.last_used:
-                        continue
-                    session_age = time.time() - session_x.last_used
-                    if session_age < self.auth_group.relogin_timeout:
-                        continue
-                    log_msg = _("Deleting session '{session_name}' based on max_sessions/relogin_timeout configured for this group.", log=True)[1]
-                    log_msg = log_msg.format(session_name=session_x.name)
-                    self.logger.debug(log_msg)
-                    session_x.delete(force=True, recursive=True,
-                                    verify_acls=False)
-                    session_list.remove(session_x)
-                    found_obsolete_session = True
-                    break
-                if not found_obsolete_session:
-                    if (len(session_list) + 1) >= self.auth_group.max_sessions:
-                        log_msg = _("Max sessions reached for this accessgroup and no outdated session found.", log=True)[1]
-                        self.logger.debug(log_msg)
-            else:
-                log_msg = _("Max sessions reached for this accessgroup and no relogin allowed.", log=True)[1]
-                self.logger.debug(log_msg)
-                self.auth_failed = True
-
-        if self.auth_failed:
-            # If relogin is disabled or we havent found a obsolete
-            # session auth has failed.
+        # If relogin_timeout is not set, we cannot free a slot.
+        if self.auth_group.relogin_timeout <= 0:
+            log_msg = _("Max sessions reached for this accessgroup and no relogin allowed.", log=True)[1]
+            self.logger.debug(log_msg)
+            self.auth_failed = True
             self.auth_message = "AUTH_FAILED_MAX_SESSIONS"
+            self.count_fails = False
+            return
+
+        log_msg = _("Checking for sessions older than relogin timeout: {relogin_timeout}", log=True)[1]
+        log_msg = log_msg.format(relogin_timeout=self.auth_group.relogin_timeout)
+        self.logger.debug(log_msg)
+
+        # Sort sessions by last_used ascending (oldest first); UUID is used as
+        # a deterministic tie-breaker.
+        sorted_sessions = sorted(
+            session_data.items(),
+            key=lambda item: (item[1].get('last_used') or 0, item[0]),
+        )
+
+        now = time.time()
+        deleted_count = 0
+        need_to_free = len(session_data) + 1 - self.auth_group.max_sessions
+        for session_uuid, attrs in sorted_sessions:
+            if deleted_count >= need_to_free:
+                break
+            # Load the session and verify its backing file is still present.
+            # Bypass the object cache so a previously cached instance doesn't
+            # mask a missing config file.
+            session_x = backend.get_object(object_type="session",
+                                            uuid=session_uuid,
+                                            use_cache=False)
+            if session_x and not backend.object_exists(session_x.oid):
+                session_x = None
+            if not session_x:
+                # Stale index entry: index row present but config file gone.
+                # Clean up the orphan so we don't keep tripping over it, and
+                # count the slot as freed.
+                try:
+                    session_oid = backend.get_oid(session_uuid, instance=True)
+                    if session_oid:
+                        backend.delete_object(session_oid)
+                except Exception as e:
+                    log_msg = _("Failed to clean up stale session index entry {session_uuid}: {error}", log=True)[1]
+                    log_msg = log_msg.format(session_uuid=session_uuid, error=e)
+                    self.logger.warning(log_msg)
+                deleted_count += 1
+                continue
+            # Derive session age: prefer last_used from the index, fall back
+            # to creation_time for sessions that have never been updated.
+            ref_time = attrs.get('last_used') or session_x.creation_time
+            session_age = (now - ref_time) if ref_time else float('inf')
+            # Sessions are sorted oldest-first; once we hit one that's still
+            # within the relogin timeout, all remaining ones are younger.
+            if session_age < self.auth_group.relogin_timeout:
+                break
+            log_msg = _("Deleting session '{session_name}' based on max_sessions/relogin_timeout configured for this group.", log=True)[1]
+            log_msg = log_msg.format(session_name=session_x.name)
+            self.logger.debug(log_msg)
+            session_x.delete(force=True, recursive=True,
+                            verify_acls=False)
+            deleted_count += 1
+
+        if (len(session_data) - deleted_count + 1) > self.auth_group.max_sessions:
+            log_msg = _("Max sessions reached for this accessgroup and no outdated session found.", log=True)[1]
+            self.logger.debug(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_FAILED_MAX_SESSIONS"
+            self.count_fails = False
 
     def create_user_sessions(self):
         """ Create sessions. """
@@ -2268,6 +2204,7 @@ class AuthHandler(object):
 
         # Set request variables.
         self.user = user
+        self.user_is_admin = False
         self.password = string_vars['password']
         self.user_token = string_vars['user_token']
         self.peer = peer
@@ -2316,6 +2253,11 @@ class AuthHandler(object):
                 self.log_auth_data = True
             else:
                 self.log_auth_data = False
+
+        # Hold DB session through auth requests.
+        if not config.session:
+            _index = config.get_index_module()
+            config.session = _index.get_db_connection()
 
         # Will be set to True if authentication was successful.
         self.auth_status = False
@@ -2370,6 +2312,9 @@ class AuthHandler(object):
         # Will hold a list of user smartcard tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_smartcard = []
+        # Will hold a list of user dot1x tokens that could be used to
+        # authenticate this request.
+        self.valid_user_tokens_dot1x = []
         # Will to hold realm session password.
         self.rsp = None
         # Indicates that the password is a SOTP.
@@ -2409,13 +2354,7 @@ class AuthHandler(object):
         # Allow reuse of SOTPs.
         self.allow_sotp_reuse = allow_sotp_reuse
         # Get audit logger.
-        try:
-            self.audit_logger = get_audit_logger()
-        except Exception as e:
-            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.warning(log_msg)
-            self.audit_logger = None
+        self.audit_logger = config.audit_logger
 
         if rsp_hash_type:
             if rsp_hash_type not in self.rsp_hash_types:
@@ -2458,9 +2397,11 @@ class AuthHandler(object):
 
         # Check if we got a valid client/host.
         self.get_client()
+
         # Check user status.
         if self.user.type == "user":
             self.check_user()
+
         # Handle accessgroup.
         self.check_accessgroup()
 
@@ -2552,19 +2493,6 @@ class AuthHandler(object):
             self.auth_message = "AUTH_INVALID_AUTH_MODE"
             self.auth_failed = True
 
-        # Make sure authentication of our site is not disabled.
-        if not self.auth_failed:
-            if self.user.type == "user" and not self.user.is_admin() and not self.realm_logout:
-                my_site = backend.get_object(object_type="site",
-                                            uuid=config.site_uuid)
-                if not my_site.auth_enabled:
-                    log_msg = _("Authentication disabled for this site: {site_realm}/{site_name}", log=True)[1]
-                    log_msg = log_msg.format(site_realm=my_site.realm, site_name=my_site.name)
-                    self.logger.debug(log_msg)
-                    self.auth_failed = True
-                    self.count_fails = False
-                    self.auth_message = "AUTH_DISABLED"
-
         # FIXME: do we need a better solution for this? do we want to allow sessions in REALM accessgroup other client types than hosts/nodes??
         # Do not create sessions for REALM group if this is not a realm_login
         # requests. This is needed to allow e.g. unlocking of a KDE session
@@ -2587,7 +2515,7 @@ class AuthHandler(object):
                             self.check_used()
 
         # Try to verify request against existing session if enabled.
-        if not self.auth_failed and self.verify_sessions:
+        if not self.auth_failed:
             # Verify sessions.
             self.verify_user_sessions()
 
@@ -2595,9 +2523,7 @@ class AuthHandler(object):
         # check for user from other site.
         if not self.auth_status and not self.auth_failed and not self.jwt_auth:
             if self.user.site_uuid != config.site_uuid and not self.session_reneg:
-                user_site = backend.get_object(object_type="site",
-                                            uuid=self.user.site_uuid)
-                if config.site_uuid not in user_site.trusted_sites:
+                if config.site_uuid not in self.user_site.trusted_sites:
                     # If we do not have users secrets/tokens auth must fail.
                     self.auth_failed = True
                     self.auth_message = "AUTH_FAILED_WRONG_SITE_AUTH"
@@ -2615,32 +2541,33 @@ class AuthHandler(object):
                 if self.user.type == "user":
                     # Get user tokens that are valid for this request.
                     self.get_user_tokens()
-
         # Handle JWT (cross-site) authentication.
         if self.auth_type == "jwt":
             # No need to count failed logins for JWT requests.
             self.count_fails = False
             self.verify_jwt()
 
-        if self.user.type == "user":
-            if self.client_offline_enc_type:
-                # Generate key used to encrypt used OTPs/token counters
-                # on client side when doing offline logins. This key is
-                # also added to the server session and used by syncd to
-                # en-/decrypt objects when syncing with client hosts.
-                try:
-                    enc_mod = config.get_encryption_module(self.client_offline_enc_type)
-                except Exception as e:
-                    msg = _("Unable to load offline encryption: {error}")
-                    msg = msg.format(error=e)
-                    raise OTPmeException(msg)
-                try:
-                    self.offline_data_key = enc_mod.gen_key()
-                except Exception as e:
-                    msg = _("Failed to generate offline encryption key: {error}")
-                    msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+        if self.realm_login:
+            if self.user.type == "user":
+                if self.client_offline_enc_type:
+                    # Generate key used to encrypt used OTPs/token counters
+                    # on client side when doing offline logins. This key is
+                    # also added to the server session and used by syncd to
+                    # en-/decrypt objects when syncing with client hosts.
+                    try:
+                        enc_mod = config.get_encryption_module(self.client_offline_enc_type)
+                    except Exception as e:
+                        msg = _("Unable to load offline encryption: {error}")
+                        msg = msg.format(error=e)
+                        raise OTPmeException(msg)
+                    try:
+                        self.offline_data_key = enc_mod.gen_key()
+                    except Exception as e:
+                        msg = _("Failed to generate offline encryption key: {error}")
+                        msg = msg.format(error=e)
+                        raise OTPmeException(msg)
 
+        # Verify hosts/devices.
         if not self.auth_failed and self.auth_status is False:
             if self.user.type != "user":
                 self.count_fails = False
@@ -2723,6 +2650,13 @@ class AuthHandler(object):
                 log_msg = _("Verifying smartcard tokens...", log=True)[1]
                 self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_smartcard)
+
+        # Verify smartcard tokens.
+        if not self.auth_failed and self.auth_status is False:
+            if self.valid_user_tokens_dot1x:
+                log_msg = _("Verifying dot1x tokens...", log=True)[1]
+                self.logger.debug(log_msg)
+                self.verify_user_tokens(tokens=self.valid_user_tokens_dot1x)
 
         # Verify script_static tokens.
         if not self.auth_failed and self.auth_status is False:
@@ -3072,8 +3006,6 @@ class AuthHandler(object):
             if self.audit_logger:
                 audit_msg = f"{config.daemon_name}: {ok_message}"
                 self.audit_logger.info(audit_msg)
-                for x in self.audit_logger.handlers:
-                    x.close()
 
             # Finally return.
             return auth_response
@@ -3093,8 +3025,6 @@ class AuthHandler(object):
             if self.audit_logger:
                 audit_msg = f"{config.daemon_name}: {logout_message}"
                 self.audit_logger.info(audit_msg)
-                for x in self.audit_logger.handlers:
-                    x.close()
 
             # Logout response.
             auth_response = {
@@ -3167,8 +3097,6 @@ class AuthHandler(object):
                 self.audit_logger.info(audit_msg)
             else:
                 self.audit_logger.warning(audit_msg)
-            for x in self.audit_logger.handlers:
-                x.close()
 
         # Authentication failed!!
         auth_response = {

@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import pwd
-import grp
 import stat
 import time
 import fcntl
@@ -41,24 +39,6 @@ def register():
     """ Register stuff. """
     from otpme.lib.locking import register_lock_type
     register_lock_type(FILE_LOCK_TYPE, module=__file__)
-
-def check_user(user):
-    """ Check if system user exists """
-    from otpme.lib import stuff
-    if isinstance(user, str):
-        try:
-            stuff.user_exists(user)
-        except Exception as e:
-            raise Exception(str(e))
-
-def check_group(group):
-    """ Check if system group exists """
-    from otpme.lib import stuff
-    if isinstance(group, str):
-        try:
-            stuff.group_exists(group)
-        except Exception as e:
-            raise Exception(str(e))
 
 class AtomicFile(object):
     def __init__(self, path, user=None, group=None,
@@ -178,24 +158,24 @@ class AtomicFileLock(object):
         return fd
 
     def check_inode(self):
-        """ Make sure our FD was not deleted. """
+        """ Make sure our FD was not deleted.
+
+        We only need to know whether the file backing our FD still has a
+        directory entry somewhere. ``fstat`` returns ``st_nlink`` which is 0
+        when the file has been unlinked while we keep it open, so a single
+        syscall is sufficient and replaces the previous fstat+stat pair.
+        """
         if not self.fd:
             return False
         try:
-            fd_inode = os.fstat(self.fd.fileno())[1]
+            st = os.fstat(self.fd.fileno())
         except Exception as e:
             if not self.fd.closed:
                 msg = _("Failed to get inode: {fd}: {error}")
                 msg = msg.format(fd=self.fd, error=e)
                 raise OTPmeException(msg)
             return False
-        try:
-            x_inode = os.stat(self.path)[1]
-        except FileNotFoundError:
-            return False
-        if x_inode == fd_inode:
-            return True
-        return False
+        return st.st_nlink > 0
 
     def ensure_fd(self):
         """ Make sure FD is not outdated (e.g. deleted). """
@@ -346,10 +326,6 @@ def create_dir(path, user=None, group=True,
         user = config.user
         group = config.group
 
-    # Make sure user/goup exists.
-    check_user(user)
-    check_group(group)
-
     if os.path.exists(path):
         return
 
@@ -428,10 +404,6 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
 
     if content is None:
         content = ""
-
-    # Make sure user/goup exists.
-    check_user(user)
-    check_group(group)
 
     if compression:
         write_mode = "wb"
@@ -557,29 +529,28 @@ def set_fs_ownership(path, user, group=None, recursive=False):
         # If group is False we do not touch group ownership.
         # If group is set we set gid to the gid of the given group.
         if group is True:
-            gid = pwd.getpwnam(user).pw_gid
+            gid = stuff.cached_getpwnam(user).pw_gid
         elif not group:
             gid = -1
         else:
-            gid = grp.getgrnam(group).gr_gid
+            gid = stuff.cached_getgrnam(group).gr_gid
         return gid
-
-    # Make sure user/goup exists.
-    check_user(user)
-    check_group(group)
 
     # Get GID.
     gid = get_gid(group)
 
-    # Only root can change owner.
-    system_user = stuff.get_pid_user(os.getpid())
-    if system_user == "root":
+    # Only root can change ownership. Use os.geteuid() directly instead of
+    # routing through psutil: it's a single cheap syscall, reflects
+    # privilege-dropping (setuid) immediately, and avoids the ~4 /proc file
+    # opens psutil does per call.
+    euid = os.geteuid()
+    if euid == 0:
         change_owner = True
     else:
-        file_owner = pwd.getpwuid(os.stat(path).st_uid).pw_name
+        file_stat_uid = os.stat(path).st_uid
         # If the given file is not owned by the current system user we cannot
         # change ownership.
-        if file_owner != system_user:
+        if file_stat_uid != euid:
             return
         # If the current user is not member of the destination group we cannot
         # change ownership.
@@ -589,7 +560,7 @@ def set_fs_ownership(path, user, group=None, recursive=False):
 
     # Get UID.
     if change_owner:
-        uid = pwd.getpwnam(user).pw_uid
+        uid = stuff.cached_getpwnam(user).pw_uid
     else:
         uid = -1
 
@@ -689,10 +660,6 @@ def ensure_fs_permissions(directories=None, files=None,
         from otpme.lib import config
         user = config.user
         group = config.group
-
-    # Make sure user/goup exists.
-    check_user(user)
-    check_group(group)
 
     if directories:
         for d in directories:

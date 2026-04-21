@@ -1104,8 +1104,6 @@ class Unit(OTPmeObject):
             # Reset unit members to initiate re-check.
             unit_members = None
 
-        # Invalidate cache.
-        members_cache.invalidate()
         if keep_old_unit:
             return callback.ok()
 
@@ -1275,8 +1273,6 @@ class Unit(OTPmeObject):
                         callback=callback,
                         **kwargs)
 
-        # Invalidate cache.
-        members_cache.invalidate()
         return del_result
 
     @check_acls(['remove:orphans'])

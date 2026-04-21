@@ -4,7 +4,31 @@ import os
 #import re
 import sys
 import signal
+from functools import lru_cache
 from contextlib import contextmanager
+
+
+@lru_cache(maxsize=256)
+def cached_getpwnam(name):
+    """ Process-local cache around pwd.getpwnam. Avoids repeated nss lookups
+    when writing many files owned by the same user (common in the hot path
+    of session writes). """
+    import pwd
+    return pwd.getpwnam(name)
+
+
+@lru_cache(maxsize=256)
+def cached_getgrnam(name):
+    """ Process-local cache around grp.getgrnam. See cached_getpwnam. """
+    import grp
+    return grp.getgrnam(name)
+
+
+@lru_cache(maxsize=256)
+def cached_getpwuid(uid):
+    """ Process-local cache around pwd.getpwuid. """
+    import pwd
+    return pwd.getpwuid(uid)
 
 try:
     import simdjson as json
@@ -71,6 +95,32 @@ def start_with_timeout_thread(function, timeout=3):
     if exception:
         raise exception[0]
     return result[0]
+
+def parse_peer_cert(peer_cert):
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+    cert = x509.load_der_x509_certificate(peer_cert)
+    cert_cn = cert.subject.rfc4514_string()
+    cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
+    for x in cert_cn.split(","):
+        if not x.startswith("CN="):
+            continue
+        cert_cn = x.split("=")[1]
+        break
+    cert_issuer = cert.issuer.rfc4514_string()
+    for x in cert_issuer.split(","):
+        if not x.startswith("CN="):
+            continue
+        cert_issuer = x.split("=")[1]
+        break
+    cert_serial_number = cert.serial_number
+    peer_cert = {
+                'cn'            : cert_cn,
+                'pem'           : cert_pem,
+                'issuer'        : cert_issuer,
+                'serial_number' : cert_serial_number,
+                }
+    return peer_cert
 
 def get_dict_size(obj, seen=None):
     """ Get recursive dict size. """
@@ -320,43 +370,85 @@ def parse_allowed_chars(chars_spec):
             i += 1
     return allowed
 
-def gen_password(len=16, capital=True, numbers=True, symbols=False,
-    secure=False, ambiguous=False, exclude_chars=None, count=1):
-    """ Generate password via pwgen. """
-    from subprocess import Popen
-    from subprocess import PIPE
-    from otpme.lib import config
+def gen_password(length=16, require_lowercase=True, require_uppercase=True,
+    require_number=True, require_special=False, exclude_chars=None, count=1):
+    """ Generate a policy-compliant random password using the stdlib
+    `secrets` module (cryptographically secure). Each requested category
+    is guaranteed to contribute at least one character. """
+    import string
+    import secrets
 
-    pwgen_bin = config.pwgen_bin
-    pwgen_cmd = [ pwgen_bin ]
-    if capital:
-        pwgen_cmd.append("-c")
-    else:
-        pwgen_cmd.append("-A")
-    if numbers:
-        pwgen_cmd.append("-n")
-    else:
-        pwgen_cmd.append("-0")
-    if symbols:
-        pwgen_cmd.append("-y")
+    categories = []
+    if require_lowercase:
+        categories.append(string.ascii_lowercase)
+    if require_uppercase:
+        categories.append(string.ascii_uppercase)
+    if require_number:
+        categories.append(string.digits)
+    if require_special:
+        specials = string.punctuation
         if exclude_chars:
-            pwgen_cmd.append("-r")
-            pwgen_cmd.append(exclude_chars)
-    if secure:
-        pwgen_cmd.append("-s")
-    if ambiguous:
-        pwgen_cmd.append("-B")
-    pwgen_cmd.append(str(len))
-    pwgen_cmd.append(str(count))
-    pipe = Popen(pwgen_cmd, stdout=PIPE, shell=False)
-    password = pipe.communicate()[0]
-    password = password.decode()
+            specials = ''.join(c for c in specials if c not in exclude_chars)
+        if specials:
+            categories.append(specials)
+    if not categories:
+        # Fallback: alphanumeric pool.
+        categories.append(string.ascii_letters + string.digits)
+
+    pool = ''.join(categories)
+    if exclude_chars:
+        pool = ''.join(c for c in pool if c not in exclude_chars)
+    if length < len(categories):
+        msg = _("Password length too short for required character classes.")
+        raise OTPmeException(msg)
+
+    def _gen_one():
+        chars = [secrets.choice(c) for c in categories]
+        chars += [secrets.choice(pool) for _ in range(length - len(chars))]
+        secrets.SystemRandom().shuffle(chars)
+        return ''.join(chars)
+
     if count > 1:
-        password = password.replace('\n', ' ')
-        password = password.split(' ')[0:count]
-    else:
-        password = password.replace('\n', '')
-    return password
+        return [_gen_one() for _ in range(count)]
+    return _gen_one()
+
+#def gen_password(len=16, capital=True, numbers=True, symbols=False,
+#    secure=False, ambiguous=False, exclude_chars=None, count=1):
+#    """ Generate password via pwgen. """
+#    from subprocess import Popen
+#    from subprocess import PIPE
+#    from otpme.lib import config
+#
+#    pwgen_bin = config.pwgen_bin
+#    pwgen_cmd = [ pwgen_bin ]
+#    if capital:
+#        pwgen_cmd.append("-c")
+#    else:
+#        pwgen_cmd.append("-A")
+#    if numbers:
+#        pwgen_cmd.append("-n")
+#    else:
+#        pwgen_cmd.append("-0")
+#    if symbols:
+#        pwgen_cmd.append("-y")
+#        if exclude_chars:
+#            pwgen_cmd.append("-r")
+#            pwgen_cmd.append(exclude_chars)
+#    if secure:
+#        pwgen_cmd.append("-s")
+#    if ambiguous:
+#        pwgen_cmd.append("-B")
+#    pwgen_cmd.append(str(len))
+#    pwgen_cmd.append(str(count))
+#    pipe = Popen(pwgen_cmd, stdout=PIPE, shell=False)
+#    password = pipe.communicate()[0]
+#    password = password.decode()
+#    if count > 1:
+#        password = password.replace('\n', ' ')
+#        password = password.split(' ')[0:count]
+#    else:
+#        password = password.replace('\n', '')
+#    return password
 
 def get_random_bits(xbits):
     """ Get random bits. """
@@ -549,13 +641,21 @@ def is_mounted(mount_point):
     return False
 
 def check_pid(pid):
-    """ Check if PID is running. """
-    import psutil
+    """ Check if PID is running.
+
+    Uses kill(pid, 0) which is a single cheap syscall. Much faster than
+    psutil.Process() which opens multiple /proc files to populate its
+    process object — a significant cost when called in hot paths (e.g.
+    per-transaction is_active() checks).
+    """
     try:
-        psutil.Process(int(pid))
-        return True
-    except:
+        os.kill(int(pid), 0)
+    except (ProcessLookupError, ValueError, TypeError):
         return False
+    except PermissionError:
+        # PID exists but we cannot signal it — still "running" for our use.
+        return True
+    return True
 
 def get_pid_by_name(name):
     """ Get PID by process name. """
@@ -2063,11 +2163,27 @@ def get_site_fqdn(realm, site, mgmt=False):
         site_address = response
     return site_address
 
+_site_cert_cache = {}
+
+
 def get_site_cert(realm, site):
-    """ Get site address/FQDN. """
+    """ Get site address/FQDN.
+
+    Cached per-process: site certificates don't change during a process
+    lifetime under normal operation, and fetching the cert from the local
+    hostd involves a full connection setup + protocol round-trip per call.
+    In hot loops (e.g. a client that does many logins in a row) this was
+    a significant share of client-side CPU. The cache is keyed by
+    (realm, site) and tied to the process PID so it resets after fork.
+    """
     from otpme.lib import config
     from otpme.lib import backend
     from otpme.lib import connections
+    cache_key = (os.getpid(), realm, site)
+    try:
+        return _site_cert_cache[cache_key]
+    except KeyError:
+        pass
     if config.use_backend:
         _site = backend.get_object(object_type="site",
                                     name=site,
@@ -2077,6 +2193,7 @@ def get_site_cert(realm, site):
             msg = msg.format(site=site)
             raise OTPmeException(msg)
         site_cert = _site.cert
+        _site_cert_cache[cache_key] = site_cert
         return site_cert
     # Get site cert from hostd.
     try:
@@ -2086,6 +2203,7 @@ def get_site_cert(realm, site):
         msg = msg.format(e=e)
         raise OTPmeException(msg)
     site_cert = hostd_conn.get_site_cert(realm=realm, site=site)
+    _site_cert_cache[cache_key] = site_cert
     return site_cert
 
 def get_site_trust_status(realm, site):

@@ -338,6 +338,14 @@ cmd_help = {
                                 },
                 },
 
+    'site_cert'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site site_cert {site} [site_cert]'),
+                    'cmd'   :   '<|object|> [file:site_cert]',
+                    '_help' :   {
+                                    'cmd'                   : _('Change site certificate.'),
+                                },
+                },
+
     'radius_cert'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site radius_cert [--key {radius_key}] {--ca-cert {radius_ca_cert}] {site} [radius_cert]'),
                     'cmd'   :   '--key :file:radius_key: --ca-cert :file:radius_ca_cert: <|object|> [file:radius_cert]',

@@ -7,19 +7,31 @@ https://redis-py.readthedocs.io/en/stable/
 import os
 import sys
 import time
-from dogpile.cache.region import make_region
+
 from otpme.lib.cache.dogpile import md5_key_mangler
 from otpme.lib.cache.dogpile import CustomInvalidationStrategy
-try:
-    import redis
-except ImportError:
-    # Ignore missing module (e.g. other cache type configured.)
-    pass
-try:
-    from redis.connection import UnixDomainSocketConnection
-except ImportError:
-    # Ignore missing module (e.g. other cache type configured.)
-    pass
+
+# Heavy third-party imports are deferred to first use; importing this module
+# must stay cheap for CLI clients that never touch redis caching.
+redis = None
+UnixDomainSocketConnection = None
+make_region = None
+
+def _load_redis():
+    global redis, UnixDomainSocketConnection
+    if redis is not None:
+        return
+    import redis as _r
+    from redis.connection import UnixDomainSocketConnection as _UDSC
+    redis = _r
+    UnixDomainSocketConnection = _UDSC
+
+def _load_make_region():
+    global make_region
+    if make_region is not None:
+        return
+    from dogpile.cache.region import make_region as _mr
+    make_region = _mr
 
 try:
     import simdjson as json
@@ -49,6 +61,20 @@ from otpme.lib.exceptions import *
 LOCK_TYPE = "redis"
 REGISTER_AFTER = []
 REGISTER_BEFORE = []
+
+# Ensure persistence-disable config_set() runs only once per process.
+_persistence_configured = False
+
+def _ensure_persistence_disabled(redis_db):
+    global _persistence_configured
+    if _persistence_configured:
+        return
+    if config.redis_persistence:
+        _persistence_configured = True
+        return
+    redis_db.config_set("appendonly", "no")
+    redis_db.config_set("save", "")
+    _persistence_configured = True
 
 DATABASES = 16
 LOGLEVEL = "notice"
@@ -342,6 +368,7 @@ def flushall(raise_exceptions=False):
 
 def get_pool():
     """ Get connection pool. """
+    _load_redis()
     redis_socket = get_socket()
     pool = redis.ConnectionPool(path=redis_socket,
             connection_class=UnixDomainSocketConnection)
@@ -369,6 +396,7 @@ def get_list(name, pool=None, clear=False, **kwargs):
 
 class RedisHandler(object):
     def __init__(self, raise_exceptions=False, **kwargs):
+        _load_redis()
         self.redis_db = redis.Redis(**kwargs)
         self.logger = config.logger
         if isinstance(raise_exceptions, list):
@@ -530,13 +558,11 @@ class RedisDict(SharedDict):
         self.redis_db = RedisHandler(connection_pool=pool,
                                     raise_exceptions=raise_exceptions,
                                     db=0)
-        # Make sure redis persistence is disabled.
-        if not config.redis_persistence:
-            self.redis_db.config_set("appendonly" ,"no")
-            self.redis_db.config_set("save" ,"")
+        # Make sure redis persistence is disabled (once per process).
+        _ensure_persistence_disabled(self.redis_db)
         if self.pickle:
             pickel_type = config.pickle_cache_module
-            self.pickle_handler = PickleHandler(pickel_type, encode=True)
+            self.pickle_handler = PickleHandler(pickel_type)
         self._lock = None
         #self.redis_db.config_rewrite()
         if clear:
@@ -650,9 +676,8 @@ class RedisDict(SharedDict):
             self.redis_db.set(key, value, ex=expire)
 
     def _get(self, key):
-        if not self.redis_db.exists(key):
-            raise KeyError(key)
-        # Get value.
+        # Get value (single roundtrip; None means missing key since
+        # _add() always serializes values via pickle/json).
         value = self.redis_db.get(key)
         if value is None:
             raise KeyError(key)
@@ -699,14 +724,12 @@ class RedisList(SharedList):
         self.redis_db = RedisHandler(connection_pool=pool,
                                     raise_exceptions=raise_exceptions,
                                     db=0)
-        # Make sure redis persistence is disabled.
-        if not config.redis_persistence:
-            self.redis_db.config_set("appendonly" ,"no")
-            self.redis_db.config_set("save" ,"")
+        # Make sure redis persistence is disabled (once per process).
+        _ensure_persistence_disabled(self.redis_db)
         #self.redis_db.config_rewrite()
         if self.pickle:
             pickel_type = config.pickle_cache_module
-            self.pickle_handler = PickleHandler(pickel_type, encode=True)
+            self.pickle_handler = PickleHandler(pickel_type)
         if clear:
             self.clear()
 
@@ -792,6 +815,7 @@ class RedisInvalidationStrategy(CustomInvalidationStrategy):
         self.redis_db.delete(*keys)
 
 def get_dogpile_region(name, expire=7200):
+    _load_make_region()
     redis_pool = get_pool()
     redis_config = {
                     #'host': 'localhost',

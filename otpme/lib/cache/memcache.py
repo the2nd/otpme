@@ -166,7 +166,7 @@ class MemcacheClient(object):
         self.connection_error_logged = False
         if self.pickle:
             pickel_type = config.pickle_cache_module
-            self.pickle_handler = PickleHandler(pickel_type, encode=True)
+            self.pickle_handler = PickleHandler(pickel_type)
 
     @property
     def pool(self):
@@ -211,6 +211,9 @@ class MemcacheClient(object):
         return value
 
     def set(self, key, value, **kwargs):
+        key = key.replace(" ", "_")
+        key = key.replace("(", "_")
+        key = key.replace(")", "_")
         # Pickle data.
         if self.pickle:
             value = self.pickle_handler.dumps(value)
@@ -233,8 +236,10 @@ class MemcacheClient(object):
         except pylibmc.Error as e:
             if self.connection_error_logged:
                 return
-            log_msg = _("Memcache set error: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
+            key_len = len(key) if isinstance(key, (bytes, str)) else -1
+            value_len = len(value) if isinstance(value, (bytes, str)) else -1
+            log_msg = _("Memcache set error: {error} (key_len={key_len}, value_len={value_len}, key_preview={preview!r})", log=True)[1]
+            log_msg = log_msg.format(error=e, key_len=key_len, value_len=value_len, preview=key[:80] if isinstance(key, (bytes, str)) else key)
             self.connection_error_logged = True
             self.logger.critical(log_msg)
         except pylibmc.ConnectionError as e:
@@ -267,7 +272,7 @@ class MemcacheClient(object):
 class MemcacheDict(SharedDict):
     """ A simple memcached dict. """
     def __init__(self, name, pool, locking=False, lock_type="memcached",
-        clear=False, refresh_keys=False, compression=None, pickle=True):
+        clear=False, refresh_keys=False, compression=None, pickle=False):
         super(MemcacheDict, self).__init__(name)
         self.client = MemcacheClient(pool, compression=compression, pickle=pickle)
         self.dict_keys_key = f"{self.name}.dict_keys"
@@ -441,7 +446,7 @@ class MemcacheDict(SharedDict):
 class MemcacheList(SharedList):
     """ A simple memcached list. """
     def __init__(self, name, pool, clear=False, compression=None,
-        lock_type="memcached", pickle=True, **kwargs):
+        lock_type="memcached", pickle=False, **kwargs):
         super(MemcacheList, self).__init__(name)
         self.lock_type = lock_type
         self.client = MemcacheClient(pool, compression=compression, pickle=pickle)

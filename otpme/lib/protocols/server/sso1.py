@@ -126,7 +126,6 @@ class OTPmeSsoP1(OTPmeServer1):
             return
         new_proctitle = f"{self.proctitle} User: {username}"
         setproctitle.setproctitle(new_proctitle)
-        # FIXME: does this work when running as freeradius module?
         # In debug mode its handy to have username included in loglines
         if config.debug_enabled or config.loglevel == "DEBUG":
             log_banner = f"{config.log_name}:{username}:"
@@ -543,6 +542,23 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'REGISTRATION_FAILED', 'status':False}
             return self.build_response(False, auth_response)
+        # Verify attestation certificate if enabled.
+        check_attestation_cert = user.get_config_parameter("check_fido2_attestation_cert")
+        if check_attestation_cert:
+            from otpme.lib.token.fido2.fido2 import verify_attestation_cert
+            try:
+                info_messages = verify_attestation_cert(registration_data)
+            except OTPmeException as e:
+                log_msg = _("FIDO2 attestation cert verification failed for token "
+                            "'{token}' of user '{user_name}': {error}", log=True)[1]
+                log_msg = log_msg.format(token=fido2_token.rel_path,
+                                        user_name=user.name,
+                                        error=e)
+                self.logger.warning(log_msg)
+                auth_response = {'message':str(e), 'status':False}
+                return self.build_response(False, auth_response)
+            for info_msg in info_messages:
+                self.logger.info(info_msg)
         # Store credential data on token.
         fido2_token.credential_data = encode(auth_data.credential_data, "hex")
         fido2_token._write(callback=config.get_callback())
@@ -694,16 +710,23 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _get_sso_token_role(self, user):
         """ Resolve the sso_token_role config parameter to a role instance.
-        Must be called on the user's home site — the config parameter walks
-        up the user's parent hierarchy to find the canonical value. """
-        role_name = user.get_config_parameter("sso_token_role")
-        if not role_name:
+        `user.get_config_parameter` walks user → unit(s) → site and applies
+        the registered getter which returns a "<site>/<role>" path. Must
+        be called on the user's home site. """
+        try:
+            role_path = user.get_config_parameter("sso_token_role")
+        except Exception as e:
+            log_msg = _("Failed to read sso_token_role: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             return None
-        if "/" in role_name:
-            role_site = role_name.split("/")[0]
-            role_name = role_name.split("/")[1]
+        if not role_path:
+            return None
+        if "/" in role_path:
+            role_site, role_name = role_path.split("/", 1)
         else:
             role_site = config.site
+            role_name = role_path
         result = backend.search(object_type="role",
                                 attribute="name",
                                 value=role_name,
@@ -786,18 +809,28 @@ class OTPmeSsoP1(OTPmeServer1):
                         'status'            : True,
                     }
             return self.build_response(True, response)
+        # Iterate the user's own tokens and check role membership on each.
+        # This is cheaper than walking role.tokens when the role holds many
+        # tokens (e.g. lots of users sharing the same sso_token_role).
         device_tokens = []
-        for token_uuid in role.tokens:
-            token = backend.get_object(object_type="token", uuid=token_uuid)
-            if not token:
+        for token_uuid in user.tokens:
+            try:
+                token = backend.get_object(object_type="token", uuid=token_uuid)
+            except Exception as e:
+                log_msg = _("Failed to read token object: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 continue
-            if token.owner_uuid != user.uuid:
+            if not token:
                 continue
             if token.token_type != "password":
                 continue
+            token_role_uuids = token.get_roles(return_type="uuid")
+            if role.uuid not in token_role_uuids:
+                continue
             device_tokens.append({
                         'name'          : token.name,
-                        'device_name'   : token.description or token.name,
+                        'device_name'   : token.name,
                     })
         response = {
                     'device_tokens'     : device_tokens,
@@ -816,6 +849,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                     no_token_infos=True,
                                     gen_qrcode=False,
                                     verify_acls=False,
+                                    enable_mschap=True,
                                     run_policies=False,
                                     callback=callback)
         token = user.token(token_name)

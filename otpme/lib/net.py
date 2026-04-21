@@ -177,7 +177,7 @@ def get_interfaces():
     interfaces = {}
     for interface in netifaces.interfaces():
         addresses = netifaces.ifaddresses(interface)
-        if not 2 in addresses:
+        if 2 not in addresses:
             continue
         interfaces[interface] = []
         for address in addresses[2]:
@@ -210,37 +210,37 @@ def check_for_ip(address):
             msg = msg.format(address=address, interface=iface)
             raise AddressAlreadyAssigned(msg)
 
-def configure_floating_ip(address, gratuitous_arp=True, ping=False):
+def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=False):
     """ Configure floating IP. """
-    phy_interface = None
     floating_ip = address
-    floating_ip_netmask = None
     floating_ip_network = None
     interfaces = get_interfaces()
+    floating_ip_netmask = "255.255.255.255"
     _floating_ip_network = ipaddr.IPAddress(floating_ip)
 
-    for iface in interfaces:
-        for x in interfaces[iface]:
-            ip = x[0]
-            netmask = x[1]
-            if ip == floating_ip:
-                msg = _("Floating IP '{floating_ip}' already assigned to interface '{interface}'.")
-                msg = msg.format(floating_ip=floating_ip, interface=iface)
-                raise AddressAlreadyAssigned(msg)
+    if not interface:
+        for iface in interfaces:
+            for x in interfaces[iface]:
+                ip = x[0]
+                netmask = x[1]
+                if ip == floating_ip:
+                    msg = _("Floating IP '{floating_ip}' already assigned to interface '{interface}'.")
+                    msg = msg.format(floating_ip=floating_ip, interface=iface)
+                    raise AddressAlreadyAssigned(msg)
 
-            _interface_network = ipaddr.IPNetwork(f"{ip}/{netmask}")
+                _interface_network = ipaddr.IPNetwork(f"{ip}/{netmask}")
 
-            if _interface_network.Contains(_floating_ip_network):
-                phy_interface = iface
-                floating_ip_netmask = netmask
-                floating_ip_network = str(_interface_network.network)
+                if _interface_network.Contains(_floating_ip_network):
+                    interface = iface
+                    floating_ip_netmask = netmask
+                    floating_ip_network = str(_interface_network.network)
 
-    if not phy_interface:
+    if not interface:
         msg = _("No interface is configured for network of IP: {ip}")
         msg = msg.format(ip=floating_ip)
         raise OTPmeException(msg)
 
-    floating_interface = phy_interface
+    floating_interface = interface
     log_msg = _("Found interface '{interface}' for network '{network}/{netmask}'", log=True)[1]
     log_msg = log_msg.format(interface=floating_interface, network=floating_ip_network, netmask=floating_ip_netmask)
     config.logger.debug(log_msg)
@@ -296,8 +296,8 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
 
 def deconfigure_floating_ip(address):
     """ Deconfigure floating IP. """
-    floating_interface = None
     floating_ip = address
+    floating_interface = None
     interfaces = get_interfaces()
 
     for iface in interfaces:

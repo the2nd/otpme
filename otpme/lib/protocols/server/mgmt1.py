@@ -2706,7 +2706,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except KeyError:
             self.use_cached_objects = False
         if not self.use_cached_objects:
-            cache.clear()
+            cache.clear(keep_func_caches=True, update_clear_time=False)
 
         # Try to get object identifier from command.
         try:

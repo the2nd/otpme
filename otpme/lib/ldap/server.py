@@ -52,7 +52,6 @@ from otpme.lib import otpme_acl
 from otpme.lib import auth_cache
 from otpme.lib import connections
 from otpme.lib import multiprocessing
-from otpme.lib.audit import get_audit_logger
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.classes.otpme_object import get_ldif
 from otpme.lib.backends.file.file import get_oid_from_path
@@ -371,21 +370,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                                         password,
                                                         auth_cache_timeout)
                 # Get audit logger.
-                try:
-                    audit_logger = get_audit_logger()
-                except Exception as e:
-                    log_msg = _("Failed to get audit logger: {error}", log=True)[1]
-                    log_msg = log_msg.format(error=e)
-                    self.logger.warning(log_msg)
-                else:
-                    log_msg = _("User authenticated to ldapd by cache: {username}", log=True)[1]
-                    log_msg = log_msg.format(username=username)
-                    self.logger.info(log_msg)
-                    if audit_logger:
-                        audit_msg = f"{config.daemon_name}: {log_msg}"
-                        audit_logger.info(audit_msg)
-                        for x in audit_logger.handlers:
-                            x.close()
+                audit_logger = config.audit_logger
+                log_msg = _("User authenticated to ldapd by cache: {username}", log=True)[1]
+                log_msg = log_msg.format(username=username)
+                self.logger.info(log_msg)
+                if audit_logger:
+                    audit_msg = f"{config.daemon_name}: {log_msg}"
+                    audit_logger.info(audit_msg)
                 do_auth = False
             except AuthFailed:
                 do_auth = True

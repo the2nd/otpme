@@ -23,7 +23,6 @@ from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
-from otpme.lib.classes.command_handler import CommandHandler
 
 from otpme.lib.exceptions import *
 
@@ -185,7 +184,7 @@ class BackupDaemon(OTPmeDaemon):
                 backup_age = time.time() - o.last_backup
                 backup_interval = o.get_config_parameter("backup_interval")
                 if not backup_interval:
-                    backup_interval = "24h"
+                    backup_interval = "23h"
                 try:
                     backup_interval = units.time2int(backup_interval, time_unit="s")
                 except Exception:
@@ -243,6 +242,7 @@ class BackupDaemon(OTPmeDaemon):
             self.logger.warning(log_msg)
 
     def start_backup(self, o):
+        from otpme.lib.classes.command_handler import CommandHandler
         multiprocessing.atfork(exit_on_signal=True)
         backup_object = f"{o.type}/{o.name}"
         self.set_proctitle(backup_object)
@@ -307,7 +307,7 @@ class BackupDaemon(OTPmeDaemon):
         self.protocols = config.get_otpme_protocols(self.name, server=True)
         # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 256
+        self.max_conn = 1024
         # FIXME: where to configure socket banner?
         # set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"

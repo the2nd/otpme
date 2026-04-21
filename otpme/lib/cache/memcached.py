@@ -22,8 +22,8 @@ REGISTER_AFTER = []
 LOCK_TYPE = "memcached"
 
 SOCKET_PERMS = "700"
-MEMCACHED_MAXMEM = "128"
-MEMCACHED_THREADS = "32"
+MEMCACHED_MAXMEM = 128
+MEMCACHED_THREADS = 32
 MEMCACHED_MAX_OBJECT_SIZE = "8m"
 MEMCACHED_SOCKET_NAME = "memcached.sock"
 MEMCACHED_PIDFILE_NAME = "memcached.pid"
@@ -37,9 +37,9 @@ def register():
                         config_file_parameter="MEMCACHED_BIN")
     config.register_config_var("memcached_max_object_size", str, MEMCACHED_MAX_OBJECT_SIZE,
                         config_file_parameter="MEMCACHED_MAX_OBJECT_SIZE")
-    config.register_config_var("memcached_maxmem", str, MEMCACHED_MAXMEM,
+    config.register_config_var("memcached_maxmem", int, MEMCACHED_MAXMEM,
                         config_file_parameter="MEMCACHED_MAXMEM")
-    config.register_config_var("memcached_threads", str, MEMCACHED_THREADS,
+    config.register_config_var("memcached_threads", int, MEMCACHED_THREADS,
                         config_file_parameter="MEMCACHED_THREADS")
     config.register_config_var("memcached_pidfile", str, None,
                         config_file_parameter="MEMCACHED_PIDFILE")
@@ -174,8 +174,8 @@ def _start():
                         '-d',
                         '-P', pidfile,
                         '-I', config.memcached_max_object_size,
-                        '-m', config.memcached_maxmem,
-                        '-t', config.memcached_threads,
+                        '-m', str(config.memcached_maxmem),
+                        '-t', str(config.memcached_threads),
                         '-U', 'off',
                         '-s', memcached_socket,
                         '-a', SOCKET_PERMS,

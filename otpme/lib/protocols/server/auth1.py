@@ -24,9 +24,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import connections
 from otpme.lib.humanize import units
-from otpme.lib import multiprocessing
 from otpme.lib.encoding.base import decode
-from otpme.lib.audit import get_audit_logger
 
 from otpme.lib.protocols import status_codes
 from otpme.lib.protocols.otpme_server import OTPmeServer1
@@ -88,8 +86,6 @@ class OTPmeAuthP1(OTPmeServer1):
         """ Init protocol handler. """
         # Our PID.
         self.pid = os.getpid()
-        # Do atfork stuff.
-        multiprocessing.atfork(quiet=True)
 
     def set_proctitle(self, username):
         """ Set proctitle to contain username. """
@@ -104,17 +100,6 @@ class OTPmeAuthP1(OTPmeServer1):
             self.logger = log.setup_logger(banner=log_banner,
                                         existing_logger=config.logger,
                                         pid=True)
-
-    def get_audit_logger(self):
-        # Get audit logger.
-        try:
-            audit_logger = get_audit_logger()
-        except Exception as e:
-            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.warning(log_msg)
-            audit_logger = None
-        return audit_logger
 
     def get_user(self, username):
         # Check if user exists.
@@ -531,7 +516,7 @@ class OTPmeAuthP1(OTPmeServer1):
         except:
             sso_challenge = None
         # Get audit logger.
-        audit_logger = self.get_audit_logger()
+        audit_logger = config.audit_logger
         if command == "token_verify":
             token_verify_parms = {
                     'auth_type'         : auth_type,
@@ -622,8 +607,6 @@ class OTPmeAuthP1(OTPmeServer1):
             if audit_logger:
                 audit_msg = f"{config.daemon_name}: {log_msg}"
                 audit_logger.info(audit_msg)
-                for x in audit_logger.handlers:
-                    x.close()
         else:
             auth_response = {
                         'status'    : auth_status,
@@ -636,8 +619,6 @@ class OTPmeAuthP1(OTPmeServer1):
             if audit_logger:
                 audit_msg = f"{config.daemon_name}: {log_msg}"
                 audit_logger.warning(audit_msg)
-                for x in audit_logger.handlers:
-                    x.close()
         # Build response message.
         message = auth_response
         if auth_status:
@@ -835,7 +816,19 @@ class OTPmeAuthP1(OTPmeServer1):
 
         return self.build_response(status, message)
 
-    def _process(self, command, command_args, **kwargs):
+    def _process(self, *args, **kwargs):
+        try:
+            return self.__process(*args, **kwargs)
+        finally:
+            # End any implicit read-only transaction so the DB
+            # connection doesn't sit in "idle in transaction".
+            if config.session is not None:
+                try:
+                    config.session.commit()
+                except Exception:
+                    pass
+
+    def __process(self, command, command_args, **kwargs):
         """ Handle authentication data received from auth_handler. """
         # All valid commands.
         valid_commands = [

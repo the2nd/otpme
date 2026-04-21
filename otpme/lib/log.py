@@ -2,10 +2,10 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import sys
-import time
 import logging
 # We need this import to get access to logging.handlers.
 import logging.config
+import threading
 from functools import wraps
 
 try:
@@ -17,11 +17,17 @@ except:
     pass
 
 from otpme.lib.syslog import get_log_handler
-from otpme.lib.filetools import AtomicFileLock
 
 fd = None
 LOCK_TYPE = "log"
 log_banner = None
+
+# Per-process lock used to serialize concurrent log writes from multiple
+# threads in the same process. Cross-process coordination on a shared log
+# file is handled by the OS (O_APPEND gives atomic writes up to PIPE_BUF),
+# which is good enough for line-based log output and much cheaper than the
+# flock-based AtomicFileLock the previous implementation used.
+_log_lock = threading.Lock()
 
 # Prevent "Broken Pipe" messages when piping daemon output e.g. to tee(1)
 logging.raiseExceptions = False
@@ -125,6 +131,8 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
     # Create new logger if there where no logger instance given to us.
     if not logger:
         logger = logging.getLogger(log_name)
+    elif isinstance(logger, OTPmeLogger):
+        logger = logger.logger
 
     if logger.hasHandlers():
         logger.handlers.clear()
@@ -249,66 +257,23 @@ def setup_logger(*args, **kwargs):
     return logger
 
 def log_lock():
-    """ Decorator to handle logfile locking. """
-    # https://docs.python.org/dev/howto/logging-cookbook.html#logging-to-a-single-file-from-multiple-processes
+    """ Decorator to serialize logger calls across threads in this process.
+
+    Python's logging handlers are already thread-safe on their own; this
+    decorator keeps a single additional in-process lock so the historic
+    contract (only one OTPmeLogger call at a time) is preserved without
+    paying the flock+create+unlink cost per log statement that the previous
+    AtomicFileLock-based implementation did.
+    """
     def wrapper(f):
         @wraps(f)
         def wrapped(self, *f_args, **f_kwargs):
-            global fd
-            if self.logfile:
-                from otpme.lib import config
-                if fd:
-                    try:
-                        fd.release_lock()
-                    except:
-                        pass
-                    try:
-                        fd.close()
-                    except:
-                        pass
-                    fd = None
-                if config.locks_dir:
-                    counter = 0
-                    max_wait = 1000
-                    lock_id = self.logfile.replace("/", ":")
-                    lock_file = (f"{config.locks_dir}/{lock_id}")
-                    while counter < max_wait:
-                        try:
-                            fd = AtomicFileLock(path=lock_file,
-                                                user=config.user,
-                                                group=config.group,
-                                                write_lock=True,
-                                                block=False)
-                            break
-                        except IOError:
-                            counter += 1
-                            time.sleep(0.001)
-                    if not fd:
-                        msg = _("Failed to acquire logfile lock: {}\n")
-                        msg = msg.format(self.logfile)
-                        sys.stderr.write(msg)
-                        sys.stderr.flush()
-            # Call given class method.
-            try:
-                result = f(self, *f_args, **f_kwargs)
-            finally:
-                # Make sure we release lock.
-                if self.logfile:
-                    if fd:
-                        try:
-                            fd.release_lock()
-                        except:
-                            pass
-                        try:
-                            fd.close()
-                        except:
-                            pass
-                        try:
-                            fd.unlink()
-                        except:
-                            pass
-                        fd = None
-            return result
+            from otpme.lib import config
+            if config.proc_mode == "threading":
+                with _log_lock:
+                    return f(self, *f_args, **f_kwargs)
+            else:
+                return f(self, *f_args, **f_kwargs)
         return wrapped
     return wrapper
 

@@ -30,6 +30,7 @@ except:
 
 from otpme.lib import stuff
 from otpme.lib import multiprocessing
+
 #from otpme.lib.pickle import PickleHandler
 
 from otpme.lib.exceptions import *
@@ -63,7 +64,7 @@ class Cache(object):
         # We cannot use pickle cache as e.g. in search cache with return_type="instance"
         # this will result in an new object (new id().
         #if self.copy_cache:
-        #    self.pickle_handler = PickleHandler("auto", encode=False)
+        #    self.pickle_handler = PickleHandler("auto")
 
     def init_cache(self, cache_name=None):
         """ Init cache. """
@@ -102,8 +103,8 @@ class Cache(object):
         self._stats[cache_name] = [0, 0]
         if config.debug_level("func_cache_adds") > 0 \
         or config.debug_level("func_cache_hits") > 0:
-            log_msg = _("Initialized cache: {self.name} ({cache_name}): {cache_type}:maxsize={maxsize}", log=True)[1]
-            log_msg = log_msg.format(self.name, cache_name=cache_name, cache_type=cache_type, maxsize=maxsize)
+            log_msg = _("Initialized cache: {name} ({cache_name}): {cache_type}:maxsize={maxsize}", log=True)[1]
+            log_msg = log_msg.format(name=self.name, cache_name=cache_name, cache_type=cache_type, maxsize=maxsize)
             config.logger.debug(log_msg)
         return new_cache
 
@@ -382,20 +383,21 @@ class Cache(object):
         try:
             _cache = self.get_cache(cache_name)
         except:
-            return
-        if config.debug_level("func_cache_adds") > 0 \
-        or config.debug_level("func_cache_hits") > 0:
-            log_msg = _("Clearing cache: {self.name}: ({cache_name})", log=True)[1]
-            log_msg = log_msg.format(self.name, cache_name=cache_name)
-            config.logger.debug(log_msg)
-        # Clear local cache.
-        try:
-            _cache.clear()
-        finally:
+            pass
+        else:
+            if config.debug_level("func_cache_adds") > 0 \
+            or config.debug_level("func_cache_hits") > 0:
+                log_msg = _("Clearing cache: {name}: ({cache_name})", log=True)[1]
+                log_msg = log_msg.format(name=self.name, cache_name=cache_name)
+                config.logger.debug(log_msg)
+            # Clear local cache.
             try:
-                self._stats[cache_name][:] = [0, 0]
-            except:
-                pass
+                _cache.clear()
+            finally:
+                try:
+                    self._stats[cache_name][:] = [0, 0]
+                except:
+                    pass
         if not self.shared:
             return
         # Clear shared cache.
@@ -407,7 +409,10 @@ class Cache(object):
         if cache_name is None:
             # Set last clear time.
             self.last_clear["all"] = time.time()
-            caches = list(self._caches)
+            if self._caches:
+                caches = list(self._caches)
+            else:
+                caches = [self.default_cache]
         else:
             caches = [cache_name]
         for x in caches:
@@ -417,11 +422,12 @@ class Cache(object):
 
 class FuncCache(object):
     """ Class to cache function/method results. """
-    def __init__(self, name, cache_key_func=None, **cache_kwargs):
+    def __init__(self, name, cache_key_func=None, clear_on_object_types=None, **cache_kwargs):
         self.name = name
         self._caches = {}
         self._cache_kwargs = cache_kwargs
         self.cache_key_func = cache_key_func
+        self.clear_on_object_types = clear_on_object_types
 
     @property
     def logger(self):
@@ -527,7 +533,7 @@ class FuncCache(object):
             clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
         except:
             clear_trigger = {}
-        clear_trigger[trigger_name]  = time.time()
+        clear_trigger[trigger_name] = time.time()
         # Expire clear trigger after 1h. This is required for caches based on
         # object UUID which would otherwise grow forever.
         multiprocessing.function_cache_clear_trigger.add(self.name,

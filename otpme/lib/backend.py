@@ -39,8 +39,8 @@ SYNC_MAP_LOCK_TYPE = "sync_map"
 #locking.register_lock_type(OID_LOCK_TYPE, module=__file__)
 locking.register_lock_type(SYNC_MAP_LOCK_TYPE, module=__file__)
 
+instance_cache_read_times = {}
 multiprocessing.register_shared_dict("sync_map")
-multiprocessing.register_shared_dict("instance_cache_read_times")
 multiprocessing.register_shared_list("sync_map_cache_clear_queue")
 
 default_callback = config.get_callback()
@@ -352,6 +352,7 @@ def delete_object(
     object_id: oid.OTPmeOid,
     no_transaction: bool=False,
     cluster: bool=False,
+    wait_for_cluster_writes: bool=False,
     update_nsscache: bool=True,
     ):
     """ Delete object. """
@@ -372,6 +373,7 @@ def delete_object(
     delete(object_id=object_id,
         no_transaction=no_transaction,
         update_nsscache=update_nsscache,
+        wait_for_cluster_writes=wait_for_cluster_writes,
         cluster=cluster)
     # Outdate object.
     outdate_object(object_id, cache_type="all")
@@ -1067,7 +1069,7 @@ def get_object(
 
     # Add instance to cache if it exists.
     if instance:
-        cache.add_instance(instance)
+        cache.add_instance(instance, invalidate=False)
 
     return instance
 
@@ -1086,6 +1088,7 @@ def get_object_from_cache(
     **kwargs
     ):
     """ Get object from cache. """
+    global instance_cache_read_times
     # Get logger.
     logger = config.logger
     instance = None
@@ -1096,11 +1099,11 @@ def get_object_from_cache(
 
     if uuid and not object_id:
         read_oid = get_oid(uuid=uuid,
-                            realm=realm,
-                            site=site,
-                            object_type=object_type,
-                            full=False,
-                            instance=True)
+                        realm=realm,
+                        site=site,
+                        object_type=object_type,
+                        full=False,
+                        instance=True)
         if not read_oid:
             return
 
@@ -1135,7 +1138,7 @@ def get_object_from_cache(
     # Get last cache read time to prevent calling policies to frequently.
     if run_policies:
         try:
-            last_read = multiprocessing.instance_cache_read_times[read_oid.read_oid]
+            last_read = instance_cache_read_times[read_oid.read_oid]
         except:
             last_read = 0
         age = now - last_read
@@ -1143,13 +1146,7 @@ def get_object_from_cache(
             # Call policies for the "exists" hook (e.g. auto_disable policy).
             instance.run_policies("exists")
     # Update read time.
-    multiprocessing.instance_cache_read_times.add(key=read_oid.read_oid, value=now,
-                                                expire=config.backend_policy_interval)
-
-    # FIXME: Sometimes changed class code does not work because of pickle cache?
-    #class_module = importlib.import_module(instance.__class__.__module__)
-    #instance_class = getattr(class_module, instance.__class__.__name__)
-    #instance.__class__ = instance_class
+    instance_cache_read_times[read_oid.read_oid] = now
     return instance
 
 #def search_ldif(ldif, attribute, value, less_than=False,
@@ -1241,29 +1238,29 @@ def search(
 
     # Search via index.
     _result = index_search(realm=realm,
-                            site=site,
-                            verify_acls=_verify_acls,
-                            return_acls=_return_acls,
-                            attributes=attributes,
-                            attribute=attribute,
-                            value=value,
-                            values=values,
-                            less_than=less_than,
-                            greater_than=greater_than,
-                            order_by=order_by,
-                            reverse_order=reverse_order,
-                            join_search_val=join_search_val,
-                            join_search_attr=join_search_attr,
-                            join_object_type=join_object_type,
-                            join_attribute=join_attribute,
-                            return_type=search_return_type,
-                            return_attributes=return_attributes,
-                            return_query_count=return_query_count,
-                            max_results=max_results,
-                            size_limit=size_limit,
-                            object_types=object_types,
-                            object_type=object_type,
-                            **kwargs)
+                        site=site,
+                        verify_acls=_verify_acls,
+                        return_acls=_return_acls,
+                        attributes=attributes,
+                        attribute=attribute,
+                        value=value,
+                        values=values,
+                        less_than=less_than,
+                        greater_than=greater_than,
+                        order_by=order_by,
+                        reverse_order=reverse_order,
+                        join_search_val=join_search_val,
+                        join_search_attr=join_search_attr,
+                        join_object_type=join_object_type,
+                        join_attribute=join_attribute,
+                        return_type=search_return_type,
+                        return_attributes=return_attributes,
+                        return_query_count=return_query_count,
+                        max_results=max_results,
+                        size_limit=size_limit,
+                        object_types=object_types,
+                        object_type=object_type,
+                        **kwargs)
 
     if return_type == "instance":
         for object_id in _result:
@@ -1281,6 +1278,8 @@ def search(
         result = _result
 
     return result
+
+session_cache = {}
 
 @match_typing
 def get_sessions(

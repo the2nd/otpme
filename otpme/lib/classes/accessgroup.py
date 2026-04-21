@@ -1095,7 +1095,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_token(token_uuid):
-                return role
+                return True
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1106,7 +1106,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_token(token_uuid):
-                return group
+                return True
         return False
 
     @assigned_host_cache.cache_method()
@@ -1128,7 +1128,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_host(host_uuid):
-                return role
+                return True
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1139,7 +1139,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_host(host_uuid):
-                return group
+                return True
         return False
 
     @assigned_device_cache.cache_method()
@@ -1161,7 +1161,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_device(device_uuid):
-                return role
+                return True
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1172,7 +1172,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_device(device_uuid):
-                return group
+                return True
         return False
 
     def parents(

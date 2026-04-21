@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import time
 # freeradius module copied from freeradius source tgz.
 # This should only be used when testing modules. Inside freeradius, the
 # 'radiusd' Python module is created by the C module and the definitions are
@@ -36,7 +37,6 @@ init_otpme(load_host_data=False)
 
 from otpme.lib import backend
 from otpme.lib import auth_cache
-from otpme.lib.audit import get_audit_logger
 
 from otpme.lib.exceptions import *
 
@@ -64,8 +64,70 @@ logger = config.logger
 
 # Cache for VLAN attributes per user session (used to pass from inner tunnel to outer).
 _vlan_cache = {}
+client_cache = {}
 
 register_module("otpme.lib.protocols.otpme_client")
+
+def get_client(nasid, client_ip):
+    client_key = f"{nasid}{client_ip}"
+    try:
+        cache_time = client_cache[client_key]['time']
+        auth_client = client_cache[client_key]['instance']
+        cache_timeout = client_cache[client_key]['timeout']
+    except KeyError as e:
+        pass
+    else:
+        now = time.time()
+        cache_age = now - cache_time
+        if cache_age <= cache_timeout:
+            return auth_client
+    if nasid:
+        result = backend.search(object_type="client",
+                                attribute="name",
+                                value=nasid,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+    elif client_ip:
+        result = backend.search(object_type="client",
+                                attribute="address",
+                                value=client_ip,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+    else:
+        return None
+    if not result:
+        return
+    auth_client = result[0]
+    client_cache[client_key] = {}
+    client_cache[client_key]['time'] = time.time()
+    client_cache[client_key]['instance'] = auth_client
+    if auth_client.auth_cache_timeout:
+        client_cache[client_key]['timeout'] = auth_client.auth_cache_timeout
+    else:
+        client_cache[client_key]['timeout'] = 120
+    return auth_client
+
+def get_conn():
+    # Connection kwargs.
+    conn_kwargs = {}
+    conn_kwargs['use_ssl'] = False
+    conn_kwargs['auto_auth'] = False
+    conn_kwargs['auto_preauth'] = False
+    conn_kwargs['local_socket'] = True
+    conn_kwargs['handle_host_auth'] = False
+    conn_kwargs['handle_user_auth'] = False
+    conn_kwargs['encrypt_session'] = False
+    conn_kwargs['timeout'] = 60
+    conn = connections.get("authd",
+                                realm=config.realm,
+                                site=config.site,
+                                socket_uri=config.authd_socket_path,
+                                interactive=False,
+                                ping=False,
+                                **conn_kwargs)
+    return conn
 
 def log(level, s):
   """Log function."""
@@ -252,7 +314,6 @@ def authenticate(authData):
             command_args['client_ip'] = client_ip
 
         # Connection kwargs.
-        socket_uri = config.authd_socket_path
         conn_kwargs = {}
         conn_kwargs['use_ssl'] = False
         conn_kwargs['auto_auth'] = False
@@ -264,83 +325,78 @@ def authenticate(authData):
         conn_kwargs['timeout'] = 60
 
         # Try to authenticate the user using clear-text password.
+        vlan = None
+        session_uuid = None
         if auth_type == "clear-text":
-            if nasid:
-                result = backend.search(object_type="client",
-                                        attribute="name",
-                                        value=nasid,
-                                        realm=config.realm,
-                                        site=config.site,
-                                        return_type="instance")
-            elif client_ip:
-                result = backend.search(object_type="client",
-                                        attribute="address",
-                                        value=client_ip,
-                                        realm=config.realm,
-                                        site=config.site,
-                                        return_type="instance")
+            auth_client = get_client(nasid, client_ip)
+            if not auth_client:
+                log_msg = _("Unknown client {nasid} {client_ip}", log=True)[1]
+                log_msg = log_msg.format(nasid=nasid, client_ip=client_ip)
+                logger.info(log_msg)
+                return radiusd.RLM_MODULE_FAIL
             do_auth = True
             cache_auth = False
             auth_status = False
             auth_response = None
-            if result:
-                auth_client = result[0]
-                if auth_client.auth_cache_enabled:
-                    cache_auth = True
-                    try:
-                        auth_cache_timeout = auth_client.auth_cache_timeout
-                        auth_cache.verify(auth_client.name,
-                                        username,
-                                        password,
-                                        auth_cache_timeout)
-                        auth_message, log_msg = _("User authenticated for {client} (radius) by cache: {username}", log=True)
-                        auth_message = auth_message.format(client=auth_client.name, username=username)
-                        log_msg = auth_message.format(username=username)
-                        logger.info(log_msg)
-                        # Get audit logger.
+            if auth_client and auth_client.auth_cache_enabled:
+                cache_auth = True
+                try:
+                    auth_cache_timeout = auth_client.auth_cache_timeout
+                    auth_cache.verify(auth_client.name,
+                                    username,
+                                    password,
+                                    auth_cache_timeout)
+                    auth_message, log_msg = _("User authenticated for {client} (radius) by cache: {username}", log=True)
+                    auth_message = auth_message.format(client=auth_client.name, username=username)
+                    log_msg = auth_message.format(username=username)
+                    logger.info(log_msg)
+                    # Get audit logger.
+                    audit_msg = f"{config.daemon_name}: {log_msg}"
+                    config.audit_logger.info(audit_msg)
+                    do_auth = False
+                    auth_status = True
+                except AuthFailed:
+                    do_auth = True
+                except Exception as e:
+                    do_auth = True
+                    log_msg = _("Auth cache failed: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    logger.warning(log_msg)
+                if auth_status:
+                    if calling_station_id:
                         try:
-                            audit_logger = get_audit_logger()
-                        except Exception as e:
-                            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
-                            log_msg = log_msg.format(error=e)
-                            logger.warning(log_msg)
-                        else:
-                            if audit_logger:
-                                audit_msg = f"{config.daemon_name}: {log_msg}"
-                                audit_logger.info(audit_msg)
-                                for x in audit_logger.handlers:
-                                    x.close()
-                        do_auth = False
-                        auth_status = True
-                    except AuthFailed:
-                        do_auth = True
-                    except Exception as e:
-                        do_auth = True
-                        log_msg = _("Auth cache failed: {error}", log=True)[1]
-                        log_msg = log_msg.format(error=e)
-                        logger.warning(log_msg)
+                            vlan = _vlan_cache[calling_station_id]
+                        except KeyError:
+                            vlan = None
 
-            session_uuid = None
-            vlan = None
             if do_auth:
                 # Try to authenticate user.
-                daemon_conn = connections.get("authd",
-                                            realm=config.realm,
-                                            site=config.site,
-                                            socket_uri=socket_uri,
-                                            interactive=False,
-                                            **conn_kwargs)
+                daemon_conn = get_conn()
                 # Send auth request.
                 log_msg = _("Sending authentication request...", log=True)[1]
                 logger.debug(log_msg)
-                auth_status, \
-                status_code, \
-                auth_response, \
-                binary_data = daemon_conn.send("verify", command_args)
+                try:
+                    auth_status, \
+                    status_code, \
+                    auth_response, \
+                    binary_data = daemon_conn.send("verify", command_args)
+                except ConnectionError:
+                    daemon_conn.close()
+                    daemon_conn = get_conn()
+                    try:
+                        auth_status, \
+                        status_code, \
+                        auth_response, \
+                        binary_data = daemon_conn.send("verify", command_args)
+                    except ConnectionError:
+                        return radiusd.RLM_MODULE_REJECT
+                finally:
+                    daemon_conn.close()
                 auth_message = auth_response['message']
 
             # Check if user was authenticated successful.
             if auth_status:
+                session_uuid = None
                 if auth_response:
                     try:
                         session_uuid = auth_response['session']
@@ -421,19 +477,29 @@ def authenticate(authData):
             command_args['mschap_response'] = peer_nt_response
             command_args['mschap_challenge'] = mschapv1_challenge
 
-            daemon_conn = connections.get("authd",
-                                        realm=config.realm,
-                                        site=config.site,
-                                        socket_uri=socket_uri,
-                                        interactive=False,
-                                        **conn_kwargs)
+            # Try to authenticate user.
+            daemon_conn = get_conn()
             # Send auth request.
             log_msg = _("Sending MSCHAP authentication request...", log=True)[1]
             logger.debug(log_msg)
-            auth_status, \
-            status_code, \
-            auth_response, \
-            binary_data = daemon_conn.send("verify_mschap", command_args)
+            try:
+                auth_status, \
+                status_code, \
+                auth_response, \
+                binary_data = daemon_conn.send("verify_mschap", command_args)
+            except ConnectionError:
+                daemon_conn.close()
+                daemon_conn = get_conn()
+                try:
+                    auth_status, \
+                    status_code, \
+                    auth_response, \
+                    binary_data = daemon_conn.send("verify_mschap", command_args)
+                except ConnectionError:
+                    return radiusd.RLM_MODULE_REJECT
+            finally:
+                daemon_conn.close()
+
             # Get auth message.
             auth_message = auth_response['message']
 
@@ -485,17 +551,17 @@ def authenticate(authData):
                 # Debug output.
                 log_msg = _("adding MS-CHAP2-Success: '{success_response}'", log=True)[1]
                 log_msg = log_msg.format(success_response=success_response)
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
                 log_msg = _("adding MS-MPPE-Send-Key: '{master_send_key}'", log=True)[1]
                 log_msg = log_msg.format(master_send_key=master_send_key)
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
                 log_msg = _("adding MS-MPPE-Recv-Key: '{master_recv_key}'", log=True)[1]
                 log_msg = log_msg.format(master_recv_key=master_recv_key)
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
                 log_msg = _("adding MS-MPPE-Encryption-Policy: '0x00000001'", log=True)[1]
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
                 log_msg = _("adding MS-MPPE-Encryption-Types: '0x00000006'", log=True)[1]
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
 
                 # Build responseTuple for rlm_python.
                 response_tuple = (
@@ -518,7 +584,7 @@ def authenticate(authData):
                         _vlan_cache[calling_station_id] = vlan
 
                 log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
 
                 # Build configTuple for rlm_python.
                 config_tuple =  (
@@ -541,7 +607,7 @@ def authenticate(authData):
 
                 log_msg = _("adding MS-CHAP-Error: '{failure_response}'", log=True)[1]
                 log_msg = log_msg.format(failure_response=failure_response)
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
 
                 # Build responseTuple for rlm_python.
                 response_tuple = (
@@ -550,7 +616,7 @@ def authenticate(authData):
                             )
 
                 log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
-                log(radiusd.L_DBG, log_msg)
+                #log(radiusd.L_DBG, log_msg)
 
                 # Build configTuple for rlm_python.
                 config_tuple =  (
@@ -581,7 +647,7 @@ def post_auth(authData):
 
     # Add cached VLAN attributes.
     if calling_station_id and calling_station_id in _vlan_cache:
-        vlan = _vlan_cache.pop(calling_station_id)
+        vlan = _vlan_cache[calling_station_id]
         response_tuple = response_tuple + (
             ('Tunnel-Type', '13'),
             ('Tunnel-Medium-Type', '6'),
@@ -589,13 +655,14 @@ def post_auth(authData):
         )
         log_msg = _("post_auth: Adding VLAN attributes for user {username} ({calling_station_id}): vlan={vlan}", log=True)[1]
         log_msg = log_msg.format(username=username, calling_station_id=calling_station_id, vlan=vlan)
-        log(radiusd.L_INFO, log_msg)
+        #log(radiusd.L_INFO, log_msg)
 
     return (radiusd.RLM_MODULE_UPDATED, response_tuple, ())
 
 def detach():
     """ Detach and clean up."""
     #log(radiusd.L_DBG, 'Closing authd connections...')
+    connections.close()
     return radiusd.RLM_MODULE_OK
 
 

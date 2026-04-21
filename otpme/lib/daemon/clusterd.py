@@ -58,7 +58,7 @@ CLUSTER_OUT_JOURNAL_DIR = os.path.join(config.spool_dir, CLUSTER_OUT_JOURNAL_NAM
 
 TRASH_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "trash")
 OBJECTS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "objects")
-LAST_USED_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "last_used")
+SESSIONS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "sessions")
 
 def register():
     """ Register OTPme daemon. """
@@ -78,6 +78,8 @@ def register():
     multiprocessing.register_shared_dict("daemon_reload_queue")
     multiprocessing.register_shared_dict("nsscache_sync_queue")
     multiprocessing.register_shared_dict("peer_nodes_set_online")
+    multiprocessing.register_shared_dict("last_used_sync_queue")
+    multiprocessing.register_shared_dict("last_used_synced_nodes")
     register_cluster_journal()
 
 def register_cluster_journal():
@@ -179,18 +181,33 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
         time.sleep(0.1)
 
     timestamp = time.time_ns()
+    if action == "last_used_write":
+        # Store in shared dict instead of filesystem journal.
+        # Value is a flat string "object_type|timestamp".
+        _object_type = object_id.object_type if object_id else ""
+        multiprocessing.last_used_sync_queue[object_uuid] = f"{_object_type}|{object_data}"
+        # Clear synced_nodes tracking on new write.
+        try:
+            multiprocessing.last_used_synced_nodes.pop(object_uuid)
+        except (KeyError, ValueError):
+            pass
+        multiprocessing.cluster_out_event.set()
+        return (None, None)
     if action == "write":
         journal_id = object_uuid
-        journal_dir = OBJECTS_JOURNAL_DIR
+        if object_type == "session":
+            journal_dir = SESSIONS_JOURNAL_DIR
+        else:
+            journal_dir = OBJECTS_JOURNAL_DIR
     if action == "delete":
         journal_id = object_uuid
-        journal_dir = OBJECTS_JOURNAL_DIR
+        if object_type == "session":
+            journal_dir = SESSIONS_JOURNAL_DIR
+        else:
+            journal_dir = OBJECTS_JOURNAL_DIR
     if action == "rename":
         journal_id = object_uuid
         journal_dir = OBJECTS_JOURNAL_DIR
-    if action == "last_used_write":
-        journal_id = object_uuid
-        journal_dir = LAST_USED_JOURNAL_DIR
     if action == "trash_write":
         journal_id = timestamp
         journal_dir = TRASH_JOURNAL_DIR
@@ -522,14 +539,18 @@ class ClusterEntry(object):
             log_msg = log_msg.format(dir=self.entry_dir, error=e)
             self.logger.critical(log_msg)
             return
-        try:
-            shutil.rmtree(entry_del_dir)
-        except FileNotFoundError:
-            pass
-        except Exception as e:
-            log_msg = _("Failed to remove cluster entry dir: {dir}: {error}", log=True)[1]
-            log_msg = log_msg.format(dir=self.entry_dir, error=e)
-            self.logger.warning(log_msg)
+        # Run rmtree in background thread to avoid blocking the journal loop.
+        def _rmtree(path):
+            try:
+                shutil.rmtree(path)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                pass
+        multiprocessing.start_thread(name="cluster-entry-delete",
+                                    target=_rmtree,
+                                    target_args=(entry_del_dir,),
+                                    daemon=True)
         log_msg = _("Deleted cluster entry: {object_id}", log=True)[1]
         log_msg = log_msg.format(object_id=object_id)
         self.logger.debug(log_msg)
@@ -979,6 +1000,8 @@ class ClusterDaemon(OTPmeDaemon):
         self.node_offline = False
         self.node_check_connections = {}
         self.node_write_connections = {}
+        self.node_sessions_connections = {}
+        self.node_last_used_connections = {}
         self.lock_proc_event = None
         self.cluster_comm_child = None
         self.two_node_handler_child = None
@@ -1267,8 +1290,8 @@ class ClusterDaemon(OTPmeDaemon):
             cluster_journal_entry.release()
         return journal_entries
 
-    def get_cluster_out_journal_last_used(self):
-        journal_dir = LAST_USED_JOURNAL_DIR
+    def get_cluster_out_journal_sessions(self):
+        journal_dir = SESSIONS_JOURNAL_DIR
         journal_dirs = sorted(glob.glob(journal_dir + "/*"))
         journal_dirs = [d for d in journal_dirs if not d.endswith(".deleting")]
         journal_entries = []
@@ -1339,7 +1362,7 @@ class ClusterDaemon(OTPmeDaemon):
 
     def clean_cluster_out_journal(self):
         journal_entries = self.get_cluster_out_journal()
-        journal_entries += self.get_cluster_out_journal_last_used()
+        journal_entries += self.get_cluster_out_journal_sessions()
         for cluster_journal_entry in journal_entries:
             events = cluster_journal_entry.get_object_events()
             for object_event in events:
@@ -1388,8 +1411,8 @@ class ClusterDaemon(OTPmeDaemon):
             return
         multiprocessing.cluster_out_event.set()
 
-    def get_conn_event_name(self, node_name):
-        conn_even_name = f"/cjournal-event-{node_name}"
+    def get_conn_event_name(self, node_name, event_type="object"):
+        conn_even_name = f"/cjournal-{event_type}-event-{node_name}"
         return conn_even_name
 
     def start_initial_sync(self, node_name):
@@ -1486,10 +1509,20 @@ class ClusterDaemon(OTPmeDaemon):
                 multiprocessing.two_node_setup_event.set()
                 multiprocessing.two_node_setup_event.close()
             for node_name in multiprocessing.node_connections:
-                conn_even_name = self.get_conn_event_name(node_name)
+                conn_even_name = self.get_conn_event_name(node_name, event_type="object")
                 conn_event = multiprocessing.Event(conn_even_name)
                 conn_event.set()
                 conn_event.close()
+                # Also notify the sessions sync coordinator.
+                sessions_event_name = self.get_conn_event_name(node_name, event_type="session")
+                sessions_event = multiprocessing.Event(sessions_event_name)
+                sessions_event.set()
+                sessions_event.close()
+                # Also notify the last used sync coordinator.
+                last_used_event_name = self.get_conn_event_name(node_name, event_type="last_used")
+                last_used_event = multiprocessing.Event(last_used_event_name)
+                last_used_event.set()
+                last_used_event.close()
 
     def get_master_node(self, quiet=False):
         """ Get master node. """
@@ -1808,7 +1841,11 @@ class ClusterDaemon(OTPmeDaemon):
             if self.node_check_connections:
                 self.close_node_check_connections()
             if self.node_write_connections:
-                self.close_node_check_connections()
+                self.close_node_write_connections()
+            if self.node_sessions_connections:
+                self.close_node_sessions_connections()
+            if self.node_last_used_connections:
+                self.close_node_last_used_connections()
             return
 
         # Make sure we have a connection to all nodes.
@@ -1841,6 +1878,16 @@ class ClusterDaemon(OTPmeDaemon):
                     multiprocessing.node_connections.pop(node_name)
                 except KeyError:
                     pass
+            try:
+                proc = self.node_last_used_connections[node_name]
+            except:
+                continue
+            if not proc.is_alive():
+                self.close_node_last_used_connection(node_name)
+                try:
+                    multiprocessing.node_connections.pop(node_name)
+                except KeyError:
+                    pass
 
         for node_name in enabled_nodes:
             try:
@@ -1861,6 +1908,16 @@ class ClusterDaemon(OTPmeDaemon):
                                             target=self.start_node_write_connection,
                                             target_args=(node.name,))
                 self.node_write_connections[node.name] = proc
+            if node.name not in self.node_sessions_connections:
+                proc = multiprocessing.start_process(name=self.name,
+                                            target=self.start_node_sessions_connection,
+                                            target_args=(node.name,))
+                self.node_sessions_connections[node.name] = proc
+            if node.name not in self.node_last_used_connections:
+                proc = multiprocessing.start_process(name=self.name,
+                                            target=self.start_node_last_used_connection,
+                                            target_args=(node.name,))
+                self.node_last_used_connections[node.name] = proc
             multiprocessing.node_connections[node.name] = True
         # Remove connection to e.g. disabled nodes.
         for node_name in dict(self.node_check_connections):
@@ -1884,6 +1941,32 @@ class ClusterDaemon(OTPmeDaemon):
             if node and node.enabled:
                 continue
             self.close_node_write_connection(node_name)
+            self.node_leave(node_name)
+            try:
+                multiprocessing.node_connections.pop(node_name)
+            except KeyError:
+                pass
+        for node_name in dict(self.node_sessions_connections):
+            try:
+                node = enabled_nodes[node_name]
+            except KeyError:
+                node = None
+            if node and node.enabled:
+                continue
+            self.close_node_sessions_connection(node_name)
+            self.node_leave(node_name)
+            try:
+                multiprocessing.node_connections.pop(node_name)
+            except KeyError:
+                pass
+        for node_name in dict(self.node_last_used_connections):
+            try:
+                node = enabled_nodes[node_name]
+            except KeyError:
+                node = None
+            if node and node.enabled:
+                continue
+            self.close_node_last_used_connection(node_name)
             self.node_leave(node_name)
             try:
                 multiprocessing.node_connections.pop(node_name)
@@ -2149,6 +2232,8 @@ class ClusterDaemon(OTPmeDaemon):
             # Close all cluster connections.
             self.close_node_check_connections()
             self.close_node_write_connections()
+            self.close_node_sessions_connections()
+            self.close_node_last_used_connections()
             # Cleanup IPC stuff.
             multiprocessing.cleanup()
             # Finally exit.
@@ -2372,7 +2457,7 @@ class ClusterDaemon(OTPmeDaemon):
         if len(multiprocessing.member_nodes) > 0:
             return
         all_entries = self.get_cluster_out_journal()
-        all_entries += self.get_cluster_out_journal_last_used()
+        all_entries += self.get_cluster_out_journal_sessions()
         for cluster_journal_entry in all_entries:
             try:
                 if not cluster_journal_entry.committed:
@@ -2690,7 +2775,7 @@ class ClusterDaemon(OTPmeDaemon):
         new_proctitle = f"{self.full_name} Cluster sync ({node_name})"
         setproctitle.setproctitle(new_proctitle)
 
-        conn_even_name = self.get_conn_event_name(node_name)
+        conn_even_name = self.get_conn_event_name(node_name, event_type="object")
         self.conn_event = multiprocessing.Event(conn_even_name)
 
         def signal_handler(_signal, frame):
@@ -2715,7 +2800,7 @@ class ClusterDaemon(OTPmeDaemon):
         start_over= True
         while True:
             # Wait for cluster event.
-            event_timeout = 3
+            event_timeout = 0.3
             if start_over:
                 event_timeout = 0.01
             try:
@@ -2836,10 +2921,306 @@ class ClusterDaemon(OTPmeDaemon):
             log_msg = log_msg.format(node=node_name)
             self.logger.info(log_msg)
 
-    def get_journal_entries_to_process(self, node_name, last_used=False):
+    def start_node_sessions_connection(self, node_name):
+        try:
+            self._start_node_sessions_connection(node_name)
+        except Exception as e:
+            log_msg = _("Error in node sessions connection: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            #config.raise_exception()
+
+    def _start_node_sessions_connection(self, node_name):
+        """ Start cluster sessions communication with node (coordinator). """
+        # Set proctitle.
+        new_proctitle = f"{self.full_name} Cluster sessions sync ({node_name})"
+        setproctitle.setproctitle(new_proctitle)
+
+        conn_even_name = self.get_conn_event_name(node_name, event_type="session")
+        self.conn_event = multiprocessing.Event(conn_even_name)
+
+        # Number of session sync workers per node.
+        session_worker_count = 4
+        worker_queues = []
+        worker_procs = []
+
+        def signal_handler(_signal, frame):
+            if _signal != 15:
+                if _signal != 2:
+                    return
+            for p in worker_procs:
+                try:
+                    p.terminate()
+                    p.join(timeout=2)
+                except:
+                    pass
+            for q in worker_queues:
+                try:
+                    q.unlink()
+                except:
+                    pass
+            self.conn_event.unlink()
+            multiprocessing.cleanup()
+            os._exit(0)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        self.node_name = node_name
+        # Update logger with new PID and daemon name.
+        self.pid = os.getpid()
+        log_banner = f"{self.full_name}:"
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
+        # Start session sync workers.
+        for i in range(session_worker_count):
+            queue_name = f"sessions-{node_name}-{i}"
+            # Use empty identifier so coordinator and worker share the
+            # same POSIX queue name (default generates a random UUID).
+            q = multiprocessing.MessageQueue(queue_name, identifier="")
+            worker_queues.append(q)
+            proc = multiprocessing.start_process(
+                name=f"{self.name}-session-worker-{i}",
+                target=self._session_sync_worker,
+                target_args=(node_name, i, queue_name),
+                join=False)
+            worker_procs.append(proc)
+
+        worker_idx = 0
+        start_over = True
+        while True:
+            # Wait for cluster event.
+            event_timeout = 0.3
+            if start_over:
+                event_timeout = 0.01
+            try:
+                self.conn_event.wait(timeout=event_timeout)
+            except TimeoutReached:
+                pass
+
+            if config.daemon_shutdown:
+                break
+            if self.node_disabled:
+                break
+
+            # Respawn dead workers.
+            for i, p in enumerate(worker_procs):
+                if p.is_alive():
+                    continue
+                p.join()
+                log_msg = _("Session sync worker {idx} died for {node}, respawning.", log=True)[1]
+                log_msg = log_msg.format(idx=i, node=node_name)
+                self.logger.warning(log_msg)
+                queue_name = f"sessions-{node_name}-{i}"
+                new_p = multiprocessing.start_process(
+                    name=f"{self.name}-session-worker-{i}",
+                    target=self._session_sync_worker,
+                    target_args=(node_name, i, queue_name),
+                    join=False)
+                worker_procs[i] = new_p
+
+            start_over = False
+
+            if node_name not in multiprocessing.ready_nodes:
+                start_over = True
+                continue
+            if node_name not in multiprocessing.online_nodes:
+                start_over = True
+                continue
+
+            # Get entries and distribute to workers round-robin.
+            try:
+                entries = self.get_journal_entries_to_process(node_name, sessions=True)
+            except Exception as e:
+                start_over = True
+                log_msg = _("Failed to get session journal entries: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+                continue
+
+            for entry in entries:
+                q = worker_queues[worker_idx % session_worker_count]
+                try:
+                    q.send(entry.journal_id)
+                except Exception as e:
+                    log_msg = _("Failed to send journal entry to worker: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
+                worker_idx += 1
+
+        # Cleanup workers.
+        for p in worker_procs:
+            try:
+                p.terminate()
+                p.join(timeout=2)
+            except:
+                pass
+        for q in worker_queues:
+            try:
+                q.unlink()
+            except:
+                pass
+        self.exit_child()
+
+    def _session_sync_worker(self, node_name, worker_idx, queue_name):
+        """ Session sync worker: owns its own node connection. """
+        multiprocessing.atfork(quiet=True)
+        new_proctitle = f"{self.full_name} Session worker {worker_idx} ({node_name})"
+        setproctitle.setproctitle(new_proctitle)
+
+        self.node_name = node_name
+        self.node_conn = None
+        self.pid = os.getpid()
+        log_banner = f"{self.full_name}:"
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
+        def signal_handler(_signal, frame):
+            if _signal != 15:
+                if _signal != 2:
+                    return
+            if self.node_conn:
+                self.node_conn.close()
+            multiprocessing.cleanup()
+            os._exit(0)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        q = multiprocessing.MessageQueue(queue_name, identifier="")
+
+        while True:
+            if config.daemon_shutdown:
+                break
+
+            # Receive journal entry ID from coordinator.
+            try:
+                journal_id = q.recv(timeout=1)
+            except TimeoutReached:
+                continue
+            except Exception as e:
+                log_msg = _("Session worker {idx}: queue error: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.warning(log_msg)
+                continue
+
+            # Ensure we have a connection.
+            if self.node_conn is None:
+                node_conn = self.get_node_connection(node_name)
+                if not node_conn:
+                    time.sleep(0.1)
+                    continue
+
+            # Process the single journal entry.
+            cluster_journal_entry = ClusterJournalEntry(
+                journal_id=journal_id,
+                journal_dir=SESSIONS_JOURNAL_DIR)
+            try:
+                if not cluster_journal_entry.committed:
+                    continue
+                cluster_journal_entry.lock(write=False)
+            except ObjectDeleted:
+                continue
+            try:
+                if node_name in cluster_journal_entry.get_nodes():
+                    if self.check_member_nodes(cluster_journal_entry):
+                        self.check_online_nodes(cluster_journal_entry)
+                    continue
+            finally:
+                cluster_journal_entry.release()
+            try:
+                self.process_cluster_out_journal(node_name, [cluster_journal_entry])
+            except ProcessingFailed as e:
+                log_msg = _("Session worker {idx}: processing failed: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.warning(log_msg)
+                self.node_conn = None
+            except Exception as e:
+                log_msg = _("Session worker {idx}: error: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.critical(log_msg)
+                self.node_conn = None
+
+        os._exit(0)
+
+    def start_node_last_used_connection(self, node_name):
+        try:
+            self._start_node_last_used_connection(node_name)
+        except Exception as e:
+            log_msg = _("Error in node write connection: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            #config.raise_exception()
+
+    def _start_node_last_used_connection(self, node_name):
+        """ Start cluster last used communication with node. """
+        # Set proctitle.
+        new_proctitle = f"{self.full_name} Cluster last used sync ({node_name})"
+        setproctitle.setproctitle(new_proctitle)
+
+        conn_even_name = self.get_conn_event_name(node_name, event_type="last_used")
+        self.conn_event = multiprocessing.Event(conn_even_name)
+
+        def signal_handler(_signal, frame):
+            if _signal != 15:
+                if _signal != 2:
+                    return
+            # Cleanup IPC stuff.
+            if self.node_conn:
+                self.node_conn.close()
+            self.conn_event.unlink()
+            multiprocessing.cleanup()
+            os._exit(0)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        self.node_name = node_name
+        # Update logger with new PID and daemon name.
+        self.pid = os.getpid()
+        log_banner = f"{self.full_name}:"
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
+        start_over= True
+        while True:
+            # Wait for cluster event.
+            event_timeout = 0.3
+            if start_over:
+                event_timeout = 0.01
+            try:
+                self.conn_event.wait(timeout=event_timeout)
+            except TimeoutReached:
+                pass
+            #finally:
+            #    self.conn_event.close()
+
+            if config.daemon_shutdown:
+                os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
+
+            start_over= False
+            if self.node_conn is None:
+                node_conn = self.get_node_connection(node_name)
+                if not node_conn:
+                    continue
+
+            if node_name not in multiprocessing.ready_nodes:
+                start_over = True
+                continue
+            if node_name not in multiprocessing.online_nodes:
+                start_over = True
+                continue
+
+            try:
+                self.process_last_used(node_name)
+            except Exception as e:
+                start_over = True
+                log_msg = _("Failed to handle cluster last used journal: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+                #config.raise_exception()
+
+    def get_journal_entries_to_process(self, node_name, sessions=False):
         entries_to_process = []
-        if last_used:
-            all_entries = self.get_cluster_out_journal_last_used()
+        if sessions:
+            all_entries = self.get_cluster_out_journal_sessions()
         else:
             all_entries = self.get_cluster_out_journal()
         for cluster_journal_entry in all_entries:
@@ -2872,8 +3253,6 @@ class ClusterDaemon(OTPmeDaemon):
             if not entries_to_process:
                 break
             written_entries = self.process_cluster_out_journal(node_name, entries_to_process)
-
-        self.process_last_used(node_name)
 
         if config.master_node:
             if not config.master_failover:
@@ -3238,80 +3617,63 @@ class ClusterDaemon(OTPmeDaemon):
 
         return written_entries
 
-    def process_last_used(self, node_name):
-        """ Process cluster journal. """
-        last_used_times = {}
-        last_used_journal_entries = self.get_journal_entries_to_process(node_name, last_used=True)
-        for cluster_journal_entry in last_used_journal_entries:
-            node_conn = self.node_conn
-            if node_conn is None:
-                msg = _("No node connection.")
-                raise ProcessingFailed(msg)
-            try:
-                object_id = cluster_journal_entry.object_id
-                object_id = oid.get(object_id)
-                object_type = object_id.object_type
-                object_uuid = cluster_journal_entry.object_uuid
-                # We need to read action last because it will throw
-                # ObjectDeleted exception if the cluster entry was deleted.
-                actions = cluster_journal_entry.get_actions(node_name)
-                for action in actions:
-                    action_committer = actions[action]['committer']
-                    if action != "last_used_write":
-                        log_msg = _("Unknown last used command: {action}", log=True)[1]
-                        log_msg = log_msg.format(action=action)
-                        self.logger.warning(log_msg)
-                        try:
-                            cluster_journal_entry.add_node(node_name)
-                        except ObjectDeleted:
-                            pass
-                        try:
-                            action_committer()
-                        except ObjectDeleted:
-                            pass
-                        if self.check_member_nodes(cluster_journal_entry):
-                            self.check_online_nodes(cluster_journal_entry)
-                        continue
-                    try:
-                        last_used = float(cluster_journal_entry.object_data)
-                    except TypeError:
-                        log_msg = _("Broken last used cluster entry: {entry}", log=True)[1]
-                        log_msg = log_msg.format(entry=cluster_journal_entry)
-                        self.logger.warning(log_msg)
-                        try:
-                            cluster_journal_entry.add_node(node_name)
-                        except ObjectDeleted:
-                            pass
-                        try:
-                            action_committer()
-                        except ObjectDeleted:
-                            pass
-                        if self.check_member_nodes(cluster_journal_entry):
-                            self.check_online_nodes(cluster_journal_entry)
-                        continue
-                    try:
-                        last_used_objects = last_used_times[object_type]
-                    except KeyError:
-                        last_used_objects = {}
-                        last_used_times[object_type] = last_used_objects
-                    last_used_objects[object_uuid] = last_used
-                    try:
-                        action_committer()
-                    except ObjectDeleted:
-                        pass
-                    try:
-                        cluster_journal_entry.add_node(node_name)
-                    except ObjectDeleted:
-                        continue
-                    # Check if object was written to member nodes.
-                    if self.check_member_nodes(cluster_journal_entry):
-                        # Check if object was written to all online nodes.
-                        self.check_online_nodes(cluster_journal_entry)
-            except ObjectDeleted:
-                pass
+    def process_sessions_journal(self, node_name):
+        """ Process cluster sessions journal. """
+        while True:
+            entries_to_process = self.get_journal_entries_to_process(node_name, sessions=True)
+            if not entries_to_process:
+                break
+            self.process_cluster_out_journal(node_name, entries_to_process)
 
+    def process_last_used(self, node_name):
+        """ Process last used updates from shared dict. """
+        node_conn = self.node_conn
+        if node_conn is None:
+            msg = _("No node connection.")
+            raise ProcessingFailed(msg)
+        # Take a snapshot of entries this node hasn't synced yet.
+        # synced_nodes dict tracks which nodes got which entry.
+        # Key: "uuid:node_name", value: timestamp that was synced.
+        pending = {}
+        for object_uuid, value in multiprocessing.last_used_sync_queue.items():
+            # Check if this node already synced the current value.
+            synced_key = f"{object_uuid}:{node_name}"
+            try:
+                synced_ts = multiprocessing.last_used_synced_nodes[synced_key]
+            except (KeyError, ValueError):
+                synced_ts = None
+            # Parse flat value "object_id|timestamp".
+            parts = value.split("|", 1)
+            if len(parts) != 2:
+                continue
+            entry_ts = parts[1]
+            if synced_ts == entry_ts:
+                continue
+            pending[object_uuid] = value
+        if not pending:
+            return
+        # Group by object type for batched sending.
+        last_used_times = {}
+        for object_uuid, value in pending.items():
+            try:
+                parts = value.split("|", 1)
+                object_type = parts[0]
+                last_used = float(parts[1])
+            except Exception as e:
+                log_msg = _("Broken last used entry: {uuid}: {error}", log=True)[1]
+                log_msg = log_msg.format(uuid=object_uuid, error=e)
+                self.logger.warning(log_msg)
+                try:
+                    multiprocessing.last_used_sync_queue.pop(object_uuid)
+                except (KeyError, ValueError):
+                    pass
+                continue
+            if object_type not in last_used_times:
+                last_used_times[object_type] = {}
+            last_used_times[object_type][object_uuid] = last_used
+        # Send batched per object type.
         for object_type in last_used_times:
-            last_used_objects= last_used_times[object_type]
+            last_used_objects = last_used_times[object_type]
             try:
                 last_used_write_status = node_conn.last_used_write(object_type, last_used_objects)
             except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
@@ -3320,22 +3682,58 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = msg.format(node=node_name, object_type=object_type, error=e)
                 log_msg = log_msg.format(node=node_name, object_type=object_type, error=e)
                 self.logger.warning(log_msg)
-                #self.check_member_nodes(cluster_journal_entry)
                 raise ProcessingFailed(msg)
             except Exception as e:
-                #self.node_leave(node_name)
                 self.node_disconnect(node_name)
                 msg, log_msg = _("Error sending last used times: {node}: {object_type}: {error}", log=True)
                 msg = msg.format(node=node_name, object_type=object_type, error=e)
                 log_msg = log_msg.format(node=node_name, object_type=object_type, error=e)
                 self.logger.warning(log_msg)
-                #self.check_member_nodes(cluster_journal_entry)
                 raise ProcessingFailed(msg)
             if last_used_write_status != "done":
                 continue
             log_msg = _("Sent last used times to node: {node}: {object_type}", log=True)[1]
             log_msg = log_msg.format(node=node_name, object_type=object_type)
             self.logger.debug(log_msg)
+        # Mark this node as synced. Remove entry once all online
+        # nodes have received it.
+        online_nodes = list(multiprocessing.online_nodes)
+        for object_uuid, value in pending.items():
+            entry_ts = value.split("|", 1)[1]
+            # Check if value was updated since our snapshot.
+            try:
+                current = multiprocessing.last_used_sync_queue[object_uuid]
+            except (KeyError, ValueError):
+                continue
+            current_ts = current.split("|", 1)[1]
+            if current_ts != entry_ts:
+                continue
+            # Mark this node as synced for this timestamp.
+            synced_key = f"{object_uuid}:{node_name}"
+            multiprocessing.last_used_synced_nodes[synced_key] = entry_ts
+            # Check if all online nodes have synced this entry.
+            all_synced = True
+            for n in online_nodes:
+                check_key = f"{object_uuid}:{n}"
+                try:
+                    n_ts = multiprocessing.last_used_synced_nodes[check_key]
+                except (KeyError, ValueError):
+                    all_synced = False
+                    break
+                if n_ts != entry_ts:
+                    all_synced = False
+                    break
+            if all_synced:
+                try:
+                    multiprocessing.last_used_sync_queue.pop(object_uuid)
+                except (KeyError, ValueError):
+                    pass
+                # Clean up synced_nodes entries.
+                for n in online_nodes:
+                    try:
+                        multiprocessing.last_used_synced_nodes.pop(f"{object_uuid}:{n}")
+                    except (KeyError, ValueError):
+                        pass
 
     def set_node_sync(self, node_name, sync_time):
         try:
@@ -3711,13 +4109,45 @@ class ClusterDaemon(OTPmeDaemon):
         for node_name in list(self.node_write_connections):
             self.close_node_write_connection(node_name)
 
+    def close_node_sessions_connection(self, node_name):
+        """ Close node sessions connection. """
+        proc = self.node_sessions_connections[node_name]
+        proc.terminate()
+        proc.join()
+        try:
+            self.node_sessions_connections.pop(node_name)
+        except KeyError:
+            pass
+
+    def close_node_sessions_connections(self):
+        """ Close all node sessions connections. """
+        for node_name in list(self.node_sessions_connections):
+            self.close_node_sessions_connection(node_name)
+
+    def close_node_last_used_connection(self, node_name):
+        """ Close node last used connection. """
+        proc = self.node_last_used_connections[node_name]
+        proc.terminate()
+        #stuff.wait_pid(pid=proc.pid,
+        #            recursive=True)
+        proc.join()
+        try:
+            self.node_last_used_connections.pop(node_name)
+        except KeyError:
+            pass
+
+    def close_node_last_used_connections(self):
+        """ Close all node last used connections. """
+        for node_name in list(self.node_last_used_connections):
+            self.close_node_last_used_connection(node_name)
+
     def _run(self, reload=False, master_node=False, **kwargs):
         """ Start daemon loop. """
         # Setup logger.
         self.logger = log.setup_logger(pid=True)
         # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 100
+        self.max_conn = 256
         # Set signal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)

@@ -65,6 +65,8 @@ class OTPmeDaemon(object):
         self.sockets = {}
         # Will hold the default connection handler.
         self.conn_handler = None
+        # Pre-fork worker count (0 = legacy fork-per-connection).
+        self.worker_count = 0
 
     def signal_handler(self, _signal, frame):
         """ Handle signals """
@@ -330,7 +332,8 @@ class OTPmeDaemon(object):
                             ssl_key=self.key,
                             ssl_ca_data=self.ca_data,
                             ssl_verify_client=ssl_verify_client,
-                            max_conn=self.max_conn)
+                            max_conn=self.max_conn,
+                            worker_count=self.worker_count)
 
     def listen(self):
         """ Start listening on sockets. """

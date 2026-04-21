@@ -35,7 +35,7 @@ class AuthDaemon(OTPmeDaemon):
     def outdate_sessions(self):
         now = time.time()
         outdate_age = now - self.last_session_outdate
-        if outdate_age < 300:
+        if outdate_age < 60:
             return
         self.last_session_outdate = time.time()
         all_sessions = backend.get_sessions(return_type="instance")
@@ -52,7 +52,9 @@ class AuthDaemon(OTPmeDaemon):
         self.protocols = config.get_otpme_protocols(self.name, server=True)
         # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 256
+        self.max_conn = 1024
+        # Use pre-fork worker pool for better throughput.
+        self.worker_count = config.authd_workers
         # FIXME: where to configure socket banner?
         # set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"
@@ -77,11 +79,22 @@ class AuthDaemon(OTPmeDaemon):
                             banner=self.socket_banner,
                             user=self.user,
                             group=self.group,
-                            mode=0o666)
+                            mode=0o666,
+                            worker_count=self.worker_count)
         except Exception as e:
             log_msg = _("Failed to add unix socket: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
+
+        # Preload site RSA signing key before accepting connections (and
+        # before forking client handlers). Saves ~350ms per forked child.
+        try:
+            from otpme.lib.classes.auth_handler import preload_site_key
+            preload_site_key()
+        except Exception as e:
+            log_msg = _("Failed to preload site key: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
         # Do default startup (e.g. drop privileges, listen on sockets etc.).
         self.default_startup()

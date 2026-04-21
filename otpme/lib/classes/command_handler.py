@@ -47,7 +47,13 @@ from otpme.lib.compression.base import get_uncompressed_size
 
 from otpme.lib.exceptions import *
 
-add_debug_decorators()
+add_decorators = False
+if config.debug_level("method_calls") > 0:
+    add_decorators = True
+if config.debug_level("debug_timings") > 0:
+    add_decorators = True
+if add_decorators:
+    add_debug_decorators()
 
 class CommandHandler(object):
     """ Handle OTPme commands. """
@@ -1136,7 +1142,7 @@ class CommandHandler(object):
                     print(msg)
                     failed_restores.append(msg)
                 else:
-                    backend.set_last_used(x_oid.object_type, x_uuid, x_last_used)
+                    backend.set_last_used(x_oid, x_uuid, x_last_used)
         msg = "Creating DB indexes..."
         print(msg)
         _index.command("create_db_indices")
@@ -2342,6 +2348,10 @@ class CommandHandler(object):
         except:
             site_key_len = 4096
         try:
+            joind_uri = command_args['joind_uri']
+        except:
+            joind_uri = None
+        try:
             trust_site_cert = command_args['trust_site_cert']
         except:
             trust_site_cert = False
@@ -2394,6 +2404,7 @@ class CommandHandler(object):
         # Join realm.
         result = self.join_realm(host_type,
                         domain=object_identifier,
+                        socket_uri=joind_uri,
                         jotp=jotp, unit=unit,
                         host_key_len=host_key_len,
                         site_key_len=site_key_len,
@@ -2560,6 +2571,7 @@ class CommandHandler(object):
         """ Handle login benchmark command. """
         import csv
         from otpme.lib import multiprocessing
+        import multiprocessing as py_multiprocessing
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
@@ -2582,79 +2594,135 @@ class CommandHandler(object):
             elif str(e) != "":
                 return self.get_help(str(e))
         try:
-            node = command_args.pop('node')
+            nodes = command_args.pop('node')
         except KeyError:
-            node = None
+            nodes = []
         try:
             procs = command_args.pop('procs')
         except KeyError:
             procs = None
         if procs is None:
             procs = int(os.cpu_count() / 2)
+
         csv_file = command_args.pop('csv_file')
         with open(csv_file, newline='', encoding='utf-8') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             #header = next(reader)
             #print("Got header from csv file:", header)
             csv_data = list(reader)
-        login_procs = {}
+
+        if procs < 1:
+            procs = 1
+
+        register_module("otpme.lib.multiprocessing")
+        task_queue = py_multiprocessing.Queue(maxsize=procs * 2)
+        result_queue = py_multiprocessing.Queue()
+        counter_lock = py_multiprocessing.Lock()
+        login_counter_value = py_multiprocessing.Value('i', 0)
+        # Shared start_time so the parent can initialise the clock *after*
+        # all workers have been spawned — forked children would otherwise
+        # see a stale value that includes worker-spawn time and skew the
+        # reported throughput.
+        start_time_value = py_multiprocessing.Value('d', 0.0)
         login_counter = 0
+        login_count = len(csv_data)
+
+        def login_worker():
+            multiprocessing.atfork(quiet=True)
+            while True:
+                job = task_queue.get()
+                if job is None:
+                    break
+                username = job[0]
+                password = job[1]
+                node = job[2]
+                config.use_ssh_agent = False
+                config.use_smartcard = False
+                method_kwargs = {
+                    'username': username,
+                    'password': password,
+                    'start_otpme_agent': False,
+                    'cache_login_tokens': False,
+                    'mount_shares': False,
+                    'check_login_status': False,
+                    'add_agent_session': False,
+                    'add_login_session': False,
+                    'save_offline_token': False,
+                    'send_password': True,
+                    'request_token': False,
+                    'node': node,
+                }
+                error = None
+                try:
+                    self.login(**method_kwargs)
+                except Exception as e:
+                    error = str(e)
+                finally:
+                    now = time.time()
+                    with counter_lock:
+                        login_counter_value.value += 1
+                        per_login_time = (now - start_time_value.value) / login_counter_value.value
+                        if node:
+                            if error:
+                                print(f"Login failed: {username} ({node}): {error} ({per_login_time:.2f})", flush=True)
+                            else:
+                                print(f"Login finished: {username} ({node}) ({per_login_time:.2f})", flush=True)
+                        else:
+                            if error:
+                                print(f"Login failed: {username}: {error} ({per_login_time:.2f})", flush=True)
+                            else:
+                                print(f"Login finished: {username} ({per_login_time:.2f})", flush=True)
+                    result_queue.put((username, error))
+            # Cleanup on exit.
+            try:
+                multiprocessing.cleanup()
+            except Exception:
+                pass
+
+        worker_procs = []
+        worker_count = min(procs, login_count)
+        for _x in range(worker_count):
+            worker = multiprocessing.start_process(name="login_benchmark",
+                                                    target=login_worker,
+                                                    daemon=True,
+                                                    start=True)
+            worker_procs.append(worker)
+
+        # Start the clock now that all workers are up.
         start_time = time.time()
+        start_time_value.value = start_time
+
+        node_counter = 0
+        nodes_count = len(nodes)
         for line in csv_data:
             username = line[0]
             password = line[1]
-            while True:
-                for x_user in list(login_procs):
-                    child = login_procs[x_user]
-                    if child.is_alive():
-                        continue
-                    child.join()
-                    login_procs.pop(x_user)
-                    login_counter += 1
-                    now = time.time()
-                    duration = now - start_time
-                    per_login_time = duration / login_counter
-                    print(f"Login finished: {x_user} ({per_login_time:.2f})")
-                time.sleep(0.01)
-                if len(login_procs) >= procs:
-                    continue
-                break
-            method_kwargs = {}
-            method_kwargs['username'] = username
-            method_kwargs['password'] = password
-            method_kwargs['mount_shares'] = False
-            method_kwargs['check_login_status'] = False
-            method_kwargs['add_agent_session'] = False
-            method_kwargs['add_login_session'] = False
-            method_kwargs['start_otpme_agent'] = False
-            method_kwargs['node'] = node
-            login_child = multiprocessing.start_process(name="login",
-                                                target=self.login,
-                                                target_kwargs=method_kwargs,
-                                                start=False,
-                                                daemon=True)
-            login_child.start()
-            login_procs[username] = login_child
-        while True:
-            for x_user in list(login_procs):
-                child = login_procs[x_user]
-                if child.is_alive():
-                    continue
-                child.join()
-                login_procs.pop(x_user)
-                login_counter += 1
-                now = time.time()
-                duration = now - start_time
-                per_login_time = duration / login_counter
-                print(f"Login finished: {x_user} ({per_login_time:.2f})")
-            time.sleep(0.01)
-            if len(login_procs) > 0:
-                continue
-            break
+            if nodes:
+                node = nodes[node_counter]
+            else:
+                node = None
+            task_queue.put((username, password, node))
+            node_counter += 1
+            if node_counter >= nodes_count:
+                node_counter = 0
+
+        for _x in range(worker_count):
+            task_queue.put(None)
+
+        while login_counter < login_count:
+            username, error = result_queue.get()
+            login_counter += 1
+
+        for worker in worker_procs:
+            worker.join()
+
         now = time.time()
         duration = now - start_time
-        logins_per_second = login_counter / duration
-        print(f"Requests/Second: {logins_per_second:.2f}")
+        if duration == 0:
+            logins_per_second = 0
+        else:
+            logins_per_second = login_counter / duration
+        print(f"Requests/Second: {logins_per_second:.2f}", flush=True)
 
     def handle_mass_object_add(self, command, subcommand):
         """ Handle mass object add command. """
@@ -5059,7 +5127,7 @@ class CommandHandler(object):
         return output
 
     def join_realm(self, host_type, realm=None, site=None,
-        domain=None, jotp=None, unit=None, host_key_len=None,
+        domain=None, socket_uri=None, jotp=None, unit=None, host_key_len=None,
         site_key_len=None, trust_site_cert=False, no_daemon_start=False,
         check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
         """ Join host/node to realm. """
@@ -5070,12 +5138,18 @@ class CommandHandler(object):
             disabled_interactive_policies = True
             config.ignore_policy_tags.append("interactive")
 
+        if realm is None:
+            realm = config.connect_realm
+        if site is None:
+            site = config.connect_site
+
         # Try to join realm.
         join_handler = JoinHandler()
         try:
             result = join_handler.join_realm(domain=domain,
                                             realm=realm,
                                             site=site,
+                                            socket_uri=socket_uri,
                                             host_type=host_type,
                                             host_key_len=host_key_len,
                                             site_key_len=site_key_len,
@@ -5139,7 +5213,6 @@ class CommandHandler(object):
         start_otpme_agent=True, **kwargs):
         """ Do realm login. """
         from otpme.lib.classes.login_handler import LoginHandler
-        #init_otpme(use_backend=False)
         self.init(use_backend=False)
         if start_otpme_agent:
             try:
@@ -6942,216 +7015,47 @@ class CommandHandler(object):
                             x_status_line = colored(x_status_line, 'yellow')
             cluster_status_str.append(x_status_line)
 
-            if cluster_in_sync:
-                continue
+        if diff_data and not cluster_in_sync:
+            diffable_nodes = sorted([
+                n for n in node_checksums
+                if node_status.get(n, {}).get('status') == "Online"
+            ])
 
-            if x_node_status == "Offline":
-                continue
+            def _build_oid_map(key):
+                oid_map = {}
+                for _n in diffable_nodes:
+                    cs_dict = node_checksums[_n].get(key) or {}
+                    for _oid, _cs in cs_dict.items():
+                        oid_map.setdefault(_oid, {})[_n] = _cs
+                return oid_map
 
-            if x_node == master_node:
-                continue
+            def _emit_diff(oid_map, label):
+                for _oid in sorted(oid_map):
+                    present = oid_map[_oid]
+                    missing = [n for n in diffable_nodes if n not in present]
+                    checksums = set(present.values())
+                    if missing:
+                        msg = _("{label} {oid} missing on: {nodes} (present on: {present}).")
+                        msg = msg.format(label=label,
+                                        oid=_oid,
+                                        nodes=", ".join(sorted(missing)),
+                                        present=", ".join(sorted(present.keys())))
+                        missing_objects.append(colored(msg, 'red'))
+                    elif len(checksums) > 1:
+                        parts = [f"{n}={present[n]}" for n in sorted(present)]
+                        msg = _("{label} {oid} differs: {parts}")
+                        msg = msg.format(label=label,
+                                        oid=_oid,
+                                        parts=", ".join(parts))
+                        diff_objects.append(colored(msg, 'yellow'))
 
-            if diff_data:
-                already_missed_datas= {}
-                already_missed_objects = {}
-                already_missed_sesssions = {}
-                already_diffed_datas = {}
-                already_diffed_objects = {}
-                already_diffed_sessions = {}
-                try:
-                    m_data_checksums = node_checksums[master_node]['data_checksums']
-                except KeyError:
-                    m_data_checksums = {}
-                try:
-                    m_object_checksums = node_checksums[master_node]['object_checksums']
-                except KeyError:
-                    m_object_checksums = {}
-                try:
-                    m_session_checksums = node_checksums[master_node]['session_checksums']
-                except KeyError:
-                    m_session_checksums = {}
-
-                try:
-                    n_data_checksums = node_checksums[x_node]['data_checksums']
-                except KeyError:
-                    n_data_checksums = {}
-                try:
-                    n_object_checksums = node_checksums[x_node]['object_checksums']
-                except KeyError:
-                    n_object_checksums = {}
-                try:
-                    n_session_checksums = node_checksums[x_node]['session_checksums']
-                except KeyError:
-                    n_session_checksums = {}
-
-                # Diff objects.
+            if len(diffable_nodes) >= 2:
                 if do_diff_objects:
-                    for m_object in m_object_checksums:
-                        m_checksum = m_object_checksums[m_object]
-                        try:
-                            n_checksum = n_object_checksums[m_object]
-                        except:
-                            try:
-                                n_missing_objects = already_missed_objects[x_node]
-                            except KeyError:
-                                n_missing_objects = []
-                            if m_object in n_missing_objects:
-                                continue
-                            n_missing_objects.append(m_object)
-                            already_missed_objects[x_node] = n_missing_objects
-                            msg = _("Object {m_object} missing on node {x_node}.")
-                            msg = msg.format(m_object=m_object, x_node=x_node)
-                            msg = colored(msg, 'red')
-                            missing_objects.append(msg)
-                            continue
-                        if n_checksum == m_checksum:
-                            continue
-                        try:
-                            n_diffed_objects = already_diffed_objects[x_node]
-                        except KeyError:
-                            n_diffed_objects = []
-                        if m_object in n_diffed_objects:
-                            continue
-                        n_diffed_objects.append(m_object)
-                        already_diffed_objects[x_node] = n_diffed_objects
-                        msg = _("Object {m_object} differs on node {x_node}: {m_checksum} <> {n_checksum}")
-                        msg = msg.format(m_object=m_object,
-                                        x_node=x_node,
-                                        m_checksum=m_checksum,
-                                        n_checksum=n_checksum)
-                        msg = colored(msg, 'yellow')
-                        diff_objects.append(msg)
-
-                    for n_object in n_object_checksums:
-                        try:
-                            m_object_checksums[n_object]
-                        except KeyError:
-                            try:
-                                m_missing_objects = already_missed_objects[master_node]
-                            except KeyError:
-                                m_missing_objects = []
-                            if n_object in m_missing_objects:
-                                continue
-                            m_missing_objects.append(n_object)
-                            already_missed_objects[master_node] = m_missing_objects
-                            msg = _("Object {n_object} missing on node {master_node}.")
-                            msg = msg.format(n_object=n_object, master_node=master_node)
-                            msg = colored(msg, 'red')
-                            missing_objects.append(msg)
-                            continue
-
-                # Diff data objects.
+                    _emit_diff(_build_oid_map('object_checksums'), _("Object"))
                 if do_diff_data:
-                    for m_data in m_data_checksums:
-                        m_checksum = m_data_checksums[m_data]
-                        try:
-                            n_checksum = n_data_checksums[m_data]
-                        except:
-                            try:
-                                n_missing_datas = already_missed_datas[x_node]
-                            except KeyError:
-                                n_missing_datas = []
-                            if m_data in n_missing_datas:
-                                continue
-                            n_missing_datas.append(m_data)
-                            already_missed_datas[x_node] = n_missing_datas
-                            msg = _("Data object {m_data} missing on node {x_node}.")
-                            msg = msg.format(m_data=m_data, x_node=x_node)
-                            msg = colored(msg, 'red')
-                            missing_objects.append(msg)
-                            continue
-                        if n_checksum == m_checksum:
-                            continue
-                        try:
-                            n_diffed_datas = already_diffed_datas[x_node]
-                        except KeyError:
-                            n_diffed_datas = []
-                        if m_data in n_diffed_datas:
-                            continue
-                        n_diffed_datas.append(m_data)
-                        already_diffed_datas[x_node] = n_diffed_datas
-                        msg = _("Object {m_data} differs on node {x_node}: {m_checksum} <> {n_checksum}")
-                        msg = msg.format(m_data=m_data,
-                                        x_node=x_node,
-                                        m_checksum=m_checksum,
-                                        n_checksum=n_checksum)
-                        msg = colored(msg, 'yellow')
-                        diff_objects.append(msg)
-
-                    for n_data in n_data_checksums:
-                        try:
-                            m_data_checksums[n_data]
-                        except KeyError:
-                            try:
-                                m_missing_datas = already_missed_datas[master_node]
-                            except KeyError:
-                                m_missing_datas = []
-                            if n_data in m_missing_datas:
-                                continue
-                            m_missing_datas.append(n_data)
-                            already_missed_datas[master_node] = m_missing_datas
-                            msg = _("Data object {n_data} missing on node {master_node}.")
-                            msg = msg.format(n_data=n_data, master_node=master_node)
-                            msg = colored(msg, 'red')
-                            missing_objects.append(msg)
-                            continue
-
-                # Diff session objects.
+                    _emit_diff(_build_oid_map('data_checksums'), _("Data object"))
                 if do_diff_sessions:
-                    for m_session in m_session_checksums:
-                        m_checksum = m_session_checksums[m_session]
-                        try:
-                            n_checksum = n_session_checksums[m_session]
-                        except KeyError:
-                            try:
-                                n_missing_sessions = already_missed_sesssions[x_node]
-                            except KeyError:
-                                n_missing_sessions = []
-                            if m_session in n_missing_sessions:
-                                continue
-                            n_missing_sessions.append(m_session)
-                            already_missed_sesssions[x_node] = n_missing_sessions
-                            msg = _("Session {m_session} missing on node {x_node}.")
-                            msg = msg.format(m_session=m_session, x_node=x_node)
-                            msg = colored(msg, 'red')
-                            missing_objects.append(msg)
-                            continue
-                        if n_checksum == m_checksum:
-                            continue
-                        try:
-                            n_diffed_sessions = already_diffed_sessions[x_node]
-                        except KeyError:
-                            n_diffed_sessions = []
-                        if m_session in n_diffed_sessions:
-                            continue
-                        n_diffed_sessions.append(m_session)
-                        already_diffed_sessions[x_node] = n_diffed_sessions
-                        msg = _("Session {m_session} differs on node {x_node}: {m_checksum} <> {n_checksum}")
-                        msg = msg.format(m_session=m_session,
-                                        x_node=x_node,
-                                        m_checksum=m_checksum,
-                                        n_checksum=n_checksum)
-                        msg = colored(msg, 'yellow')
-                        diff_objects.append(msg)
-
-                    for n_session in n_session_checksums:
-                        n_checksum = n_session_checksums[n_session]
-                        try:
-                            m_session_checksums[n_session]
-                        except:
-                            try:
-                                m_missing_sessions = already_missed_sesssions[master_node]
-                            except KeyError:
-                                m_missing_sessions = []
-                            if n_session in m_missing_sessions:
-                                continue
-                            m_missing_sessions.append(n_session)
-                            already_missed_sesssions[master_node] = m_missing_sessions
-                            msg = _("Session {n_session} missing on node {master_node}.")
-                            msg = msg.format(n_session=n_session, master_node=master_node)
-                            msg = colored(msg, 'red')
-                            missing_objects.append(msg)
-                            continue
+                    _emit_diff(_build_oid_map('session_checksums'), _("Session"))
 
         diff_details = diff_objects + missing_objects
         if diff_details:

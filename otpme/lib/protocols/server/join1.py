@@ -101,7 +101,7 @@ class OTPmeJoinP1(OTPmeServer1):
         found_hosts = {}
         for x in result:
             if x.type in [ "host", "node" ]:
-                found_hosts[x.oid] = x
+                found_hosts[x.oid.full_oid] = x
 
         if len(found_hosts) > 1:
             msg = _("Uuuh, more than one host with this name exists: {hosts}")

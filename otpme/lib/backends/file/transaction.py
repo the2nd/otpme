@@ -126,8 +126,13 @@ def handle_transaction(func):
             close_session = False
             session = _transaction.session
         else:
-            _index = config.get_index_module()
-            session = _index.get_db_connection()
+            # Use pre-opened session if exists.
+            if config.session:
+                close_session = False
+                session = config.session
+            else:
+                _index = config.get_index_module()
+                session = _index.get_db_connection()
         # Run function.
         try:
             result = func(*args, session=session,
@@ -547,7 +552,7 @@ class BaseTransaction(object):
         self.cluster_journal_entries[str(self.journal_counter)] = journal_entry
         self.cluster_journal_counter += 1
 
-    def cluster_delete(self, object_uuid, object_id):
+    def cluster_delete(self, object_uuid, object_id, wait_for_write=True):
         """ Cluster delete action. """
         action = "cluster_delete"
         journal_file = self.get_cluster_journal_file(action)
@@ -555,6 +560,7 @@ class BaseTransaction(object):
                         'action'        : action,
                         'object_uuid'   : object_uuid,
                         'object_id'     : object_id.full_oid,
+                        'wait_for_write': wait_for_write,
                         'journal_file'  : journal_file,
                         }
         self.cluster_journal.append(self.journal_counter)
@@ -606,7 +612,7 @@ class BaseTransaction(object):
         object_id = journal_entry['object_id']
         object_id = oid.get(object_id)
         object_type = object_id.object_type
-        wait_for_write = True
+        wait_for_write = journal_entry['wait_for_write']
         if self._replay:
             wait_for_write = False
         if not config.wait_for_cluster_writes:

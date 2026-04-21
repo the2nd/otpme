@@ -220,8 +220,12 @@ def _send_ssod_command(command, extra_args, default_error):
 def list_device_tokens():
     if not g.user.is_authenticated:
         return jsonify({"error": "Not authenticated"}), 401
-    response, error = _send_ssod_command("list_device_tokens", {},
-                                        "Failed to list device tokens.")
+    try:
+        response, error = _send_ssod_command("list_device_tokens", {},
+                                            "Failed to list device tokens.")
+    except Exception as e:
+        logger.critical(f"list_device_tokens failed: {e}")
+        return jsonify({"error": "Failed to list device tokens."}), 500
     if error:
         return error
     device_tokens = []

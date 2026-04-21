@@ -7,6 +7,7 @@ import grp
 import mmap
 import psutil
 import signal
+import struct
 import posix_ipc
 import threading
 #import functools
@@ -53,8 +54,6 @@ message_queues = []
 posix_semaphores = {}
 # Python multiprocessing manager to use. This is only used within otpme-agent.
 manager = None
-# Audit logger.
-audit_logger = None
 
 # Clusterd events.
 cluster_in_event = None
@@ -136,14 +135,37 @@ def get_proc_type():
         proc_type = "process"
     return proc_type
 
+_proc_name_cache = {}
+
+
 def get_proc_name():
-    """ Get process name. """
-    proc = psutil.Process(os.getpid())
-    # WORKAROUND: name method changed between psutil versions.
+    """ Get process name.
+
+    Cached per-PID reading of /proc/self/comm. That's a single tiny
+    syscall vs psutil.Process() which opens several /proc files per
+    call. Cache is keyed by PID so it gets invalidated after fork.
+    setproctitle() updates /proc/self/comm, so the cache picks up renames
+    on the first lookup in the renamed process.
+    """
+    pid = os.getpid()
     try:
-        proc_name = proc.name()
-    except:
-        proc_name = proc.name
+        return _proc_name_cache[pid]
+    except KeyError:
+        pass
+    try:
+        with open("/proc/self/comm", "r") as f:
+            proc_name = f.read().strip()
+    except Exception:
+        # Fallback to psutil if /proc is not available for some reason.
+        try:
+            proc = psutil.Process(pid)
+            try:
+                proc_name = proc.name()
+            except Exception:
+                proc_name = proc.name
+        except Exception:
+            proc_name = f"pid-{pid}"
+    _proc_name_cache[pid] = proc_name
     return proc_name
 
 def get_thread_id():
@@ -291,6 +313,11 @@ def cleanup(keep_queues=False):
         except posix_ipc.PermissionsError:
             pass
         posix_semaphores.pop(sem_name)
+    if config.audit_logger:
+        for x in config.audit_logger.handlers:
+            x.close()
+    if config.session:
+        config.session.close()
     # Run cleanup methods.
     for method in cleanup_methods:
         method()
@@ -771,74 +798,65 @@ class MessageQueue(object):
         return self._queue
 
     def send(self, message, timeout=None):
+        """ Send a message. Uses a 4-byte big-endian length prefix packed
+        in front of the JSON-encoded payload — same framing style as
+        otpme.lib.socket.send_recv1. If the resulting (header+payload)
+        fits into one POSIX message the whole thing is delivered as a
+        single send; otherwise we fall back to chunking and hold an
+        external lock so chunks from concurrent senders don't interleave.
+        """
+        data = json.dumps(message).encode("utf-8")
+        header = struct.pack(">I", len(data))
+        payload = header + data
+        # Fast path: everything fits into one POSIX message.
+        if len(payload) <= self.max_message_size:
+            self.raw_send(payload, timeout=timeout)
+            return
+        # Slow path: must chunk. Hold the external lock so chunks from
+        # different senders don't interleave on the queue.
         from otpme.lib import locking
         lock = locking.acquire_lock(lock_type=LOCK_TYPE,
                                     lock_id=self.queue_name)
         try:
-            # Encode message.
-            data = json.dumps(message)
-            # Get length of data to send.
-            data_len = len(data)
-            # Send length of data to peer.
-            request = "req_len:" + str(data_len)
-            self.raw_send(request, timeout=timeout)
-            # If data fits into one message send it.
-            if data_len <= self.max_message_size:
-                self.raw_send(data, timeout=timeout)
-                return
-            # Send data in chunks.
-            for i in range(0, data_len, self.max_message_size):
-                chunk = data[i:i + self.max_message_size]
+            for i in range(0, len(payload), self.max_message_size):
+                chunk = payload[i:i + self.max_message_size]
                 self.raw_send(chunk, timeout=timeout)
         finally:
             lock.release_lock()
 
     def recv(self, timeout=None):
-        """ Function to handle data receiving through socket connection. """
-        # Get data from peer.
-        data = self.raw_recv(timeout=timeout)
-        # Handle timeout.
-        if data is None:
+        """ Receive a message sent via send(). Reads the 4-byte length
+        prefix from the first message and then whatever additional chunks
+        are needed to complete the payload. """
+        first = self.raw_recv(timeout=timeout)
+        if first is None:
             if timeout is not None:
                 msg = _("Queue timeout reached: {queue}")
                 msg = msg.format(queue=self.queue)
                 raise TimeoutReached(msg)
-        # Try to get data length from peer.
-        try:
-            data_len = int(data.split(":")[1])
-        except:
-            response = _("Error: Unable to get data len from queue request: {data}")
-            response = response.format(data=data)
-            raise OTPmeException(response)
-        # If data fits in to one message receive it.
-        if data_len <= self.max_message_size:
-            received = self.raw_recv(timeout=timeout)
-            if received is None:
-                return
-        else:
-            # Receive data that does not fit into one message in chunks.
-            chunks = []
-            bytes_recvd = 0
-            while bytes_recvd < data_len:
-                chunk = self.raw_recv(timeout=timeout)
-                if chunk is None:
-                    return
-                if chunk == '':
-                    msg = _("Broken connection while receiving data.")
-                    raise OTPmeException(msg)
-                chunks.append(chunk)
-                bytes_recvd = bytes_recvd + len(chunk)
-            # Join chunks.
-            received = ''.join(chunks)
-        # Decode received data.
-        if len(received) > 0:
-            try:
-                message = json.loads(received)
-            except Exception as e:
-                msg = _("Failed to decode received data: {e}")
-                msg = msg.format(e=e)
+            return
+        if len(first) < 4:
+            msg = _("Short read from queue: {n} bytes")
+            msg = msg.format(n=len(first))
+            raise OTPmeException(msg)
+        data_len = struct.unpack(">I", first[:4])[0]
+        received = first[4:]
+        # Receive additional chunks if the payload spans multiple messages.
+        while len(received) < data_len:
+            chunk = self.raw_recv(timeout=timeout)
+            if chunk is None:
+                msg = _("Timeout while receiving message chunks.")
                 raise OTPmeException(msg)
-        return message
+            if not chunk:
+                msg = _("Broken connection while receiving data.")
+                raise OTPmeException(msg)
+            received += chunk
+        try:
+            return json.loads(received.decode("utf-8"))
+        except Exception as e:
+            msg = _("Failed to decode received data: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
 
     def raw_send(self, data, timeout=None):
         try:
@@ -863,8 +881,6 @@ class MessageQueue(object):
         except posix_ipc.SignalError:
             msg = _("Exiting on signal.")
             raise ExitOnSignal(msg)
-        if data is not None:
-            data = data.decode()
         return data
 
     def close(self):

@@ -1,7 +1,15 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import argon2
+from argon2.low_level import hash_secret_raw
+from argon2.low_level import Type as _Argon2Type
+
+# Map OTPme hash_algo names to argon2-cffi types.
+_ARGON2_TYPE_MAP = {
+    "Argon2_i":  _Argon2Type.I,
+    "Argon2_d":  _Argon2Type.D,
+    "Argon2_id": _Argon2Type.ID,
+}
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -18,23 +26,39 @@ from otpme.lib.exceptions import *
 
 ARGON2D_DEFAULTS = {
             'hash_algo'     : 'Argon2_d',
-            'iterations'    : 3,
+            'iterations'    : 2,
             'min_mem'       : 65536,
             'max_mem'       : 262144,
             'memory'        : 65536,
-            'threads'       : 4,
+            'threads'       : 1,
             'key_len'       : 128,
             'version'       : 1,
+            # Argon2 spec version. 0x10 keeps bit-compat with hashes the
+            # legacy single-file 'argon2' lib produced.
+            'argon2_version': 0x10,
             }
 ARGON2I_DEFAULTS = {
             'hash_algo'     : 'Argon2_i',
-            'iterations'    : 3,
+            'iterations'    : 2,
             'min_mem'       : 65536,
             'max_mem'       : 262144,
             'memory'        : 65536,
-            'threads'       : 4,
+            'threads'       : 1,
             'key_len'       : 128,
             'version'       : 1,
+            'argon2_version': 0x10,
+            }
+ARGON2ID_DEFAULTS = {
+            'hash_algo'     : 'Argon2_id',
+            'iterations'    : 2,
+            'min_mem'       : 65536,
+            'max_mem'       : 262144,
+            'memory'        : 65536,
+            'threads'       : 1,
+            'key_len'       : 128,
+            'version'       : 1,
+            # Argon2id gets the modern spec version (RFC 9106).
+            'argon2_version': 0x13,
             }
 
 CONFIG_OPTIONS = {
@@ -88,6 +112,31 @@ CONFIG_OPTIONS = {
                                                 'argument'  : 'key_len',
                                                 'default'   : ARGON2D_DEFAULTS['key_len'],
                                             },
+                'default_pw_hash_argon2id_iterations'      : {
+                                                'type'      : int,
+                                                'argument'  : 'iterations',
+                                                'default'   : ARGON2ID_DEFAULTS['iterations'],
+                                            },
+                'default_pw_hash_argon2id_min_mem'      : {
+                                                'type'      : int,
+                                                'argument'  : 'min_mem',
+                                                'default'   : ARGON2ID_DEFAULTS['min_mem'],
+                                            },
+                'default_pw_hash_argon2id_max_mem'      : {
+                                                'type'      : int,
+                                                'argument'  : 'max_mem',
+                                                'default'   : ARGON2ID_DEFAULTS['max_mem'],
+                                            },
+                'default_pw_hash_argon2id_threads'      : {
+                                                'type'      : int,
+                                                'argument'  : 'threads',
+                                                'default'   : ARGON2ID_DEFAULTS['threads'],
+                                            },
+                'default_pw_hash_argon2id_key_len'      : {
+                                                'type'      : int,
+                                                'argument'  : 'key_len',
+                                                'default'   : ARGON2ID_DEFAULTS['key_len'],
+                                            },
                 }
 
 logger = config.logger
@@ -103,6 +152,10 @@ def register():
     config.register_hash_type(hash_type="Argon2_i",
                             hash_func=derive,
                             default_opts=ARGON2I_DEFAULTS,
+                            config_opts=CONFIG_OPTIONS)
+    config.register_hash_type(hash_type="Argon2_id",
+                            hash_func=derive,
+                            default_opts=ARGON2ID_DEFAULTS,
                             config_opts=CONFIG_OPTIONS)
     # Object types our config parameters are valid for.
     object_types = [
@@ -161,18 +214,24 @@ def derive(secret, salt=None, key_len=128, hash_algo="Argon2_i",
         logger.debug(f"Memory:     {memory/1024}M")
         logger.debug(f"Iterations: {iterations}")
     try:
-        argon_type = getattr(argon2.Argon2Type, hash_algo)
-    except Exception:
+        argon_type = _ARGON2_TYPE_MAP[hash_algo]
+    except KeyError:
         msg = _("Unknown argon_type: {hash_algo}")
         msg = msg.format(hash_algo=hash_algo)
         raise OTPmeException(msg)
+    # Argon2 spec version (0x10 / 0x13). Caller may override via kwargs
+    # when verifying existing hashes so we reproduce the exact bytes.
+    argon2_version = kwargs.get('argon2_version')
+    if argon2_version is None:
+        argon2_version = default_opts.get('argon2_version', 0x10)
     try:
-        _hash = argon2.argon2_hash(_secret, _salt,
-                                t=iterations,
-                                m=memory,
-                                p=threads,
-                                buflen=key_len,
-                                argon_type=argon_type)
+        _hash = hash_secret_raw(_secret, _salt,
+                                time_cost=iterations,
+                                memory_cost=memory,
+                                parallelism=threads,
+                                hash_len=key_len,
+                                type=argon_type,
+                                version=argon2_version)
     except Exception as e:
         config.raise_exception()
         msg = _("Error generating argon2 hash: {error}")
@@ -189,7 +248,11 @@ def derive(secret, salt=None, key_len=128, hash_algo="Argon2_i",
             'memory'        : memory,
             'salt'          : salt,
             'hash'          : _hash,
+            # OTPme hash-params format version (not the Argon2 spec version).
             'version'       : 1,
+            # Argon2 internal spec version (0x10 / 0x13) so verify can
+            # reproduce the exact same hash.
+            'argon2_version': argon2_version,
             }
 
     return result

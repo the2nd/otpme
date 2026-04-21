@@ -26,20 +26,12 @@ from otpme.lib import otpme_pass
 from otpme.lib import init_otpme
 from otpme.lib import connections
 from otpme.lib import multiprocessing
-from otpme.lib.fuse import get_mount_point
-from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.protocols import status_codes
 #from otpme.lib.messages import error_message
 from otpme.lib.register import register_module
 from otpme.lib.socket.listen import ListenSocket
 from otpme.lib.offline_token import OfflineToken
 from otpme.lib.multiprocessing import start_thread
-from otpme.lib.smartcard.yubikey.piv import get_piv
-from otpme.lib.smartcard.yubikey.piv import slot_map
-from otpme.lib.smartcard.yubikey.piv import sign as piv_sign
-from otpme.lib.smartcard.yubikey.piv import decrypt as piv_decrypt
-from otpme.lib.smartcard.yubikey.piv import get_public_key as piv_get_public_key
-from otpme.lib.smartcard.yubikey.piv import derive_password as piv_derive_password
 from otpme.lib.daemon.unix_daemon import UnixDaemon
 from otpme.lib.multiprocessing import get_sync_manager
 from otpme.lib.classes.conn_handler import ConnHandler
@@ -48,6 +40,33 @@ from otpme.lib.socket.handler import SocketProtoHandler
 from otpme.lib.exceptions import *
 
 CONN_LOCK_TYPE = "agent.connection"
+
+# PIV helpers are imported lazily on first use to keep the agent module
+# cheap to load for CLI clients that never touch smartcards.
+get_piv = None
+slot_map = None
+piv_sign = None
+piv_decrypt = None
+piv_get_public_key = None
+piv_derive_password = None
+
+def _load_piv():
+    global get_piv, slot_map, piv_sign, piv_decrypt
+    global piv_get_public_key, piv_derive_password
+    if get_piv is not None:
+        return
+    from otpme.lib.smartcard.yubikey.piv import get_piv as _gp
+    from otpme.lib.smartcard.yubikey.piv import slot_map as _sm
+    from otpme.lib.smartcard.yubikey.piv import sign as _ps
+    from otpme.lib.smartcard.yubikey.piv import decrypt as _pd
+    from otpme.lib.smartcard.yubikey.piv import get_public_key as _pgpk
+    from otpme.lib.smartcard.yubikey.piv import derive_password as _pdp
+    get_piv = _gp
+    slot_map = _sm
+    piv_sign = _ps
+    piv_decrypt = _pd
+    piv_get_public_key = _pgpk
+    piv_derive_password = _pdp
 
 multiprocessing.register()
 locking.register_lock_type(CONN_LOCK_TYPE, module=__file__)
@@ -464,6 +483,8 @@ class OTPmeAgent(UnixDaemon):
             messages = []
             mountpoints = []
             umounted_shares = []
+            from otpme.lib.fuse import get_mount_point
+            from otpme.lib.fuse import remove_mount_dirs
             for share_id in shares:
                 share_name = shares[share_id]['name']
                 share_site = shares[share_id]['site']
@@ -849,8 +870,11 @@ class OTPmeAgent(UnixDaemon):
                                             allow_untrusted=True,
                                             connect_timeout=self.connect_timeout,
                                             timeout=self.timeout, endpoint=False)
-            except ConnectionError:
+            except ConnectionError as e:
                 time.sleep(0.01)
+                msg = _("Error connecting to auth daemon to logout: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
                 break
             except Exception as e:
                 msg = _("Error connecting to auth daemon to logout: {e}")
@@ -879,6 +903,7 @@ class OTPmeAgent(UnixDaemon):
             log_msg = _("Error while sending logout request: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
+            config.raise_exception()
         finally:
             auth_conn.close()
 
@@ -1500,6 +1525,7 @@ class OTPmeAgent(UnixDaemon):
                         status_code = status_codes.ERR
 
                 elif command == "piv_login":
+                    _load_piv()
                     try:
                         pin = request['pin']
                     except KeyError:
@@ -1538,6 +1564,7 @@ class OTPmeAgent(UnixDaemon):
                         message = _("No PIV session. Run piv_login first.")
                         status_code = status_codes.ERR
                     else:
+                        _load_piv()
                         try:
                             data = request['data']
                             slot = request.get('slot', 'AUTHENTICATION')
@@ -1567,6 +1594,7 @@ class OTPmeAgent(UnixDaemon):
                         message = _("No PIV session. Run piv_login first.")
                         status_code = status_codes.ERR
                     else:
+                        _load_piv()
                         try:
                             data = request['data']
                             data = bytes.fromhex(data)
@@ -1597,6 +1625,7 @@ class OTPmeAgent(UnixDaemon):
                         message = _("No PIV session. Run piv_login first.")
                         status_code = status_codes.ERR
                     else:
+                        _load_piv()
                         try:
                             challenge = request['challenge']
                             slot = request.get('slot', 'AUTHENTICATION')
@@ -1625,6 +1654,7 @@ class OTPmeAgent(UnixDaemon):
                         message = _("No PIV session. Run piv_login first.")
                         status_code = status_codes.ERR
                     else:
+                        _load_piv()
                         try:
                             slot = request.get('slot', 'AUTHENTICATION')
                             result = piv_get_public_key(

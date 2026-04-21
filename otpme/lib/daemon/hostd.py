@@ -1715,7 +1715,7 @@ class HostDaemon(OTPmeDaemon):
         self.notify_limit = 5
         # FIXME: where to configure max_conn
         # set max client connections
-        self.max_conn = 100
+        self.max_conn = 1024
         # FIXME: where to configure socket banner?
         # Set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"

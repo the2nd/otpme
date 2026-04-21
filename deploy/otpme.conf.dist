@@ -19,6 +19,9 @@ RADIUS_MAX_SPARE_SERVERS="16"
 # Enable use of mgmtd socket (--socket) by default. This makes sense on nodes only.
 USE_MGMTD_SOCKET="False"
 
+# Prefork authd workers.
+AUTHD_WORKERS="16"
+
 # How long to wait for second node in two node clusters to appear.
 TWO_NODE_TIMEOUT="3"
 

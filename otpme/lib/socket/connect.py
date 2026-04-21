@@ -39,6 +39,7 @@ class ConnectSocket(object):
         self.cert_file = None
         self.ca_data_file = None
         self.timeout = None
+        self._socket = None
         self.connected = False
         self.logger = config.logger
 
@@ -176,7 +177,7 @@ class ConnectSocket(object):
                                             server_hostname=None)
                 self.remove_cert_files()
 
-        if not hasattr(self, '_socket'):
+        if not self._socket:
             msg = _("Unsupported socket URI: {uri}")
             msg = msg.format(uri=self.socket_uri)
             raise OTPmeException(msg)
@@ -237,7 +238,7 @@ class ConnectSocket(object):
 
         if self.use_ssl:
             # Set cert info of peer.
-            self.peer_cert = self._socket.getpeercert()
+            self.peer_cert = self._socket.getpeercert(binary_form=True)
 
         try:
             data = self.recv(timeout=timeout)

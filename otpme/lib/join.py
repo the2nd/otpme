@@ -187,8 +187,8 @@ class JoinHandler(object):
         msg = msg.format(fqdn=host_fqdn)
         raise OTPmeException(msg)
 
-    def complete_args(self, realm=None, site=None,
-        host_fqdn=None, domain=None, username=None):
+    def complete_args(self, realm=None, site=None, host_fqdn=None,
+        domain=None, socket_uri=None, username=None):
         """ Complete args. """
         # Try to get OTPme realm from command line.
         if realm is None:
@@ -203,13 +203,15 @@ class JoinHandler(object):
             domain = self.get_domain(realm, site, host_fqdn)
 
         # Try to get joind URI via DNS.
-        socket_uri = net.get_daemon_uri("joind", domain)
+        if not socket_uri:
+            socket_uri = net.get_daemon_uri("joind", domain)
+            if socket_uri:
+                log_msg = _("Got joind socket via DNS: {socket_uri}", log=True)[1]
+                logger.debug(log_msg)
         if not socket_uri:
             msg = _("Unable to resolve joind address for: {domain_name}")
             msg = msg.format(domain_name=domain)
             raise OTPmeException(msg)
-        log_msg = _("Got joind socket via DNS: {socket_uri}", log=True)[1]
-        logger.debug(log_msg)
 
         # Try to get realm/site we will connect to from DNS.
         try:
@@ -579,7 +581,7 @@ class JoinHandler(object):
 
     def join_realm(self, domain=None, realm=None, site=None, host_type="host",
         host_fqdn=None, username=None, password=None, jotp=None,
-        host_key_len=None, site_key_len=None, unit=None,
+        socket_uri=None, host_key_len=None, site_key_len=None, unit=None,
         force=False, trust_site_cert=False, no_daemon_start=False,
         check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
         """ Join this node/host to realm. """
@@ -587,6 +589,10 @@ class JoinHandler(object):
             if not isinstance(jotp, str):
                 msg = _("JOTP needs to be of type str().")
                 raise OTPmeException(msg)
+
+        if not realm or not site:
+            msg = _("Missing realm/site.")
+            raise OTPmeException(msg)
 
         # Set realm join mode.
         config.realm_join = True
@@ -626,7 +632,12 @@ class JoinHandler(object):
         self.host_fqdn = host_fqdn
 
         # Complete and set arguments.
-        self.complete_args(realm, site, host_fqdn, domain, username)
+        self.complete_args(realm=realm,
+                            site=site,
+                            host_fqdn=host_fqdn,
+                            domain=domain,
+                            username=username,
+                            socket_uri=socket_uri)
         # Args to pass to each send() call.
         conn_kwargs = {}
         conn_kwargs['realm'] = self.realm

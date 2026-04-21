@@ -165,7 +165,7 @@ cmd_help = {
 
     'login_benchmark'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool login_benchmark [--procs <16>] [--node <node>] {csv_file}'),
-                    'cmd'   :   '--procs :procs: --node :node: <csv_file>',
+                    'cmd'   :   '--procs :procs: --node :+node+: <csv_file>',
                     '_help' :   {
                                     'cmd'                   : _('Run login benchmark.'),
                                     '--node <node>'         : _('Send login request to this node.'),
@@ -388,8 +388,8 @@ cmd_help = {
 
 
     'join'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool join [ --jotp <jotp> --host-type <node|host> --unit <unit> --trust-site-cert --check-site-cert <site_cert_fp> --no-daemon-start] [domain]'),
-                    'cmd'   :   '--jotp :jotp: --host-type :host_type: --unit :unit: --trust-site-cert :trust_site_cert=True: --check-site-cert :site_cert_fingerprint: --host-key-len :host_key_len: --site-key-len :site_key_len: --no-daemon-start :no_daemon_start=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool join [ --jotp <jotp> --host-type <node|host> --unit <unit> --trust-site-cert --check-site-cert <site_cert_fp> --joind-uri <joind_uri> --no-daemon-start] [domain]'),
+                    'cmd'   :   '--jotp :jotp: --host-type :host_type: --unit :unit: --trust-site-cert :trust_site_cert=True: --check-site-cert :site_cert_fingerprint: --host-key-len :host_key_len: --site-key-len :site_key_len: --joind-uri :joind_uri: --no-daemon-start :no_daemon_start=True: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('Join OTPme realm'),
                                     '--jotp <jotp>'             : _('Join using the given JOTP.'),
@@ -399,6 +399,7 @@ cmd_help = {
                                     '--site-key-len <key_len>'  : _('Site key length.'),
                                     '--trust-site-cert'         : _('Trust any site certificate.'),
                                     '--check-site-cert <fp>'    : _('Check the site certificate fingerprint.'),
+                                    '--joind-uri <joind_uri>'   : _('Joind URI e.g. tcp://login.otpme.org:2024'),
                                     '--no-daemon-start'         : _('Dont start OTPme daemons after joining realm.'),
                                 },
                 },
@@ -422,7 +423,7 @@ cmd_help = {
 
 
     'login'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool login --node {node} [username]'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool login [--node {node}] [username]'),
                     'cmd'   :   '--node :node: [username]',
                     '_help' :   {
                                     'cmd'                   : _('login to OTPme realm'),

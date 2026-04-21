@@ -108,6 +108,9 @@ class IncrementalDict(IncrementaObject):
                                     key, value))
 
     def __getitem__(self, key):
+        return self.get(key)
+
+    def get(self, key):
         key = str(key)
         return self.data[key]
 

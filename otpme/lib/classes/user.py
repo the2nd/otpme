@@ -34,6 +34,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.cache import user_tokens_cache
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
@@ -41,6 +42,7 @@ from otpme.lib.typing import match_class_typing
 from otpme.lib.policy import one_time_policy_run
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.otpme_object import OTPmeObject
+from otpme.lib.classes.auth_handler import AuthHandler
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.data_objects.used_sotp import UsedSOTP
 from otpme.lib.classes.data_objects.failed_pass import FailedPass
@@ -60,6 +62,7 @@ from otpme.lib.exceptions import *
 
 default_callback = config.get_callback()
 
+auth_handler = None
 logger = config.logger
 
 read_acls = [
@@ -3363,12 +3366,13 @@ class User(OTPmeObject):
 
     def authenticate(self, **kwargs):
         """ Wrapper to call auth handler. """
-        from otpme.lib.classes.auth_handler import AuthHandler
-        auth_handler = AuthHandler()
+        global auth_handler
+        if auth_handler is None:
+            auth_handler = AuthHandler()
         start_time = time.time()
         auth_status = auth_handler.authenticate(user=self, **kwargs)
         end_time = time.time()
-        duration = float(end_time - start_time)
+        duration = end_time - start_time
         log_msg = _("Authentication took {duration} seconds.", log=True)[1]
         log_msg = log_msg.format(duration=duration)
         logger.debug(log_msg)
@@ -3396,15 +3400,43 @@ class User(OTPmeObject):
 
     def get_tokens(
         self,
+        return_type: str="uuid",
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """
+        Return a list with tokens of this user, selected by access_group or all.
+        """
+        _return_type = return_type
+        if return_type == "instance":
+            _return_type = "uuid"
+        result = self._get_tokens(return_type=_return_type,
+                                callback=callback,
+                                _caller=_caller,
+                                **kwargs)
+        if return_type == "instance":
+            _result = []
+            for token_uuid in result:
+                token = backend.get_object(uuid=token_uuid)
+                if not token:
+                    continue
+                _result.append(token)
+            return _result
+        return result
+
+    @user_tokens_cache.cache_method()
+    def _get_tokens(
+        self,
         client: Union[OTPmeObject,None]=None,
         host: Union[OTPmeObject,None]=None,
         access_group: Union[OTPmeObject,None]=None,
         resolv_token_links: bool=True,
-        check_sf_tokens: bool=False,
         token_type: Union[str,None]=None,
         pass_type: Union[str,None]=None,
         token_types: Union[List,None]=None,
         pass_types: Union[List,None]=None,
+        support_dot1x: bool=False,
         skip_disabled: bool=True,
         quiet: bool=True,
         return_type: str="uuid",
@@ -3419,7 +3451,7 @@ class User(OTPmeObject):
         tokens = []
         # If we got no token types list but a token type add it to list.
         if token_types is None:
-            if token_type != None:
+            if token_type is not None:
                 token_types = [token_type]
 
         # If we got no pass types list but a pass type add it to list.
@@ -3427,71 +3459,34 @@ class User(OTPmeObject):
             if pass_type is not None:
                 pass_types = [pass_type]
 
-        def check_token_types(token_uuid, token_data, token_types=None, pass_types=None):
-            """ Check if token type matches. """
-            token_type_matches = False
-            token_pass_type_matches = False
-            if token_types:
-                _token_type = token_data[token_uuid]['token_type'][0]
-                # Make sure we check linked token if needed.
-                if resolv_token_links:
-                    try:
-                        destination_token = token_data[token_uuid]['destination_token'][0]
-                    except KeyError:
-                        destination_token = None
-                    if destination_token:
-                        _token_type = token_data[destination_token]['token_type'][0]
-            if pass_types:
-                _token_pass_type = token_data[token_uuid]['pass_type'][0]
-                # Make sure we check linked token if needed.
-                if resolv_token_links:
-                    try:
-                        destination_token = token_data[token_uuid]['destination_token'][0]
-                    except KeyError:
-                        destination_token = None
-                    if destination_token:
-                        _token_pass_type = token_data[destination_token]['pass_type'][0]
-            if token_types:
-                if _token_type in token_types:
-                    token_type_matches = True
-            if pass_types:
-                if _token_pass_type in pass_types:
-                    token_pass_type_matches = True
-            if token_types and pass_types:
-                if token_type_matches and token_pass_type_matches:
-                    return True
-            if token_types and not pass_types:
-                if token_type_matches:
-                    return True
-            if not token_types and pass_types:
-                if token_pass_type_matches:
-                    return True
-            return False
-
-        return_attrs = [
-                        'name',
-                        'read_oid',
-                        'full_oid',
-                        'rel_path',
-                        'enabled',
-                        'token_type',
-                        'pass_type',
-                        'destination_token',
-                        'second_factor_token',
-                        'second_factor_token_enabled',
-                        ]
-
         token_data = {}
         if self.tokens:
+            search_attrs = {'uuid': {'values': self.tokens}}
+            if pass_types:
+                search_attrs['pass_type'] = {'values':pass_types}
+            if token_types:
+                search_attrs['token_type'] = {'values':token_types}
+            if support_dot1x:
+                search_attrs['support_dot1x'] = {'value':True}
+            return_attrs = [
+                            'name',
+                            'read_oid',
+                            'full_oid',
+                            'rel_path',
+                            'enabled',
+                            'token_type',
+                            'pass_type',
+                            'support_dot1x',
+                            'destination_token',
+                            'second_factor_token',
+                            'second_factor_token_enabled',
+                            ]
             token_data = backend.search(object_type="token",
-                                        attribute="uuid",
-                                        values=self.tokens,
+                                        attributes=search_attrs,
                                         return_attributes=return_attrs)
 
         # Walk through all tokens of the user.
         for uuid in dict(token_data):
-            add_token = False
-
             token_name = token_data[uuid]['name']
             token_rel_path = token_data[uuid]['rel_path']
             token_enabled = token_data[uuid]['enabled'][0]
@@ -3546,33 +3541,11 @@ class User(OTPmeObject):
             if not token_valid:
                 continue
 
-            # If token type or pass type is set add only
-            # matching tokens.
-            if token_types or pass_types:
-                if check_token_types(token_uuid=token_uuid,
-                                    token_data=token_data,
-                                    token_types=token_types,
-                                    pass_types=pass_types):
-                    add_token = True
-                # Check second factor token if requested.
-                try:
-                    second_factor_token_enabled = token_data[token_uuid]['second_factor_token_enabled'][0]
-                except KeyError:
-                    second_factor_token_enabled = False
-                if check_sf_tokens and second_factor_token_enabled:
-                    try:
-                        second_factor_token = token_data[token_uuid]['second_factor_token'][0]
-                    except KeyError:
-                        continue
-                    if check_token_types(token_uuid=second_factor_token,
-                                        token_data=token_data,
-                                        token_types=token_types,
-                                        pass_types=pass_types):
-                        add_token = True
-            else:
-                add_token = True
-
-            if not add_token:
+            try:
+                dot1x_token = token_data[token_uuid]['support_dot1x'][0]
+            except KeyError:
+                dot1x_token = False
+            if support_dot1x and not dot1x_token:
                 continue
 
             if token_uuid in tokens:
@@ -3590,12 +3563,7 @@ class User(OTPmeObject):
 
         result = []
         for token_uuid in tokens:
-            if return_type == "instance":
-                token = backend.get_object(uuid=token_uuid)
-                if not token:
-                    continue
-                result.append(token)
-            elif return_type == "uuid":
+            if return_type == "uuid":
                 result.append(token_uuid)
             elif return_type == "read_oid":
                 read_oid = token_data[token_uuid]['read_oid']
@@ -3616,6 +3584,234 @@ class User(OTPmeObject):
             result = "\n".join(result)
 
         return callback.ok(result)
+
+    #@user_tokens_cache.cache_method()
+    #def _get_tokens(
+    #    self,
+    #    client: Union[OTPmeObject,None]=None,
+    #    host: Union[OTPmeObject,None]=None,
+    #    access_group: Union[OTPmeObject,None]=None,
+    #    resolv_token_links: bool=True,
+    #    check_sf_tokens: bool=False,
+    #    token_type: Union[str,None]=None,
+    #    pass_type: Union[str,None]=None,
+    #    token_types: Union[List,None]=None,
+    #    pass_types: Union[List,None]=None,
+    #    support_dot1x: bool=False,
+    #    skip_disabled: bool=True,
+    #    quiet: bool=True,
+    #    return_type: str="uuid",
+    #    callback: JobCallback=default_callback,
+    #    _caller: str="API",
+    #    **kwargs,
+    #    ):
+    #    """
+    #    Return a list with tokens of this user, selected by access_group or all.
+    #    """
+    #    # List to hold tokens.
+    #    tokens = []
+    #    # If we got no token types list but a token type add it to list.
+    #    if token_types is None:
+    #        if token_type is not None:
+    #            token_types = [token_type]
+
+    #    # If we got no pass types list but a pass type add it to list.
+    #    if pass_types is None:
+    #        if pass_type is not None:
+    #            pass_types = [pass_type]
+
+    #    def check_token_types(token_uuid, token_data, token_types=None, pass_types=None):
+    #        """ Check if token type matches. """
+    #        token_type_matches = False
+    #        token_pass_type_matches = False
+    #        if token_types:
+    #            _token_type = token_data[token_uuid]['token_type'][0]
+    #            # Make sure we check linked token if needed.
+    #            if resolv_token_links:
+    #                try:
+    #                    destination_token = token_data[token_uuid]['destination_token'][0]
+    #                except KeyError:
+    #                    destination_token = None
+    #                if destination_token:
+    #                    _token_type = token_data[destination_token]['token_type'][0]
+    #        if pass_types:
+    #            _token_pass_type = token_data[token_uuid]['pass_type'][0]
+    #            # Make sure we check linked token if needed.
+    #            if resolv_token_links:
+    #                try:
+    #                    destination_token = token_data[token_uuid]['destination_token'][0]
+    #                except KeyError:
+    #                    destination_token = None
+    #                if destination_token:
+    #                    _token_pass_type = token_data[destination_token]['pass_type'][0]
+    #        if token_types:
+    #            if _token_type in token_types:
+    #                token_type_matches = True
+    #        if pass_types:
+    #            if _token_pass_type in pass_types:
+    #                token_pass_type_matches = True
+    #        if token_types and pass_types:
+    #            if token_type_matches and token_pass_type_matches:
+    #                return True
+    #        if token_types and not pass_types:
+    #            if token_type_matches:
+    #                return True
+    #        if not token_types and pass_types:
+    #            if token_pass_type_matches:
+    #                return True
+    #        return False
+
+    #    return_attrs = [
+    #                    'name',
+    #                    'read_oid',
+    #                    'full_oid',
+    #                    'rel_path',
+    #                    'enabled',
+    #                    'token_type',
+    #                    'pass_type',
+    #                    'support_dot1x',
+    #                    'destination_token',
+    #                    'second_factor_token',
+    #                    'second_factor_token_enabled',
+    #                    ]
+
+    #    token_data = {}
+    #    if self.tokens:
+    #        token_data = backend.search(object_type="token",
+    #                                    attribute="uuid",
+    #                                    values=self.tokens,
+    #                                    return_attributes=return_attrs)
+
+    #    # Walk through all tokens of the user.
+    #    for uuid in dict(token_data):
+    #        add_token = False
+
+    #        token_name = token_data[uuid]['name']
+    #        token_rel_path = token_data[uuid]['rel_path']
+    #        token_enabled = token_data[uuid]['enabled'][0]
+
+    #        if skip_disabled:
+    #            if not token_enabled:
+    #                continue
+
+    #        # Make sure we resolve token links.
+    #        if resolv_token_links:
+    #            try:
+    #                destination_token = token_data[uuid]['destination_token'][0]
+    #            except KeyError:
+    #                destination_token = None
+    #            # Make sure we load destination tokens.
+    #            if destination_token:
+    #                dst_token_result = backend.search(object_type="token",
+    #                                        attribute="uuid",
+    #                                        value=destination_token,
+    #                                        return_attributes=return_attrs)
+    #                if not dst_token_result:
+    #                    continue
+    #                if skip_disabled:
+    #                    try:
+    #                        destination_token_enabled = dst_token_result[destination_token]['enabled'][0]
+    #                    except KeyError:
+    #                        continue
+    #                    if not destination_token_enabled:
+    #                        continue
+    #                token_data[destination_token] = dst_token_result[destination_token]
+
+    #        # Make sure we resolv token links.
+    #        if resolv_token_links and destination_token:
+    #            token_uuid = destination_token
+    #        else:
+    #            token_uuid = uuid
+
+    #        # Check if token is valid.
+    #        token_valid = False
+    #        if access_group:
+    #            if access_group.is_assigned_token(token_uuid):
+    #                token_valid = True
+    #        elif host:
+    #            if host.is_assigned_token(token_uuid):
+    #                token_valid = True
+    #        elif client:
+    #            if client.is_assigned_token(token_uuid):
+    #                token_valid = True
+    #        else:
+    #            token_valid = True
+
+    #        if not token_valid:
+    #            continue
+
+    #        # If token type or pass type is set add only
+    #        # matching tokens.
+    #        if token_types or pass_types:
+    #            if check_token_types(token_uuid=token_uuid,
+    #                                token_data=token_data,
+    #                                token_types=token_types,
+    #                                pass_types=pass_types):
+    #                add_token = True
+    #            # Check second factor token if requested.
+    #            try:
+    #                second_factor_token_enabled = token_data[token_uuid]['second_factor_token_enabled'][0]
+    #            except KeyError:
+    #                second_factor_token_enabled = False
+    #            if check_sf_tokens and second_factor_token_enabled:
+    #                try:
+    #                    second_factor_token = token_data[token_uuid]['second_factor_token'][0]
+    #                except KeyError:
+    #                    continue
+    #                if check_token_types(token_uuid=second_factor_token,
+    #                                    token_data=token_data,
+    #                                    token_types=token_types,
+    #                                    pass_types=pass_types):
+    #                    add_token = True
+    #        elif support_dot1x:
+    #            try:
+    #                dot1x_token = token_data[token_uuid]['support_dot1x'][0]
+    #            except KeyError:
+    #                continue
+    #            if dot1x_token:
+    #                add_token = True
+    #        else:
+    #            add_token = True
+
+    #        if not add_token:
+    #            continue
+
+    #        if token_uuid in tokens:
+    #            continue
+
+    #        # Append token to list if not already added.
+    #        if not quiet:
+    #            log_msg = _("Selecting token '{token_path}' based on accessgroup '{access_group_name}'.", log=True)[1]
+    #            log_msg = log_msg.format(token_path=token_rel_path, access_group_name=access_group.name)
+    #            logger.debug(log_msg)
+    #        if destination_token:
+    #            tokens.append(uuid)
+    #        else:
+    #            tokens.append(token_uuid)
+
+    #    result = []
+    #    for token_uuid in tokens:
+    #        if return_type == "uuid":
+    #            result.append(token_uuid)
+    #        elif return_type == "read_oid":
+    #            read_oid = token_data[token_uuid]['read_oid']
+    #            result.append(read_oid)
+    #        elif return_type == "full_oid":
+    #            full_oid = token_data[token_uuid]['full_oid']
+    #            result.append(full_oid)
+    #        elif return_type == "name":
+    #            token_name = token_data[token_uuid]['name']
+    #            result.append(token_name)
+    #        elif return_type == "rel_path":
+    #            rel_path = token_data[token_uuid]['rel_path']
+    #            result.append(rel_path)
+
+    #    if _caller == "RAPI":
+    #        result = ",".join(result)
+    #    if _caller == "CLIENT":
+    #        result = "\n".join(result)
+
+    #    return callback.ok(result)
 
     def get_roles(self, return_type="name", _caller="API",
         callback=default_callback, **kwargs):
@@ -4136,7 +4332,8 @@ class User(OTPmeObject):
                 # Find free token name.
                 while True:
                     # Generate token name (lowercase letters and numbers).
-                    token_name = stuff.gen_password(len=8, capital=False)
+                    token_name = stuff.gen_password(length=8,
+                                                    require_uppercase=False)
                     token_path = f"{self.name}/{token_name}"
                     result = backend.search(object_type="token",
                                             attribute="rel_path",

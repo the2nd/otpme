@@ -65,6 +65,7 @@ class OTPmeClusterP1(OTPmeServer1):
         self.require_master_node = False
         self.require_cluster_status = False
         self.compresss_response = False
+        self.peer_verified = False
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -137,6 +138,8 @@ class OTPmeClusterP1(OTPmeServer1):
 
     def verify_peer(self):
         """ Verify peer. """
+        if self.peer_verified:
+            return
         if self.peer.type != "node":
             msg = _("Peer is not a node.")
             raise OTPmeException(msg)
@@ -152,6 +155,7 @@ class OTPmeClusterP1(OTPmeServer1):
             msg = _("Peer is disabled: {name}")
             msg = msg.format(name=self.peer.name)
             raise HostDisabled(msg)
+        self.peer_verified = True
 
     def _process(self, command, command_args, **kwargs):
         """ Handle commands received from host_handler. """
@@ -652,7 +656,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_id = oid.get(object_id)
-                if object_id in config.tree_object_types:
+                if object_id.object_type in config.tree_object_types:
                     if config.master_node:
                         message = _("Cannot write tree object on master node.")
                         status = False
@@ -683,9 +687,10 @@ class OTPmeClusterP1(OTPmeServer1):
 
                 if status:
                     if last_used:
-                        backend.set_last_used(object_id.object_type,
+                        backend.set_last_used(object_id,
                                             object_uuid,
-                                            last_used, cluster=False)
+                                            last_used,
+                                            cluster=False)
 
                 if status:
                     while True:

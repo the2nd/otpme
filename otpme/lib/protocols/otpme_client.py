@@ -17,8 +17,7 @@ import time
 import pprint
 import signal
 import hashlib
-import inspect
-from paramiko.agent import Agent
+#import inspect
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -30,7 +29,6 @@ except:
 
 from otpme.lib import cli
 from otpme.lib import oid
-from otpme.lib import ssh
 from otpme.lib import sotp
 from otpme.lib import json
 from otpme.lib import stuff
@@ -72,7 +70,8 @@ REGISTER_AFTER = [
 
 def register():
     register_config()
-    register_module("otpme.lib.smartcard")
+    # Smartcard module is registered lazily on first smartcard use
+    # (via config.get_smartcard_handler / get_supported_smartcards).
 
 def register_config():
     """ Register config stuff. """
@@ -294,7 +293,9 @@ class OTPmeClient(OTPmeClientBase):
         self.stop_job = False
 
         # Will hold our current job ID.
-        self.jobs = {}
+        self.job = None
+        # FIXME: do we need per caller jobs?
+        #self.jobs = {}
         # Set status.
         self.connected = False
 
@@ -413,7 +414,9 @@ class OTPmeClient(OTPmeClientBase):
         self.stop_job = True
         # Pass on signal handler stuff to mgmtd to stop jobs.
         if self.daemon == "mgmtd":
-            if self.jobs:
+            # FIXME: do we need per caller jobs?
+            #if self.jobs:
+            if self.job:
                 return
             self.close()
             self.cleanup()
@@ -425,29 +428,30 @@ class OTPmeClient(OTPmeClientBase):
                 if self.org_int_signal_handler:
                     return self.org_int_signal_handler(_signal, frame)
 
-    @property
-    def job(self):
-        curframe = inspect.currentframe()
-        calframe = inspect.getouterframes(curframe, 2)
-        caller_id = calframe[1][0]
-        try:
-            job_dict = self.jobs[caller_id]
-        except KeyError:
-            job_dict = None
-        return job_dict
+    # FIXME: do we need per caller jobs?
+    #@property
+    #def job(self):
+    #    curframe = inspect.currentframe()
+    #    calframe = inspect.getouterframes(curframe, 2)
+    #    caller_id = calframe[1][0]
+    #    try:
+    #        job_dict = self.jobs[caller_id]
+    #    except KeyError:
+    #        job_dict = None
+    #    return job_dict
 
-    @job.setter
-    def job(self, job_dict):
-        curframe = inspect.currentframe()
-        calframe = inspect.getouterframes(curframe, 2)
-        caller_id = calframe[1][0]
-        if job_dict is None:
-            try:
-                self.jobs.pop(caller_id)
-            except KeyError:
-                pass
-            return
-        self.jobs[caller_id] = job_dict
+    #@job.setter
+    #def job(self, job_dict):
+    #    curframe = inspect.currentframe()
+    #    calframe = inspect.getouterframes(curframe, 2)
+    #    caller_id = calframe[1][0]
+    #    if job_dict is None:
+    #        try:
+    #            self.jobs.pop(caller_id)
+    #        except KeyError:
+    #            pass
+    #        return
+    #    self.jobs[caller_id] = job_dict
 
     def set_proto_handler(self):
         """ Set protocol handler. """
@@ -508,9 +512,9 @@ class OTPmeClient(OTPmeClientBase):
             self.peer_site = self.peer_fqdn.split(".")[1]
             self.peer_realm = ".".join(self.peer_fqdn.split(".")[2:])
         except:
-            msg, log_msg = _("Got invalid client cert CN from client: {cert}", log=True)
-            msg = msg.format(cert=self.peer_cert)
-            log_msg = log_msg.format(cert=self.peer_cert)
+            msg, log_msg = _("Got invalid client cert CN from client: {cn}", log=True)
+            msg = msg.format(cn=self.peer_cn)
+            log_msg = log_msg.format(cn=self.peer_cn)
             self.logger.warning(log_msg)
             raise CertVerifyFailed("AUTH_INVALID_CERT_CN")
         # If we got no realm/site (e.g. socket_uri) set it.
@@ -563,14 +567,11 @@ class OTPmeClient(OTPmeClientBase):
         # Get cert info of peer.
         if self.use_ssl:
             self.peer_cert = self.connection.peer_cert
-            # Try to get peer we are connected to.
 
         # Get get peer cert CN.
         if self.peer_cert:
-            for i in self.peer_cert['subject']:
-                if i[0][0] == 'commonName':
-                    self.peer_cn = i[0][1]
-                    break
+            peer_cert = stuff.parse_peer_cert(self.peer_cert)
+            self.peer_cn = peer_cert['cn']
 
         # Try to get peer data from cert.
         if self.peer_cn:
@@ -1199,6 +1200,7 @@ class OTPmeClient(OTPmeClientBase):
         self.logger.debug(log_msg)
         # Try to sign challenge with via running SSH agent.
         try:
+            from otpme.lib import ssh
             response = ssh.sign_challenge(challenge=challenge)
         except Exception as e:
             config.raise_exception()
@@ -2080,8 +2082,10 @@ class OTPmeClient(OTPmeClientBase):
                 self.print_response(response)
 
                 if self.stop_job:
-                    x_id = list(self.jobs.keys())[0]
-                    x_job_uuid = self.jobs[x_id]
+                    # FIXME: do we need per caller jobs?
+                    #x_id = list(self.jobs.keys())[0]
+                    #x_job_uuid = self.jobs[x_id]
+                    x_job_uuid = self.job
                     command = "stop_job"
                     command_args = x_job_uuid
 
@@ -2208,17 +2212,17 @@ class OTPmeClient1(OTPmeClientBase):
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
         jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
         login_interface="tty", logout=False, reneg=False, add_agent_acl=False,
-        agent_acls=None, add_agent_session=None, add_login_session=None,
-        mount_shares=False, offline_token=None, login_session_id=None,
-        cache_login_tokens=False, sc_pass=None, send_password="auto",
-        password_method=None, password=None, cleanup_method=None,
-        check_offline_pass_strength=None, offline_iterations_by_score={},
-        offline_key_derivation_func=None, offline_key_func_opts=None,
-        sync_token_data=False, request_jwt=None, verify_jwt=None,
-        jwt_challenge=None, jwt_key=None, jwt_auth=False, request_token=None,
-        check_login_status=True, allow_untrusted=False, do_preauth=True,
-        check_connected_site=True, verify_preauth=None, follow_redirect=True,
-        login_redirect=False, backup_key=None, **kwargs):
+        agent_acls=None, add_agent_session=None, save_offline_token=None,
+        add_login_session=None, mount_shares=False, offline_token=None,
+        login_session_id=None, cache_login_tokens=False, sc_pass=None,
+        send_password="auto", password_method=None, password=None,
+        cleanup_method=None, check_offline_pass_strength=None,
+        offline_iterations_by_score={}, offline_key_derivation_func=None,
+        offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
+        verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
+        request_token=None, check_login_status=True, allow_untrusted=False,
+        do_preauth=True, check_connected_site=True, verify_preauth=None,
+        follow_redirect=True, login_redirect=False, backup_key=None, **kwargs):
         # Init parent class.
         super(OTPmeClient1, self).__init__(daemon, **kwargs)
 
@@ -2296,6 +2300,8 @@ class OTPmeClient1(OTPmeClientBase):
         # Indicates if we should add a received login session to OTPme agent
         # and save it to disk.
         self.add_login_session = add_login_session
+        # Save offline tokens.
+        self.save_offline_token = save_offline_token
         # Will hold the login session ID we get from OTPme agent on login (if
         # none is given)
         self.login_session_id = login_session_id
@@ -2333,6 +2339,8 @@ class OTPmeClient1(OTPmeClientBase):
         # Indicates if we should do a realm login.
         self.login = login
         if self.login:
+            if self.save_offline_token is None:
+                self.save_offline_token = True
             if self.add_login_session is None:
                 self.add_login_session = True
             if self.add_agent_session is None:
@@ -3260,7 +3268,10 @@ class OTPmeClient1(OTPmeClientBase):
                 try:
                     self.clear_text_auth_available = self.preauth_response['clear_text_token_found']
                 except KeyError:
-                    self.clear_text_auth_available = False
+                    if self.request_token:
+                        self.clear_text_auth_available = False
+                    else:
+                        self.clear_text_auth_available = True
                 if self.send_password == "auto":
                     self.send_password = self.clear_text_auth_available
             # Get smartcard options from preauth response.
@@ -3309,6 +3320,7 @@ class OTPmeClient1(OTPmeClientBase):
             log_msg = _("Trying to get keys from ssh-agent...", log=True)[1]
             self.logger.debug(log_msg)
             try:
+                from paramiko.agent import Agent
                 self.ssh_agent_conn = Agent()
             except Exception as e:
                 if self.use_ssh_agent is True:
@@ -3705,7 +3717,7 @@ class OTPmeClient1(OTPmeClientBase):
                 pass
 
         # Make sure we pass on SLP of old session when sending login requests.
-        if self.login:
+        if self.login and self.save_offline_token:
             # Try to get users UUID.
             hostd_conn = self.get_hostd_conn()
             self.user_uuid = hostd_conn.get_user_uuid(self.username)
@@ -3772,6 +3784,7 @@ class OTPmeClient1(OTPmeClientBase):
             # Encryption type for offline data (e.g. offline tokens).
             command_args['client_offline_enc_type'] = self._offline_token.enc_type
 
+        if self.login:
             # Generate DH stuff used to calculate RSP.
             if config.debug_level(DEBUG_SLOT) > 3:
                 log_msg = _("Generating DH key for RSP.", log=True)[1]
@@ -3972,6 +3985,7 @@ class OTPmeClient1(OTPmeClientBase):
                     log_msg = _("Adding SSH key to agent...", log=True)[1]
                     self.logger.debug(log_msg)
                 try:
+                    from otpme.lib import ssh
                     ssh.add_agent_key(ssh_private_key)
                 except Exception as e:
                     log_msg = _("Unable to add key to SSH agent: {error}", log=True)[1]
@@ -3979,7 +3993,7 @@ class OTPmeClient1(OTPmeClientBase):
                     self.logger.warning(log_msg)
 
             # Remove old login sessions we logged out with this login request.
-            if self.old_sessions:
+            if self.save_offline_token and self.old_sessions:
                 for x in self.old_sessions:
                     try:
                         self._offline_token.remove_session(x, force=True)
@@ -4662,6 +4676,7 @@ class OTPmeClient1(OTPmeClientBase):
                         # connection from parent process we get "error
                         # accessing card: Conflicting use"
                         try:
+                            from paramiko.agent import Agent
                             self.ssh_agent_conn = Agent()
                         except Exception as e:
                             msg = _("Unable to get ssh-agent connection: {error}")

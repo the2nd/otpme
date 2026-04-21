@@ -1252,7 +1252,7 @@ class Realm(OTPmeObject):
             msg = msg.format(site_address=site_address)
             callback.send(msg)
             try:
-                net.configure_floating_ip(site_address, gratuitous_arp=False)
+                net.configure_floating_ip(site_address, interface="eth0", gratuitous_arp=False)
             except AddressAlreadyAssigned as e:
                 raise
             except Exception as e:

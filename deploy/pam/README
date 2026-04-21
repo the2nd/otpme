@@ -33,10 +33,16 @@ start_ssh_agent			- start SSH agent at login.
 							- true: definitly start SSH agent.
 							- false: dont start SSH agent.
 do_dot1x				- do 802.1x port authentication on login
-						  You need to configure a network manager dummy connection before enabling this:
+						  You need to configure a network manager dummy connection before enabling this.
+						  ca-cert and domain-suffix-match make the supplicant validate the RADIUS server
+						  before sending credentials. All OTPme nodes share the site cert (SAN
+						  <site>.<realm>), so one domain-suffix-match covers every RADIUS node:
 						  	nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
-    								802-1x.eap peap \
-									802-1x.phase2-auth mschapv2 \
+    								802-1x.eap ttls \
+									802-1x.phase2-auth pap \
+									802-1x.ca-cert /etc/otpme/ssl/ca.pem \
+									802-1x.domain-suffix-match <site>.<realm> \
+									802-1x.anonymous-identity "anonymous@<realm>" \
 									802-1x.identity "user" \
 									802-1x.password "pass"
 							- auto: do dot1x auth if default gw is not reachable (ping must be allowed).

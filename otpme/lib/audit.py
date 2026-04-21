@@ -18,7 +18,6 @@ except:
 from otpme.lib import config
 from otpme.lib import syslog
 from otpme.lib import filetools
-from otpme.lib import multiprocessing
 from otpme.lib.multiprocessing import register_atfork_method
 
 from otpme.lib.exceptions import *
@@ -28,6 +27,12 @@ audit_loggers = {}
 def atfork_cleanup():
     global audit_loggers
     audit_loggers.clear()
+    try:
+        config.audit_logger = get_audit_logger()
+    except Exception as e:
+        log_msg = _("Failed to get audit logger: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        config.logger.warning(log_msg)
 register_atfork_method(atfork_cleanup)
 
 def audit_log(ignore_args=None, ignore_api_calls=False):
@@ -35,8 +40,6 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
     def wrapper(f):
         @wraps(f)
         def wrapped(self, *f_args, **f_kwargs):
-            logger = config.logger
-            global audit_loggers
             _ignore_args = [
                             'verbose_level',
                             'force',
@@ -55,24 +58,7 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
             except KeyError:
                 no_audit_log = False
             if not no_audit_log:
-                proc_id = multiprocessing.get_id()
-                try:
-                    audit_logger = audit_loggers[proc_id]
-                except KeyError:
-                    audit_logger = None
-
-                # Dont do audit log on realm init.
-                if audit_logger is None and not config.realm_init:
-                    # Get audit logger.
-                    try:
-                        audit_logger = get_audit_logger()
-                    except Exception as e:
-                        log_msg = _("Failed to get audit logger: {error}", log=True)[1]
-                        log_msg = log_msg.format(error=e)
-                        logger.warning(log_msg)
-                        audit_logger = None
-                    else:
-                        audit_loggers[proc_id] = audit_logger
+                audit_logger = config.audit_logger
             # Call given class method.
             try:
                 result = f(self, *f_args, **f_kwargs)
@@ -239,10 +225,18 @@ def process_spooled_logs():
 
 def get_audit_logger(no_spool=False, exception_on_emit=False):
     """ Get audit logger. """
+    global audit_loggers
     if not config.audit_log_enabled:
         return
     if not config.audit_log_server:
         return
+    proc_pid = os.getpid()
+    try:
+        audit_logger = audit_loggers[proc_pid]
+    except KeyError:
+        audit_logger = None
+    else:
+        return audit_logger
     logger = config.logger
     address = config.audit_log_server
     facility = config.audit_log_facility
@@ -289,4 +283,5 @@ def get_audit_logger(no_spool=False, exception_on_emit=False):
     if audit_logger.hasHandlers():
         audit_logger.handlers.clear()
     audit_logger.addHandler(log_handler)
+    audit_loggers[proc_pid] = audit_logger
     return audit_logger

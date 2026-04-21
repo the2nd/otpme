@@ -39,7 +39,7 @@ class FsDaemon(OTPmeDaemon):
         self.protocols = config.get_otpme_protocols(self.name, server=True)
         # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 256
+        self.max_conn = 1024
         # FIXME: where to configure socket banner?
         # set socket banner.
         msg = f"{status_codes.OK} {self.full_name} {config.my_version}"

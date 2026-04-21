@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import bson
 
 try:
     import larch.pickle as _lpickle
@@ -21,13 +20,12 @@ except:
 from otpme.lib.exceptions import *
 
 class PickleHandler(object):
-    def __init__(self, pickle_type, encode=True):
+    def __init__(self, pickle_type):
         if pickle_type == "auto":
             pickle_type = PICKLE_TYPE
         # Set pickler.
         self.pickler = self.get_pickler(pickle_type)
         self.pickle_type = pickle_type
-        self.encode = encode
 
     def get_pickler(self, pickle_type):
         if pickle_type == "pickle":
@@ -47,18 +45,7 @@ class PickleHandler(object):
             if protocol is None:
                 protocol = self.pickler.HIGHEST_PROTOCOL
                 kwargs['protocol'] = protocol
-        pickle_data = self.pickler.dumps(instance, **kwargs)
-        dump_data = {
-                    'pickle_type' : self.pickle_type,
-                    'pickle_data' : pickle_data,
-                    }
-        if self.encode:
-            dump_data = bson.dumps(dump_data)
-        return dump_data
+        return self.pickler.dumps(instance, **kwargs)
 
     def loads(self, dump_data, **kwargs):
-        if self.encode:
-            dump_data = bson.loads(dump_data)
-        pickle_data = dump_data['pickle_data']
-        instance = self.pickler.loads(pickle_data, **kwargs)
-        return instance
+        return self.pickler.loads(dump_data, **kwargs)
