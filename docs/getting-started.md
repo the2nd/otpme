@@ -115,14 +115,6 @@ otpme-site mgmt_fqdn <site> <mgmt_fqdn>
 otpme-site sso_fqdn <site> <sso_fqdn>
 ```
 
-If you do not want to use the self-signed certificate for the SSO portal,
-you can add your own certificate and key:
-
-```bash
-otpme-site sso_cert <site> /path/to/cert.pem
-otpme-site sso_key <site> /path/to/key.pem
-```
-
 ## 5. Configure WLAN Access
 
 A common use case is authenticating WLAN clients via RADIUS. Create an access
@@ -1197,12 +1189,18 @@ auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass \
 
 Before enabling dot1x, configure a Network Manager dummy connection on the
 host. The user/password values are placeholders and will be set by the PAM
-module on login:
+module on login. `ca-cert` and `domain-suffix-match` are required so the
+supplicant validates the RADIUS server before sending credentials. All
+OTPme nodes share the site certificate whose SAN is `<site>.<realm>`, so
+one `domain-suffix-match` covers every RADIUS node:
 
 ```bash
 nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
-    802-1x.eap peap \
-    802-1x.phase2-auth mschapv2 \
+    802-1x.eap ttls \
+    802-1x.phase2-auth pap \
+    802-1x.ca-cert /etc/otpme/ssl/ca.pem \
+    802-1x.domain-suffix-match <site>.<realm> \
+    802-1x.anonymous-identity "anonymous@<realm>" \
     802-1x.identity "user" \
     802-1x.password "pass"
 ```
