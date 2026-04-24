@@ -671,9 +671,10 @@ class OTPmeClusterP1(OTPmeServer1):
             if status:
                 object_id = oid.get(object_id)
                 if object_id.object_type in config.tree_object_types:
-                    if config.master_node:
-                        message = _("Cannot write tree object on master node.")
-                        status = False
+                    if object_id != self.peer.oid:
+                        if config.master_node:
+                            message = _("Cannot write tree object on master node.")
+                            status = False
             if status:
                 checksum = object_config['CHECKSUM']
                 log_msg = _("Writing object: {id} ({checksum})", log=True)[1]

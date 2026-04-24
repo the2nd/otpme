@@ -147,6 +147,10 @@ def show_compgen():
             sub_command = None
             found_subcommand = False
             break
+        if cur == word:
+            sub_command = None
+            found_subcommand = False
+            break
         if len(comp_words) >= 3:
             prev_subcommand_word = comp_words[word_counter-3]
             if cur != "":

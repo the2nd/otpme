@@ -34,6 +34,7 @@ LIST_CACHE_LOCK_TYPE = "cache.list"
 
 default_callback = config.get_callback()
 
+last_checksum_test = {}
 last_process_cache_clear_time = {}
 
 REGISTER_BEFORE = []
@@ -426,6 +427,7 @@ def get_instance(object_id, cache_type=None):
     """ Get instance from object cache. """
     from otpme.lib import config
     from otpme.lib import backend
+    global last_checksum_test
     global last_process_cache_clear_time
     if not config.cache_enabled:
         return
@@ -478,15 +480,29 @@ def get_instance(object_id, cache_type=None):
     if not cache_entry:
         return
 
-    # Get checksums of cached object.
+    check_checksum = True
+    if config.cache_update_interval > 0:
+        try:
+            last_checksum_test_time = last_checksum_test[object_id]
+        except KeyError:
+            pass
+        else:
+            now = time.time()
+            check_age = now - last_checksum_test_time
+            if check_age <= config.cache_update_interval:
+                check_checksum = False
+
     object_outdated = False
-    try:
-        cached_checksum = cache_entry['CHECKSUM']
-    except:
-        return None
-    object_checksum = backend.get_checksum(object_id)
-    if cached_checksum != object_checksum:
-        object_outdated = True
+    if check_checksum:
+        # Get checksums of cached object.
+        try:
+            cached_checksum = cache_entry['CHECKSUM']
+        except:
+            return None
+        last_checksum_test[object_id] = time.time()
+        object_checksum = backend.get_checksum(object_id)
+        if cached_checksum != object_checksum:
+            object_outdated = True
 
     if object_outdated:
         if _cache_type == PROCESS_CACHE:
@@ -499,6 +515,7 @@ def get_instance(object_id, cache_type=None):
                 multiprocessing.instance_cache.pop(read_oid)
             except:
                 pass
+
         return None
 
     if config.debug_level("object_caching") > 0:

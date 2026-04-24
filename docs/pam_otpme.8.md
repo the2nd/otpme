@@ -104,13 +104,20 @@ not send an authentication request to the OTPme server.
 
 **do_dot1x=***auto\|force*  
 Perform 802.1x port authentication on login. Requires a Network Manager
-dummy connection to be configured beforehand, for example:
+dummy connection to be configured beforehand. The **ca-cert** and
+**domain-suffix-match** options are required so the supplicant validates
+the RADIUS server before sending credentials. All OTPme nodes share the
+site certificate whose SAN is *\<site\>.\<realm\>*, so one
+**domain-suffix-match** covers every RADIUS node. Example:
 
 <!-- -->
 
     nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
-        802-1x.eap peap \
-        802-1x.phase2-auth mschapv2 \
+        802-1x.eap ttls \
+        802-1x.phase2-auth pap \
+        802-1x.ca-cert /etc/otpme/ssl/ca.pem \
+        802-1x.domain-suffix-match <site>.<realm> \
+        802-1x.anonymous-identity "anonymous@<realm>" \
         802-1x.identity "user" \
         802-1x.password "pass"
 

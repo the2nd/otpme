@@ -384,7 +384,8 @@ class AuthHandler(object):
 
         # Get VLAN.
         if self.auth_token.support_dot1x:
-            self.vlan = self.auth_token.get_config_parameter("vlan")
+            if self.auth_client and self.auth_client.dot1x_auth:
+                self.vlan = self.auth_token.get_config_parameter("vlan")
 
         if self.found_sotp:
             config.auth_type = "sotp"

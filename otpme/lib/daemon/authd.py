@@ -55,6 +55,8 @@ class AuthDaemon(OTPmeDaemon):
         self.max_conn = 1024
         # Use pre-fork worker pool for better throughput.
         self.worker_count = config.authd_workers
+        # Speedup authd by setting cache update interval.
+        config.cache_update_interval = 30
         # FIXME: where to configure socket banner?
         # set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"

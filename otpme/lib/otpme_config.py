@@ -199,6 +199,8 @@ class OTPmeConfig(object):
         # Socket receive buffer.
         self.register_config_var("socket_receive_buffer", int, 104857600,
                             config_file_parameter="SOCKET_RECEIVE_BUFFER")
+        # Instance cache update interval.
+        self.register_config_var("cache_update_interval", int, 0)
         # Realm infos.
         self.register_config_var("realm", str, None)
         self.register_config_var("realm_uuid", str, None)
