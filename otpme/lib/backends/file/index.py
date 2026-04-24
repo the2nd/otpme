@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -78,8 +78,10 @@ def get_class(otype):
     acl_class = classes[otype]['acl']
     return object_class, attr_class, acl_class
 
-def create_class(class_name, super_classes=(), attrs_dict={}):
+def create_class(class_name, super_classes=(), attrs_dict=None):
     """ Create class. """
+    if attrs_dict is None:
+        attrs_dict = {}
     new_class = type(class_name, super_classes, attrs_dict)
     # Register class to make it pickable.
     # https://stackoverflow.com/questions/16377215/how-to-pickle-a-namedtuple-instance-correctly
@@ -223,7 +225,7 @@ def create_db_indices(drop=False, desc=False,
             msg = msg.format(e=e)
             print(msg)
             session.rollback()
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             session.commit()
         if desc:
@@ -253,7 +255,7 @@ def create_db_indices(drop=False, desc=False,
                 print(msg)
                 session.rollback()
                 print(index_names)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             finally:
                 session.commit()
         for column in columns:
@@ -283,7 +285,7 @@ def create_db_indices(drop=False, desc=False,
                 print(msg)
                 session.rollback()
                 print(index_names)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             finally:
                 session.commit()
             if desc:
@@ -312,7 +314,7 @@ def create_db_indices(drop=False, desc=False,
                     print(msg)
                     session.rollback()
                     print(index_names)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 finally:
                     session.commit()
 
@@ -345,4 +347,4 @@ def create_db_indices(drop=False, desc=False,
                 msg = msg.format(e=e)
                 print(msg)
                 print(index_names)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e

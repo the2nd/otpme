@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -126,7 +126,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Unable to access token cache dir: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return token_files
 
     def init(self):
@@ -239,7 +239,7 @@ class OfflineToken(object):
             config.raise_exception()
             msg = _("Error writing login file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     @property
     def pinned(self):
@@ -276,7 +276,7 @@ class OfflineToken(object):
             config.raise_exception()
             msg = _("Error writing pinned file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def unpin(self):
         """ Unpin offline tokens. """
@@ -286,8 +286,10 @@ class OfflineToken(object):
         os.remove(self.offline_token_pinned_file)
 
     def set_enc_passphrase(self, passphrase, key_function, key_function_opts=None,
-        iterations_by_score={}, check_pass_strength=False, challenge=None):
+        iterations_by_score=None, check_pass_strength=False, challenge=None):
         """ Set encrpytion passphrase + options. """
+        if iterations_by_score is None:
+            iterations_by_score = {}
         self.enc_challenge = challenge
         self.enc_key_derivation_func = key_function
         self.enc_key_derivation_func_opts = key_function_opts
@@ -307,7 +309,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error connecting to hostd: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         try:
             score = hostd_conn.get_pass_strength(password=password,
@@ -333,27 +335,27 @@ class OfflineToken(object):
 
         try:
             iterations = int(config_dict['iterations'])
-        except:
+        except Exception:
             iterations = None
         try:
             min_mem = int(config_dict['min_mem'])
-        except:
+        except Exception:
             min_mem = 65536
         try:
             max_mem = int(config_dict['max_mem'])
-        except:
+        except Exception:
             max_mem = 262144
         try:
             memory = int(config_dict['memory'])
-        except:
+        except Exception:
             memory = "auto"
         try:
             threads = int(config_dict['threads'])
-        except:
+        except Exception:
             threads = 4
         try:
             key_function = config_dict['hash_type']
-        except:
+        except Exception:
             key_function = self.enc_key_derivation_func
 
         # Check password strength.
@@ -389,7 +391,7 @@ class OfflineToken(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg, exc_info=True)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Get key and salt.
         key = result['key']
@@ -401,7 +403,7 @@ class OfflineToken(object):
                                                 hash_type=key_function)
         except Exception as e:
             msg = f"Error loading encryption key: {e}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Update key/salt in result.
         result['key'] = x['key']
         result['salt'] = x['salt']
@@ -475,12 +477,12 @@ class OfflineToken(object):
             except Exception as e:
                 msg = _("Error reading login session file: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             try:
                 uuid = session_config['SESSION_UUID']
-            except:
+            except Exception:
                 msg = (_("SESSION_UUID missing in login session file."))
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
         return uuid
 
     def get_old_offline_sessions(self, realm, site):
@@ -493,7 +495,7 @@ class OfflineToken(object):
         sessions = os.listdir(self.session_dir)
         try:
             sessions.remove(self.offline_link_name)
-        except:
+        except Exception:
             pass
         old_sessions = {}
         for session_id in sessions:
@@ -522,7 +524,7 @@ class OfflineToken(object):
         for i in replacement_methods:
             try:
                 config.offline_methods[i]
-            except:
+            except Exception:
                 config.offline_methods[i] = {}
             config.offline_methods[i][object_id.read_oid] = replacement_methods[i]
 
@@ -544,7 +546,7 @@ class OfflineToken(object):
         self.set_replacement_methods(object_id)
         try:
             token_parameter = self.offline_tokens[object_id]
-        except:
+        except Exception:
             token_parameter = {}
 
         if object_config is not None:
@@ -610,10 +612,10 @@ class OfflineToken(object):
             if login_token and login_token.second_factor_token_enabled:
                 try:
                     login_token.sftoken = cached_tokens[login_token.second_factor_token]
-                except:
+                except Exception:
                     msg = _("Cannot find second factor token of: {token_path}")
                     msg = msg.format(token_path=login_token.rel_path)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from None
                 log_msg = _("Found offline second factor token: {sftoken}", log=True)[1]
                 log_msg = log_msg.format(sftoken=login_token.sftoken.rel_path)
                 self.logger.debug(log_msg)
@@ -638,7 +640,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error reading file: {file}: {error}")
             msg = msg.format(file=self.login_token_uuid_file, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Get login token and login time.
         self.login_token_uuid = login_config['login_token']
@@ -659,7 +661,7 @@ class OfflineToken(object):
             except Exception as e:
                 msg = _("Failed to load offline token: {token_oid}: {error}")
                 msg = msg.format(token_oid=token_oid, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Load object config.
             object_config = ObjectConfig(token_oid, object_config, encrypted=False)
             # Need_encryption indicates that one of the offline tokens needs
@@ -670,7 +672,7 @@ class OfflineToken(object):
                         self.need_encryption = True
                     else:
                         self.need_encryption = False
-                except:
+                except Exception:
                     # FIXME: what should be the default? raise exception if config does not include this setting???!!!
                     self.need_encryption = True
 
@@ -682,19 +684,19 @@ class OfflineToken(object):
                 if not self.enc_salt:
                     try:
                         self.enc_salt = self.offline_enc_parameters['salt']
-                    except:
+                    except Exception:
                         pass
 
                 if not self.enc_iterations:
                     try:
                         self.enc_iterations = self.offline_enc_parameters['iterations']
-                    except:
+                    except Exception:
                         pass
 
                 if not self.enc_challenge:
                     try:
                         self.enc_challenge = self.offline_enc_parameters['challenge']
-                    except:
+                    except Exception:
                         pass
 
             # Add login token to offline token dict.
@@ -741,9 +743,9 @@ class OfflineToken(object):
                 try:
                     session_key = instance.object_config.get('OTPME_SESSION_KEY',
                                                             no_headers=True)
-                except:
+                except Exception:
                     msg = (_("Login token misses session key."))
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from None
                 # Make sure session key is of type string and not e.g. long.
                 session_key = str(session_key)
                 # Decode session key.
@@ -753,9 +755,9 @@ class OfflineToken(object):
             try:
                 offline_data_key = instance.object_config.get('OTPME_OFFLINE_DATA_KEY',
                                                                 no_headers=True)
-            except:
+            except Exception:
                 msg = (_("Login token misses offline data key."))
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             # Make sure offline data key is of type string and not e.g. long.
             offline_data_key = str(offline_data_key)
             offline_data_key = offline_data_key.encode()
@@ -775,7 +777,7 @@ class OfflineToken(object):
             except Exception as e:
                 msg = _("Error writing token config: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             log_msg = _("Cached token '{token_path}' for offline logins.", log=True)[1]
             log_msg = log_msg.format(token_path=instance.rel_path)
             self.logger.info(log_msg)
@@ -791,7 +793,7 @@ class OfflineToken(object):
         if update:
             try:
                 cur_session_id = self.get_offline_session()[2]
-            except:
+            except Exception:
                 cur_session_id = None
 
             if not cur_session_id:
@@ -821,7 +823,7 @@ class OfflineToken(object):
             except Exception as e:
                 msg = _("Error reading session file: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             self.session_key_public = decode(session_config['KEY'], "hex")
             # Get RSAKey() instance for our session key.
             key = RSAKey(key=self.session_key_public)
@@ -913,7 +915,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error writing session file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return True
 
     def get_offline_sessions(self, object_id):
@@ -944,7 +946,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Failed to load offline session key: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Get session file.
         session_dir = self.get_session_dir(session_id)
@@ -998,12 +1000,12 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error reading login session file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             slp = session_config['SLP']
-        except:
+        except Exception:
             msg = (_("SLP missing in login session file."))
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         return slp
 
     def remove_session(self, session_id=None, force=False):
@@ -1041,7 +1043,7 @@ class OfflineToken(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def remove_outdated_session_dirs(self):
         """ Remove outdated session directories. """
@@ -1092,7 +1094,7 @@ class OfflineToken(object):
             except Exception as e:
                 msg = _("Error removing session directory: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
     def remove_outdated_offline_session(self):
         """ Remove outdated offline session. """
@@ -1169,7 +1171,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error reading key mode file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return key_mode
 
     @key_mode.setter
@@ -1187,7 +1189,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error writing key mode file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def save_script(self, script_id, script_uuid, script, script_path,
         script_options=None, script_signs=None):
@@ -1239,7 +1241,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error writing script file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def get_script(self, script_id):
         """ Read script from file. """
@@ -1253,7 +1255,7 @@ class OfflineToken(object):
         except Exception as e:
             msg = _("Error reading script file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         script = decode(object_config['SCRIPT'], "base64")
         script_uuid = object_config['SCRIPT_UUID']
         script_path = object_config['SCRIPT_PATH']
@@ -1294,7 +1296,7 @@ class OfflineToken(object):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 used_otp_dir = f"{self.used_dir}/{self.user_uuid}/otp/{token_uuid}"
                 token_counter_dir = f"{self.used_dir}/{self.user_uuid}/counter/{token_uuid}"
                 config_paths['used_otp_dir'] = used_otp_dir
@@ -1341,7 +1343,7 @@ class OfflineToken(object):
             if not object_config:
                 try:
                     object_config = self.offline_tokens[object_id]['object_config']
-                except:
+                except Exception:
                     pass
 
         if not object_config:
@@ -1370,7 +1372,7 @@ class OfflineToken(object):
                 object_config = object_config.decrypt(decrypt_key)
             except Exception as e:
                 msg = _("Failed to decrypt offline token.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         else:
             log_msg = _("Loading offline {object_type} without decrypting: {object_id}", log=True)[1]
             log_msg = log_msg.format(object_type=object_type, object_id=object_id)
@@ -1380,7 +1382,7 @@ class OfflineToken(object):
                 object_config = object_config.remove_headers()
             except Exception as e:
                 msg = f"Failed to load offline token: {e}"
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         return object_config
 
@@ -1487,7 +1489,7 @@ class OfflineToken(object):
             config.raise_exception()
             msg = _("Error writing cache file for: {object_id}: {error}")
             msg = msg.format(object_id=object_id, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         return True
 
@@ -1499,17 +1501,17 @@ class OfflineToken(object):
         config_paths = self.get_config_paths(object_id)
         try:
             remove_files = config_paths['remove_on_delete']
-        except:
+        except Exception:
             remove_files = []
 
         try:
             remove_dirs = config_paths['rmdir_on_delete']
-        except:
+        except Exception:
             remove_dirs = []
 
         try:
             rmtree_dirs = config_paths['rmtree_on_delete']
-        except:
+        except Exception:
             rmtree_dirs = []
 
         for i in remove_files:
@@ -1558,7 +1560,7 @@ class OfflineToken(object):
                 except Exception as e:
                     msg = _("Error reading token counter file: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 token_uuid = object_config['TOKEN_UUID']
                 used_otp_oid = oid.get(object_type="used_otp",
                                         realm=object_id.realm,
@@ -1587,7 +1589,7 @@ class OfflineToken(object):
         counter_list = []
         try:
             counter_dir = self.get_config_paths(object_id)['token_counter_dir']
-        except:
+        except Exception:
             return counter_list
         if not os.path.exists(counter_dir):
             return counter_list
@@ -1600,7 +1602,7 @@ class OfflineToken(object):
             except Exception as e:
                 msg = _("Error reading token counter file: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             token_uuid = object_config['TOKEN_UUID']
             counter_oid = oid.get(object_type="token_counter",
                                     realm=object_id.realm,
@@ -1636,4 +1638,4 @@ class OfflineToken(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e

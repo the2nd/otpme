@@ -6,7 +6,7 @@ import time
 import stat
 import hmac
 import errno
-import random
+import secrets
 import base64
 import struct
 import hashlib
@@ -70,7 +70,7 @@ def read_cryptfs_settings(path):
     except Exception as e:
         msg = _("Failed to read cryptfs settings: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return load_cryptfs_settings(fs_data)
 
 def load_cryptfs_settings(fs_data):
@@ -79,7 +79,7 @@ def load_cryptfs_settings(fs_data):
     except Exception as e:
         msg = _("Failed to load cryptfs settings: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return fs_data
 
 def init_cryptfs(path, block_size, hash_params):
@@ -99,13 +99,13 @@ def init_cryptfs(path, block_size, hash_params):
     except Exception as e:
         msg = _("Failed to init cryptfs: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     try:
         os.chmod(conf_file, 0o644)
     except Exception as e:
         msg = _("Failed to set config file permissions: {conf_file}: {e}")
         msg = msg.format(conf_file=conf_file, e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     diriv_file = os.path.join(path, DIRIV_NAME)
     if os.path.exists(diriv_file):
         return
@@ -117,13 +117,13 @@ def init_cryptfs(path, block_size, hash_params):
     except Exception as e:
         msg = _("Failed to init cryptfs: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     try:
         os.chmod(diriv_file, 0o644)
     except Exception as e:
         msg = _("Failed to set diriv file permissions: {diriv_file}: {e}")
         msg = msg.format(diriv_file=diriv_file, e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
 class OTPmeFS(fuse.Operations):
     '''
@@ -169,7 +169,7 @@ class OTPmeFS(fuse.Operations):
         except Exception as e:
             msg = _("Unable to get SOTP from agent: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             agent_conn.close()
         try:
@@ -186,7 +186,7 @@ class OTPmeFS(fuse.Operations):
         except Exception as e:
             msg = _("Failed to get daemon connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return fsd_conn
 
     def send(self, command, command_args, binary_data=None):
@@ -211,8 +211,8 @@ class OTPmeFS(fuse.Operations):
                         except Exception as e:
                             msg = _("Unable to get username from agent: {e}")
                             msg = msg.format(e=e)
-                            raise OSError(errno.EINVAL, msg)
-                    node = random.choice(remaining_nodes)
+                            raise OSError(errno.EINVAL, msg) from e
+                    node = secrets.choice(remaining_nodes)
                     log_msg = _("Trying connection to node: {node}", log=True)[1]
                     log_msg = log_msg.format(node=node)
                     print(log_msg)
@@ -236,7 +236,7 @@ class OTPmeFS(fuse.Operations):
                             if command != "fsop_write":
                                 raise_exception = True
                             if raise_exception:
-                                raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
+                                raise OSError(errno.EHOSTUNREACH, _("Server unreachable")) from e
                         continue
                     tried_nodes.append(node)
                     mount_args = {'share':self.share}
@@ -294,28 +294,28 @@ class OTPmeFS(fuse.Operations):
                     if self.encrypted:
                         try:
                             block_size= mount_response['block_size']
-                        except KeyError:
+                        except KeyError as err:
                             log_msg = _("Mount response misses block size: {share}: {node}", log=True)[1]
                             log_msg = log_msg.format(share=self.share, node=node)
                             self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
                             tried_nodes.append(node)
-                            raise OSError(errno.ENOENT, _("Missing block size"))
+                            raise OSError(errno.ENOENT, _("Missing block size")) from err
                         # Set block size for encrypted fs.
                         self.set_block_size(block_size)
                         if not self.key:
                             if master_password_mount:
                                 try:
                                     master_password_hash_params= mount_response['master_password_hash_params']
-                                except KeyError:
+                                except KeyError as err:
                                     log_msg = _("Mount response misses master password hash parameters: {share}: {node}", log=True)[1]
                                     log_msg = log_msg.format(share=self.share, node=node)
                                     self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("No share key received"))
+                                    raise OSError(errno.EACCES, _("No share key received")) from err
                                 try:
                                     hash_data = hash_password(self.master_password,
                                                             encoding=None,
@@ -328,18 +328,18 @@ class OTPmeFS(fuse.Operations):
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("No share key received"))
+                                    raise OSError(errno.EACCES, _("No share key received")) from e
                             else:
                                 try:
                                     share_key= mount_response['share_key']
-                                except KeyError:
+                                except KeyError as err:
                                     log_msg = _("Mount response misses share key: {share}: {node}", log=True)[1]
                                     log_msg = log_msg.format(share=self.share, node=node)
                                     self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("No share key received"))
+                                    raise OSError(errno.EACCES, _("No share key received")) from err
                                 # Decrypt share key with key script.
                                 share_id = f"{self.share_site}/{self.share}"
                                 try:
@@ -355,7 +355,7 @@ class OTPmeFS(fuse.Operations):
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("Failed to decrypt share key"))
+                                    raise OSError(errno.EACCES, _("Failed to decrypt share key")) from e
                             try:
                                 self.setup_encryption(share_key)
                             except Exception as e:
@@ -366,12 +366,12 @@ class OTPmeFS(fuse.Operations):
                                 self.fsd_conn.close()
                                 self.fsd_conn = None
                                 tried_nodes.append(node)
-                                raise OSError(errno.EINVAL, msg)
+                                raise OSError(errno.EINVAL, msg) from e
                         # Get max filename length for encrypted shares.
                         statfs = self.statfs(path="/")
                         try:
                             self.max_name = statfs['f_namemax']
-                        except:
+                        except Exception:
                             pass
                     msg, log_msg = _("Share mounted: {share} ({node})", log=True)
                     msg = msg.format(share=self.share, node=node)
@@ -392,7 +392,7 @@ class OTPmeFS(fuse.Operations):
                             self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
-                            raise OSError(errno.EACCES, _("Failed to decrypt share key"))
+                            raise OSError(errno.EACCES, _("Failed to decrypt share key")) from e
                         # Add token and share key to share
                         add_args = {'share_key':enc_share_key}
                         add_status, \
@@ -435,7 +435,7 @@ class OTPmeFS(fuse.Operations):
                 if command != "fsop_write":
                     raise_exception = True
                 if raise_exception:
-                    raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
+                    raise OSError(errno.EHOSTUNREACH, _("Server unreachable")) from e
                 time.sleep(1)
                 continue
             break
@@ -1429,7 +1429,7 @@ class EncryptedFS(OTPmeFS):
         enc_path = enc_parent.rstrip('/') + '/' + enc_name if enc_parent != '/' else '/' + enc_name
         try:
             result = super().create(enc_path, mode, fi)
-        except:
+        except Exception:
             last_create_cache = None
             last_create_cache_time = 0.0
             raise
@@ -1447,7 +1447,7 @@ class EncryptedFS(OTPmeFS):
         enc_path = enc_parent.rstrip('/') + '/' + enc_name if enc_parent != '/' else '/' + enc_name
         try:
             result = super().mkdir(enc_path, mode)
-        except:
+        except Exception:
             if not use_diriv_cache:
                 raise
             return self.mkdir(path, mode, use_diriv_cache=False)
@@ -1483,7 +1483,7 @@ class EncryptedFS(OTPmeFS):
         last_create_cache_time = 0.0
         try:
             result = super().rmdir(enc)
-        except:
+        except Exception:
             if not use_diriv_cache:
                 raise
             return self.rmdir(path, use_diriv_cache=False)
@@ -1540,7 +1540,7 @@ class EncryptedFS(OTPmeFS):
         enc_new = enc_new_parent.rstrip('/') + '/' + enc_new_name if enc_new_parent != '/' else '/' + enc_new_name
         try:
             result = super().rename(enc_old, enc_new)
-        except:
+        except Exception:
             enc_new_file = os.path.basename(enc_new)
             if enc_new_file.startswith(LONGNAME_PREFIX):
                 longname_file = enc_new + ".name"

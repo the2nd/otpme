@@ -22,7 +22,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -82,10 +82,10 @@ class Fido2ClientHandler(object):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['fido2']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         try:
@@ -97,11 +97,11 @@ class Fido2ClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
     def get_pre_deploy_args(self, command_handler, **kwargs):
         self.parse_syntax(command_handler)
@@ -131,16 +131,16 @@ class Fido2ClientHandler(object):
             self.fido2_token = Fido2(uv=self.uv)
         except Exception as e:
             msg = str(e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['fido2']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         local_command_args = {}
@@ -154,11 +154,11 @@ class Fido2ClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
         # Try to find a locally connected U2F token.
         self.detect_fido2_sc()
@@ -173,7 +173,7 @@ class Fido2ClientHandler(object):
         except Exception as e:
             msg = _("Failed to register fido2 token: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Send registration data to server.
         deploy_args = {}
@@ -194,7 +194,7 @@ class Fido2ClientHandler(object):
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         self._hmac_output = smartcard._hmac_output
         auth_response_json = json.dumps(dict(auth_response))
         smartcard_data = {
@@ -216,7 +216,7 @@ class Fido2ClientHandler(object):
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         auth_response_json = json.dumps(dict(auth_response))
         return auth_response_json
 
@@ -242,7 +242,7 @@ class Fido2ClientHandler(object):
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         self._hmac_output = smartcard._hmac_output
         auth_response_json = json.dumps(dict(auth_response))
         smartcard_data = {

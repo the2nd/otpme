@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -70,7 +70,7 @@ def get_cache(object_id=None, user_uuid=None, verbose=False):
     except Exception as e:
         msg = _("Error reading singer key from cache: {name}: {file}: {error}")
         msg = msg.format(name=object_id.name, file=cache_file, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return public_key
 
 def del_cache(object_id):

@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -57,10 +57,10 @@ class U2fClientHandler(object):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['u2f']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         local_command_args = {}
@@ -74,11 +74,11 @@ class U2fClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
         # Try to find a locally connected U2F token.
         log_msg = _("Trying to detect connected U2F token...", log=True)[1]
@@ -87,7 +87,7 @@ class U2fClientHandler(object):
             u2f_token = U2f()
         except Exception as e:
             msg = str(e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         app_id = pre_deploy_result['app_id']
         app_id = app_id.encode()
@@ -99,7 +99,7 @@ class U2fClientHandler(object):
         except Exception as e:
             msg = _("Failed to register U2F token: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Send registration data to server.
         deploy_args = {}
@@ -126,7 +126,7 @@ class U2fClientHandler(object):
         except Exception as e:
             msg = _("Failed to authenticate with U2F token: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         smartcard_data = {
                             'token_rel_path'    : self.token_rel_path,
                             'smartcard_type'    : self.smartcard_type,
@@ -154,7 +154,7 @@ class U2fClientHandler(object):
         except Exception as e:
             msg = _("Failed to authenticate with U2F token: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         return signature_data.b64
 
     def handle_offline_token_challenge(self, **kwargs):
@@ -181,7 +181,7 @@ class U2fClientHandler(object):
         except Exception as e:
             msg = _("Failed to authenticate with U2F token: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         smartcard_data = {
                             'challenge'         : challenge_hash_hex,
                             'signature_data'    : signature_data.b64,

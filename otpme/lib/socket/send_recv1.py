@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -28,7 +28,7 @@ def sendall(socket_handler, data):
     except Exception as e:
         msg = _("Broken connection while sending data: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
 def recv(socket_handler, **kwargs):
     """ Function to handle data receiving through socket connection. """

@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -128,7 +128,7 @@ class OTPmeHost(OTPmeClientObject):
         **kwargs,
         ):
         # Call parent class init.
-        super(OTPmeHost, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -271,7 +271,7 @@ class OTPmeHost(OTPmeClientObject):
         for i in object_config:
             _object_config[i] = object_config[i]
 
-        return super(OTPmeHost, self)._get_object_config(object_config=_object_config)
+        return super()._get_object_config(object_config=_object_config)
 
     @property
     def fqdn(self):
@@ -443,7 +443,7 @@ class OTPmeHost(OTPmeClientObject):
                 continue
             try:
                 token_options = valid_tokens[token.uuid]['token_options']
-            except:
+            except Exception:
                 token_options = {}
             if not user.uuid in possible_tokens:
                 possible_tokens[user.uuid] = {}
@@ -461,7 +461,7 @@ class OTPmeHost(OTPmeClientObject):
                 token = possible_tokens[user_name][token_uuid][1]
                 try:
                     token_options = possible_tokens[user_name][token_uuid][2]
-                except:
+                except Exception:
                     token_options = {}
 
                 # Check if token is authorized for SSH login to this host.
@@ -944,7 +944,7 @@ class OTPmeHost(OTPmeClientObject):
         except Exception as e:
             msg = _("Failed to load {host_type} auth key.")
             msg = msg.format(host_type=self.type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return auth_key
 
     def gen_challenge(self):
@@ -1213,7 +1213,7 @@ class OTPmeHost(OTPmeClientObject):
                     callback.send(msg)
 
         # Add object using parent class.
-        return super(OTPmeHost, self).add(enabled=enabled,
+        return super().add(enabled=enabled,
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
@@ -1279,7 +1279,7 @@ class OTPmeHost(OTPmeClientObject):
             session.delete(callback=callback, force=True)
 
         # Delete object using parent class.
-        return super(OTPmeHost, self).delete(verbose_level=verbose_level,
+        return super().delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
     @check_acls(['remove:orphans'])
@@ -1364,10 +1364,12 @@ class OTPmeHost(OTPmeClientObject):
 
     def show_config(
         self,
-        config_lines: List=[],
+        config_lines: List=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        if config_lines is None:
+            config_lines = []
         lines = []
         lines += config_lines
         join_date = None
@@ -1386,7 +1388,7 @@ class OTPmeHost(OTPmeClientObject):
             if not join_token:
                 join_token = self.join_token_cache
         lines.append(f'JOIN_TOKEN="{join_token}"')
-        return super(OTPmeHost, self).show_config(config_lines=lines,
+        return super().show_config(config_lines=lines,
                                     callback=callback, **kwargs)
 
     def show(self, **kwargs):

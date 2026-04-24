@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -328,7 +328,7 @@ class PasswordPolicy(Policy):
         realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(PasswordPolicy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                                 realm=realm,
                                                 site=site,
                                                 name=name,
@@ -682,7 +682,7 @@ class PasswordPolicy(Policy):
             try:
                 opt = x.split("=")[0]
                 val = x.split("=")[1]
-            except:
+            except Exception:
                 msg = _("Invalid option: {x}")
                 msg = msg.format(x=x)
                 return callback.error(msg)
@@ -709,19 +709,19 @@ class PasswordPolicy(Policy):
             elif opt == "recent_years_past":
                 try:
                     recent_years_past = int(val)
-                except:
+                except Exception:
                     return callback.error(_("recent_years_past must to be of type integer."))
                 self.strength_checker_opts['recent_years_past'] = recent_years_past
             elif opt == "recent_years_future":
                 try:
                     recent_years_future = int(val)
-                except:
+                except Exception:
                     return callback.error(_("recent_years_future must to be of type integer."))
                 self.strength_checker_opts['recent_years_future'] = recent_years_future
             elif opt == "min_score":
                 try:
                     min_score = int(val)
-                except:
+                except Exception:
                     return callback.error(_("min_score must be of type integer."))
                 self.strength_checker_opts['min_score'] = min_score
             else:

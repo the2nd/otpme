@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -991,7 +991,7 @@ def local_admin_user_getter(self):
     from otpme.lib.multiprocessing import local_admin_user
     try:
         _local_admin_user = local_admin_user['value']
-    except:
+    except Exception:
         _local_admin_user = None
     if _local_admin_user is True:
         return True
@@ -1447,7 +1447,7 @@ class User(OTPmeObject):
         self.type = "user"
 
         # Call parent class init.
-        super(User, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                     realm=realm,
                                     site=site,
                                     unit=unit,
@@ -2217,7 +2217,7 @@ class User(OTPmeObject):
                 return self.cross_site_move(*args, path=new_unit,
                                             callback=callback,
                                             **kwargs)
-        move_result = super(User, self).move(*args, callback=callback, **kwargs)
+        move_result = super().move(*args, callback=callback, **kwargs)
         token_list = self.get_tokens(return_type="instance")
         for token in token_list:
             token._write(callback=callback)
@@ -2344,7 +2344,7 @@ class User(OTPmeObject):
                 log_msg = _("Unable to add signer cache: {self_oid}: {e}", log=True)[1]
                 log_msg = log_msg.format(self_oid=self.oid, e=e)
                 logger.critical(log_msg)
-        return super(User, self)._write(**kwargs)
+        return super()._write(**kwargs)
 
     @check_acls(['edit:language'])
     def change_language(self, language, callback: JobCallback=default_callback, **kwargs):
@@ -2390,9 +2390,9 @@ class User(OTPmeObject):
                 aes_key = self.private_key['aes_key']
                 rsa_key = self.private_key['rsa_key']
                 encrypted = self.private_key['encrypted']
-            except KeyError:
+            except KeyError as err:
                 msg = "Failed to load private key: Wrong key mode set?"
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from err
         else:
             aes_key = None
             rsa_key = self.private_key['key_blob']
@@ -2731,11 +2731,11 @@ class User(OTPmeObject):
 
             try:
                 status = response['status']
-            except:
+            except Exception:
                 status = False
             try:
                 message = response['message']
-            except:
+            except Exception:
                 message = "Unknown error."
 
             if not status:
@@ -3021,7 +3021,7 @@ class User(OTPmeObject):
             # Try to get keypack string.
             try:
                 aes_key_enc, key_string = self._decode_key()
-            except:
+            except Exception:
                 msg = ("Error decoding private key value.")
                 return callback.error(msg)
             # Try to get decrypted AES key from client.
@@ -3031,7 +3031,7 @@ class User(OTPmeObject):
             try:
                 key_string = self.private_key.split("[")[1].split("]")[0]
                 key_string = decode(key_string, "base64")
-            except:
+            except Exception:
                 msg = ("Error decoding private key value.")
                 return callback.error(msg)
             aes_key = False
@@ -3279,7 +3279,7 @@ class User(OTPmeObject):
         acl: object,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
-        object_types: List=[],
+        object_types: List=None,
         verify_acls: bool=True,
         force: bool=False,
         verbose_level: int=0,
@@ -3287,6 +3287,8 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Method to call inherit_default_acl() for all site units. """
+        if object_types is None:
+            object_types = []
         exception = None
 
         if action == "add":
@@ -3894,20 +3896,14 @@ class User(OTPmeObject):
         return user_is_blocked(self.uuid, access_group, realm, site)
 
     def _gen_used_hash(self, string: str):
-        """ Generate MD5 hash of used SLP/SOTP/OTP/pass hash to be saved to backend. """
-        # Generate MD5 hash from used SLP/SOTP/OTP/pass hash and salt. We use
-        # MD5 here for performance reasons. To increase security the salt
-        # is saved encrypted in the user config but as this is only used on
-        # server side there should be no security implication with using MD5.
-        # The OTPme server already has the token secrets to generate e.g. a OTP.
-        # The only thing one could think of as a security problem is that
-        # count_fail() saves this hash to the backend to count failed login
-        # tries. So if someone types in the wrong static password we do have
-        # a less secure hash of it saved for a period of time.
+        """ Generate SHA-256 hash of used SLP/SOTP/OTP/pass hash to be
+        saved to backend. Salted with the (encrypted-at-rest) per-user
+        used_pass_salt. The hash is used to detect replay of already-
+        consumed OTPs and to count failed auth attempts. """
         if not isinstance(string, str):
             raise OTPmeException("Need string")
 
-        x_hash = stuff.gen_md5(string + self.used_pass_salt)
+        x_hash = stuff.gen_sha256(string + self.used_pass_salt)
 
         return x_hash
 
@@ -4191,7 +4187,7 @@ class User(OTPmeObject):
         replace: bool=False,
         deploy_data: Union[str,None]=None,
         pre_deploy: bool=False,
-        pre_deploy_args: dict={},
+        pre_deploy_args: dict=None,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -4200,6 +4196,8 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Deploy existing or new token. """
+        if pre_deploy_args is None:
+            pre_deploy_args = {}
         if not deploy_data and not pre_deploy:
             msg = ("Need at least 'pre_deploy' or 'deploy_data'!")
             raise OTPmeException(msg)
@@ -4272,7 +4270,7 @@ class User(OTPmeObject):
         if deploy_data:
             try:
                 deploy_args = json.decode(deploy_data, encoding="hex")
-            except:
+            except Exception:
                 config.raise_exception()
                 return callback.error("Error decoding token data.")
 
@@ -5164,7 +5162,7 @@ class User(OTPmeObject):
         groups: Union[List,None]=None,
         default_roles: Union[List,None]=None,
         ldif_attributes: Union[str,None]=None,
-        default_attributes: dict={},
+        default_attributes: dict=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -5172,6 +5170,8 @@ class User(OTPmeObject):
         ):
         """ Add user. """
         # Check if user exist on any site.
+        if default_attributes is None:
+            default_attributes = {}
         result = backend.search(object_type="user",
                                 attribute="name",
                                 value=self.name,
@@ -5473,7 +5473,7 @@ class User(OTPmeObject):
         if ldif_attributes:
             try:
                 default_extensions = config.default_extensions[self.type]
-            except:
+            except Exception:
                 default_extensions = []
             for ext in default_extensions:
                 ext_attrs = config.get_ldif_attributes(ext, self.type)
@@ -5483,7 +5483,7 @@ class User(OTPmeObject):
                         value = x.split("=")[1]
                         value = value.replace("'", "")
                         value = value.replace('"', '')
-                    except:
+                    except Exception:
                         msg = _("Invalid attribute: {x}")
                         msg = msg.format(x=x)
                         return callback.error(msg)
@@ -5496,7 +5496,7 @@ class User(OTPmeObject):
                     default_attributes[ext][attr] = value
 
         # Add object using parent class BEFORE adding any token etc.
-        add_result = super(User, self).add(template=template,
+        add_result = super().add(template=template,
                                         run_policies=False,
                                         inherit_acls=False,
                                         verify_acls=verify_acls,
@@ -5726,7 +5726,7 @@ class User(OTPmeObject):
 
         # Run post policies ALSO BEFORE adding token (e.g. tokenacls).
         if run_policies:
-            super(User, self)._run_post_add_policies(verify_acls=verify_acls,
+            super()._run_post_add_policies(verify_acls=verify_acls,
                                                     verbose_level=verbose_level,
                                                     callback=callback, **kwargs)
 
@@ -5875,7 +5875,7 @@ class User(OTPmeObject):
         sign_key_cache.del_cache(self.oid)
 
         # Delete object using parent class.
-        del_status = super(User, self).delete(verbose_level=verbose_level,
+        del_status = super().delete(verbose_level=verbose_level,
                                             force=force, callback=callback)
         return del_status
 

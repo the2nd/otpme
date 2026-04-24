@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -69,9 +69,11 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, script_order, script_data, acls,
-    acl_checker=None, output_fields=[], max_policies=5,
+    acl_checker=None, output_fields=None, max_policies=5,
     callback=default_callback, **kwargs):
     """ Build table rows for scripts. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for script_uuid in script_order:
         row = []
@@ -80,21 +82,21 @@ def row_getter(realm, site, script_order, script_data, acls,
         unit_uuid = script_data[script_uuid]['unit'][0]
         try:
             enabled = script_data[script_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             description = script_data[script_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = script_data[script_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             script_acls = acls[script_uuid]
-        except:
+        except Exception:
             script_acls = {}
 
         # Get ACL checker.
@@ -134,7 +136,7 @@ def row_getter(realm, site, script_order, script_data, acls,
                             sign_valid = script.verify_sign(user_uuid=user_uuid,
                                                             tags=sign_tags,
                                                             callback=callback)
-                        except:
+                        except Exception:
                             sign_valid = False
                         if sign_valid:
                             signature_status_string = "OK"

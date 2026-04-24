@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -39,16 +39,20 @@ class OTPmeLDIFHandler(object):
     def __init__(self):
         self.objects_default_attributes = {}
 
-    def init(self, o, default_attributes={}, ignore_missing_attributes=[],
+    def init(self, o, default_attributes=None, ignore_missing_attributes=None,
         verbose_level=0, callback=default_callback, **kwargs):
         """ Add needed attributes to object. """
         # Add object default attributes to be added by gen_attribute_value().
+        if default_attributes is None:
+            default_attributes = {}
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
         self.objects_default_attributes[o.oid.full_oid] = default_attributes
 
         # Add DN attribute if missing.
         try:
             dn_attribute = config.dn_attributes[o.type]
-        except:
+        except Exception:
             return callback.ok()
 
         if dn_attribute not in o.ldif_attributes:
@@ -95,7 +99,7 @@ class OTPmeLDIFHandler(object):
             else:
                 try:
                     v = self.get_attribute_values(o=o, attribute=at)[0]
-                except:
+                except Exception:
                     v = None
             add_result = self.add_attribute(o=o,
                                     a=at,
@@ -129,11 +133,11 @@ class OTPmeLDIFHandler(object):
         """ Get default attributes of the given object type. """
         try:
             attrs_type = self.default_attributes[object_type]
-        except:
+        except Exception:
             attrs_type = []
         try:
             attrs_all = self.default_attributes['all']
-        except:
+        except Exception:
             attrs_all = []
         attrs = attrs_type + attrs_all
         return attrs
@@ -235,11 +239,11 @@ class OTPmeLDIFHandler(object):
             # Add object attributes that are no deps of any object class.
             try:
                 all_object_attributes = self.object_attributes['all']
-            except:
+            except Exception:
                 all_object_attributes = []
             try:
                 object_attributes = self.object_attributes[object_type]
-            except:
+            except Exception:
                 object_attributes = []
 
             object_attributes = set(all_object_attributes + object_attributes)
@@ -265,7 +269,7 @@ class OTPmeLDIFHandler(object):
 
         try:
             dn_attribute = config.dn_attributes[o.type]
-        except:
+        except Exception:
             return callback.ok()
 
         ldif = []
@@ -288,7 +292,7 @@ class OTPmeLDIFHandler(object):
                 continue
             try:
                 mandatory_attrs = config.ldap_object_classes[oc].must
-            except:
+            except Exception:
                 mandatory_attrs = []
 
             for at in mandatory_attrs:
@@ -329,7 +333,7 @@ class OTPmeLDIFHandler(object):
 
             try:
                 at_deps = config.ldap_attribute_deps[at]
-            except:
+            except Exception:
                 at_deps = []
 
             if len(at_deps) > 0:
@@ -373,7 +377,7 @@ class OTPmeLDIFHandler(object):
                 continue
             try:
                 mandatory_attrs = config.ldap_object_classes[oc].must
-            except:
+            except Exception:
                 mandatory_attrs = []
 
             for at in mandatory_attrs:
@@ -447,21 +451,21 @@ class OTPmeLDIFHandler(object):
         if attribute is not None:
             try:
                 o_mappings = self.attribute_mappings[object_type][attribute]
-            except:
+            except Exception:
                 o_mappings = []
             try:
                 a_mappings = self.attribute_mappings['all'][attribute]
-            except:
+            except Exception:
                 a_mappings = []
             attribute_mappings = a_mappings + o_mappings
         else:
             try:
                 o_mappings = dict(self.attribute_mappings[object_type])
-            except:
+            except Exception:
                 o_mappings = {}
             try:
                 a_mappings = dict(self.attribute_mappings['all'])
-            except:
+            except Exception:
                 a_mappings = {}
             a_mappings.update(o_mappings)
             attribute_mappings = a_mappings
@@ -474,12 +478,12 @@ class OTPmeLDIFHandler(object):
 
         try:
             o_mappings = self.attribute_mappings[o.type][attribute]
-        except:
+        except Exception:
             o_mappings = []
 
         try:
             a_mappings = self.attribute_mappings['all'][attribute]
-        except:
+        except Exception:
             a_mappings = []
 
         mappings = o_mappings + a_mappings
@@ -490,7 +494,7 @@ class OTPmeLDIFHandler(object):
                 for attr in a:
                     try:
                         val = self.get_attribute_values(o=o, attribute=attr)[0]
-                    except:
+                    except Exception:
                         val = None
                     if val:
                         vals.append(val)
@@ -500,7 +504,7 @@ class OTPmeLDIFHandler(object):
             else:
                 try:
                     val = self.get_attribute_values(o=o, attribute=a)[0]
-                except:
+                except Exception:
                     val = None
                 if val:
                     at.append(val)
@@ -658,8 +662,10 @@ class OTPmeLDIFHandler(object):
 
     def add_attribute(self, o, a, v=None, position=-1, ignore_ro=False,
         verify=True, auto_value=False, verbose_level=0,
-        ignore_missing_attributes=[], callback=default_callback):
+        ignore_missing_attributes=None, callback=default_callback):
         """ Add attribute to object. """
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
         found_object_class = True
         # FIXME: what are valid chars for attributes and values?
         if "\\" in str(a) or "\\" in str(v):
@@ -689,11 +695,11 @@ class OTPmeLDIFHandler(object):
             if v is None:
                 try:
                     v = attribute_mapping[0]
-                except:
+                except Exception:
                     v = None
         try:
             allow_rev_mapping = self.allow_reverse_mappings[o.type][a]
-        except:
+        except Exception:
             allow_rev_mapping = []
 
         if v is None:
@@ -705,7 +711,7 @@ class OTPmeLDIFHandler(object):
                     msg = _("Unable to get attribute value: {attr}: {error}")
                     msg = msg.format(attr=a, error=e)
                     config.raise_exception()
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 if v is None:
                     if a in ignore_missing_attributes:
@@ -727,7 +733,7 @@ class OTPmeLDIFHandler(object):
                 #config.raise_exception()
                 msg = _("Unable to add attribute: {obj_name}: {attr}: {error}")
                 msg = msg.format(obj_name=o.name, attr=a, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             if attribute_mappings and v:
                 for x in attribute_mappings:
@@ -810,7 +816,7 @@ class OTPmeLDIFHandler(object):
         # Get allowed reverse mappings.
         try:
             allow_rev_mapping = self.allow_reverse_mappings[o.type][a]
-        except:
+        except Exception:
             allow_rev_mapping = []
 
         # Check if attribute is DN attribute.
@@ -824,7 +830,7 @@ class OTPmeLDIFHandler(object):
         for oc in o.object_classes:
             try:
                 mandatory_attrs = config.ldap_object_classes[oc].must
-            except:
+            except Exception:
                 mandatory_attrs = []
             if a in mandatory_attrs:
                 if mandatory_attribute:
@@ -923,8 +929,10 @@ class OTPmeLDIFHandler(object):
         return callback.ok()
 
     def add_object_class(self, o, oc, verbose_level=0,
-        ignore_missing_attributes=[], callback=default_callback):
+        ignore_missing_attributes=None, callback=default_callback):
         """ Add object class to object. """
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
         if oc in o.object_classes:
             return callback.error("Object class already assigned.")
 
@@ -1036,11 +1044,11 @@ class OTPmeLDIFHandler(object):
         try:
             hook_method = self.valid_hooks[o.type][hook]
             hook_method = getattr(self, hook_method)
-        except:
+        except Exception:
             try:
                 hook_method = self.valid_hooks['all'][hook]
                 hook_method = getattr(self, hook_method)
-            except:
+            except Exception:
                 return
         return hook_method
 
@@ -1078,7 +1086,7 @@ class OTPmeLDIFHandler(object):
         # Get current DN attribute.
         try:
             dn_attribute = config.dn_attributes[o.type]
-        except:
+        except Exception:
             return callback.ok()
         # Get current DN.
         current_dn = o.get_attribute("dn")

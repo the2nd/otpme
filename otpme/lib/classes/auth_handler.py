@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import jwt
@@ -1686,7 +1686,7 @@ class AuthHandler(object):
         # Get JWT challenge.
         try:
             jwt_string = outer_jwt_data['challenge']
-        except:
+        except Exception:
             log_msg = _("JWT data is missing challenge.", log=True)[1]
             self.logger.warning(log_msg)
             self.auth_failed = True
@@ -1707,7 +1707,7 @@ class AuthHandler(object):
         # Get login token.
         try:
             login_token_uuid = outer_jwt_data['login_token']
-        except:
+        except Exception:
             login_token_uuid = None
             log_msg = _("JWT data is missing login token.", log=True)[1]
             self.logger.warning(log_msg)
@@ -1727,7 +1727,7 @@ class AuthHandler(object):
         if self.verify_jwt_ag:
             try:
                 auth_accessgroup = outer_jwt_data['accessgroup']
-            except:
+            except Exception:
                 auth_accessgroup = None
                 log_msg = _("JWT data is missing login accessgroup.", log=True)[1]
                 self.logger.warning(log_msg)
@@ -1766,7 +1766,7 @@ class AuthHandler(object):
         # Get auth reason.
         try:
             auth_reason = outer_jwt_data['reason']
-        except:
+        except Exception:
             auth_reason = None
             log_msg = _("JWT data is missing auth reason.", log=True)[1]
             self.logger.warning(log_msg)
@@ -1862,7 +1862,7 @@ class AuthHandler(object):
             # Get auth realm/site.
             try:
                 auth_realm = outer_jwt_data['realm']
-            except:
+            except Exception:
                 log_msg = _("JWT data is missing auth realm.", log=True)[1]
                 self.logger.warning(log_msg)
                 self.auth_failed = True
@@ -1871,7 +1871,7 @@ class AuthHandler(object):
                 return
             try:
                 auth_site = outer_jwt_data['site']
-            except:
+            except Exception:
                 log_msg = _("JWT data is missing auth site.", log=True)[1]
                 self.logger.warning(log_msg)
                 self.auth_failed = True
@@ -2563,13 +2563,13 @@ class AuthHandler(object):
                     except Exception as e:
                         msg = _("Unable to load offline encryption: {error}")
                         msg = msg.format(error=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                     try:
                         self.offline_data_key = enc_mod.gen_key()
                     except Exception as e:
                         msg = _("Failed to generate offline encryption key: {error}")
                         msg = msg.format(error=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
 
         # Verify hosts/devices.
         if not self.auth_failed and self.auth_status is False:
@@ -2736,32 +2736,35 @@ class AuthHandler(object):
                     self.count_fails = False
                     self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
 
-        # Log request auth data if enabled.
+        # Log request auth data if enabled. Sensitive fields are written
+        # via print() to stdout only — never through self.logger — so
+        # they cannot leak into a configured logfile or remote syslog.
+        # Under an interactive foreground run (the only time
+        # LOG_AUTH_DATA should ever be on) this lands in the terminal;
+        # under a daemonized run stdout is typically captured by
+        # journald and LOG_AUTH_DATA should stay disabled.
         if self.log_auth_data and (config.loglevel == "DEBUG" or config.debug_enabled):
             log_msg = _("Logging of sensitive authentication data is enabled. You should disable LOG_AUTH_DATA in production environments!!!", log=True)[1]
             self.logger.warning(log_msg)
-            self.logger.debug("AUTHENTICATION DATA OF REQUEST:")
-            self.logger.debug(f"AUTH_TYPE:        {self.auth_type}")
-            self.logger.debug(f"USERNAME:         {self.user.name}")
-            # Only log sensitive auth data when not logging to a file
-            # to prevent credentials from being persisted on disk.
-            if not self.logger.logfile:
-                if self.password:
-                    self.logger.debug(f"PASSWORD:         {self.password}")
-                if self.password_hash:
-                    self.logger.debug(f"PASSWORD_HASH:    {self.password_hash}")
-                if self.auth_sotp:
-                    self.logger.debug(f"SOTP:             {self.auth_sotp}")
-                if self.auth_srp:
-                    self.logger.debug(f"SRP:              {self.auth_srp}")
-                if self.auth_slp:
-                    self.logger.debug(f"SLP:              {self.auth_slp}")
-                if self.challenge:
-                    self.logger.debug(f"CHALLENGE:        {self.challenge}")
-                if self.response:
-                    self.logger.debug(f"RESPONSE:         {self.response}")
-                if self.nt_key:
-                    self.logger.debug(f"NT_KEY:           {self.nt_key}")
+            print("AUTHENTICATION DATA OF REQUEST:")
+            print(f"AUTH_TYPE:        {self.auth_type}")
+            print(f"USERNAME:         {self.user.name}")
+            if self.password:
+                print(f"PASSWORD:         {self.password}")
+            if self.password_hash:
+                print(f"PASSWORD_HASH:    {self.password_hash}")
+            if self.auth_sotp:
+                print(f"SOTP:             {self.auth_sotp}")
+            if self.auth_srp:
+                print(f"SRP:              {self.auth_srp}")
+            if self.auth_slp:
+                print(f"SLP:              {self.auth_slp}")
+            if self.challenge:
+                print(f"CHALLENGE:        {self.challenge}")
+            if self.response:
+                print(f"RESPONSE:         {self.response}")
+            if self.nt_key:
+                print(f"NT_KEY:           {self.nt_key}")
 
         # If max_sessions is set for this group we have to check if we need to
         # remove other sessions.

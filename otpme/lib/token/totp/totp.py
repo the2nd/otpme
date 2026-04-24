@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -292,7 +292,7 @@ class TotpToken(OathToken):
         **kwargs,
         ):
         # Call parent class init.
-        super(TotpToken, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,
@@ -364,13 +364,13 @@ class TotpToken(OathToken):
             }
 
         # Use parent class method to merge token configs.
-        return super(TotpToken, self)._get_object_config(token_config=token_config)
+        return super()._get_object_config(token_config=token_config)
 
     def set_variables(self):
         """ Set instance variables """
         # Run parent class method that may override default values with those
         # read from config.
-        super(TotpToken, self).set_variables()
+        super().set_variables()
         # In mode2 the PIN is mandatory.
         if self.mode == "mode2":
             self.pin_enabled = True
@@ -521,7 +521,7 @@ class TotpToken(OathToken):
             except Exception as e:
                 msg = _("Failed to get secret: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         # Log OTP time range.
         log_msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.", log=True)[1]
@@ -696,7 +696,7 @@ class TotpToken(OathToken):
         """ Add a token. """
         # Get default TOTP settings.
         self.secret_len = self.get_config_parameter("totp_secret_len")
-        return super(TotpToken, self)._add(*args, **kwargs)
+        return super()._add(*args, **kwargs)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
@@ -710,7 +710,7 @@ class TotpToken(OathToken):
             server_secret = str(self.server_secret)
         lines.append(f'SERVER_SECRET="{server_secret}"')
 
-        return super(TotpToken, self).show_config(config_lines=lines,
+        return super().show_config(config_lines=lines,
                                                 callback=callback,
                                                 **kwargs)
 

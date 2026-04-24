@@ -229,6 +229,8 @@ class OTPmeConfig(object):
         self.register_config_var("color_logs", bool, False)
         self.register_config_var("log_auth_data", [bool, list], False,
                                 config_file_parameter="LOG_AUTH_DATA")
+        self.register_config_var("log_exc_info", bool, False,
+                                config_file_parameter="LOG_EXC_INFO")
 
         # Indicates an ongoing realm init.
         self.register_config_var("realm_init", bool, False)
@@ -831,9 +833,9 @@ class OTPmeConfig(object):
         if hasattr(self, "config_var_types") and value is not None:
             try:
                 var_types = self.config_var_types[name]
-            except:
+            except Exception:
                 msg = f"Unknown config variable: {name}"
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             valid_value = False
             for var_type in var_types:
                 if var_type is None:
@@ -853,10 +855,10 @@ class OTPmeConfig(object):
         # Get valid value types.
         try:
             val_types = self.config_var_types[name]
-        except:
+        except Exception:
             msg = _("Unknown config file parameter: {name}")
             msg = msg.format(name=name)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if list in val_types:
             if isinstance(val, str):
                 if "," in val:
@@ -1011,7 +1013,7 @@ class OTPmeConfig(object):
         # Try to read index type from config.
         try:
             self.index_type = merged_config['INDEX']
-        except:
+        except Exception:
             error_message(_("Error reading index parameter from config file."))
             exit(1)
 
@@ -1021,7 +1023,7 @@ class OTPmeConfig(object):
             # Try to read traceback setting from config.
             try:
                 self.print_tracebacks = merged_config['TRACEBACKS']
-            except:
+            except Exception:
                 # Default should be to print tracebacks.
                 self.print_tracebacks = True
 
@@ -1134,7 +1136,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Failed to load disk encryption module: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Set debug stuff.
         from otpme.lib import debug
@@ -1321,10 +1323,10 @@ class OTPmeConfig(object):
     def get_cache_region(self, object_type):
         try:
             cache_region = self.cache_regions[object_type]
-        except KeyError:
+        except KeyError as err:
             msg = _("No cache region registerd for object type: {object_type}")
             msg = msg.format(object_type=object_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         return cache_region
 
     def debug_level(self, slot="base", new_level=None):
@@ -1334,7 +1336,7 @@ class OTPmeConfig(object):
             # Get current level.
             try:
                 level = self.debug_levels[slot]
-            except:
+            except Exception:
                 level = 0
             return level
         self.debug_levels[slot] = new_level
@@ -1380,7 +1382,7 @@ class OTPmeConfig(object):
     def register_auth_on_action_hook(self, object_type, hook):
         try:
             hooks = self.auth_on_action_hooks[object_type]
-        except:
+        except Exception:
             hooks = []
         if hook in hooks:
             return
@@ -1442,10 +1444,12 @@ class OTPmeConfig(object):
                 self.merge_user_configfile_params.append(user_config_file_parameter)
 
     def register_config_parameter(self, name, ctype,
-        default_value=None, valid_values=None, object_types=[],
+        default_value=None, valid_values=None, object_types=None,
         getter=None, setter=None, deller=None, warn_if_exists=False,
         default_genner=None):
         """ Register config parameter. """
+        if object_types is None:
+            object_types = []
         if name in self.valid_config_params:
             msg = _("Config parameter already registered: {name}")
             msg = msg.format(name=name)
@@ -1464,10 +1468,10 @@ class OTPmeConfig(object):
     def get_config_parameter(self, name):
         try:
             parameter_data = self.valid_config_params[name]
-        except KeyError:
+        except KeyError as err:
             msg = _("Invalid config parameter: {name}")
             msg = msg.format(name=name)
-            raise NotRegistered(msg)
+            raise NotRegistered(msg) from err
         return parameter_data
 
     def get_config_parameters(self, object_type):
@@ -1509,10 +1513,10 @@ class OTPmeConfig(object):
         try:
             client_handler = self.supported_smartcards[smartcard_type]['client_handler']
             server_handler = self.supported_smartcards[smartcard_type]['server_handler']
-        except KeyError:
+        except KeyError as err:
             msg = _("Smartcard type not registered: {smartcard_type}")
             msg = msg.format(smartcard_type=smartcard_type)
-            raise NotRegistered(msg)
+            raise NotRegistered(msg) from err
         return client_handler, server_handler
 
     def get_supported_smartcards(self):
@@ -1526,7 +1530,7 @@ class OTPmeConfig(object):
         """ Return sub object types.. """
         try:
             ldap_settings = self.ldap_object_types[object_type]
-        except:
+        except Exception:
             ldap_settings = {}
         return ldap_settings
 
@@ -1534,15 +1538,23 @@ class OTPmeConfig(object):
         """ Return sub object types.. """
         try:
             sub_types = self.sub_object_types[object_type]
-        except:
+        except Exception:
             sub_types = []
         return sub_types
 
     def register_object_type(self, object_type, tree_object=None,
         backend_object=True, uniq_name=False, object_cache=False,
-        cache_region=None, add_before=[], add_after=[],
-        sync_before=[], sync_after=[], backup_attributes=None):
+        cache_region=None, add_before=None, add_after=None,
+        sync_before=None, sync_after=None, backup_attributes=None):
         """ Register object type. """
+        if add_before is None:
+            add_before = []
+        if add_after is None:
+            add_after = []
+        if sync_before is None:
+            sync_before = []
+        if sync_after is None:
+            sync_after = []
         if tree_object:
             object_list = self.tree_object_types
         else:
@@ -1588,7 +1600,7 @@ class OTPmeConfig(object):
         """ Register sub object type (e.g. token type). """
         try:
             sub_types = self.sub_object_types[object_type]
-        except:
+        except Exception:
             sub_types = []
         if stype in sub_types:
             msg = _("Sub object type already registered: {object_type}: {stype}")
@@ -1598,8 +1610,10 @@ class OTPmeConfig(object):
         self.sub_object_types[object_type] = sub_types
 
     def register_ldap_object(self, object_type,
-        default_scope="one", scopes=['sub', 'one', 'base']):
+        default_scope="one", scopes=None):
         """ Register LDAP object type. """
+        if scopes is None:
+            scopes = ['sub', 'one', 'base']
         if object_type in self.ldap_object_types:
             msg = _("LDAP object type already registered: {object_type}")
             msg = msg.format(object_type=object_type)
@@ -1629,7 +1643,7 @@ class OTPmeConfig(object):
         """ Return sorted base objects. """
         try:
             x_objects = dict(self.base_objects[object_type])
-        except:
+        except Exception:
             return {}
         x_sort = lambda x: x_objects[x]['pos']
         x_objects_sorted = sorted(x_objects, key=x_sort)
@@ -1642,12 +1656,18 @@ class OTPmeConfig(object):
         return ordered_dict
 
     def register_base_object(self, object_type, name, stype=None,
-        pos=None, template=False, call_methods=[], post_methods=[],
-        post_register_method=None, attributes={}, early=False):
+        pos=None, template=False, call_methods=None, post_methods=None,
+        post_register_method=None, attributes=None, early=False):
         """ Register base object. """
+        if call_methods is None:
+            call_methods = []
+        if post_methods is None:
+            post_methods = []
+        if attributes is None:
+            attributes = {}
         try:
             x_objects = self.base_objects[object_type]
-        except:
+        except Exception:
             x_objects = {}
         if name in x_objects:
             o_type = f"{object_type[0].upper()}{object_type[1:]}"
@@ -1691,10 +1711,10 @@ class OTPmeConfig(object):
         """ Get default unit for object type. """
         try:
             default_unit = self.default_units[object_type]
-        except:
+        except Exception:
             msg = _("No default unit configured for object type: {object_type}")
             msg = msg.format(object_type=object_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         return default_unit
 
     def register_default_unit(self, object_type, unit_path):
@@ -1719,7 +1739,7 @@ class OTPmeConfig(object):
         """ Register internal object. """
         try:
             x_objects = self.internal_objects[object_type]
-        except:
+        except Exception:
             x_objects = {}
         if name in x_objects:
             o_type = f"{object_type[0].upper()}{object_type[1:]}"
@@ -1748,7 +1768,7 @@ class OTPmeConfig(object):
         """ Register user that will exist per site. """
         try:
             per_site_objects = self.per_site_objects[object_type]
-        except:
+        except Exception:
             per_site_objects = []
         if object_name in per_site_objects:
             msg = _("Per site {object_type} already registered: {object_name}")
@@ -1761,7 +1781,7 @@ class OTPmeConfig(object):
         """ Get per site objects. """
         try:
             per_site_objects = list(self.per_site_objects[object_type])
-        except:
+        except Exception:
             per_site_objects = []
         return per_site_objects
 
@@ -1789,19 +1809,21 @@ class OTPmeConfig(object):
         """ Get default policies to be added to new objects. """
         try:
             default_policies = self.default_policies[object_type]
-        except:
+        except Exception:
             default_policies = {}
         return default_policies
 
-    def register_default_policy(self, object_type, policy_name, objects=[]):
+    def register_default_policy(self, object_type, policy_name, objects=None):
         """ Register default policy to be added to new objects. """
+        if objects is None:
+            objects = []
         try:
             default_policies = self.default_policies[object_type]
-        except:
+        except Exception:
             default_policies = {}
         try:
             policy_objects = default_policies[policy_name]
-        except:
+        except Exception:
             policy_objects = []
         if policy_name in default_policies:
             msg = _("Default policy already registered: {object_type}: {policy_name}")
@@ -1818,7 +1840,7 @@ class OTPmeConfig(object):
         """ Register DN attribute. """
         try:
             x_dn_attr = self.dn_attributes[object_type]
-        except:
+        except Exception:
             x_dn_attr = None
         if x_dn_attr and x_dn_attr != dn_attribute:
             msg = _("DN attribute already registered: {object_type}: {x_dn_attr}")
@@ -1830,7 +1852,7 @@ class OTPmeConfig(object):
         """ Get default extensions to be added to new objects. """
         try:
             default_extensions = self.default_extensions[object_type]
-        except:
+        except Exception:
             default_extensions = []
         return default_extensions
 
@@ -1838,7 +1860,7 @@ class OTPmeConfig(object):
         """ Register default extension to be added to new objects. """
         try:
             default_extensions = self.default_extensions[object_type]
-        except:
+        except Exception:
             default_extensions = []
         if extension_name in default_extensions:
             msg = _("Default extension already registered: {object_type}: {extension_name}")
@@ -1859,7 +1881,7 @@ class OTPmeConfig(object):
         """ Get LDIF attributes of extension. """
         try:
             ext_attrs = list(self.attribute_types[extension][object_type])
-        except:
+        except Exception:
             ext_attrs = []
         return ext_attrs
 
@@ -1867,11 +1889,11 @@ class OTPmeConfig(object):
         """ Register LDIF attribute of extension. """
         try:
             self.attribute_types[extension]
-        except:
+        except Exception:
             self.attribute_types[extension] = {}
         try:
             self.attribute_types[extension][object_type]
-        except:
+        except Exception:
             self.attribute_types[extension][object_type] = []
         # Get already registered extension attributes.
         extension_attributes = self.attribute_types[extension][object_type]
@@ -1910,8 +1932,12 @@ class OTPmeConfig(object):
         enc_mod = self.supported_encryption_types[enc_type]['enc_mod']
         return enc_mod
 
-    def register_encryption_type(self, enc_type, enc_mod, before=[], after=[]):
+    def register_encryption_type(self, enc_type, enc_mod, before=None, after=None):
         """ Register hash type. """
+        if before is None:
+            before = []
+        if after is None:
+            after = []
         if enc_type in self.supported_encryption_types:
             msg = _("Encryption type already registered: {enc_type}")
             msg = msg.format(enc_type=enc_type)
@@ -1962,8 +1988,12 @@ class OTPmeConfig(object):
         ecdh_curves = stuff.order_data_by_deps(order_data)
         return ecdh_curves
 
-    def register_ecdh_curve(self, ecdh_curve, before=[], after=[]):
+    def register_ecdh_curve(self, ecdh_curve, before=None, after=None):
         """ Register ECDH curve. """
+        if before is None:
+            before = []
+        if after is None:
+            after = []
         if ecdh_curve in self.supported_ecdh_curves:
             msg = _("ECDH curve already registered: {ecdh_curve}")
             msg = msg.format(ecdh_curve=ecdh_curve)
@@ -2007,8 +2037,12 @@ class OTPmeConfig(object):
         return config_opts
 
     def register_hash_type(self, hash_type, hash_func, default_opts=None,
-        config_opts=None, before=[], after=[]):
+        config_opts=None, before=None, after=None):
         """ Register hash type. """
+        if before is None:
+            before = []
+        if after is None:
+            after = []
         if hash_type in self.supported_hash_types:
             msg = _("Hash algorithm already registered: {hash_type}")
             msg = msg.format(hash_type=hash_type)
@@ -2040,7 +2074,7 @@ class OTPmeConfig(object):
             ptype = "client"
         try:
             daemon_protos = self.supported_protocols[daemon][ptype]
-        except:
+        except Exception:
             daemon_protos = []
         return daemon_protos
 
@@ -2052,7 +2086,7 @@ class OTPmeConfig(object):
             ptype = "client"
         try:
             daemon_protos = self.supported_protocols[daemon][ptype]
-        except:
+        except Exception:
             daemon_protos = []
         if protocol in daemon_protos:
             msg = _("Protocol already registered: {protocol}")
@@ -2067,17 +2101,17 @@ class OTPmeConfig(object):
         """ Get object types to sync. """
         try:
             sync_object_types = copy.deepcopy(self.sync_object_types[host_type])
-        except:
+        except Exception:
             msg = _("Host type not registered for sync: {host_type}")
             msg = msg.format(host_type=host_type)
-            raise NotRegistered(msg)
+            raise NotRegistered(msg) from None
         return sync_object_types
 
     def register_object_sync(self, host_type, object_type):
         """ Register object type to be synced between hosts/nodes. """
         try:
             sync_object_types = self.sync_object_types[host_type]
-        except:
+        except Exception:
             sync_object_types = []
         if object_type in sync_object_types:
             msg = _("Object type already registered for sync: {object_type}")
@@ -2257,7 +2291,7 @@ class OTPmeConfig(object):
         # Else use already logged in user from agent.
         try:
             agent_user = stuff.get_agent_user()
-        except:
+        except Exception:
             agent_user = None
         return agent_user
 
@@ -2359,7 +2393,7 @@ class OTPmeConfig(object):
         except (OSError, IOError) as error:
             msg = _("Error reading config file: {error}")
             msg = msg.format(error=error)
-            raise Exception(msg)
+            raise Exception(msg) from error
 
         # Read complete file.
         file_content = fd.read()
@@ -2551,7 +2585,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Error writing master key file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Write master key salt to file.
         try:
             filetools.create_file(path=self.master_pass_salt_file,
@@ -2562,7 +2596,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Error writing master key salt file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def get_master_key(self):
         """ Get master key from file or script output. """
@@ -2610,7 +2644,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Error writing salt file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def get_password_salt(self):
         """ Get password salt from file. """
@@ -2680,7 +2714,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Failed to load module 'colorlog': {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
         del(colorlog)
 
     def verify(self):
@@ -2723,7 +2757,7 @@ class OTPmeConfig(object):
         except (OSError, IOError) as error:
             msg = _("Error reading config file: {error}")
             msg = msg.format(error=error)
-            raise Exception(msg)
+            raise Exception(msg) from error
 
         if not quiet:
             if self.config_reload:
@@ -2805,7 +2839,7 @@ class OTPmeConfig(object):
             return False
         try:
             this_node = self.host_data['name']
-        except:
+        except Exception:
             return False
         if this_node == master_node:
             return True
@@ -2841,7 +2875,7 @@ class OTPmeConfig(object):
         # FIXME: This is a test to find a long standing bug where _realm is a node object on sites sync.
         try:
             _realm.master
-        except:
+        except Exception:
             print("realm object", _realm)
             print("realm", self.realm)
         realm_master = backend.get_object(object_type="site",
@@ -3006,13 +3040,13 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Unable to read realm data file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             realm_data = json.loads(realm_data)
         except Exception as e:
             msg = _("Failed to decode realm data: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return realm_data
 
     def update_realm_data(self):
@@ -3039,14 +3073,14 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Unable to save realm data: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
 
     def get_sync_status(self, realm, site, sync_type):
         """ Get sync status of this host/node. """
         try:
             x_status = self.sync_status[realm][site][sync_type]['status']
-        except:
+        except Exception:
             x_status = "unknown"
         return x_status
 
@@ -3068,7 +3102,7 @@ class OTPmeConfig(object):
         # Make sure shared sync status dict is up-to-date.
         try:
             x = dict(self.sync_status[realm])
-        except:
+        except Exception:
             x = {}
         if not site in x:
             x[site] = {}
@@ -3108,7 +3142,7 @@ class OTPmeConfig(object):
             except Exception as e:
                 msg = _("Unable to save sync status: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             finally:
                 lock.release_lock()
 
@@ -3125,7 +3159,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Unable to load sync status: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             lock.release_lock()
         if not status_json_string:
@@ -3135,7 +3169,7 @@ class OTPmeConfig(object):
         except Exception as e:
             msg = _("Unable to decode sync status: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         for realm in x_status:
             x = x_status[realm]
             self.sync_status[realm] = x

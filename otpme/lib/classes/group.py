@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -725,7 +725,7 @@ class Group(OTPmeObject):
         self.type = "group"
 
         # Call parent class init.
-        super(Group, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -935,13 +935,15 @@ class Group(OTPmeObject):
     def add(
         self,
         ldif_attributes: Union[str,None]=None,
-        default_attributes: dict={},
+        default_attributes: dict=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Add a group. """
         # Check if group exist on any site.
+        if default_attributes is None:
+            default_attributes = {}
         result = backend.search(object_type="group",
                                 attribute="name",
                                 value=self.name,
@@ -961,7 +963,7 @@ class Group(OTPmeObject):
         if ldif_attributes:
             try:
                 default_extensions = config.default_extensions[self.type]
-            except:
+            except Exception:
                 default_extensions = []
             for ext in default_extensions:
                 ext_attrs = config.get_ldif_attributes(ext, self.type)
@@ -969,7 +971,7 @@ class Group(OTPmeObject):
                     try:
                         attr = x.split("=")[0]
                         value = x.split("=")[1]
-                    except:
+                    except Exception:
                         msg = _("Invalid attribute: {attribute}")
                         msg = msg.format(attribute=x)
                         return callback.error(msg)
@@ -1022,7 +1024,7 @@ class Group(OTPmeObject):
                                             callback=callback,
                                             **kwargs)
 
-        move_result = super(Group, self).move(*args, callback=callback, **kwargs)
+        move_result = super().move(*args, callback=callback, **kwargs)
         return move_result
 
     def cross_site_move(

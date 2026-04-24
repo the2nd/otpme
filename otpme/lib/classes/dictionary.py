@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -581,7 +581,7 @@ class Dictionary(OTPmeObject):
         self.type = "dictionary"
 
         # Call parent class init.
-        super(Dictionary, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,

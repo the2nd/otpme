@@ -24,10 +24,10 @@ from sqlalchemy.exc import IntegrityError
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -35,7 +35,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -126,7 +126,7 @@ class SQLiteObject(object):
         thread_id = multiprocessing.get_id()
         try:
             session = sessions[thread_id]
-        except:
+        except Exception:
             session_factory = sessionmaker(bind=engine)
             Session = scoped_session(session_factory)
             session = Session()
@@ -152,12 +152,14 @@ class SQLiteObject(object):
         self.list_attrs_table.drop(engine)
 
 class SQLiteDict(SQLiteObject):
-    def __init__(self, uuid, name=None, data={}, **kwargs):
+    def __init__(self, uuid, name=None, data=None, **kwargs):
+        if data is None:
+            data = {}
         if name is None:
             name = "sqlite_dict.start"
         self.name = name
         self.type = "dict"
-        super(SQLiteDict, self).__init__(uuid, **kwargs)
+        super().__init__(uuid, **kwargs)
         if data:
             self.bulk_insert(data)
 
@@ -176,8 +178,8 @@ class SQLiteDict(SQLiteObject):
         try:
             value = result.first()
             value = value[3]
-        except TypeError:
-            raise KeyError()
+        except TypeError as err:
+            raise KeyError() from err
         if not isinstance(value, str):
             return value
         if value.startswith("sqlite_dict."):
@@ -423,13 +425,15 @@ class SQLiteDict(SQLiteObject):
         self.session.execute(sql_stmt)
 
 class SQLiteList(SQLiteObject):
-    def __init__(self, uuid, name=None, data={}, **kwargs):
+    def __init__(self, uuid, name=None, data=None, **kwargs):
+        if data is None:
+            data = {}
         if name is None:
             name = "sqlite_list.start"
         self.name = name
         self.type = "list"
         #SQLiteObject.__init__(self, **kwargs)
-        super(SQLiteList, self).__init__(uuid, **kwargs)
+        super().__init__(uuid, **kwargs)
         if data:
             self.bulk_insert(data)
 

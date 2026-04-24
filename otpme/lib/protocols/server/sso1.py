@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -198,13 +198,13 @@ class OTPmeSsoP1(OTPmeServer1):
     def get_sotp(self, username, sso_jwt, command_args):
         try:
             access_group = command_args['access_group']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             session_uuid = command_args['session_uuid']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -244,13 +244,13 @@ class OTPmeSsoP1(OTPmeServer1):
     def deploy_begin(self, username, sso_jwt, command_args):
         try:
             token_type = command_args['token_type']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             login_token_uuid = command_args['login_token_uuid']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -340,13 +340,13 @@ class OTPmeSsoP1(OTPmeServer1):
     def deploy_verify(self, username, sso_jwt, command_args):
         try:
             token_data = command_args['token_data']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             login_token_name = command_args['login_token_name']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -414,13 +414,13 @@ class OTPmeSsoP1(OTPmeServer1):
     def fido2_register_begin(self, username, sso_jwt, command_args):
         try:
             rp_id = command_args['rp_id']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             is_deploy = command_args['is_deploy']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -482,25 +482,25 @@ class OTPmeSsoP1(OTPmeServer1):
     def fido2_register_complete(self, username, sso_jwt, command_args):
         try:
             rp_id = command_args['rp_id']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             reg_state = command_args['reg_state']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             registration_data = command_args['registration_data']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             token_uuid = command_args['token_uuid']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -571,19 +571,19 @@ class OTPmeSsoP1(OTPmeServer1):
     def change_password(self, username, sso_jwt, command_args):
         try:
             token_path = command_args['token_path']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             current_password = command_args['current_password']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             new_password = command_args['new_password']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -637,19 +637,19 @@ class OTPmeSsoP1(OTPmeServer1):
     def change_pin(self, username, sso_jwt, command_args):
         try:
             token_path = command_args['token_path']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             current_pin = command_args['current_pin']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             new_pin = command_args['new_pin']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -975,7 +975,7 @@ class OTPmeSsoP1(OTPmeServer1):
     def add_device_token(self, username, sso_jwt, command_args):
         try:
             device_name = command_args['device_name']
-        except:
+        except Exception:
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(False, message)
         if not device_name or not str(device_name).strip():
@@ -1100,7 +1100,7 @@ class OTPmeSsoP1(OTPmeServer1):
     def del_device_token(self, username, sso_jwt, command_args):
         try:
             token_name = command_args['token_name']
-        except:
+        except Exception:
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(False, message)
         # Verify SSO jwt.
@@ -1207,7 +1207,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # Try to get username.
         try:
             username = command_args['username']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -1217,7 +1217,7 @@ class OTPmeSsoP1(OTPmeServer1):
 
         try:
             sso_jwt = command_args['sso_jwt']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)

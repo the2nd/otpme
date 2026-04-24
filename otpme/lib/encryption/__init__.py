@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.encoding.base import encode
@@ -39,14 +39,14 @@ def get_module(enc_name):
     enc_mod_path = f"otpme.lib.encryption.{enc_name.lower()}"
     try:
         enc_module = loaded_mods[enc_mod_path]
-    except:
+    except Exception:
         # Import encryption module.
         try:
             enc_module = importlib.import_module(enc_mod_path)
-        except:
+        except Exception:
             msg = _("Unknown encryption: {path}")
             msg = msg.format(path=enc_mod_path)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
     return enc_module
 
 def derive_key(secret, **kwargs):
@@ -82,12 +82,12 @@ def hash_password(password, salt=None, iterations=None,
     if hash_algo is None:
         try:
             hash_algo = default_opts['hash_algo']
-        except:
+        except Exception:
             pass
     if key_len is None:
         try:
             key_len = default_opts['key_len']
-        except:
+        except Exception:
             pass
     if iterations is None:
         if 'iterations' in default_opts:

@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {name}")
         msg = msg.format(name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -192,7 +192,7 @@ def init():
         """ Get object type from function args to build cache name. """
         try:
             object_type = func_kwargs['object_type']
-        except:
+        except Exception:
             object_type = None
         if not object_type:
             msg = _("Unable to find object type in function args.")
@@ -375,7 +375,7 @@ def add_instance(instance, skip_shared_cache=True, invalidate=True):
     # Check current cache object checksum.
     try:
         old_checksum = process_cache[read_oid]['CHECKSUM']
-    except:
+    except Exception:
         old_checksum = None
 
     # Update process cache.
@@ -401,7 +401,7 @@ def add_instance(instance, skip_shared_cache=True, invalidate=True):
     # Update multiprocessing cache.
     try:
         old_checksum = multiprocessing.instance_cache[read_oid]['CHECKSUM']
-    except:
+    except Exception:
         old_checksum = None
 
     # Check current instance object checksum.
@@ -465,7 +465,7 @@ def get_instance(object_id, cache_type=None):
             cache_entry = process_cache[read_oid]
             _cache_type = PROCESS_CACHE
             cache_name = "memory"
-        except:
+        except Exception:
             cache_entry = None
 
     # Try to get multiprocessing cache entry.
@@ -474,7 +474,7 @@ def get_instance(object_id, cache_type=None):
             cache_entry = multiprocessing.instance_cache[read_oid]
             _cache_type = MULTIPROCESSING_CACHE
             cache_name = "multiprocessing"
-        except:
+        except Exception:
             cache_entry = None
 
     if not cache_entry:
@@ -497,7 +497,7 @@ def get_instance(object_id, cache_type=None):
         # Get checksums of cached object.
         try:
             cached_checksum = cache_entry['CHECKSUM']
-        except:
+        except Exception:
             return None
         last_checksum_test[object_id] = time.time()
         object_checksum = backend.get_checksum(object_id)
@@ -508,12 +508,12 @@ def get_instance(object_id, cache_type=None):
         if _cache_type == PROCESS_CACHE:
             try:
                 process_cache.pop(read_oid)
-            except:
+            except Exception:
                 pass
         if _cache_type == MULTIPROCESSING_CACHE:
             try:
                 multiprocessing.instance_cache.pop(read_oid)
-            except:
+            except Exception:
                 pass
 
         return None
@@ -588,11 +588,11 @@ def add_acl(object_uuid, token_uuid, acl, status):
     """ Add ACL status to cache. """
     try:
         object_acl_cache = multiprocessing.acl_cache[object_uuid]
-    except:
+    except Exception:
         object_acl_cache = {}
     try:
         token_acl_cache = object_acl_cache[token_uuid]
-    except:
+    except Exception:
         token_acl_cache = {}
 
     token_acl_cache[acl] = status
@@ -605,11 +605,11 @@ def get_acl(object_uuid, token_uuid, acl):
     clear_outdated_acl_cache()
     try:
         object_acl_cache = multiprocessing.acl_cache[object_uuid]
-    except:
+    except Exception:
         object_acl_cache = {}
     try:
         access_status = object_acl_cache[token_uuid][acl]
-    except:
+    except Exception:
         access_status = None
     return access_status
 
@@ -618,7 +618,7 @@ def outdate_acl_cache(object_uuid=None, token_uuid=None):
     clear_tuple = (object_uuid, token_uuid)
     try:
         _list = multiprocessing.acl_cache_clear_queue
-    except:
+    except Exception:
         _list = []
     if clear_tuple in _list:
         return
@@ -648,17 +648,17 @@ def clear_acl_cache(object_uuid=None, token_uuid=None):
         if token_uuid:
             try:
                 object_acl_cache = multiprocessing.acl_cache[uuid]
-            except:
+            except Exception:
                 object_acl_cache = {}
             try:
                 object_acl_cache.pop(token_uuid)
-            except:
+            except Exception:
                 pass
             multiprocessing.acl_cache[uuid] = object_acl_cache
         else:
             try:
                 multiprocessing.acl_cache.pop(uuid)
-            except:
+            except Exception:
                 pass
 
 def dump_acl_cache(object_id=None, search_regex=None):
@@ -704,7 +704,7 @@ def get_modified_object(object_id):
     proc_id = multiprocessing.get_id()
     try:
         o = modified_objects_cache[proc_id][read_oid]
-    except:
+    except Exception:
         return
     return o
 
@@ -716,11 +716,11 @@ def remove_modified_object(object_id):
     proc_id = multiprocessing.get_id()
     try:
         modified_objects[proc_id].remove(read_oid)
-    except:
+    except Exception:
         pass
     try:
         modified_objects_cache[proc_id].pop(read_oid)
-    except:
+    except Exception:
         pass
     clear(object_id=object_id, cache_type=PROCESS_CACHE, keep_modified=False)
 
@@ -740,7 +740,7 @@ def flush(commit=True, callback=default_callback, quiet=True):
     proc_id = multiprocessing.get_id()
     try:
         _modified_objects = modified_objects[proc_id]
-    except:
+    except Exception:
         _modified_objects = []
 
     # Write changed objects.
@@ -861,7 +861,7 @@ def clear(object_id=None, cache_type=None, keep_func_caches=False,
                     process_cache.pop(x_oid.read_oid)
                     try:
                         caches_cleared[PROCESS_CACHE] += 1
-                    except:
+                    except Exception:
                         caches_cleared[PROCESS_CACHE] = 1
                     clean_success = True
                 except KeyError:
@@ -872,7 +872,7 @@ def clear(object_id=None, cache_type=None, keep_func_caches=False,
                 multiprocessing.instance_cache.pop(x_oid.read_oid)
                 try:
                     caches_cleared[MULTIPROCESSING_CACHE] += 1
-                except:
+                except Exception:
                     caches_cleared[MULTIPROCESSING_CACHE] = 1
                 clean_success = True
             except KeyError:

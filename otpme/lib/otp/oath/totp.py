@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -21,7 +21,7 @@ def generate_totp(epoch_time, secret):
     except Exception as e:
         msg = _("Error generating TOTP: {e}")
         msg = msg.format(e=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return otp
 
 
@@ -33,5 +33,5 @@ def verify_totp(epoch_time, secret, otp):
     except Exception as e:
         msg = _("Error verifying TOTP: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return totp_status

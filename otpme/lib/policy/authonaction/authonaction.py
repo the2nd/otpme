@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -271,7 +271,7 @@ class AuthonactionPolicy(Policy):
         realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(AuthonactionPolicy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                                     realm=realm,
                                                     site=site,
                                                     name=name,
@@ -438,7 +438,7 @@ class AuthonactionPolicy(Policy):
         # Check if token is whitelisted.
         try:
             token_whitelist = self.whitelist['token']
-        except:
+        except Exception:
             token_whitelist = []
 
         if token_whitelist:
@@ -448,7 +448,7 @@ class AuthonactionPolicy(Policy):
         # Check if token is whitelisted by role.
         try:
             role_whitelist = self.whitelist['role']
-        except:
+        except Exception:
             role_whitelist = []
 
         if role_whitelist:
@@ -494,7 +494,7 @@ class AuthonactionPolicy(Policy):
                 if config.auth_token.uuid in config.last_reauth:
                     config.last_reauth.pop(config.auth_token.uuid)
                 #config.raise_exception()
-                raise self.policy_exception("Authentication failed.")
+                raise self.policy_exception("Authentication failed.") from e
 
         # Set first re-auth time.
         if config.auth_token.uuid not in config.first_reauth:
@@ -587,7 +587,7 @@ class AuthonactionPolicy(Policy):
 
         try:
             valid_hooks = config.auth_on_action_hooks[object_type]
-        except:
+        except Exception:
             valid_hooks = []
 
         if hook_name not in valid_hooks:
@@ -633,7 +633,7 @@ class AuthonactionPolicy(Policy):
 
         try:
             valid_hooks = config.auth_on_action_hooks[object_type]
-        except:
+        except Exception:
             valid_hooks = []
 
         if hook_name not in valid_hooks:
@@ -700,7 +700,7 @@ class AuthonactionPolicy(Policy):
 
         try:
             whitelist = self.whitelist[o.type]
-        except:
+        except Exception:
             whitelist = []
 
         if o.uuid in whitelist:
@@ -766,7 +766,7 @@ class AuthonactionPolicy(Policy):
 
         try:
             whitelist = self.whitelist[o.type]
-        except:
+        except Exception:
             whitelist = []
 
         if o.uuid not in whitelist:

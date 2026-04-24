@@ -14,10 +14,10 @@ from prettytable import PrettyTable
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -25,7 +25,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -88,9 +88,9 @@ class CommandHandler(object):
             mgmt_client = self.get_mgmt_client()
             try:
                 method = getattr(mgmt_client, name)
-            except:
+            except Exception:
                 msg = f"Unknown method: {mgmt_client.__class__}: {name}"
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             return method(*args, **kwargs)
         return handler_function
 
@@ -164,9 +164,11 @@ class CommandHandler(object):
     def send_command(self, daemon="mgmtd", socket_uri=None, realm=config.realm,
         site=config.site, command=None, subcommand=None, command_line=None,
         command_args=None, username=None, password=None, aes_pass=None,
-        parse_command_syntax=True, object_list=[], interactive=None,
+        parse_command_syntax=True, object_list=None, interactive=None,
         timeout=30, client_type="CLIENT"):
         """ Send the given command to the given daemon. """
+        if object_list is None:
+            object_list = []
         if interactive is None:
             interactive = self.interactive
 
@@ -196,7 +198,7 @@ class CommandHandler(object):
         # Make sure we remove old job ID.
         try:
             command_args.pop('job_uuid')
-        except:
+        except Exception:
             pass
 
         if parse_command_syntax:
@@ -212,7 +214,7 @@ class CommandHandler(object):
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 help_text = self.get_help(msg)
-                raise OTPmeException(help_text)
+                raise OTPmeException(help_text) from e
 
             # Parse command line.
             try:
@@ -226,10 +228,10 @@ class CommandHandler(object):
                 config.raise_exception()
                 if str(e) == "help":
                     help_text = self.get_help()
-                    raise OTPmeException(help_text)
+                    raise OTPmeException(help_text) from e
                 elif str(e) != "":
                     help_text = self.get_help(str(e))
-                    raise OTPmeException(help_text)
+                    raise OTPmeException(help_text) from e
 
             # Get default object if needed.
             if object_cmd and object_required and not object_list:
@@ -480,7 +482,7 @@ class CommandHandler(object):
             # Try to get command name from command line.
             try:
                 subcommand = command_line.pop(0)
-            except:
+            except Exception:
                 pass
 
         # Set commands to be re-used in other methods.
@@ -494,7 +496,7 @@ class CommandHandler(object):
         if command == "get-authorized-keys":
             try:
                 username = command_line[0]
-            except:
+            except Exception:
                 return self.get_help()
             return self.get_authorized_keys(username)
 
@@ -673,7 +675,7 @@ class CommandHandler(object):
             if subcommand == "required_votes":
                 try:
                     command_syntax = self.get_command_syntax(command, subcommand)
-                except:
+                except Exception:
                     msg = _("Unknown command: {subcommand}")
                     msg = msg.format(subcommand=subcommand)
                     return self.get_help(msg)
@@ -694,7 +696,7 @@ class CommandHandler(object):
             if subcommand == "master_failover":
                 try:
                     command_syntax = self.get_command_syntax(command, subcommand)
-                except:
+                except Exception:
                     msg = _("Unknown command: {subcommand}")
                     msg = msg.format(subcommand=subcommand)
                     return self.get_help(msg)
@@ -794,7 +796,7 @@ class CommandHandler(object):
                     # When a user is configured for key_mode=server the private
                     # key might be encrypted with a passphrase (AES).
                     self.user_aes_pass = stuff.read_pass_from_stdin()
-                except:
+                except Exception:
                     pass
 
         # When generating users RSA keys on server side we may have to read
@@ -810,7 +812,7 @@ class CommandHandler(object):
                     private_key = sys.stdin.read()
                 except Exception as e:
                     msg = f"Failed to read private key from stdin: {e}"
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 if "--server" in self.command_line:
                     self.command_args = { 'private_key' : private_key }
             if "--server" not in self.command_line:
@@ -831,7 +833,7 @@ class CommandHandler(object):
                     # When a user is configured for key_mode=server the private
                     # key might be encrypted with a passphrase (AES).
                     self.user_aes_pass = stuff.read_pass_from_stdin()
-                except:
+                except Exception:
                     pass
             if "--stdin-data" in self.command_line:
                 # Get data to sign from stdin if given.
@@ -839,7 +841,7 @@ class CommandHandler(object):
                     data = sys.stdin.read()
                 except Exception as e:
                     msg = f"Failed to read sign data from stdin: {e}"
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 self.command_args = {'data' : data}
 
         # Generating users certificate needs some local action (e.g.
@@ -869,7 +871,7 @@ class CommandHandler(object):
                     # When a user is configured for key_mode=server the private
                     # key might be encrypted with a passphrase (AES).
                     self.user_aes_pass = stuff.read_pass_from_stdin()
-                except:
+                except Exception:
                     pass
             if "--stdin-data" in self.command_line:
                 # Get data to sign from stdin if given.
@@ -877,7 +879,7 @@ class CommandHandler(object):
                     data = sys.stdin.read()
                 except Exception as e:
                     msg = f"Failed to read data from stdin: {e}"
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 self.command_args = {'data' : data}
 
         if command == "dictionary" and subcommand == "word_import":
@@ -993,7 +995,7 @@ class CommandHandler(object):
             # Get command syntax.
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
-            except:
+            except Exception:
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 return self.get_help(msg)
@@ -1006,12 +1008,12 @@ class CommandHandler(object):
                                         command_args=self.command_args)
             try:
                 kill = command_args['kill']
-            except:
+            except Exception:
                 kill = False
 
             try:
                 timeout = int(command_args['timeout'])
-            except:
+            except Exception:
                 timeout = 60
 
             if not control_daemon.stop(timeout=timeout, kill=kill):
@@ -1191,39 +1193,39 @@ class CommandHandler(object):
         if older_than.endswith("m"):
             try:
                 older_than = int(older_than[:-1])
-            except ValueError:
-                raise OTPmeException(msg)
+            except ValueError as err:
+                raise OTPmeException(msg) from err
             delta = timedelta(minutes=older_than)
         elif older_than.endswith("h"):
             try:
                 older_than = int(older_than[:-1])
-            except ValueError:
-                raise OTPmeException(msg)
+            except ValueError as err:
+                raise OTPmeException(msg) from err
             delta = timedelta(hours=older_than)
         elif older_than.endswith("d"):
             try:
                 older_than = int(older_than[:-1])
-            except ValueError:
-                raise OTPmeException(msg)
+            except ValueError as err:
+                raise OTPmeException(msg) from err
             delta = timedelta(days=older_than)
         elif older_than.endswith("w"):
             try:
                 older_than = int(older_than[:-1])
-            except ValueError:
-                raise OTPmeException(msg)
+            except ValueError as err:
+                raise OTPmeException(msg) from err
             delta = timedelta(weeks=older_than)
         elif older_than.endswith("M"):
             try:
                 older_than = int(older_than[:-1])
-            except ValueError:
-                raise OTPmeException(msg)
+            except ValueError as err:
+                raise OTPmeException(msg) from err
             older_than = older_than * 30
             delta = timedelta(days=older_than)
         elif older_than.endswith("Y"):
             try:
                 older_than = int(older_than[:-1])
-            except ValueError:
-                raise OTPmeException(msg)
+            except ValueError as err:
+                raise OTPmeException(msg) from err
             older_than = older_than * 365
             delta = timedelta(days=older_than)
         else:
@@ -1266,19 +1268,19 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Failed to read backup client cert: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             try:
                 key = filetools.read_file(config.backup_client_key)
             except Exception as e:
                 msg = _("Failed to read backup client key: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             try:
                 ca_data = filetools.read_file(config.backup_client_ca)
             except Exception as e:
                 msg = _("Failed to read backup client CA data: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         try:
             backupd_conn = connections.get("backupd",
                                         node=host,
@@ -1294,7 +1296,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Failed to get backup connection: {host_name}: {e}")
             msg = msg.format(host_name=host, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return backupd_conn
 
     def load_backup_object(self, backup_object):
@@ -1307,10 +1309,10 @@ class CommandHandler(object):
                 x = config.backup_repository.split(":")
                 backup_server = x[0]
                 repository = x[1]
-            except ValueError:
+            except ValueError as err:
                 msg = _("Invalid backup repository: {repository}")
                 msg = msg.format(repository=config.backup_repository)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from err
             source_dir = "/"
             backup_key = config.backup_key
             backup_mode = config.backup_mode
@@ -1326,7 +1328,7 @@ class CommandHandler(object):
             except IndexError as e:
                 msg = _("Invalid backup object: {backup_object}")
                 msg = msg.format(backup_object=backup_object)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             backup_key = None
             backup_mode = None
             backup_repo_password = None
@@ -1417,7 +1419,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -1533,8 +1535,12 @@ class CommandHandler(object):
                                             path,
                                             dry_run=dry_run)
 
-    def start_backup(self, backup_object, exclude=[], include=[],
+    def start_backup(self, backup_object, exclude=None, include=None,
         skip_special=None, apply_retention=True, mode=None, dry_run=False):
+        if exclude is None:
+            exclude = []
+        if include is None:
+            include = []
         from otpme.lib.classes.backup import BackupClient
         special_files = True
         if skip_special:
@@ -1701,7 +1707,7 @@ class CommandHandler(object):
             # Get command syntax.
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
-            except:
+            except Exception:
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 return self.get_help(msg)
@@ -1787,7 +1793,7 @@ class CommandHandler(object):
         if subcommand == "sync_status":
             try:
                 sync_type = sys.argv[1]
-            except:
+            except Exception:
                 sync_type = None
             return self.handle_sync_status_command(sync_type)
 
@@ -1918,7 +1924,7 @@ class CommandHandler(object):
             # Get command syntax.
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
-            except:
+            except Exception:
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 return self.get_help(msg)
@@ -1964,7 +1970,7 @@ class CommandHandler(object):
             register_module("otpme.lib.offline_token")
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
-            except:
+            except Exception:
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 return self.get_help(msg)
@@ -1990,7 +1996,7 @@ class CommandHandler(object):
             # Get command syntax.
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
-            except:
+            except Exception:
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 return self.get_help(msg)
@@ -2166,13 +2172,13 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error reading index dump file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         index_data = json.loads(file_content)
         try:
             do_index_restore(index_data)
         except Exception as e:
             msg = f"Failed to do index restore: {e}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         msg = "Creating DB indexes..."
         print(msg)
         _index.command("create_db_indices")
@@ -2188,7 +2194,7 @@ class CommandHandler(object):
             return self.get_help()
         try:
             command = command_line[0]
-        except:
+        except Exception:
             return self.get_help()
         if command == "start":
             # Register modules.
@@ -2207,7 +2213,7 @@ class CommandHandler(object):
             try:
                 status()
                 print("Freeradius running.")
-            except:
+            except Exception:
                 raise
         elif command == "reload":
             try:
@@ -2296,7 +2302,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Try to get username for logged in user from otpme-agent
         username = agent_conn.get_user()
         return self.get_jwt(username, challenge)
@@ -2329,41 +2335,41 @@ class CommandHandler(object):
         register_modules()
         try:
             host_type = command_args['host_type']
-        except:
+        except Exception:
             host_type = "host"
         try:
             jotp = command_args['jotp']
-        except:
+        except Exception:
             jotp = None
         try:
             unit = command_args['unit']
-        except:
+        except Exception:
             unit = None
         try:
             host_key_len = command_args['host_key_len']
-        except:
+        except Exception:
             host_key_len = 4096
         try:
             site_key_len = command_args['site_key_len']
-        except:
+        except Exception:
             site_key_len = 4096
         try:
             joind_uri = command_args['joind_uri']
-        except:
+        except Exception:
             joind_uri = None
         try:
             trust_site_cert = command_args['trust_site_cert']
-        except:
+        except Exception:
             trust_site_cert = False
         try:
             no_daemon_start = command_args['no_daemon_start']
-        except:
+        except Exception:
             no_daemon_start = False
         try:
             x = command_args['site_cert_fingerprint']
             fingerprint_digest = x.split(":")[0].lower()
             site_cert_fingerprint = x.split(":")[1]
-        except:
+        except Exception:
             fingerprint_digest = "sha256"
             site_cert_fingerprint = None
 
@@ -2425,7 +2431,7 @@ class CommandHandler(object):
         #register_module("otpme.lib.protocols.client.agent1")
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -2445,11 +2451,11 @@ class CommandHandler(object):
                 return self.get_help(str(e))
         try:
             username = command_args['username']
-        except:
+        except Exception:
             username = None
         try:
             node = command_args['node']
-        except:
+        except Exception:
             node = None
 
         result = self.login(username=username,
@@ -2466,27 +2472,27 @@ class CommandHandler(object):
         register_modules()
         try:
             lotp = command_args['lotp']
-        except:
+        except Exception:
             lotp = None
         try:
             offline = command_args['offline']
-        except:
+        except Exception:
             offline = False
         try:
             keep_host = command_args['keep_host']
-        except:
+        except Exception:
             keep_host = None
         try:
             keep_data = command_args['keep_data']
-        except:
+        except Exception:
             keep_data = False
         try:
             keep_cache = command_args['keep_cache']
-        except:
+        except Exception:
             keep_cache = False
         try:
             keep_cert = command_args['keep_cert']
-        except:
+        except Exception:
             keep_cert = False
 
         if keep_data:
@@ -2562,7 +2568,7 @@ class CommandHandler(object):
         """ Handle dump command. """
         try:
             dump_type = command_line[0]
-        except:
+        except Exception:
             dump_type = None
         result = self.daemon_dump(dump_type)
         return result
@@ -2575,7 +2581,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -2730,7 +2736,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -2793,7 +2799,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -2944,7 +2950,7 @@ class CommandHandler(object):
         from otpme.lib import filetools
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -2965,7 +2971,7 @@ class CommandHandler(object):
 
         try:
             password = local_command_args['password']
-        except:
+        except Exception:
             password = None
         filename = object_identifier
 
@@ -2976,7 +2982,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error reading object config: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         object_config = json.loads(file_content)
         object_id = object_config.pop('OID')
@@ -3005,19 +3011,19 @@ class CommandHandler(object):
                                     continue
                     try:
                         status = sync_status[realm][site][_sync_type]['status']
-                    except:
+                    except Exception:
                         continue
                     try:
                         last_run = sync_status[realm][site][_sync_type]["last_run"]
-                    except:
+                    except Exception:
                         last_run = 0
                     try:
                         last_failed = sync_status[realm][site][_sync_type]["last_failed"]
-                    except:
+                    except Exception:
                         last_failed = 0
                     try:
                         progress = sync_status[realm][site][_sync_type]["progress"]
-                    except:
+                    except Exception:
                         progress = 0
 
                     if last_run:
@@ -3062,7 +3068,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -3084,15 +3090,15 @@ class CommandHandler(object):
         # Get sync parameters.
         try:
             sync_type = command_args['sync_type']
-        except:
+        except Exception:
             sync_type = None
         try:
             realm = command_args['realm']
-        except:
+        except Exception:
             realm = None
         try:
             site = command_args['site']
-        except:
+        except Exception:
             site = None
 
         if subcommand == "resync":
@@ -3125,7 +3131,7 @@ class CommandHandler(object):
 
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -3163,7 +3169,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -3185,31 +3191,31 @@ class CommandHandler(object):
         sync_type = object_identifier
         try:
             realm = command_args['realm']
-        except:
+        except Exception:
             realm = config.realm
         try:
             site = command_args['site']
-        except:
+        except Exception:
             site = config.site
         try:
             resync = command_args['resync']
-        except:
+        except Exception:
             resync = False
         try:
             mem_cache = command_args['mem_cache']
-        except:
+        except Exception:
             mem_cache = True
         try:
             offline = command_args['offline']
-        except:
+        except Exception:
             offline = False
         try:
             ignore_changed_objects = command_args['ignore_changed_objects']
-        except:
+        except Exception:
             ignore_changed_objects = False
         try:
             sync_older_objects = command_args['sync_older_objects']
-        except:
+        except Exception:
             sync_older_objects = False
 
         # Init in API mode because hostd may not be running when
@@ -3258,7 +3264,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Failed to run key script: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Make sure script output is string.
         if isinstance(script_stdout, bytes):
@@ -3280,13 +3286,13 @@ class CommandHandler(object):
 
         try:
             user_private_key = script_stdout.split(" ")[0]
-        except:
-            raise OTPmeException(_("Unable to get private key from script."))
+        except Exception:
+            raise OTPmeException(_("Unable to get private key from script.")) from None
 
         try:
             user_public_key = script_stdout.split(" ")[1].replace("\n", "")
-        except:
-            raise OTPmeException(_("Unable to get public key from script."))
+        except Exception:
+            raise OTPmeException(_("Unable to get public key from script.")) from None
 
         return user_private_key, user_public_key
 
@@ -3301,25 +3307,25 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error detecting yubikey: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             try:
                 slot = local_command_args['slot']
-            except:
+            except Exception:
                 # Set default slot=2 if we got no slot from user.
                 slot = 2
                 local_command_args['slot'] = slot
 
             try:
                 show_serial = local_command_args['show_serial']
-            except:
+            except Exception:
                 show_serial = False
 
             if show_serial:
                 try:
                     message(yk.get_serial())
                 except Exception as e:
-                    raise OTPmeException(str(e))
+                    raise OTPmeException(str(e)) from e
             else:
                 # Try to set flag to given slot.
                 try:
@@ -3328,7 +3334,7 @@ class CommandHandler(object):
                     msg = msg.format(slot=slot)
                     message(msg)
                 except Exception as e:
-                    raise OTPmeException(str(e))
+                    raise OTPmeException(str(e)) from e
 
 
         # Handle deployment of OpenSSH token (token type ssh in OTPme)
@@ -3336,7 +3342,7 @@ class CommandHandler(object):
             # Path to SSH private key.
             try:
                 ssh_private_key = local_command_args['private_key']
-            except:
+            except Exception:
                 ssh_private_key = None
             if ssh_private_key:
                 if not os.path.exists(ssh_private_key):
@@ -3349,7 +3355,7 @@ class CommandHandler(object):
                 except Exception as e:
                     msg = _("Error reading private key from file: {e}")
                     msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 finally:
                     fd.close()
             else:
@@ -3360,7 +3366,7 @@ class CommandHandler(object):
             if ssh_private_key:
                 try:
                     password_hash_type = local_command_args['password_hash_type']
-                except:
+                except Exception:
                     password_hash_type = "PBKDF2"
                 deploy_args['password_hash_type'] = password_hash_type
 
@@ -3468,7 +3474,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error initializing offline tokens: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not offline_token.status():
             msg = "No offline tokens saved."
             raise OTPmeException(msg)
@@ -3495,7 +3501,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error initializing offline tokens: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not offline_token.status():
             msg = "No offline tokens saved."
             raise OTPmeException(msg)
@@ -3515,7 +3521,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error initializing offline tokens: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not offline_token.status():
             msg = "No offline tokens saved."
             raise OTPmeException(msg)
@@ -3550,7 +3556,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Error getting script UUID: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return script_uuid
 
     def get_user_key_script(self, username, **kwargs):
@@ -3563,7 +3569,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Error getting user key script path: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not script_path:
             return None, None, None, None
         log_msg = _("Reading users key script...", log=True)[1]
@@ -3574,7 +3580,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get key script signatures.
         try:
             script_signs = self.get_script_sign(script_path=script_path,
@@ -3583,7 +3589,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting key script signatures: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get key script UUID.
         try:
             script_uuid = self.get_script_uuid(script_path=script_path, **kwargs)
@@ -3591,7 +3597,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Error getting key script UUID: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return script_path, script_opts, script_uuid, script_signs, script
 
     def get_user_ssh_script(self, username, **kwargs):
@@ -3604,7 +3610,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Error getting user SSH script path: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not script_path:
             return None, None, None, None
         log_msg = _("Reading users SSH script...", log=True)[1]
@@ -3615,7 +3621,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting user SSH script: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get SSH script signatures.
         try:
             script_signs = self.get_script_sign(script_path=script_path,
@@ -3624,7 +3630,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting SSH script signatures: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get SSH script UUID.
         try:
             script_uuid = self.get_script_uuid(script_path=script_path, **kwargs)
@@ -3632,7 +3638,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Error getting SSH script UUID: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return script_path, script_opts, script_uuid, script_signs, script
 
     def get_ssh_agent(self):
@@ -3672,7 +3678,7 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error getting user SSH agent script: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         elif login_status == None:
             # Try to get SSH agent script from offline tokens.
@@ -3689,7 +3695,7 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error loading SSH script from offline tokens: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         else:
             raise OTPmeException(_("Unable to get SSH agent script."))
 
@@ -3762,8 +3768,8 @@ class CommandHandler(object):
 
             try:
                 login_token = login_sessions[login_pid]['login_token']
-            except:
-                raise OTPmeException(f"Unknown session PID: {login_pid}")
+            except Exception:
+                raise OTPmeException(f"Unknown session PID: {login_pid}") from None
 
             server_sessions = login_sessions[login_pid]['server_sessions']
             for realm in server_sessions:
@@ -3778,13 +3784,13 @@ class CommandHandler(object):
                         login_time = session['login_time']
                         login_time = datetime.datetime.fromtimestamp(float(login_time))
                         login_time = login_time.strftime('%H:%M:%S %d.%m')
-                    except:
+                    except Exception:
                         login_time = ""
                     current_row.append(login_time)
 
                     try:
                         last_reneg = session['last_reneg']
-                    except:
+                    except Exception:
                         last_reneg = None
 
                     # Set last reneg time.
@@ -3797,17 +3803,17 @@ class CommandHandler(object):
                     # Calculate next reneg stuff.
                     try:
                         next_retry = session['next_retry']
-                    except:
+                    except Exception:
                         next_retry = None
 
                     try:
                         next_reneg = session['next_reneg']
-                    except:
+                    except Exception:
                         next_reneg = None
 
                     try:
                         last_failed_reneg = session['last_failed_reneg']
-                    except:
+                    except Exception:
                         last_failed_reneg = False
 
                     if next_retry is not None:
@@ -3849,14 +3855,14 @@ class CommandHandler(object):
                     try:
                         timeout = session['session_timeout']
                         timeout = units.int2time(timeout, time_unit="m")[0]
-                    except:
+                    except Exception:
                         timeout = ""
                     current_row.append(timeout)
 
                     try:
                         unused_timeout = session['session_unused_timeout']
                         unused_timeout = units.int2time(unused_timeout, time_unit="m")[0]
-                    except:
+                    except Exception:
                         unused_timeout = ""
                     current_row.append(unused_timeout)
 
@@ -3866,7 +3872,7 @@ class CommandHandler(object):
                             offline = "Enabled"
                         else:
                             offline = "Disabled"
-                    except:
+                    except Exception:
                         offline = ""
                     current_row.append(offline)
 
@@ -3907,7 +3913,7 @@ class CommandHandler(object):
             # Skip empty sessions.
             try:
                 login_token = login_session["login_token"]
-            except:
+            except Exception:
                 continue
 
             current_row = []
@@ -3919,19 +3925,19 @@ class CommandHandler(object):
             #    current_row.append("")
             try:
                 current_row.append(login_session["login_token"])
-            except:
+            except Exception:
                 current_row.append("")
             try:
                 current_row.append(login_session["login_pass_type"])
-            except:
+            except Exception:
                 current_row.append("")
             try:
                 current_row.append(login_session["realm"])
-            except:
+            except Exception:
                 current_row.append("")
             try:
                 current_row.append(login_session["site"])
-            except:
+            except Exception:
                 current_row.append("")
             try:
                 if login_session["session_type"] == "realm_login":
@@ -3939,7 +3945,7 @@ class CommandHandler(object):
                 elif login_session["session_type"] == "ssh_key_pass":
                     session_type = "ssh_pass"
                 current_row.append(session_type)
-            except:
+            except Exception:
                 current_row.append("")
             try:
                 acls = []
@@ -3947,13 +3953,13 @@ class CommandHandler(object):
                     for acl in login_session["acls"][user]:
                         acls.append(f"{user}:{acl}")
                 current_row.append("\n".join(acls))
-            except:
+            except Exception:
                 current_row.append("")
 
             logins = []
             try:
                 server_sessions = login_session["server_sessions"]
-            except:
+            except Exception:
                 server_sessions = []
             for realm in server_sessions:
                 for site in server_sessions[realm]:
@@ -4021,7 +4027,7 @@ class CommandHandler(object):
                 log_msg = _("Processing sync cache from disk.", log=True)[1]
                 self.logger.info(log_msg)
             else:
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         # Get protocol handler.
         proto_class = protocols.client.get_class(sync_proto)
         # Create protocol handler.
@@ -4065,7 +4071,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Unable to get connection to authd: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             authd_conn.authenticate(command="auth")
         except Exception as e:
@@ -4082,7 +4088,7 @@ class CommandHandler(object):
             binary_data = authd_conn.send(command="get_jwt", command_args=command_args)
         except Exception as e:
             msg = f"Failed to get JWT: {e}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             authd_conn.close()
         return response
@@ -4111,7 +4117,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Try to get username for logged in user from otpme-agent
         username = agent_conn.get_user()
@@ -4149,7 +4155,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Try to get username for logged in user from otpme-agent
         username = agent_conn.get_user()
@@ -4184,7 +4190,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         username = self.whoami()
         if not username:
@@ -4209,7 +4215,7 @@ class CommandHandler(object):
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             help_text = self.get_help(msg)
-            raise OTPmeException(help_text)
+            raise OTPmeException(help_text) from e
 
         # Parse command line.
         object_cmd, \
@@ -4233,7 +4239,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         username = self.whoami()
         if not username:
@@ -4274,7 +4280,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Try to get username for logged in user from otpme-agent
         username = agent_conn.get_user()
@@ -4310,7 +4316,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Try to get username for logged in user from otpme-agent.
         username = agent_conn.get_user()
@@ -4324,7 +4330,7 @@ class CommandHandler(object):
             if config.verbose_level > 0:
                 return result
         except Exception as e:
-            raise OTPmeException(str(e))
+            raise OTPmeException(str(e)) from e
 
     def regen_master_key(self):
         """ Regenerate master key. """
@@ -4344,7 +4350,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error reading master pass salt from file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Re-gen master key.
         config.gen_master_key(master_pass_salt=master_pass_salt)
 
@@ -4379,7 +4385,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Failed to send auth key to server: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Save public key of host object.
         lock_caller = "renew_auth_key"
@@ -4435,7 +4441,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Failed to send renew cert command to server: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         command_args = {}
         try:
@@ -4447,7 +4453,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Failed to send dump cert command to server: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Update host cert in files.
         host.update_data(host_cert=host_cert)
@@ -4605,14 +4611,14 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Unable to get agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Try to get login token.
         try:
             login_token = agent_conn.get_login_token()
         except Exception as e:
             msg = _("Error getting login user from agent: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return login_token
 
     def get_login_token_type(self):
@@ -4624,14 +4630,14 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Unable to get agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Try to get login token type.
         try:
             login_token_type = agent_conn.get_login_token_type()
         except Exception as e:
             msg = _("Error getting login user from agent: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return login_token_type
 
     def get_login_pass_type(self):
@@ -4643,14 +4649,14 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Unable to get agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Try to get login token.
         try:
             login_pass_type = agent_conn.get_login_pass_type()
         except Exception as e:
             msg = _("Error getting login pass type from agent: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return login_pass_type
 
     def start_sync(self, sync_type, resync=False, realm=None, site=None):
@@ -4751,7 +4757,7 @@ class CommandHandler(object):
         try:
             object_id = self.command_line[1]
 
-        except:
+        except Exception:
             object_id = None
 
         if dump_type == "instance_cache":
@@ -4827,9 +4833,9 @@ class CommandHandler(object):
         # Get signer UUID.
         try:
             object_oid = oid.get(object_oid)
-        except InvalidOID:
+        except InvalidOID as err:
             msg = f"Invaild signer OID: {object_oid}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         object_uuid = stuff.resolve_oid(object_oid)
 
         # Create signer object.
@@ -4866,7 +4872,7 @@ class CommandHandler(object):
                                     mode=0o770)
             except Exception as e:
                 msg = f"Failed to create signers dir: {signers_dir}: {e}"
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         file_content = signer.dumps()
         signers_file = os.path.join(signers_dir, signer.uuid)
@@ -4877,7 +4883,7 @@ class CommandHandler(object):
                                 mode=0o700)
         except Exception as e:
             msg = f"Failed to write signers file: {signers_file}: {e}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def del_signer(self, signer_uuid, username=None, private=False, **kwargs):
         """ Delete signer. """
@@ -4905,7 +4911,7 @@ class CommandHandler(object):
             filetools.delete(signers_file)
         except Exception as e:
             msg = f"Failed to delete signers file: {signers_file}: {e}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def update_signer(self, signer_uuid, private=False, **kwargs):
         """ Update signer. """
@@ -5002,7 +5008,7 @@ class CommandHandler(object):
                     fd.close()
                 except Exception as e:
                     msg = f"Failed to read signers file: {signers_file}: {e}"
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 x_signer = OTPmeSigner()
                 x_signer.loads(file_content)
@@ -5223,7 +5229,7 @@ class CommandHandler(object):
                 config.raise_exception()
                 msg = _("Unable to start otpme-agent: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         if password is None:
             if config.stdin_pass:
                 password = config.stdin_pass
@@ -5249,7 +5255,7 @@ class CommandHandler(object):
                                 use_smartcard=config.use_smartcard,
                                 **kwargs)
         except Exception as e:
-            raise OTPmeException(str(e))
+            raise OTPmeException(str(e)) from e
         login_message = login_handler.login_response['login_message']
         return login_message
 
@@ -5262,7 +5268,7 @@ class CommandHandler(object):
         try:
             result = login_handler.logout()
         except Exception as e:
-            raise OTPmeException(str(e))
+            raise OTPmeException(str(e)) from e
         return result
 
     def whoami(self):
@@ -5316,13 +5322,13 @@ class CommandHandler(object):
         # Get login session ID.
         try:
             login_session_id = os.environ['OTPME_LOGIN_SESSION']
-        except:
+        except Exception:
             login_session_id = None
 
         # Make sure we do not auth to agent with users login session.
         try:
             del (os.environ['OTPME_LOGIN_SESSION'])
-        except:
+        except Exception:
             pass
 
         # FIXME: the autoconfirm_file should be in session_dir but for this we would
@@ -5415,7 +5421,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Unable to read current authorized_keys file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         return authorized_keys
 
@@ -5427,7 +5433,7 @@ class CommandHandler(object):
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             help_text = self.get_help(msg)
-            raise OTPmeException(help_text)
+            raise OTPmeException(help_text) from e
 
         # Parse command line.
         object_cmd, \
@@ -5471,7 +5477,7 @@ class CommandHandler(object):
         # Get command syntax
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -5560,7 +5566,7 @@ class CommandHandler(object):
             try:
                 comb = str(x.replace(":", ""))
                 all_combinations.remove(comb)
-            except:
+            except Exception:
                 pass
 
             if number < 3:
@@ -5594,7 +5600,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -5652,7 +5658,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -5732,12 +5738,12 @@ class CommandHandler(object):
                 # When a user is configured for key_mode=server the private
                 # key might be encrypted with a passphrase (AES).
                 self.user_aes_pass = stuff.read_pass_from_stdin()
-            except:
+            except Exception:
                 pass
 
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -5769,13 +5775,13 @@ class CommandHandler(object):
                             command_line=command_line)
         except Exception as e:
             msg = f"Error adding script: {e}\n"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def handle_user_gen_cert_command(self, command, subcommand):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -5798,7 +5804,7 @@ class CommandHandler(object):
         # Get stdin pass option.
         try:
             stdin_pass = local_command_args['stdin_pass']
-        except:
+        except Exception:
             stdin_pass = False
 
         # Check if we got "--stdin-pass" (and not the global one)
@@ -5874,7 +5880,7 @@ class CommandHandler(object):
         # Try to get users preferred editor.
         try:
             editor = os.environ['EDITOR']
-        except:
+        except Exception:
             editor = "vim"
 
         # Get script.
@@ -5920,7 +5926,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = f"Error updating script: {e}\n"
             msg = f"{msg}Script saved to temporary file: {tmp_file}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Remove temp file
         os.remove(tmp_file)
@@ -5940,7 +5946,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -5971,7 +5977,7 @@ class CommandHandler(object):
         # Try to get users preferred editor.
         try:
             editor = os.environ['EDITOR']
-        except:
+        except Exception:
             editor = "vim"
 
         # Get object info.
@@ -6018,7 +6024,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = f"Error updating info: {e}\n"
             msg = f"{msg}Info saved to temporary file: {tmp_file}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Remove temp file
         os.remove(tmp_file)
@@ -6045,7 +6051,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting key mode: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Check if we got "--stdin-pass" (and not the global one).
         if "--stdin-pass" in self.command_line:
@@ -6056,10 +6062,10 @@ class CommandHandler(object):
             try:
                 password = stdin.split("\0")[0]
                 new_password = stdin.split("\0")[1]
-            except:
+            except Exception:
                 msg =(_("Input format for --stdin-pass is: "
                         "old_pass\0new_pass"))
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
 
             if key_mode == "server":
                 # Add current and new password to command args.
@@ -6112,7 +6118,7 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error sending private key to server: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         return ""
 
@@ -6125,7 +6131,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -6138,7 +6144,7 @@ class CommandHandler(object):
                                     command_args=self.command_args)
         try:
             encrypt_key = command_args['encrypt_key']
-        except:
+        except Exception:
             encrypt_key = True
 
         if not encrypt_key:
@@ -6148,7 +6154,7 @@ class CommandHandler(object):
         if not private_key:
             try:
                 private_key = command_args['private_key']
-            except:
+            except Exception:
                 private_key = None
 
         if not private_key:
@@ -6204,7 +6210,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error sending private key to server: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Send private key to server.
         try:
@@ -6215,7 +6221,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error sending public key to server: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         return ""
 
@@ -6294,14 +6300,14 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error getting agent connection: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Umount shares.
             try:
                 agent_conn.umount_shares()
             except Exception as e:
                 msg = _("Error unmounting shares: {error}")
                 msg = msg.format(error=e)
-                raise Exception(msg)
+                raise Exception(msg) from e
             return
 
         # Umount share.
@@ -6314,14 +6320,14 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error getting agent connection: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Umount shares.
             try:
                 agent_conn.umount_shares(shares=[share_id])
             except Exception as e:
                 msg = _("Error unmounting shares: {error}")
                 msg = msg.format(error=e)
-                raise Exception(msg)
+                raise Exception(msg) from e
             return
 
         nodes = None
@@ -6354,13 +6360,13 @@ class CommandHandler(object):
             login_session_id = self.get_login_session_id()
         except Exception as e:
             msg = f"Unable to get login session ID: {e}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             share_site = share_id.split("/")[0]
             share_name = share_id.split("/")[1]
-        except:
+        except Exception:
             msg = f"Invalid share: {share_id}"
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if nodes is None or mount_point is None:
             command_args = {'share_id':share_id}
             response = self.send_command(daemon="mgmtd",
@@ -6378,7 +6384,7 @@ class CommandHandler(object):
                 except Exception as e:
                     msg = _("Error getting agent connection: {e}")
                     msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 mount_response = agent_conn.mount_shares(shares=shares)
                 return mount_response
         if not mount_point:
@@ -6391,7 +6397,7 @@ class CommandHandler(object):
             except Exception as e:
                 msg = _("Error reading master password from stdin: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         os.environ['OTPME_LOGIN_SESSION'] = login_session_id
         if foreground:
             mount_share(share_name,
@@ -6425,7 +6431,7 @@ class CommandHandler(object):
         from otpme.lib.smartcard.utils import detect_smartcard
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -6471,7 +6477,7 @@ class CommandHandler(object):
         # Try to get token type from command line.
         try:
             command_syntax = self.get_command_syntax(command="token", subcommand="deploy")
-        except:
+        except Exception:
             return self.get_help(_("Unknown command: deploy"))
 
         # Parse command line.
@@ -6501,12 +6507,12 @@ class CommandHandler(object):
         # hardware token.
         try:
             no_token_write = local_command_args['no_token_write']
-        except:
+        except Exception:
             no_token_write = False
 
         try:
             replace = local_command_args['replace']
-        except:
+        except Exception:
             replace = False
 
         try:
@@ -6519,10 +6525,10 @@ class CommandHandler(object):
             # Get command syntax.
             try:
                 command_syntax = command_map['token'][smartcard_type]['deploy']['cmd']
-            except:
+            except Exception:
                 msg = _("Unknown token type: {smartcard_type}")
                 msg = msg.format(smartcard_type=smartcard_type)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
 
             # Parse command line.
             local_command_args = {}
@@ -6558,10 +6564,10 @@ class CommandHandler(object):
         try:
             user_name = object_identifier.split("/")[0]
             token_name = object_identifier.split("/")[1]
-        except Exception:
+        except Exception as err:
             msg = _("Invalid token path: {token_path}")
             msg = msg.format(token_path=object_identifier)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         # Get token type to deploy on server side.
         token_type = smartcard_client_handler.token_type
 
@@ -6579,7 +6585,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Unable to deploy token: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         if pre_deploy_result is None:
             return
@@ -6644,7 +6650,7 @@ class CommandHandler(object):
             config.raise_exception()
             msg = _("Error getting key mode: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         if not key_mode:
             msg = _("Unable to get users key mode. Private key missing?")
@@ -6659,7 +6665,7 @@ class CommandHandler(object):
                 password = sys.stdin.readline().replace("\n", "")
                 if key_mode == "server":
                     self.command_args['password'] = password
-            except:
+            except Exception:
                 pass
 
         if key_mode == "server":
@@ -6671,7 +6677,7 @@ class CommandHandler(object):
             # Get command syntax.
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
-            except:
+            except Exception:
                 msg = _("Unknown command: {subcommand}")
                 msg = msg.format(subcommand=subcommand)
                 return self.get_help(msg)
@@ -6696,11 +6702,11 @@ class CommandHandler(object):
             # users key script.
             try:
                 unencrypted = local_command_args['decrypt']
-            except:
+            except Exception:
                 unencrypted = False
             try:
                 private = local_command_args['private']
-            except:
+            except Exception:
                 private = False
 
             if private and unencrypted:
@@ -6749,7 +6755,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -6804,7 +6810,7 @@ class CommandHandler(object):
                 self.logger.warning(log_msg)
                 try:
                     node_status[node.name]['status'] = "Offline"
-                except:
+                except Exception:
                     node_status[node.name] = {'status':"Offline"}
                 return
             try:
@@ -6812,7 +6818,7 @@ class CommandHandler(object):
                 x_master_node = clusterd_conn.get_master_node()
                 try:
                     node_status[node.name]['master'] = x_master_node
-                except:
+                except Exception:
                     node_status[node.name] = {'master':x_master_node}
             except Exception as e:
                 x_master_node = None
@@ -6826,12 +6832,12 @@ class CommandHandler(object):
                 quorum = clusterd_conn.get_cluster_quorum()
                 try:
                     node_status[node.name]['quorum'] = quorum
-                except:
+                except Exception:
                     node_status[node.name] = {'quorum':quorum}
             except Exception as e:
                 try:
                     node_status[node.name]['status'] = "Offline"
-                except:
+                except Exception:
                     node_status[node.name] = {'status':"Offline"}
                 return
             try:
@@ -6852,14 +6858,14 @@ class CommandHandler(object):
                 node_checksums[node.name]['sessions_checksum'] = f"Request failed: {e}"
                 try:
                     node_status[node.name]['status'] = "Error"
-                except:
+                except Exception:
                     node_status[node.name] = {'status':"Error"}
                 return
             finally:
                 clusterd_conn.close()
             try:
                 node_status[node.name]['status'] = "Online"
-            except:
+            except Exception:
                 node_status[node.name] = {'status':"Online"}
 
         result = backend.search(object_type="node",
@@ -7079,7 +7085,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
         except Exception as e:
@@ -7087,7 +7093,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             clusterd_conn = connections.get("clusterd",
                                             timeout=30,
@@ -7097,13 +7103,13 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             node_vote = clusterd_conn.get_node_vote()
         except Exception as e:
             msg = _("Node vote check failed: {node_name}: {e}")
             msg = msg.format(node_name=node_name, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if node_vote == 0:
             msg = _("Node not ready.")
             raise OTPmeException(msg)
@@ -7116,7 +7122,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
         except Exception as e:
@@ -7124,7 +7130,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             clusterd_conn = connections.get("clusterd",
                                             timeout=30,
@@ -7134,13 +7140,13 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             master_sync_status = clusterd_conn.get_master_sync_status()
         except Exception as e:
             msg = _("Master sync check failed: {node_name}: {e}")
             msg = msg.format(node_name=node_name, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not master_sync_status:
             msg = _("Node master sync not finished.")
             raise OTPmeException(msg)
@@ -7149,7 +7155,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Node sync check failed: {node_name}: {e}")
             msg = msg.format(node_name=node_name, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not node_sync_status:
             msg = _("Node not in sync.")
             raise OTPmeException(msg)
@@ -7162,7 +7168,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
         except Exception as e:
@@ -7170,7 +7176,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             clusterd_conn = connections.get("clusterd",
                                             timeout=30,
@@ -7180,14 +7186,14 @@ class CommandHandler(object):
             msg = msg.format(node_name=node_name, e=e)
             log_msg = log_msg.format(node_name=node_name, e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         try:
             clusterd_conn.start_master_failover()
         except Exception as e:
             msg = _("Failed to start master failover: {node_name}: {e}")
             msg = msg.format(node_name=node_name, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             clusterd_conn.close()
 
@@ -7261,7 +7267,7 @@ class CommandHandler(object):
     def handle_master_failover(self, new_master=None,
         random_node=False, wait=False):
         """ Handle master failover command. """
-        import random
+        import secrets
         from termcolor import colored
         register_module("otpme.lib.classes.realm")
         register_module("otpme.lib.daemon.clusterd")
@@ -7380,7 +7386,7 @@ class CommandHandler(object):
                     msg = _("Master failover failed: Unable to find node to switch to.")
                     msg = colored(msg, 'red')
                     return msg
-                new_master_node = random.choice(member_nodes)
+                new_master_node = secrets.choice(member_nodes)
                 if not wait:
                     member_nodes.remove(new_master_node)
                 try:
@@ -7558,7 +7564,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -7570,12 +7576,12 @@ class CommandHandler(object):
                                     command_args=self.command_args)
         try:
             cert_out_file = command_args.pop('cert_out_file')
-        except:
+        except Exception:
             return self.get_help()
 
         try:
             key_out_file = command_args.pop('key_out_file')
-        except:
+        except Exception:
             return self.get_help()
 
         result = self.send_command(daemon="mgmtd",
@@ -7590,9 +7596,9 @@ class CommandHandler(object):
         try:
             client_cert_pem = result[0]
             client_key_pem = result[1]
-        except:
+        except Exception:
             msg = _("Invalid server resonse.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         try:
             filetools.create_file(cert_out_file,
                                 content=client_cert_pem,
@@ -7600,7 +7606,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error writing cert file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             filetools.create_file(key_out_file,
                                 content=client_key_pem,
@@ -7608,7 +7614,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error writing key file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def handle_auth_command(self, command, subcommand, command_line):
         """ Handle auth command. """
@@ -7619,7 +7625,7 @@ class CommandHandler(object):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -7632,7 +7638,7 @@ class CommandHandler(object):
 
         try:
             use_socket = command_args.pop('use_socket')
-        except:
+        except Exception:
             use_socket = False
 
         socket_uri = None
@@ -7660,7 +7666,7 @@ class CommandHandler(object):
         except (OSError, IOError) as e:
             msg = _("Error reading users file: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         user_list = []
         for line in fd:
@@ -7691,7 +7697,7 @@ class CommandHandler(object):
         try:
             command_syntax = self.get_command_syntax(command=self.command,
                                                     subcommand=subcommand)
-        except:
+        except Exception:
             msg = _("Unknown command: {subcommand}")
             msg = msg.format(subcommand=subcommand)
             return self.get_help(msg)
@@ -7709,7 +7715,7 @@ class CommandHandler(object):
             if str(e) == "help":
                 return self.get_help()
             elif str(e) != "":
-                raise OTPmeException(str(e))
+                raise OTPmeException(str(e)) from e
 
         # Get filenames.
         file1 = local_command_args['file1']
@@ -7724,7 +7730,7 @@ class CommandHandler(object):
         except Exception as e:
             msg = _("Error getting key mode: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         if key_mode == "server":
             script_command.append("--server-key")
@@ -7740,41 +7746,41 @@ class CommandHandler(object):
             username = local_command_args['username']
             script_command.append("-u")
             script_command.append(username)
-        except:
+        except Exception:
             pass
         try:
             if local_command_args['use_rsa']:
                 script_command.append("--rsa")
-        except:
+        except Exception:
             pass
         try:
             if local_command_args['no_rsa']:
                 script_command.append("--no-rsa")
-        except:
+        except Exception:
             pass
         try:
             if local_command_args['password']:
                 if 'no_rsa' in local_command_args:
                     aes_pass = local_command_args['password']
-        except:
+        except Exception:
             pass
         try:
             if local_command_args['force_pass']:
                 script_command.append("--force-pass")
-        except:
+        except Exception:
             pass
 
         try:
             if local_command_args['stdin_pass']:
                 try:
                     password = sys.stdin.readline().replace("\n", "")
-                except:
+                except Exception:
                     password = None
                 if 'no_rsa' in local_command_args:
                     aes_pass = password
                 else:
                     key_pass = password
-        except:
+        except Exception:
             pass
 
         script_options = [ file1, file2 ]

@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -185,7 +185,7 @@ class ForcetokenPolicy(Policy):
         realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(ForcetokenPolicy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                                     realm=realm,
                                                     site=site,
                                                     name=name,
@@ -295,7 +295,7 @@ class ForcetokenPolicy(Policy):
         """ Change list of allowed forced token types. """
         try:
             force_token_types = token_types.split(",")
-        except:
+        except Exception:
             msg = _("Invalid token types: {}")
             msg = msg.format(token_types)
             return callback.error(msg)
@@ -324,7 +324,7 @@ class ForcetokenPolicy(Policy):
         """ Change list of allowed pass types. """
         try:
             force_pass_types = pass_types.split(",")
-        except:
+        except Exception:
             msg = _("Invalid password types: {}")
             msg = msg.format(pass_types)
             return callback.error(msg)

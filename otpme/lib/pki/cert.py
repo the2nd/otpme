@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -243,7 +243,7 @@ class SSLCert(object):
         except Exception as e:
             msg = _("Error signing data: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
         if encoding:
             signature = encode(signature, encoding)
 
@@ -283,7 +283,7 @@ class SSLCert(object):
             config.raise_exception()
             msg = _("Error verifying signature: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
     def get_serial(self):
         """ Return certificates serial number. """

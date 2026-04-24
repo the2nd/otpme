@@ -62,7 +62,7 @@ class Cache(object):
         Raises:
           UnsupportedMap: for map types we don't know about
         """
-        super(Cache, self).__init__()
+        super().__init__()
         # Set up a logger for our children
         self.log = logging.getLogger(__name__)
         # Store config info

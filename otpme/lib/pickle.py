@@ -5,7 +5,7 @@ import os
 try:
     import larch.pickle as _lpickle
     PICKLE_TYPE = "larch"
-except:
+except Exception:
     PICKLE_TYPE = "pickle"
     import pickle as _pickle
 
@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -35,9 +35,9 @@ class PickleHandler(object):
             try:
                 import larch.pickle as _lpickle
                 pickle = _lpickle
-            except:
+            except Exception:
                 msg = "Please install larch-pickle."
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
         return pickle
 
     def dumps(self, instance, protocol=None, **kwargs):

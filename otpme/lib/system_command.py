@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -84,7 +84,7 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
         except OSError as e:
             msg = _("Failed to start command: {command}: {e}")
             msg = msg.format(command=command, e=e)
-            raise OSError(msg)
+            raise OSError(msg) from e
         return return_val
 
     stdin = PIPE
@@ -129,9 +129,11 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
     command_pid = proc.pid
     return command_returncode, command_stdout, command_stderr, command_pid
 
-def demote(user, group, groups=[], disable_ctrl_c=False):
+def demote(user, group, groups=None, disable_ctrl_c=False):
     """ Drop privileges. """
     # Disable CTRL+C while script is running.
+    if groups is None:
+        groups = []
     if disable_ctrl_c:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -146,7 +148,7 @@ def demote(user, group, groups=[], disable_ctrl_c=False):
             except Exception as e:
                 msg = _("Failed to resolve group: {g}")
                 msg = msg.format(g=g)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             group_ids.append(x)
     # Cannot drop privileges when not running as root.
     if config.system_user() != "root":
@@ -159,7 +161,7 @@ def demote(user, group, groups=[], disable_ctrl_c=False):
             except Exception as e:
                 msg = _("Failed to resolve group: {group}")
                 msg = msg.format(group=group)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
     def set_ids():
         if gid:
             os.setgid(gid)

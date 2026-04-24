@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -175,12 +175,12 @@ class OTPmeBackupP1(OTPmeFsServer1):
         except Exception as e:
             msg = _("Failed to open password file {pass_file}")
             msg = msg.format(pass_file=self.pass_file)
-            raise PermissionDenied(msg)
+            raise PermissionDenied(msg) from e
         try:
             repo_pass = fd.read()
         except Exception as e:
             msg = _("Failed to read password file {pass_file}")
-            raise PermissionDenied(msg)
+            raise PermissionDenied(msg) from e
         if self.client_password == repo_pass:
             return True
         msg = _("Permission denied.")
@@ -1029,21 +1029,21 @@ class OTPmeBackupP1(OTPmeFsServer1):
             log_msg = _("Failed to open restore file: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(log_msg)
+            raise OTPmeException(log_msg) from e
         try:
             raw_data = fd.read()
         except Exception as e:
             log_msg = _("Failed to read restore file: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(log_msg)
+            raise OTPmeException(log_msg) from e
         try:
             binary_data = gzip.decompress(raw_data)
         except Exception as e:
             log_msg = _("Failed to decrompress restore file: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(log_msg)
+            raise OTPmeException(log_msg) from e
         return binary_data
 
     def chmod(self, path: str, mode: int) -> int:

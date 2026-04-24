@@ -16,7 +16,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -171,7 +171,7 @@ def verify_attestation_cert(registration_data, site=None):
     except Exception as e:
         msg = _("Failed to load attestation certificate: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     messages = []
     subject = attestation_cert.subject.rfc4514_string()
     msg = _("Got attestation certificate: {subject}")
@@ -200,16 +200,16 @@ def verify_attestation_cert(registration_data, site=None):
             raise OTPmeException(msg)
     try:
         ca_cert = site.fido2_ca_certs[issuer]
-    except KeyError:
+    except KeyError as err:
         msg = _("We dont have a fido2 CA cert to verify attestation certificate: {subject}: {issuer}")
         msg = msg.format(subject=subject, issuer=issuer)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         ca_cert = x509.load_pem_x509_certificate(ca_cert.encode())
     except Exception as e:
         msg = _("Failed to load fido2 CA cert: {subject}")
         msg = msg.format(subject=subject)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     # Verify signature.
     ca_cert_public_key = ca_cert.public_key()
     try:
@@ -220,7 +220,7 @@ def verify_attestation_cert(registration_data, site=None):
     except Exception as e:
         msg = _("Failed to verify signature: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     messages.append(_("Attestation certificate verified succesfully."))
     return messages
 
@@ -272,7 +272,7 @@ class Fido2Token(Token):
         **kwargs,
         ):
         # Call parent class init.
-        super(Fido2Token, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,
@@ -379,12 +379,14 @@ class Fido2Token(Token):
     @backend.transaction
     def pre_deploy(
         self,
-        pre_deploy_args: dict={},
+        pre_deploy_args: dict=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         ):
         """ Deploy fido2 token. """
+        if pre_deploy_args is None:
+            pre_deploy_args = {}
         try:
             self.uv = pre_deploy_args['uv']
         except KeyError:

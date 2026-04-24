@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -334,7 +334,7 @@ class HotpToken(OathToken):
         **kwargs,
         ):
         # Call parent class init.
-        super(HotpToken, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         user=user,
@@ -441,13 +441,13 @@ class HotpToken(OathToken):
             }
 
         # Use parent class method to merge token configs.
-        return super(HotpToken, self)._get_object_config(token_config=token_config)
+        return super()._get_object_config(token_config=token_config)
 
     def set_variables(self):
         """ Set instance variables """
         # Run parent class method that may override default values with those
         # read from config.
-        super(HotpToken, self).set_variables()
+        super().set_variables()
         # In mode2 the PIN is mandatory.
         if self.mode == "mode2":
             self.pin_enabled = True
@@ -906,9 +906,9 @@ class HotpToken(OathToken):
         """ Add used OTP + counter for this user/token. """
         try:
             token_counter = self.otp_cache[otp]
-        except:
+        except Exception:
             msg = _("WARNING: Unable to find counter for the given OTP.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Update counter in token config on resync.
         if resync:
@@ -940,7 +940,7 @@ class HotpToken(OathToken):
         except Exception as e:
             msg = _("Failed to add used OTP: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def _check_range_format(
         self,
@@ -985,7 +985,7 @@ class HotpToken(OathToken):
                 answer = callback.ask(_("Counter check range: "))
                 try:
                     counter_check_range = int(answer)
-                except:
+                except Exception:
                     pass
                 check_status, \
                 check_message = self._check_range_format(counter_check_range)
@@ -1048,7 +1048,7 @@ class HotpToken(OathToken):
         # Get default TOTP settings.
         self.secret_len = self.get_config_parameter("hotp_secret_len")
         self.counter_check_range = self.get_config_parameter("hotp_check_range")
-        return super(HotpToken, self)._add(*args, **kwargs)
+        return super()._add(*args, **kwargs)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
@@ -1074,7 +1074,7 @@ class HotpToken(OathToken):
             server_secret = str(self.server_secret)
         lines.append(f'SERVER_SECRET="{server_secret}"')
 
-        return super(HotpToken, self).show_config(config_lines=lines,
+        return super().show_config(config_lines=lines,
                                                 callback=callback,
                                                 **kwargs)
 

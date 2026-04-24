@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -45,7 +45,7 @@ class CustomInvalidationStrategy(RegionInvalidationStrategy):
     def _soft_invalidated(self):
         try:
             _soft_invalidated = multiprocessing.dogpile_invalidate[self.region]['soft']
-        except:
+        except Exception:
             return
         return _soft_invalidated
 
@@ -59,7 +59,7 @@ class CustomInvalidationStrategy(RegionInvalidationStrategy):
     def _hard_invalidated(self):
         try:
             _hard_invalidated = multiprocessing.dogpile_invalidate[self.region]['hard']
-        except:
+        except Exception:
             return
         return _hard_invalidated
 

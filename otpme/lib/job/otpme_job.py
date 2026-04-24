@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -26,8 +26,10 @@ class OTPmeJob(object):
     """ Class to run a OTPme job as thread. """
     def __init__(self, name, target_method, thread=True, process=False,
         timeout=None, lock_timeout=30, lock_wait_timeout=0, client=None,
-        reload_objects_on_change=True, _caller="API", args={}):
+        reload_objects_on_change=True, _caller="API", args=None):
         # Set our name.
+        if args is None:
+            args = {}
         self.name = name
         # Connected client.
         self.client = client
@@ -218,7 +220,7 @@ class OTPmeJob(object):
             self.args['lock_timeout'] = self.lock_timeout
             self.args['lock_wait_timeout'] = self.lock_wait_timeout
             self.args['lock_reload_on_change'] = self.reload_objects_on_change
-        except:
+        except Exception:
             pass
         try:
             job_status = self.target_method(**self.args)
@@ -226,7 +228,7 @@ class OTPmeJob(object):
             if job_status is False:
                 try:
                     job_error = self.exit_info['last_error']
-                except:
+                except Exception:
                     pass
         except OTPmeJobException as e:
             job_error = str(e)
@@ -313,12 +315,12 @@ class OTPmeJob(object):
         if self.start_thread:
             try:
                 return self._child.is_alive()
-            except:
+            except Exception:
                 return False
         if self.start_process:
             try:
                 return self._child.is_alive()
-            except:
+            except Exception:
                 return False
 
     def is_alive(self):

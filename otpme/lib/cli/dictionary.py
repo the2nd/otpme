@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.humanize import units
@@ -65,8 +65,10 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, dict_order, dict_data, acls,
-    acl_checker=None, output_fields=[], max_policies=5, **kwargs):
+    acl_checker=None, output_fields=None, max_policies=5, **kwargs):
     """ Build table rows for dictionaries. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for dict_uuid in dict_order:
         row = []
@@ -75,25 +77,25 @@ def row_getter(realm, site, dict_order, dict_data, acls,
         dictionary_type = dict_data[dict_uuid]['dictionary_type'][0]
         try:
             enabled = dict_data[dict_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             dict_size = dict_data[dict_uuid]['dict_size'][0]
-        except:
+        except Exception:
             dict_size = None
         try:
             description = dict_data[dict_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = dict_data[dict_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             dict_acls = acls[dict_uuid]
-        except:
+        except Exception:
             dict_acls = {}
 
         # Get ACL checker.

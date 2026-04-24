@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -72,9 +72,11 @@ def register():
 
 def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
     max_tokens=5, max_hosts=5, max_devices=5, max_sync_users=5,
-    max_ags=5, max_groups=5, max_policies=5, output_fields=[],
+    max_ags=5, max_groups=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for roles. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for role_uuid in role_order:
         row = []
@@ -82,11 +84,11 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
         unit_uuid = role_data[role_uuid]['unit'][0]
         try:
             enabled = role_data[role_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             description = role_data[role_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         #try:
         #    acl_inheritance_enabled = role_data[role_uuid]['acl_inheritance_enabled'][0]
@@ -96,7 +98,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
         # Get object ACLs.
         try:
             role_acls = acls[role_uuid]
-        except:
+        except Exception:
             role_acls = {}
 
         # Get ACL checker.

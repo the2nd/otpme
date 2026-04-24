@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -899,7 +899,7 @@ class Share(OTPmeObject):
         self.encrypted = False
         self.block_size = 4096
         # Call parent class init.
-        super(Share, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
         # List and dict attributes must be set after calling super because
         # self.incremental_update is only available after calling super.
         self.nodes = []
@@ -1158,7 +1158,7 @@ class Share(OTPmeObject):
             self.restore_share = share.uuid
             self.encrypted = share.encrypted
             # Add object using parent class.
-            add_result = super(Share, self).add(verify_acls=verify_acls,
+            add_result = super().add(verify_acls=verify_acls,
                                             verbose_level=verbose_level,
                                             callback=callback, **kwargs)
             return self._write(callback=callback)
@@ -1210,7 +1210,7 @@ class Share(OTPmeObject):
             self.block_size = block_size
             self.add_index('block_size', self.block_size)
         # Add object using parent class.
-        add_result = super(Share, self).add(verify_acls=verify_acls,
+        add_result = super().add(verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
         if self.encrypted and add_result and not no_key_gen:
@@ -1658,7 +1658,7 @@ class Share(OTPmeObject):
                                     callback=callback,
                                     verify_acls=False)
 
-        return super(Share, self).add_token(token_path=token_path,
+        return super().add_token(token_path=token_path,
                                         callback=callback, **kwargs)
 
     @object_lock()
@@ -1698,7 +1698,7 @@ class Share(OTPmeObject):
                                 callback=callback,
                                 verify_acls=False)
 
-        return super(Share, self).remove_token(token_path=token_path,
+        return super().remove_token(token_path=token_path,
                                             callback=callback, **kwargs)
 
     @object_lock()
@@ -1713,7 +1713,7 @@ class Share(OTPmeObject):
         if self.encrypted:
             msg = _("Encrypted shares do not support roles.")
             return callback.error(msg)
-        return super(Share, self).add_role(*args, callback=callback, **kwargs)
+        return super().add_role(*args, callback=callback, **kwargs)
 
     @check_acls(['add:share_key'])
     @object_lock()
@@ -1983,7 +1983,7 @@ class Share(OTPmeObject):
                 result = "\n".join(result)
             return callback.ok(result)
 
-        result = super(Share, self).get_nodes(return_type=return_type,
+        result = super().get_nodes(return_type=return_type,
                                             skip_disabled=skip_disabled,
                                             include_pools=include_pools,
                                             callback=callback,

@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -45,7 +45,7 @@ class OathToken(Token):
         self.secret_encoding = "base32"
         self.supports_qrcode = True
         self.otp_len = 6
-        super(OathToken, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         # Default token mode should be mode2 which is more secure for offline
         # usage. This value must be initialized after super().
         self.mode = "mode2"
@@ -327,7 +327,7 @@ class OathToken(Token):
         **kwargs,
         ):
         """ Change token PIN. """
-        result = super(OathToken, self).change_pin(*args,
+        result = super().change_pin(*args,
                                                 callback=callback,
                                                 **kwargs)
         if not result:
@@ -471,7 +471,7 @@ class OathToken(Token):
 
         otp = self.gen_otp(prefix_pin=pin, verify_acls=False)
 
-        return super(OathToken, self)._gen_mschap(password=otp, callback=callback)
+        return super()._gen_mschap(password=otp, callback=callback)
 
     @object_lock(full_lock=True)
     def pre_deploy(

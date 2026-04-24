@@ -9,7 +9,7 @@ import time
 import json
 try:
     from PyQt4 import QtGui
-except:
+except Exception:
     class QtGui(object):
         __self__ = None
         class QDialog:
@@ -18,7 +18,7 @@ except:
             __self__ = None
 try:
     from PyQt4 import QtCore
-except:
+except Exception:
     class QtCore(object):
         pass
 
@@ -27,12 +27,12 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 try:
     q_string = QtCore.QString
-except:
+except Exception:
     q_string = str
 
 try:
@@ -68,7 +68,7 @@ try:
     # Pinentry name.
     PINENTRY_NAME = "pinentry-otpme"
     basename = config.tool_name
-except:
+except Exception:
     PINENTRY_NAME = "pinentry-ng"
     basename = os.path.basename(sys.argv[0])
     icon_ok = QtGui.QStyle.SP_DialogApplyButton
@@ -81,7 +81,7 @@ try:
     icon_cancel = KIcon("dialog-cancel")
     icon_window = KIcon("object-locked")
     #icon_window = KIcon("emblem-locked")
-except:
+except Exception:
     class FakeClass(object):
         pass
     KIcon = FakeClass
@@ -187,17 +187,17 @@ def get_autoconfirm(autoconfirm_file, confirm_key=None):
     # Try to get autoconfirm expiry.
     try:
         autoconfirm_expiry = float(expiry_data[confirm_key]['expiry'])
-    except:
+    except Exception:
         autoconfirm_expiry = 0.0
     # Try to get autoconfirm fallback setting.
     try:
         fallback = expiry_data[confirm_key]['fallback']
-    except:
+    except Exception:
         pass
     # Try to get autoconfirm error file.
     try:
         message_file = expiry_data[confirm_key]['message_file']
-    except:
+    except Exception:
         message_file = None
     # Check if autoconfirm has expired.
     if time.time() < autoconfirm_expiry:
@@ -205,7 +205,7 @@ def get_autoconfirm(autoconfirm_file, confirm_key=None):
     # Remove outdated expiry from file.
     try:
         expiry_data.pop(confirm_key)
-    except:
+    except Exception:
         pass
     # Write to file.
     write_autoconfirm_file(autoconfirm_file, expiry_data)
@@ -219,7 +219,7 @@ def remove_autoconfirm(autoconfirm_file, confirm_key):
     # Set expiry in seconds.
     try:
         expiry_data.pop(confirm_key)
-    except:
+    except Exception:
         pass
     # Write to file.
     write_autoconfirm_file(autoconfirm_file, expiry_data)
@@ -228,10 +228,10 @@ def remove_autoconfirm(autoconfirm_file, confirm_key):
 class MySpinBox(QtGui.QSpinBox):
     def focusInEvent(self, event):
         self.parentWidget().ui.ButtonAllow.setDefault(True)
-        super(MySpinBox, self).focusInEvent(event)
+        super().focusInEvent(event)
     def focusOutEvent(self, event):
         self.parentWidget().ui.ButtonAllow.setDefault(False)
-        super(MySpinBox, self).focusOutEvent(event)
+        super().focusOutEvent(event)
 
 
 class PinEntryDialog(object):
@@ -587,7 +587,7 @@ def run(title=PINENTRY_NAME, pin=None, pin_function=None,
     # Set default display.
     try:
         display = os.environ['DISPLAY']
-    except:
+    except Exception:
         display = ":0"
     os.environ['DISPLAY'] = str(display)
 

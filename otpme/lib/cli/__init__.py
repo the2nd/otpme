@@ -18,7 +18,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import help
@@ -89,11 +89,11 @@ def check_rapi_opts():
             func_name = f.__name__
             try:
                 callback = f_kwargs['callback']
-            except:
+            except Exception:
                 callback = default_callback
             try:
                 _caller = f_kwargs['_caller']
-            except:
+            except Exception:
                 _caller = "API"
 
             if _caller != "API":
@@ -111,16 +111,16 @@ def check_rapi_opts():
                     help_dict = help.get_cmd_help(self.type)
                     try:
                         ovals = help_dict[command]['ovals']
-                    except:
+                    except Exception:
                         ovals = []
                 elif _caller == "RAPI":
                     try:
                         exists_ovals = commands[command]['exist']
-                    except:
+                    except Exception:
                         exists_ovals = []
                     try:
                         missing_ovals = commands[command]['missing']
-                    except:
+                    except Exception:
                         missing_ovals = []
                     ovals = set(exists_ovals + missing_ovals)
                 else:
@@ -135,7 +135,7 @@ def check_rapi_opts():
                     # Try to get arg by index or from kwargs.
                     try:
                         x_val = f_args[x_index]
-                    except:
+                    except Exception:
                         x_val = f_kwargs[x_attr]
                     # Make sure a valid value is passed.
                     if x_val in valid_values:
@@ -149,10 +149,14 @@ def check_rapi_opts():
         return wrapped
     return wrapper
 
-def register_cli(name, table_headers, row_getter, write_acls=[], read_acls=[],
+def register_cli(name, table_headers, row_getter, write_acls=None, read_acls=None,
     id_attr=None, search_regex_getter=None, sort_by="full_oid",
     search_attribute=None, return_attributes=None, max_len=None):
     """ Register stuff for CLI output commands. """
+    if write_acls is None:
+        write_acls = []
+    if read_acls is None:
+        read_acls = []
     global object_register
     if name in object_register:
         msg = _("CLI already registered: {name}")
@@ -259,7 +263,7 @@ def get_auth_script_string(script_uuid):
     script_rel_path = result[script_uuid]['rel_path']
     try:
         script_enabled = result[script_uuid]['enabled'][0]
-    except:
+    except Exception:
         script_enabled = False
     if not script_enabled:
         script_status = " (D)"
@@ -307,7 +311,7 @@ def user_input(prompt, prefill=""):
     readline.set_startup_hook(lambda: readline.insert_text(prefill))
     try:
         return str(input(prompt))
-    except:
+    except Exception:
         raise
     finally:
         if not old_echo_status:
@@ -326,7 +330,7 @@ def read_pass(prompt='Password: '):
     import getpass
     try:
         return str(getpass.getpass(prompt))
-    except:
+    except Exception:
         raise
 
 def get_password(prompt='Password: ', min_len=8):
@@ -361,11 +365,13 @@ def get_password(prompt='Password: ', min_len=8):
     del(password2)
     return new_password
 
-def get_opts(command_syntax, command_line, command_args={},
+def get_opts(command_syntax, command_line, command_args=None,
     ignore_unknown_opts=False):
     """
     Parse given command line and get opts from it.
     """
+    if command_args is None:
+        command_args = {}
     cmd_opts = {}
     cmd_opt_opts = {}
     cmd_paras = {}
@@ -399,7 +405,7 @@ def get_opts(command_syntax, command_line, command_args={},
     def check_optional_opt(x):
         try:
             check_required_opt(x)
-        except:
+        except Exception:
             pass
         result = check_string(x, ":", ":")
         return result
@@ -429,7 +435,7 @@ def get_opts(command_syntax, command_line, command_args={},
         try:
             check_string(cmd_part, "-")
             found_option = True
-        except:
+        except Exception:
             found_option = False
 
         if found_option:
@@ -443,34 +449,34 @@ def get_opts(command_syntax, command_line, command_args={},
             try:
                 val = check_required_opt(val)
                 required_opt = True
-            except:
+            except Exception:
                 pass
             try:
                 val = check_optional_opt(val)
                 optional_opt = True
-            except:
+            except Exception:
                 pass
             try:
                 val = check_multi_opt(val)
                 multi_opt = True
-            except:
+            except Exception:
                 pass
             try:
                 val = check_list_opt(val)
                 val_type = list
-            except:
+            except Exception:
                 pass
             try:
                 val = check_dict_opt(val)
                 val_type = dict
-            except:
+            except Exception:
                 pass
 
             # Check for file.
             try:
                 val = check_string(val, "file:")
                 found_file_opt = True
-            except:
+            except Exception:
                 found_file_opt = False
 
             if required_opt:
@@ -506,21 +512,21 @@ def get_opts(command_syntax, command_line, command_args={},
         try:
             para = check_string(para, "<", ">")
             found_required_string = True
-        except:
+        except Exception:
             found_required_string = False
 
         # Check for optional_opt parameter/object.
         try:
             para = check_string(para, "[", "]")
             found_optional_string = True
-        except:
+        except Exception:
             found_optional_string = False
 
         # Check for file.
         try:
             para = check_string(para, "file:")
             file_para_found = True
-        except:
+        except Exception:
             file_para_found = False
 
         # Check if we got an object command line.
@@ -528,14 +534,14 @@ def get_opts(command_syntax, command_line, command_args={},
             para = check_string(para, "|object|")
             found_object_string = True
             object_cmd = True
-        except:
+        except Exception:
             # Check if we got an multi object command line.
             try:
                 para = check_string(para, "|objects|")
                 found_object_string = True
                 multiple_objects = True
                 object_cmd = True
-            except:
+            except Exception:
                 found_object_string = False
 
         if found_required_string:
@@ -615,7 +621,7 @@ def get_opts(command_syntax, command_line, command_args={},
                     if multi_opt:
                         try:
                             opt_val_list = command_args[opt_var]
-                        except:
+                        except Exception:
                             opt_val_list = []
                         opt_val_list.append(opt_val)
                         command_args[opt_var] = opt_val_list
@@ -664,7 +670,7 @@ def get_opts(command_syntax, command_line, command_args={},
                     if multi_opt:
                         try:
                             opt_val_list = command_args[opt_var]
-                        except:
+                        except Exception:
                             opt_val_list = []
                         opt_val_list.append(opt_val)
                         command_args[opt_var] = opt_val_list
@@ -710,7 +716,7 @@ def get_opts(command_syntax, command_line, command_args={},
                             val_name = val_name.replace("<", "").replace(">", "")
                         elif val_name.startswith("["):
                             val_name = val_name.replace("[", "").replace("]", "")
-                    except:
+                    except Exception:
                         pass
 
                 if not para_var and not key_name:
@@ -740,17 +746,17 @@ def get_opts(command_syntax, command_line, command_args={},
                     try:
                         para_var = check_list_opt(para_var)
                         var_type = list
-                    except:
+                    except Exception:
                         pass
                     try:
                         para_var = check_dict_opt(para_var)
                         var_type = dict
-                    except:
+                    except Exception:
                         pass
                     try:
                         para_var = check_string_opt(para_var)
                         var_type = str
-                    except:
+                    except Exception:
                         pass
                     if var_type == list:
                         para_val = para_val.split(",")
@@ -918,10 +924,12 @@ class ACLChecker(object):
         return False
 
 def show_objects(object_type, realm=None, site=None, search_regex=None,
-    sort_by=None, reverse=False, max_len=None, id_attr=None, output_fields=[],
+    sort_by=None, reverse=False, max_len=None, id_attr=None, output_fields=None,
     border=True, header=True, csv=False, csv_sep=";", show_all=False,
     verify_acls=None, show_templates=False, callback=default_callback, **kwargs):
     """ Generate table to show <object_type> on terminal. """
+    if output_fields is None:
+        output_fields = []
     from otpme.lib import backend
     search_attribute="name"
 
@@ -933,9 +941,9 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     if max_len is not None:
         try:
             max_len = int(max_len)
-        except:
+        except Exception:
             msg = _("<max_len> must be <int>.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
     write_acls = [
                 "all",
@@ -961,14 +969,14 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     if sort_by is None:
         try:
             sort_by = object_register[object_type]['sort_by']
-        except:
+        except Exception:
             sort_by = "full_oid"
 
     # Get object related max len.
     if max_len is None:
         try:
             max_len = object_register[object_type]['max_len']
-        except:
+        except Exception:
             pass
 
     # Make sure max rows is set.
@@ -987,22 +995,22 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     if id_attr is None:
         try:
             id_attr = object_register[object_type]['id_attr']
-        except:
+        except Exception:
             pass
     # Object related search attribute.
     try:
         search_attribute = object_register[object_type]['search_attribute']
-    except:
+    except Exception:
         pass
     # Object related return attribute.
     try:
         return_attributes = object_register[object_type]['return_attributes']
-    except:
+    except Exception:
         return_attributes = []
     # Default search regex getter.
     try:
         search_regex_getter = object_register[object_type]['search_regex_getter']
-    except:
+    except Exception:
         search_regex_getter = None
     # Get default search regex if none was given.
     if search_regex is None:
@@ -1012,7 +1020,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     try:
         if output_fields:
             output_fields = output_fields.split(",")
-    except:
+    except Exception:
         return callback.error("Wrong format of output fields.")
 
     # Use a list copy of output fields to prevent changing of given list.
@@ -1040,7 +1048,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
             else:
                 try:
                     x_output_fields.remove(field_name)
-                except:
+                except Exception:
                     msg = _("Unknown field: {field_name}")
                     msg = msg.format(field_name=field_name)
                     return callback.error(msg)
@@ -1252,7 +1260,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         for attr in additional_fields:
             try:
                 attr_value = result[x_uuid][attr]
-            except:
+            except Exception:
                 x_row.append("")
                 continue
             attr_value = [str(a) for a in attr_value]
@@ -1364,7 +1372,7 @@ class SessionEntry(object):
 
 
 def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False,
-    max_len=30, output_fields=[], header=True, border=True, csv=False, csv_sep=";",
+    max_len=30, output_fields=None, header=True, border=True, csv=False, csv_sep=";",
     show_all=False, callback=default_callback, **kwargs):
     """
     Show sessions, all or selected by regex.
@@ -1402,6 +1410,8 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
     @example:
         text_table = show_sessions(username="user1", sort_by="expire", max_len=50)
     """
+    if output_fields is None:
+        output_fields = []
     from datetime import datetime
     from otpme.lib import backend
     from otpme.lib.classes.session import calc_expire_time
@@ -1413,7 +1423,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
     try:
         if output_fields:
             output_fields = output_fields.split(",")
-    except:
+    except Exception:
         return callback.error("Wrong format of output fields.")
 
     # Default sorting should be "newest on top" but sorted(reverse=True) is the
@@ -1792,7 +1802,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             try:
                 last_used = session_list[session_uuid]['last_used']
                 last_login = datetime.fromtimestamp(float(last_used))
-            except:
+            except Exception:
                 pass
             # Get expire time.
             try:

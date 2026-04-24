@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -62,7 +62,7 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
             # Call given class method.
             try:
                 result = f(self, *f_args, **f_kwargs)
-            except:
+            except Exception:
                 raise
 
             if no_audit_log:
@@ -196,7 +196,7 @@ def process_spooled_logs():
         log_message = log_message.format(timestamp=timestamp, message=message)
         try:
             log_method = getattr(audit_logger, loglevel.lower())
-        except:
+        except Exception:
             log_msg = _("Invalid loglevel: {level}: {file}", log=True)[1]
             log_msg = log_msg.format(level=loglevel, file=spool_file)
             logger.warning(log_msg)
@@ -220,7 +220,7 @@ def process_spooled_logs():
     for handler in audit_logger.handlers:
         try:
             handler.close()
-        except:
+        except Exception:
             pass
 
 def get_audit_logger(no_spool=False, exception_on_emit=False):

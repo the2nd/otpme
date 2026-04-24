@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.protocols.otpme_client import OTPmeClient1
@@ -21,8 +21,10 @@ REGISTER_AFTER = []
 
 class OTPmeFsClient1(OTPmeClient1):
     """ Class that implements fs client. """
-    def build_request(self, command, command_args={}, binary_data=None, **kwargs):
+    def build_request(self, command, command_args=None, binary_data=None, **kwargs):
         """ Build request using orjson. """
+        if command_args is None:
+            command_args = {}
         if command.startswith("fsop_"):
             packed_request = command_args['method_data']
         else:
@@ -71,7 +73,7 @@ class OTPmeFsClient1(OTPmeClient1):
         except Exception as e:
             msg = _("Failed to decode orjson response: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Extract status code and data
         try:
@@ -80,6 +82,6 @@ class OTPmeFsClient1(OTPmeClient1):
         except KeyError as e:
             msg = _("Invalid response: Missing field {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         return status_code, data, binary_data

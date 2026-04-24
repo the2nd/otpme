@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -31,7 +31,7 @@ def register():
 
 class ECKey(AsymmetricKeyHandler):
     def __init__(self, **kwargs):
-        super(ECKey, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def gen_key(self, curve="SECP384R1", backend=None):
         """ Generate private key. """
@@ -40,10 +40,10 @@ class ECKey(AsymmetricKeyHandler):
         try:
             curve_method = getattr(ec, curve)
             curve = curve_method()
-        except:
+        except Exception:
             msg = _("Unknown curve: {curve}")
             msg = msg.format(curve=curve)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         private_key = ec.generate_private_key(curve=curve, backend=backend)
         return private_key
 
@@ -57,10 +57,10 @@ class ECKey(AsymmetricKeyHandler):
         try:
             algo_method = getattr(ec, algorithm)
             algorithm = algo_method()
-        except:
+        except Exception:
             msg = _("Unknown algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         shared_key = self.private_key.exchange(algorithm, peer_public_key)
         if encode is not None:
             shared_key = _encode(shared_key, "hex")
@@ -72,10 +72,10 @@ class ECKey(AsymmetricKeyHandler):
             raise OTPmeException("Need at least 'message' or 'digest'.")
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if message:
             message = message.encode()
         if digest:
@@ -93,10 +93,10 @@ class ECKey(AsymmetricKeyHandler):
             raise OTPmeException("Need at least 'message' or 'digest'.")
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if message:
             message = message.encode()
         if digest:

@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -30,7 +30,7 @@ class OTPmeAgentP1(object):
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeAgentP1, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def build_request(self, daemon, command, realm, site, use_dns=True,
         command_args=None, encode_request=True, encrypt_request=True, **kwargs):

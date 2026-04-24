@@ -2,14 +2,14 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import re
-import random as _random
+import secrets
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -220,7 +220,7 @@ class IdrangePolicy(Policy):
     realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(IdrangePolicy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                                     realm=realm,
                                                     site=site,
                                                     name=name,
@@ -383,11 +383,11 @@ class IdrangePolicy(Policy):
         def wrapper(self, *args, **kwargs):
             try:
                 attribute = kwargs['attribute']
-            except:
+            except Exception:
                 attribute = args[1]
             try:
                 callback = kwargs['callback']
-            except:
+            except Exception:
                 callback = None
             _lock = locking.acquire_lock(LOCK_TYPE, attribute, callback=callback)
             try:
@@ -415,7 +415,7 @@ class IdrangePolicy(Policy):
                 range_type = x.split(":")[0]
                 range_start = int(r.split("-")[0])
                 range_end = int(r.split("-")[1])
-            except:
+            except Exception:
                 log_msg = _("Invalid ID range: {self_name}: {x}", log=True)[1]
                 log_msg = log_msg.format(self_name=self.name, x=x)
                 logger.warning(log_msg)
@@ -446,7 +446,7 @@ class IdrangePolicy(Policy):
                 while True:
                     if len(x_range) == 0:
                         break
-                    free_id = _random.choice(x_range)
+                    free_id = secrets.choice(x_range)
                     try:
                         x_range.remove(free_id)
                     except ValueError:
@@ -504,7 +504,7 @@ class IdrangePolicy(Policy):
                     range_type = x.split(":")[0]
                     range_start = int(r.split("-")[0])
                     range_end = int(r.split("-")[1])
-                except:
+                except Exception:
                     log_msg = _("Invalid ID range: {self_name}: {x}", log=True)[1]
                     log_msg = log_msg.format(self_name=self.name, x=x)
                     logger.warning(log_msg)
@@ -535,7 +535,7 @@ class IdrangePolicy(Policy):
                                 r = i.split(":")[1]
                                 x_range_start = int(r.split("-")[0])
                                 x_range_end = int(r.split("-")[1])
-                            except:
+                            except Exception:
                                 log_msg = _("Invalid ID range: {self_name}: {i}", log=True)[1]
                                 log_msg = log_msg.format(self_name=self.name, i=i)
                                 logger.warning(log_msg)
@@ -621,7 +621,7 @@ class IdrangePolicy(Policy):
                 except ValueError:
                     pass
             if len(random_range) > 0:
-                free_number = _random.choice(random_range)
+                free_number = secrets.choice(random_range)
         else:
             # If we got a start ID use it as start point within the given range.
             if start_id is None:
@@ -716,7 +716,7 @@ class IdrangePolicy(Policy):
                 range_split = idrange.split(":")[1]
                 range_start = int(range_split.split("-")[0])
                 range_end = int(range_split.split("-")[1])
-            except:
+            except Exception:
                 msg = _("Unable to read ID range: {idrange}")
                 msg = msg.format(idrange=idrange)
                 return callback.error(msg)
@@ -753,7 +753,7 @@ class IdrangePolicy(Policy):
         try:
             attribute = id_range.split(":")[0]
             idrange = ":".join(id_range.split(":")[1:])
-        except:
+        except Exception:
             msg = _("Invalid value: {id_range}")
             msg = msg.format(id_range=id_range)
             return callback.error(msg)

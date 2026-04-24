@@ -18,7 +18,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -225,15 +225,15 @@ def run_pre_post_add_policies():
             # Call given class method.
             try:
                 callback = f_kwargs['callback']
-            except:
+            except Exception:
                 callback = default_callback
             try:
                 run_policies = f_kwargs['run_policies']
-            except:
+            except Exception:
                 run_policies = True
             try:
                 verify_acls = f_kwargs['verify_acls']
-            except:
+            except Exception:
                 verify_acls = True
             if run_policies:
                 try:
@@ -467,7 +467,7 @@ class OTPmeLockObject(object):
     def _object_lock(self):
         try:
             _lock = locking.get_lock(OBJECT_LOCK_TYPE, self.oid.read_oid)
-        except:
+        except Exception:
             return
         return _lock
 
@@ -512,7 +512,7 @@ class OTPmeLockObject(object):
                 config.raise_exception()
                 msg = _("Failed to acquire lock: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             if object_existed:
                 if not backend.object_exists(self.oid):
                     msg = _("Object deleted while waiting for lock: {obj}")
@@ -656,7 +656,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Object version.
         self.version = 1
         self.add_properties()
-        super(OTPmeBaseObject, self).__init__()
+        super().__init__()
 
     def __setstate__(self, _dict):
         self.__dict__ = _dict
@@ -1248,7 +1248,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         #self.set_unit()
         try:
             set_unit_method = getattr(self, "set_unit")
-        except:
+        except Exception:
             set_unit_method = None
         if set_unit_method:
             set_unit_method()
@@ -1256,7 +1256,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Set object path.
         try:
             set_path_method = getattr(self, "set_path")
-        except:
+        except Exception:
             set_path_method = None
         if set_path_method:
             set_path_method()
@@ -1273,16 +1273,16 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Get required flag.
         try:
             required = conf['required']
-        except:
+        except Exception:
             required = False
 
         # Get variable name.
         try:
             var_name = conf['var_name']
-        except:
+        except Exception:
             msg = _("Got no variable name for attribute: {attr}")
             msg = msg.format(attr=attribute)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Check if class attribute is a method.
         val = None
@@ -1337,18 +1337,18 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Get value type.
         try:
             type_wanted = conf['type']
-        except:
+        except Exception:
             type_wanted = str
         # Check if we should force value type.
         try:
             force_type = conf['force_type']
-        except:
+        except Exception:
             force_type = False
 
         # Get compression tag to add.
         try:
             compression = conf['compression']
-        except:
+        except Exception:
             compression = None
         if compression and compression not in config.supported_compression_types:
             msg = _("Got unknown compression type '{compression}' for attribute: {attribute}")
@@ -1357,7 +1357,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Get encoding tag to add.
         try:
             encoding = conf['encoding']
-        except:
+        except Exception:
             encoding = None
         if encoding and encoding not in config.supported_encoding_types:
             msg = _("Got unknown encoding type '{encoding}' for attribute: {attribute}")
@@ -1366,7 +1366,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Get encryption tag to add.
         try:
             encryption = conf['encryption']
-        except:
+        except Exception:
             encryption = None
         if encryption and encryption not in config.supported_encryption_types:
             msg = _("Got unknown encryption type '{encryption} for attribute: {attribute}")
@@ -1408,7 +1408,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                                     type_ok = True
                                     type_wanted = x_wanted
                                     break
-                                except:
+                                except Exception:
                                     pass
 
                 elif x_wanted == "uuid":
@@ -1495,7 +1495,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                                 type_ok = True
                                 type_wanted = x_wanted
                                 break
-                            except:
+                            except Exception:
                                 pass
                     else:
                         type_ok = False
@@ -1714,7 +1714,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         if self.offline:
             try:
                 write_method = config.offline_methods['write_config'][self.oid.read_oid]
-            except:
+            except Exception:
                 pass
         elif not backend.is_available():
             raise BackendUnavailable("Backend not available.")
@@ -1923,7 +1923,7 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         # Call parent class init.
-        super(OTPmeObject, self).__init__(object_config=object_config, **kwargs)
+        super().__init__(object_config=object_config, **kwargs)
 
         self.unit = None
         self.unit_uuid = None
@@ -2109,7 +2109,7 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 #self.unit = config.default_units[x_type]
                 self.unit = config.get_default_unit(x_type)
-            except:
+            except Exception:
                 pass
 
         # Set unit.
@@ -2194,7 +2194,7 @@ class OTPmeObject(OTPmeBaseObject):
                     config.raise_exception()
                     msg = _("Failed to acquire lock of new OID: {new_oid}: {error}")
                     msg = msg.format(new_oid=new_oid.read_oid, error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 # Switch lock callers.
                 old_lock.lock_callers = list(self._object_lock.lock_callers)
                 # Set lock callers of old lock.
@@ -2222,7 +2222,7 @@ class OTPmeObject(OTPmeBaseObject):
     def _load(self, no_update: bool=False):
         """ Load object config from backend. """
         # Call base class write method.
-        result = super(OTPmeObject, self)._load()
+        result = super()._load()
         # Load object extensions.
         self.load_extensions()
         return result
@@ -2298,7 +2298,7 @@ class OTPmeObject(OTPmeBaseObject):
         except Exception as e:
             msg = _("Invalid date string: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return auto_disable_time
 
     #@property
@@ -2320,7 +2320,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Try to get getter.
         try:
             para_getter = parameter_data['getter']
-        except:
+        except Exception:
             para_getter = None
 
         # If we have an authenticated user we have to check users token first
@@ -2606,7 +2606,7 @@ class OTPmeObject(OTPmeBaseObject):
         if self.offline:
             return
         # Call parent class method.
-        super(OTPmeObject, self).acquire_lock(lock_caller,
+        super().acquire_lock(lock_caller,
                                 skip_same_caller=skip_same_caller,
                                 callback=callback, **kwargs)
         if not recursive:
@@ -2645,7 +2645,7 @@ class OTPmeObject(OTPmeBaseObject):
         if recursive:
             self.release_child_locks(lock_caller=lock_caller,
                                     callback=callback)
-        super(OTPmeObject, self).release_lock(lock_caller=lock_caller,
+        super().release_lock(lock_caller=lock_caller,
                                                 callback=callback, **kwargs)
 
     def release_child_locks(
@@ -2801,7 +2801,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if self.full_write_lock:
                     try:
                         self.release_lock(lock_caller="cached", callback=callback)
-                    except:
+                    except Exception:
                         pass
             return callback.ok()
 
@@ -2822,7 +2822,7 @@ class OTPmeObject(OTPmeBaseObject):
                                     callback=callback)
 
         # Call base class write method.
-        super(OTPmeObject, self)._write(update_last_modified=False,
+        super()._write(update_last_modified=False,
                                         update_last_modified_by=False,
                                         no_transaction=no_transaction,
                                         callback=callback,
@@ -2969,8 +2969,8 @@ class OTPmeObject(OTPmeBaseObject):
     def add_extension(
         self,
         extension: str,
-        default_attributes: dict={},
-        ignore_missing_attributes: List=[],
+        default_attributes: dict=None,
+        ignore_missing_attributes: List=None,
         run_policies: bool=True,
         verbose_level: int=0,
         _caller: str="API",
@@ -2978,6 +2978,10 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Add OTPme extension to object. """
+        if default_attributes is None:
+            default_attributes = {}
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
         if extension in self.extensions:
             msg = _("Extension already enabled for this object.")
             return callback.error(msg)
@@ -3095,12 +3099,12 @@ class OTPmeObject(OTPmeBaseObject):
         # Get callback.
         try:
             callback = kwargs['callback']
-        except:
+        except Exception:
             callback = default_callback
         # Get verbose level.
         try:
             verbose_level = kwargs['verbose_level']
-        except:
+        except Exception:
             verbose_level = 0
 
         if extensions is None:
@@ -3113,14 +3117,14 @@ class OTPmeObject(OTPmeBaseObject):
         for x in _extensions:
             try:
                 extension = self._extensions[x]
-            except:
+            except Exception:
                 msg = _("Cannot update unknown extension: {oid}: {x}")
                 msg = msg.format(oid=self.oid, x=x)
                 return callback.error(msg)
             # Check if we have child objects to update.
             try:
                 child_types = extension.update_childs[self.type][hook]
-            except:
+            except Exception:
                 continue
             # Build list with objects we also need to update.
             update_childs = []
@@ -3172,7 +3176,7 @@ class OTPmeObject(OTPmeBaseObject):
             for x in _extensions:
                 try:
                     extension = self._extensions[x]
-                except:
+                except Exception:
                     msg = _("Cannot update unknown extension: {oid}: {x}")
                     msg = msg.format(oid=self.oid, x=x)
                     return callback.error(msg)
@@ -3267,7 +3271,7 @@ class OTPmeObject(OTPmeBaseObject):
             return self._cache(callback=callback)
         try:
             self.extension_attributes[extension][attribute].pop(value)
-        except:
+        except Exception:
             return
         return self._cache(callback=callback)
 
@@ -3283,7 +3287,7 @@ class OTPmeObject(OTPmeBaseObject):
         attr_values = []
         try:
             attr_data = dict(self.extension_attributes[extension][attribute])
-        except:
+        except Exception:
             attr_data = {}
         for x in attr_data:
             if auto_value is not None:
@@ -3303,7 +3307,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Get extension attributes. """
         try:
             x_attrs = self.extension_attributes[extension]
-        except:
+        except Exception:
             x_attrs = {}
         if auto_value is None:
             return list(x_attrs)
@@ -3614,7 +3618,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         token_path: str,
         token_options: Union[dict,None]=None,
-        login_interfaces: List=[],
+        login_interfaces: List=None,
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
@@ -3627,6 +3631,8 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Adds a token to objects member tokens list. """
+        if login_interfaces is None:
+            login_interfaces = []
         if self.tokens is None:
             msg = _("Object does not support tokens.")
             raise OTPmeException(msg)
@@ -3695,13 +3701,13 @@ class OTPmeObject(OTPmeBaseObject):
         # Get current token options.
         try:
             current_opts = self.token_options[token.uuid]
-        except:
+        except Exception:
             current_opts = None
 
         # Get current token login interfaces.
         try:
             current_login_interfaces = self.token_login_interfaces[token.uuid]
-        except:
+        except Exception:
             current_login_interfaces = None
 
         if token.uuid in self.tokens:
@@ -3837,7 +3843,7 @@ class OTPmeObject(OTPmeBaseObject):
                                                 _caller=_caller)
             try:
                 user_signs = token_signatures[auth_user_uuid]
-            except:
+            except Exception:
                 user_signs = {}
             for sign_id in user_signs:
                 # Get signature object.
@@ -3847,7 +3853,7 @@ class OTPmeObject(OTPmeBaseObject):
                     valid_sign_exists = token.verify_sign(signature=signature,
                                                             sign_id=sign_id,
                                                             callback=callback)
-                except:
+                except Exception:
                     pass
                 callback.enable()
                 if valid_sign_exists:
@@ -4120,7 +4126,7 @@ class OTPmeObject(OTPmeBaseObject):
         for uuid in search_result:
             try:
                 x_result = search_result[uuid][return_type]
-            except:
+            except Exception:
                 continue
             if return_type == "name":
                 x_site = search_result[uuid]['site']
@@ -4264,7 +4270,7 @@ class OTPmeObject(OTPmeBaseObject):
         for uuid in search_result:
             try:
                 x_result = search_result[uuid][return_type]
-            except:
+            except Exception:
                 continue
             if return_type == "name":
                 x_site = search_result[uuid]['site']
@@ -4585,7 +4591,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         try:
             current_options = self.policy_options[policy.uuid]
-        except:
+        except Exception:
             current_options = None
 
         if policy_options == current_options:
@@ -4779,11 +4785,11 @@ class OTPmeObject(OTPmeBaseObject):
                         check_type = False
                 try:
                     object_hooks = policy.hooks[self.type]
-                except:
+                except Exception:
                     object_hooks = []
                 try:
                     child_hooks = policy.hooks[child_object.type]
-                except:
+                except Exception:
                     child_hooks = []
                 if hook and check_all and hook in policy.hooks["all"]:
                     add_policy = True
@@ -4827,7 +4833,7 @@ class OTPmeObject(OTPmeBaseObject):
         token: OTPmeBaseObject=None,
         child_object: OTPmeBaseObject=None,
         policy_type: str=None,
-        ignore_policy_types: List=[],
+        ignore_policy_types: List=None,
         force: bool=False,
         verify_acls: bool=True,
         callback: JobCallback=default_callback,
@@ -4836,6 +4842,8 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Run policies for the given hook. """
         # We need to get arguments via local() before assigning any other vars.
+        if ignore_policy_types is None:
+            ignore_policy_types = []
         args = locals()
         success_policy_types = []
         from otpme.lib.policy import processed_objects
@@ -5096,13 +5104,13 @@ class OTPmeObject(OTPmeBaseObject):
                     if include_options:
                         try:
                             token_options = self.token_options[token_uuid]
-                        except:
+                        except Exception:
                             token_options = {}
                         result[token_uuid]['token_options'] = token_options
                     if include_login_interfaces:
                         try:
                             login_interfaces = self.token_login_interfaces[token_uuid]
-                        except:
+                        except Exception:
                             login_interfaces = {}
                         result[token_uuid]['login_interfaces'] = login_interfaces
             else:
@@ -5179,7 +5187,7 @@ class OTPmeObject(OTPmeBaseObject):
             for uuid in search_result:
                 try:
                     x_result = search_result[uuid][return_type]
-                except:
+                except Exception:
                     continue
                 if return_type == "name":
                     x_site = search_result[uuid]['site']
@@ -5199,8 +5207,10 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_token(
         self,
         token_uuid: str,
-        checked_roles: list=[],
+        checked_roles: list=None,
         ):
+        if checked_roles is None:
+            checked_roles = []
         if token_uuid in self.tokens:
             return True
         for x_uuid in self.roles:
@@ -5220,8 +5230,10 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_host(
         self,
         host_uuid: str,
-        checked_roles: list=[],
+        checked_roles: list=None,
         ):
+        if checked_roles is None:
+            checked_roles = []
         if host_uuid in self.hosts:
             return True
         for x_uuid in self.roles:
@@ -5241,8 +5253,10 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_device(
         self,
         device_uuid: str,
-        checked_roles: list=[],
+        checked_roles: list=None,
         ):
+        if checked_roles is None:
+            checked_roles = []
         if device_uuid in self.devices:
             return True
         for x_uuid in self.roles:
@@ -5262,8 +5276,10 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_role(
         self,
         role_uuid: str,
-        checked_roles: list=[],
+        checked_roles: list=None,
         ):
+        if checked_roles is None:
+            checked_roles = []
         if role_uuid in self.roles:
             return True
         for x_uuid in self.roles:
@@ -5347,7 +5363,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg, exception=PermissionDenied)
         try:
             val_list = list(self.ldif[attribute])
-        except:
+        except Exception:
             val_list = []
         return val_list
 
@@ -5361,13 +5377,15 @@ class OTPmeObject(OTPmeBaseObject):
         run_policies: bool=True,
         ignore_ro: bool=False,
         position: int=-1,
-        ignore_missing_attributes: List=[],
+        ignore_missing_attributes: List=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Add attribute to object. """
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5756,11 +5774,11 @@ class OTPmeObject(OTPmeBaseObject):
             v = x[1]
             try:
                 attr_values = self.ldif[a]
-            except:
+            except Exception:
                 attr_values = []
             try:
                 attr_values.remove(v)
-            except:
+            except Exception:
                 pass
             if len(attr_values) == 0:
                 try:
@@ -6146,12 +6164,14 @@ class OTPmeObject(OTPmeBaseObject):
     @supported_acls_cache.cache_method()
     def get_supported_acls(
         self,
-        acl_types: List=['acls'],
+        acl_types: List=None,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Get all supported ACLs of object """
+        if acl_types is None:
+            acl_types = ['acls']
         from otpme.lib.extensions import utils
         acls = []
 
@@ -6550,7 +6570,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Add ACL to object. """
         try:
             recursive_acls = kwargs['recursive_acls']
-        except:
+        except Exception:
             recursive_acls = False
         begin_transaction = False
         if recursive_acls:
@@ -6575,7 +6595,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Delete ACL from object. """
         try:
             recursive_acls = kwargs['recursive_acls']
-        except:
+        except Exception:
             recursive_acls = False
         begin_transaction = False
         if recursive_acls:
@@ -6605,10 +6625,10 @@ class OTPmeObject(OTPmeBaseObject):
         owner_type: Union[str,None]=None,
         owner_name: Union[str,None]=None,
         owner_uuid: Union[str,None]=None,
-        object_types: Union[List,None]=[],
+        object_types: Union[List,None]=None,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
-        _acl_objects: List=[],
+        _acl_objects: List=None,
         raise_exception: bool=False,
         force: bool=False,
         verify_acls: bool=True,
@@ -6619,6 +6639,10 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Handle ACL add/del. """
+        if object_types is None:
+            object_types = []
+        if _acl_objects is None:
+            _acl_objects = []
         valid_acl = True
         exception = None
 
@@ -6994,7 +7018,7 @@ class OTPmeObject(OTPmeBaseObject):
                 secret = x
             if x is False:
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         if not secret and not auto_secret:
@@ -7029,7 +7053,7 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             if not self._change_secret(secret=secret, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         # Set new secret
@@ -7062,7 +7086,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
         try:
             self.secret
-        except:
+        except Exception:
             return callback.error()
         return callback.ok(self.secret)
 
@@ -7510,7 +7534,7 @@ class OTPmeObject(OTPmeBaseObject):
                                         _caller=_caller)
         try:
             user_signs = script_signs[auth_user_uuid]
-        except:
+        except Exception:
             msg = "No signatures found."
             return callback.error(msg, exception=NoSignature)
 
@@ -7736,7 +7760,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Add new signature.
         try:
             user_signs = self.signatures[config.auth_user.uuid]
-        except:
+        except Exception:
             user_signs = {}
 
         signer_uuid = config.auth_user.uuid
@@ -7801,7 +7825,7 @@ class OTPmeObject(OTPmeBaseObject):
         sign_tags.sort()
 
         if not sign_id:
-            sign_id = stuff.gen_md5(",".join(sign_tags))
+            sign_id = stuff.gen_sha256(",".join(sign_tags))
 
         if username:
             result = backend.search(attribute="name",
@@ -7828,7 +7852,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         try:
             user_signs = self.signatures[user.uuid]
-        except:
+        except Exception:
             user_signs = {}
 
         if not user_signs:
@@ -7839,7 +7863,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Load signature.
         try:
             signature = self.load_sign(user.uuid, sign_id)
-        except:
+        except Exception:
             if sign_tags:
                 msg = _("No signature with given tags found: {tags}")
                 msg = msg.format(tags=','.join(sign_tags))
@@ -8052,7 +8076,7 @@ class OTPmeObject(OTPmeBaseObject):
         if (username or user_uuid) and tags:
             # Create signature ID.
             tags.sort()
-            sign_id = stuff.gen_md5(",".join(tags))
+            sign_id = stuff.gen_sha256(",".join(tags))
         else:
             sign_id = None
 
@@ -8064,7 +8088,7 @@ class OTPmeObject(OTPmeBaseObject):
         for user in user_list:
             try:
                 user_signs = self.signatures[user.uuid].copy()
-            except:
+            except Exception:
                 continue
 
             if sign_id:
@@ -8421,13 +8445,13 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         creator: Union[str,None]=None,
         resolver: Union[str,None]=None,
-        extensions: List=[],
+        extensions: List=None,
         enabled: bool=True,
-        default_attributes: dict={},
+        default_attributes: dict=None,
         inherit_acls: bool=True,
         template: Union[OTPmeBaseObject,None]=None,
         template_object: bool=False,
-        ignore_missing_attributes: List=[],
+        ignore_missing_attributes: List=None,
         verbose_level: int=0,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -8437,6 +8461,12 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         """ Should be called from child class to add default extensions etc. """
         # The resolver this object was added by.
+        if extensions is None:
+            extensions = []
+        if default_attributes is None:
+            default_attributes = {}
+        if ignore_missing_attributes is None:
+            ignore_missing_attributes = []
         if resolver is not None:
             self.set_resolver(resolver)
 
@@ -8485,14 +8515,14 @@ class OTPmeObject(OTPmeBaseObject):
         # For internal users (e.g. TOKENSTORE) we are done here.
         if internal_user:
             # Call base class add method.
-            return super(OTPmeObject, self).add(verbose_level=verbose_level,
+            return super().add(verbose_level=verbose_level,
                                                     verify_acls=verify_acls,
                                                     callback=callback,
                                                     **kwargs)
         # Extensions to add.
         try:
             add_extensions = config.default_extensions[self.type]
-        except:
+        except Exception:
             add_extensions = []
 
         # Add extensions from template.
@@ -8518,7 +8548,7 @@ class OTPmeObject(OTPmeBaseObject):
                 callback.send(msg)
             try:
                 e_default_attributes = default_attributes[e]
-            except:
+            except Exception:
                 e_default_attributes = {}
             try:
                 self.add_extension(extension=e,
@@ -8585,7 +8615,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(inherit_error)
 
         # Call base class add method.
-        add_result = super(OTPmeObject, self).add(verbose_level=verbose_level,
+        add_result = super().add(verbose_level=verbose_level,
                                                     callback=callback,
                                                     **kwargs)
         if run_policies:
@@ -8813,7 +8843,7 @@ class OTPmeObject(OTPmeBaseObject):
                     return callback.error(msg)
 
         # Call base class write method.
-        result = super(OTPmeObject, self).delete(verbose_level=verbose_level,
+        result = super().delete(verbose_level=verbose_level,
                                                 callback=callback,
                                                 force=force,
                                                 **kwargs)
@@ -9046,7 +9076,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return self._cache(callback=callback)
         try:
             object_types = parameter_data['object_types']
-        except:
+        except Exception:
             object_types = []
         if self.type not in object_types:
             msg = _("Config parameter not valid for object type: {object_type}")
@@ -9067,7 +9097,7 @@ class OTPmeObject(OTPmeBaseObject):
                 value = parameter_data['default']
                 if para_getter:
                     value = para_getter(value)
-            except:
+            except Exception:
                 pass
         if value is None:
             # Try to get the default value genner.
@@ -9086,7 +9116,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Try to get getter.
         try:
             para_setter = parameter_data['setter']
-        except:
+        except Exception:
             para_setter = None
 
         # Resolve value.
@@ -9100,7 +9130,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         try:
             valid_values = parameter_data['valid_values']
-        except:
+        except Exception:
             valid_values = []
 
         if not isinstance(value, value_type):
@@ -9161,7 +9191,7 @@ class OTPmeObject(OTPmeBaseObject):
         if parameter is not None:
             try:
                 para_getter = para_data['getter']
-            except:
+            except Exception:
                 para_getter = None
             try:
                 value = self.config_params[parameter]
@@ -9183,7 +9213,7 @@ class OTPmeObject(OTPmeBaseObject):
                 continue
             try:
                 para_getter = para_data['getter']
-            except:
+            except Exception:
                 para_getter = None
             value = self.config_params[para]
             if para_getter:
@@ -9198,11 +9228,13 @@ class OTPmeObject(OTPmeBaseObject):
 
     def show_config(
         self,
-        config_lines: List=[],
+        config_lines: List=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Show object config. """
+        if config_lines is None:
+            config_lines = []
         if not self.verify_acl("view:object"):
             msg = ("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
@@ -9434,7 +9466,7 @@ class OTPmeClientObject(OTPmeObject):
     def __init__(self, *args, **kwargs):
         self.logins_limited = False
         # Call parent class init.
-        super(OTPmeClientObject, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def _get_object_config(self, object_config: Union[dict,None]=None):
         """ Get object config dict """
@@ -9464,7 +9496,7 @@ class OTPmeClientObject(OTPmeObject):
     def add(self, *args, **kwargs):
         """ Add object. """
         self.update_index('logins_limited', self.logins_limited)
-        return super(OTPmeClientObject, self).add(*args, **kwargs)
+        return super().add(*args, **kwargs)
 
     @check_acls(['limit_logins'])
     @object_lock()
@@ -9558,7 +9590,7 @@ class OTPmeClientObject(OTPmeObject):
         # Try to get valid login interfaces of this object.
         try:
             x_login_interface_opts = self.token_login_interfaces[token.uuid]
-        except:
+        except Exception:
             x_login_interface_opts = []
 
         def split_opts(opts):
@@ -9609,7 +9641,7 @@ class OTPmeClientObject(OTPmeObject):
             # Get valid login interfaces from accessgroup.
             try:
                 x_login_interface_opts = auth_ag.token_login_interfaces[token.uuid]
-            except:
+            except Exception:
                 x_login_interface_opts = []
 
             if x_login_interface_opts:
@@ -9696,7 +9728,7 @@ class OTPmeDataObject(OTPmeBaseObject):
         **kwargs,
         ):
         # Call parent class init.
-        super(OTPmeDataObject, self).__init__(object_config=object_config, **kwargs)
+        super().__init__(object_config=object_config, **kwargs)
 
         self._base_sync_fields = {
                     'node'  : {
@@ -9814,7 +9846,7 @@ class OTPmeDataObject(OTPmeBaseObject):
         self,
         creator: Union[str,None]=None,
         resolver: Union[str,None]=None,
-        extensions: List=[],
+        extensions: List=None,
         enabled: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -9822,6 +9854,8 @@ class OTPmeDataObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Add the object. """
+        if extensions is None:
+            extensions = []
         if backend.object_exists(self.oid):
             msg = _("{object_type} already exists.")
             msg = msg.format(object_type=f"{self.type[0].upper()}{self.type[1:]}")
@@ -9829,7 +9863,7 @@ class OTPmeDataObject(OTPmeBaseObject):
         # Generate object UUID.
         self.uuid = stuff.gen_uuid()
         # Call base class add method.
-        return super(OTPmeDataObject, self).add(verbose_level=verbose_level,
+        return super().add(verbose_level=verbose_level,
                                                 callback=callback,
                                                 **kwargs)
 

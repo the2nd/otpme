@@ -58,7 +58,7 @@ class CachingQuery(Query):
         in the cache are not the same ones in the current Session.
 
         """
-        super_ = super(CachingQuery, self)
+        super_ = super()
 
         if hasattr(self, "_cache_region"):
             return self.get_value(createfunc=lambda: list(super_.__iter__()))
@@ -77,7 +77,7 @@ class CachingQuery(Query):
 
         .. versionadded:: 1.2.7
         """
-        super_ = super(CachingQuery, self)
+        super_ = super()
 
         if context.query is not self and hasattr(self, "_cache_region"):
             # special logic called when the Query._execute_and_instances()

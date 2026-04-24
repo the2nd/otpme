@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -65,9 +65,11 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
-    max_tokens=5, max_sync_users=5, max_policies=5, output_fields=[],
+    max_tokens=5, max_sync_users=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for groups. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for group_uuid in group_order:
         row = []
@@ -75,21 +77,21 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
         unit_uuid = group_data[group_uuid]['unit'][0]
         try:
             enabled = group_data[group_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             description = group_data[group_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = group_data[group_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             group_acls = acls[group_uuid]
-        except:
+        except Exception:
             group_acls = {}
 
         # Get ACL checker.

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -69,7 +69,7 @@ class JoinDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 # Check if command can be handled by parent class.
                 try:

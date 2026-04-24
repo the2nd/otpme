@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -23,12 +23,12 @@ def send_gratuitous_arp(iface, ip):
         # Suppress warnings on module load.
         sys.stderr = None
         import scapy.all as arp_module
-    except:
+    except Exception:
         try:
             import arprequest as arp_module
-        except:
+        except Exception:
             msg = "Missing ARP module. Please install <scapy> or <arprequest>."
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
     finally:
         sys.stderr = sys.__stderr__
     if isinstance(iface, bytes):

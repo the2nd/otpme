@@ -7,10 +7,10 @@ from collections import OrderedDict
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -18,7 +18,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -182,16 +182,16 @@ def drop():
         except Exception as e:
             msg = _("Error removing directory '{x_dir}: {e}")
             msg = msg.format(x_dir=x_dir, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
 def get_data_dir(name):
     """ Get path to data directory. """
     try:
         x_dir = data_dirs[name]['path']
-    except:
+    except Exception:
         msg = _("Data directory not registered: {name}")
         msg = msg.format(name=name)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     return x_dir
 
 def register_data_dir(name, path, drop, perms):
@@ -201,7 +201,7 @@ def register_data_dir(name, path, drop, perms):
         _path = data_dirs[name]['path']
         _drop = data_dirs[name]['drop']
         _perms = data_dirs[name]['perms']
-    except:
+    except Exception:
         _path = None
     if _path is not None:
         msg = _("Directory already registered: {name}: path={_path}, perms={_perms}, drop={_drop}")
@@ -224,7 +224,7 @@ def get_object_dir(object_id, object_uuid, name=None):
     if name is None:
         try:
             get_dirs = list(object_dirs[object_type])
-        except:
+        except Exception:
             get_dirs = []
     else:
         get_dirs = [name]
@@ -233,16 +233,16 @@ def get_object_dir(object_id, object_uuid, name=None):
         try:
             x_getter = object_dirs[object_type][x]['getter']
             x_drop = object_dirs[object_type][x]['drop']
-        except:
+        except Exception:
             msg = _("Object ({object_type}) directory not registered: {x}")
             msg = msg.format(object_type=object_type, x=x)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         try:
             x_path = x_getter(object_id, object_uuid)
         except Exception as e:
             msg = _("Error getting {object_type} directory path: {x}: {e}")
             msg = msg.format(object_type=object_type, x=x, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if x_path is None:
             continue
         x_dirs[x] = {}
@@ -258,7 +258,7 @@ def register_object_dir(object_type, name, getter, drop):
         msg = _("Directory already registered: {name}")
         msg = msg.format(name=name)
         raise OTPmeException(msg)
-    except:
+    except Exception:
         pass
     if object_type not in object_dirs:
         object_dirs[object_type] = {}
@@ -270,10 +270,10 @@ def get_object_path_settings(object_type):
     """ Get object path settings. """
     try:
         return object_settings[object_type]
-    except:
+    except Exception:
         msg = _("Object type not registered: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
 def register_object_type(object_type, path_getter, oid_getter,
     tree_object=True, index_rebuild_func=None, dir_name_extension=None):
@@ -407,7 +407,7 @@ def get_moved_child_objects(old_config_dir, new_config_dir):
     for object_type in config.object_add_order:
         try:
             x_objects = child_objects[object_type]
-        except:
+        except Exception:
             continue
         for x_uuid in x_objects:
             result[x_uuid] = x_objects[x_uuid]
@@ -481,7 +481,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
     # Get objects UUID.
     try:
         uuid = object_config['UUID']
-    except:
+    except Exception:
         uuid = None
 
     if not uuid:
@@ -594,7 +594,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
             # Get object template status.
             try:
                 template = object_config['TEMPLATE']
-            except:
+            except Exception:
                 template = False
             if not template:
                 write_transaction.update_nsscache(object_id, "update")
@@ -690,7 +690,7 @@ def object_exists(object_id, realm=False, site=False, no_lock=False):
         site = object_id.site
     try:
         config_file = get_config_paths(object_id=object_id)['config_file']
-    except:
+    except Exception:
         return False
     if not os.path.exists(config_file):
         return False
@@ -838,7 +838,7 @@ def rename(object_id, new_object_id, no_lock=False,
         # Get object template status.
         try:
             template = object_config['TEMPLATE']
-        except:
+        except Exception:
             template = False
         if not template:
             rename_transaction.update_nsscache(object_id, "remove")
@@ -940,15 +940,15 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
 
         try:
             remove_files = config_paths['remove_on_delete']
-        except:
+        except Exception:
             remove_files = []
         try:
             remove_dirs = config_paths['rmdir_on_delete']
-        except:
+        except Exception:
             remove_dirs = []
         try:
             rmtree_dirs = config_paths['rmtree_on_delete']
-        except:
+        except Exception:
             rmtree_dirs = []
 
         for i in remove_files:
@@ -970,7 +970,7 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
             # Get object template status.
             try:
                 template = object_config['TEMPLATE']
-            except:
+            except Exception:
                 template = False
             if not template:
                 del_transaction.update_nsscache(object_id, "remove")
@@ -1062,7 +1062,7 @@ def get_config_paths(object_id, object_uuid=None, use_index=True, no_lock=False)
 @handle_transaction
 @index_search_cache.cache_function()
 def index_search(realm=None, site=None, attribute=None, value=None, values=None,
-    or_values=None, order_by=None, reverse_order=False, attributes={},
+    or_values=None, order_by=None, reverse_order=False, attributes=None,
     less_than=None, greater_than=None, join_object_type=None,
     join_search_attr=None, join_search_val=None, join_attribute=None,
     return_type="uuid", return_attributes=None, case_sensitive=True,
@@ -1072,6 +1072,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     session=None, _debug=False, **kwargs):
     """ Search index. """
     # Import modules here to speedup import time.
+    if attributes is None:
+        attributes = {}
     from sqlalchemy import or_
     #from sqlalchemy import and_
     from sqlalchemy import cast
@@ -1141,23 +1143,23 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     for x_attr in search_attributes:
         try:
             x_value = search_attributes[x_attr]['value']
-        except:
+        except Exception:
             x_value = None
         try:
             x_values = search_attributes[x_attr]['values']
-        except:
+        except Exception:
             x_values = None
         try:
             x_or_values = search_attributes[x_attr]['or_values']
-        except:
+        except Exception:
             x_or_values = None
         try:
             x_less_than = search_attributes[x_attr]['less_than']
-        except:
+        except Exception:
             x_less_than = None
         try:
             x_greater_than = search_attributes[x_attr]['greater_than']
-        except:
+        except Exception:
             x_greater_than = None
         if x_attr.lower() not in map(str.lower, config.index_attributes):
             msg = _("Cannot search for attribute {x_attr}: Not in index")
@@ -1173,7 +1175,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         try:
             return_attributes.remove("uuid")
             return_attributes.insert(0, "uuid")
-        except:
+        except Exception:
             pass
     # Build internal list with return attributes.
     _return_attributes = []
@@ -1350,10 +1352,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         IndexObject, \
         IndexObjectAttribute, \
         IndexObjectACL = get_class(object_type)
-    except UnknownClass:
+    except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise SearchException(msg)
+        raise SearchException(msg) from err
 
     # Set "order by" attribute.
     order_by_attribute = None
@@ -1411,10 +1413,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             JoinIndexObject, \
             JoinIndexObjectAttribute, \
             JoinIndexObjectACL = get_class(join_object_type)
-        except UnknownClass:
+        except UnknownClass as err:
             msg = _("Unknown join object class: {object_type}")
             msg = msg.format(object_type=object_type)
-            raise SearchException(msg)
+            raise SearchException(msg) from err
         # Alias tables to join (e.g. prevent "ERROR:  table name <table> specified more than once").
         JoinIndexObject = aliased(JoinIndexObject)
         JoinIndexObjectAttribute = aliased(JoinIndexObjectAttribute)
@@ -1561,23 +1563,23 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     for attr in search_attributes:
         try:
             value = search_attributes[attr]['value']
-        except:
+        except Exception:
             value = None
         try:
             values = search_attributes[attr]['values']
-        except:
+        except Exception:
             values = None
         try:
             or_values = search_attributes[attr]['or_values']
-        except:
+        except Exception:
             or_values = None
         try:
             less_than = search_attributes[attr]['less_than']
-        except:
+        except Exception:
             less_than = None
         try:
             greater_than = search_attributes[attr]['greater_than']
-        except:
+        except Exception:
             greater_than = None
 
         if values is not None and len(values) > max_q_values:
@@ -1999,7 +2001,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             # Build list with ACLs.
             try:
                 x_acls = object_acls[x_uuid]
-            except:
+            except Exception:
                 x_acls = []
             x_acls.append(acl_id)
             object_acls[x_uuid] = list(set(x_acls))
@@ -2019,7 +2021,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 # Build list with ACLs.
                 try:
                     x_acls = matching_acls[x_uuid]
-                except:
+                except Exception:
                     x_acls = []
                 x_acls.append(acl_id)
                 matching_acls[x_uuid] = list(set(x_acls))
@@ -2179,7 +2181,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             if attribute_name in config.otpme_base_attributes:
                 try:
                     x_val = result_dict[object_uuid][attribute_name]
-                except:
+                except Exception:
                     x_val = None
                 if attribute_value == x_val:
                     continue
@@ -2187,7 +2189,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 continue
             try:
                 x_val_list = result_dict[object_uuid][attribute_name]
-            except:
+            except Exception:
                 x_val_list = []
             if attribute_value in x_val_list:
                 continue
@@ -2267,7 +2269,7 @@ def get_uuid(object_id):
         try:
             x_config = _transaction.get_object(object_id, parameters=['UUID'])
             uuid = x_config['UUID']
-        except:
+        except Exception:
             pass
     return uuid
 
@@ -2280,10 +2282,10 @@ def index_dump(object_id=None, uuid=None, session=None, checksum_ready=False, **
         IndexObject, \
         IndexObjectAttribute, \
         IndexObjectACL = get_class(object_id.object_type)
-    except UnknownClass:
+    except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     result = {'read_oid':object_id.read_oid}
     q = session.query(IndexObject)
     if object_id:
@@ -2360,33 +2362,33 @@ def index_dump(object_id=None, uuid=None, session=None, checksum_ready=False, **
 def index_restore(index_data, session=None, **kwargs):
     try:
         read_oid = index_data['read_oid']
-    except KeyError:
+    except KeyError as err:
         msg = _("Index data misses read_oid.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         base_attributes = index_data['base_attributes']
-    except KeyError:
+    except KeyError as err:
         msg = _("Index data misses base_attributes.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         object_attributes = index_data['object_attributes']
-    except KeyError:
+    except KeyError as err:
         msg = _("Index data misses object_attributes.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         object_acls = index_data['object_acls']
-    except KeyError:
+    except KeyError as err:
         msg = _("Index data misses object_acls.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     object_id = oid.get(read_oid)
     try:
         IndexObject, \
         IndexObjectAttribute, \
         IndexObjectACL = get_class(object_id.object_type)
-    except UnknownClass:
+    except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     # Build attributes.
     attributes = []
     for attr_id in object_attributes:
@@ -2410,12 +2412,18 @@ def index_restore(index_data, session=None, **kwargs):
 @handle_transaction
 @oid_lock(write=True)
 def index_add(object_id, object_paths=None, object_config=None,
-    uuid=None, checksum=None, sync_checksum=None, index_journal=[],
-    use_index_journal=False, full_index_update=False, ldif_journal=[],
-    full_ldif_update=False, use_ldif_journal=False, acl_journal=[],
+    uuid=None, checksum=None, sync_checksum=None, index_journal=None,
+    use_index_journal=False, full_index_update=False, ldif_journal=None,
+    full_ldif_update=False, use_ldif_journal=False, acl_journal=None,
     use_acl_journal=False, full_acl_update=False, autocommit=True,
     no_lock=False, session=None, **kwargs):
     """ Add object to search index. """
+    if index_journal is None:
+        index_journal = []
+    if ldif_journal is None:
+        ldif_journal = []
+    if acl_journal is None:
+        acl_journal = []
     from sqlalchemy.sql import select
     #from sqlalchemy.sql import delete
     from sqlalchemy.sql import tuple_
@@ -2444,10 +2452,10 @@ def index_add(object_id, object_paths=None, object_config=None,
         IndexObject, \
         IndexObjectAttribute, \
         IndexObjectACL = get_class(object_type)
-    except UnknownClass:
+    except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
 
     # Get object site.
     object_site = None
@@ -2487,7 +2495,7 @@ def index_add(object_id, object_paths=None, object_config=None,
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             logger.critical(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     # Get object data.
     last_modified = None
@@ -2574,10 +2582,10 @@ def index_add(object_id, object_paths=None, object_config=None,
         # Get object index.
         try:
             object_index = object_config['INDEX']
-        except KeyError:
+        except KeyError as err:
             msg = _("Unable to update object index: {object_id}: Missing 'INDEX'")
             msg = msg.format(object_id=object_id)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
 
         if index_object:
             existing_pairs = session.query(IndexObjectAttribute.name, IndexObjectAttribute.value)
@@ -2995,10 +3003,10 @@ def index_get_object(object_id=None, object_type=None,
         IndexObject, \
         IndexObjectAttribute, \
         IndexObjectACL = get_class(object_type)
-    except UnknownClass:
+    except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
 
     # Get query.
     q = session.query(IndexObject)
@@ -3039,8 +3047,10 @@ def index_get_object(object_id=None, object_type=None,
 
     return index_object
 
-def rebuild_object_index(object_type, objects, after=[]):
+def rebuild_object_index(object_type, objects, after=None):
     """ Rebuild search index of given object type. """
+    if after is None:
+        after = []
     if object_type not in objects:
         return
     for x in after:
@@ -3077,7 +3087,7 @@ def index_rebuild_object(config_dir):
         return rebuild_function(objects)
     try:
         rebuild_function = object_settings[object_type]['index_rebuild']['flat']
-    except:
+    except Exception:
         pass
     else:
         return rebuild_function(config_dir)
@@ -3151,15 +3161,15 @@ def index_rebuild():
         object_type = object_id.object_type
         try:
             object_settings[object_type]['index_rebuild']['tree']
-        except:
+        except Exception:
             msg = _("Missing rebuild function for object type: {object_type}")
             msg = msg.format(object_type=object_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         config_file = os.path.join(config_dir, config.object_config_file_name)
         log_current_object.file_count += 1
         try:
             objects = all_objects[object_type]
-        except:
+        except Exception:
             objects = []
         objects.append((object_id, config_file))
         all_objects[object_type] = objects
@@ -3169,7 +3179,7 @@ def index_rebuild():
         for object_type in object_settings:
             try:
                 rebuild_function = object_settings[object_type]['index_rebuild']['tree']
-            except:
+            except Exception:
                 continue
             rebuild_function(all_objects)
         if not all_objects:
@@ -3186,7 +3196,7 @@ def index_rebuild():
     for object_type in object_settings:
         try:
             rebuild_function = object_settings[object_type]['index_rebuild']['flat']
-        except:
+        except Exception:
             continue
         rebuild_function()
 
@@ -3280,10 +3290,10 @@ def set_last_used_times(object_type, updates, session=None, **kwargs):
         IndexObject, \
         IndexObjectAttribute, \
         IndexObjectACL = get_class(object_type)
-    except UnknownClass:
+    except UnknownClass as err:
         msg = _("Unknown object class: {object_type}")
         msg = msg.format(object_type=object_type)
-        raise SearchException(msg)
+        raise SearchException(msg) from err
 
     when_conditions = [
         (IndexObject.uuid == uuid, last_used)

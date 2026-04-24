@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -35,7 +35,7 @@ class AgentConn(object):
         if login_session_id is None:
             try:
                 self.login_session_id = os.environ['OTPME_LOGIN_SESSION']
-            except:
+            except Exception:
                 self.login_session_id = None
         else:
             self.login_session_id = login_session_id
@@ -229,8 +229,10 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def umount_shares(self, shares=[]):
+    def umount_shares(self, shares=None):
         """ Send share umount request to otpme-agent. """
+        if shares is None:
+            shares = []
         command_args = {
                         'shares' : shares,
                     }
@@ -471,13 +473,13 @@ class AgentConn(object):
             if not config.file_logging and not config.debug_enabled:
                 msg = _("{msg} Try '-d' for debug output.")
                 msg = msg.format(msg=msg)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
         # Build helo command.
         helo_command = "helo"
         try:
             supported_protocols = config.get_otpme_protocols("agent")
-        except:
+        except Exception:
             supported_protocols = None
         if not supported_protocols:
             msg = _("Unable to load agent protocols.")
@@ -504,7 +506,7 @@ class AgentConn(object):
             msg = _("Error sending 'use_proto': {e}")
             msg = msg.format(e=e)
             config.raise_exception()
-            raise ConnectionError(msg)
+            raise ConnectionError(msg) from e
 
         if self.login_session_id:
             command_args = {
@@ -522,8 +524,10 @@ class AgentConn(object):
                     raise OTPmeException(msg_text)
         self.connected = True
 
-    def send(self, command, command_args={}, **kwargs):
+    def send(self, command, command_args=None, **kwargs):
         """ Send command requests to agent and handle response. """
+        if command_args is None:
+            command_args = {}
         response = ""
 
         if 'use_dns' not in command_args:
@@ -535,7 +539,7 @@ class AgentConn(object):
         except Exception as e:
             msg = _("Faild to build request: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Send request.
         try:
@@ -544,7 +548,7 @@ class AgentConn(object):
             config.raise_exception()
             msg = _("Error while sending: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
         # Receive response.
         try:
@@ -553,7 +557,7 @@ class AgentConn(object):
             config.raise_exception()
             msg = _("Error while receiving: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
         status_code, response, binary_data = decode_response(response)
 

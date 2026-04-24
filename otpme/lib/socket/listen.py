@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -169,7 +169,7 @@ class ListenSocket(object):
         except Exception as e:
             msg = _("Failed to bind to socket: {socket}: {error}")
             msg = msg.format(socket=self.socket, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Check if we have to change unix socket filesystem permissions.
         if self.protocol == "socket":
@@ -203,18 +203,18 @@ class ListenSocket(object):
         # Cleanup old connection PIDs.
         try:
             connections = self.connections.copy()
-        except:
+        except Exception:
             return
         for c in dict(connections):
             try:
                 pid = self.connections[c].pid
-            except:
+            except Exception:
                 continue
             if stuff.check_pid(pid):
                 continue
             try:
                 self.connections.pop(c)
-            except:
+            except Exception:
                 pass
 
     def close_conn_procs(self):
@@ -501,7 +501,7 @@ class ListenSocket(object):
                     self.logger.warning(log_msg)
                     try:
                         new_connection.close()
-                    except:
+                    except Exception:
                         pass
                     return None, None
         except socket.timeout:
@@ -733,7 +733,7 @@ class ListenSocket(object):
         # Make sure connection is closed.
         try:
             connection.close()
-        except:
+        except Exception:
             pass
 
         if not _from_worker:
@@ -769,14 +769,14 @@ class ListenSocket(object):
             return
         try:
             children = proc.get_children(recursive=False)
-        except:
+        except Exception:
             children = proc.children(recursive=False)
 
         for child in children:
             child_pid = child.pid
             try:
                 child_name = child.name()
-            except:
+            except Exception:
                 child_name = child.name
 
             if not stuff.check_pid(child_pid):
@@ -887,15 +887,15 @@ class Connection(object):
             self._close()
             msg = _("Client '{client}' closed connection while sending data: {error}")
             msg = msg.format(client=self.client, error=e)
-            raise ConnectionQuit(msg)
+            raise ConnectionQuit(msg) from e
         except ConnectionTimeout:
             self._close()
             raise
-        except Exception:
+        except Exception as err:
             self._close()
             msg = _("Connection with client '{client}' closed while sending data.")
             msg = msg.format(client=self.client)
-            raise Exception(msg)
+            raise Exception(msg) from err
         finally:
             if timeout is not None:
                 self.set_timeout(org_timeout)
@@ -917,15 +917,15 @@ class Connection(object):
             self._close()
             msg = _("Client '{client}' closed connection while sending data: {error}")
             msg = msg.format(client=self.client, error=e)
-            raise ConnectionQuit(msg)
+            raise ConnectionQuit(msg) from e
         except ConnectionTimeout:
             self._close()
             raise
-        except Exception:
+        except Exception as err:
             self._close()
             msg = _("Connection with client '{client}' closed while sending data.")
             msg = msg.format(client=self.client)
-            raise Exception(msg)
+            raise Exception(msg) from err
         finally:
             if timeout is not None:
                 self.set_timeout(org_timeout)
@@ -944,16 +944,16 @@ class Connection(object):
         except ConnectionTimeout:
             self._close()
             raise
-        except ConnectionQuit:
+        except ConnectionQuit as err:
             msg = _("Connection with client '{client}' closed while receiving data.")
             msg = msg.format(client=self.client)
             self._close()
-            raise ConnectionQuit(msg)
-        except Exception:
+            raise ConnectionQuit(msg) from err
+        except Exception as err:
             msg = _("Connection with client '{client}' lost while receiving data.")
             msg = msg.format(client=self.client)
             self._close()
-            raise Exception(msg)
+            raise Exception(msg) from err
         finally:
             if timeout is not None:
                 self.set_timeout(org_timeout)
@@ -979,5 +979,5 @@ class Connection(object):
         try:
             self.connection.close()
             self.connection.shutdown(2)
-        except:
+        except Exception:
             pass

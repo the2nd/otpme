@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 class IncrementaObject(object):
@@ -53,7 +53,13 @@ class IncrementaObject(object):
 
 class IncrementalDict(IncrementaObject):
     """ Handle incremental updates of dict attribute. """
-    def __init__(self, data={}, key=None, dict_path=[], incremental_data=[]):
+    def __init__(self, data=None, key=None, dict_path=None, incremental_data=None):
+        if data is None:
+            data = {}
+        if dict_path is None:
+            dict_path = []
+        if incremental_data is None:
+            incremental_data = []
         self.key = key
         #self.data = {}
         self.type = "dict"
@@ -191,7 +197,13 @@ class IncrementalDict(IncrementaObject):
 
 class IncrementalList(list, IncrementaObject):
     """ Handle incremental updates of list attribute. """
-    def __init__(self, data=[], key=None, dict_path=[], incremental_data=[]):
+    def __init__(self, data=None, key=None, dict_path=None, incremental_data=None):
+        if data is None:
+            data = []
+        if dict_path is None:
+            dict_path = []
+        if incremental_data is None:
+            incremental_data = []
         self.key = key
         self.type = "list"
         self.dict_path = dict_path
@@ -239,12 +251,12 @@ class IncrementalList(list, IncrementaObject):
 
     def __setitem__(self, index, item):
         self.incremental_add(item, index=index)
-        return super(IncrementalList, self).__setitem__(index, item)
+        return super().__setitem__(index, item)
 
     def __delitem__(self, index):
         del_item = self[index]
         self.incremental_del(del_item)
-        return super(IncrementalList, self).__delitem__(index)
+        return super().__delitem__(index)
 
     #def copy(self):
     #    list_copy = super(IncrementalList, self).copy()
@@ -259,23 +271,23 @@ class IncrementalList(list, IncrementaObject):
 
     def append(self, value):
         self.incremental_add(value)
-        return super(IncrementalList, self).append(value)
+        return super().append(value)
 
     def insert(self, index, value):
         self.incremental_add(value, index=index)
-        return super(IncrementalList, self).insert(index, value)
+        return super().insert(index, value)
 
     def pop(self, index=-1):
-        del_item = super(IncrementalList, self).pop(index)
+        del_item = super().pop(index)
         self.incremental_del(del_item)
         return del_item
 
     def remove(self, value):
         self.incremental_del(value)
-        return super(IncrementalList, self).remove(value)
+        return super().remove(value)
 
     def set(self, _list):
-        super(IncrementalList, self).__init__(_list)
+        super().__init__(_list)
 
 def incremental_update(update_dict, action, key, dict_path, value_type, value=None, index=-1):
     if len(dict_path) > 1:

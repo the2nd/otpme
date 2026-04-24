@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -54,10 +54,10 @@ class YubikeypivClientHandler(object):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['yubikey_piv']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         try:
@@ -69,11 +69,11 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
     def get_pre_deploy_args(self, command_handler, **kwargs):
         self.parse_syntax(command_handler)
@@ -83,14 +83,16 @@ class YubikeypivClientHandler(object):
             self.restore_from_server = False
         try:
             self.master_backup_key_file = self.local_command_args['backup_key_file']
-        except KeyError:
+        except KeyError as err:
             if self.restore_from_server:
                 msg = _("Restore from server requires --backup-key-file.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from err
         pre_deploy_args = {'restore_from_server':self.restore_from_server}
         return pre_deploy_args
 
-    def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result={}, **kwargs):
+    def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None, **kwargs):
+        if pre_deploy_result is None:
+            pre_deploy_result = {}
         try:
             private_key_backup_key = pre_deploy_result['private_key_backup_key']
         except KeyError:
@@ -126,7 +128,7 @@ class YubikeypivClientHandler(object):
         else:
             try:
                 key_len = self.local_command_args['key_len']
-            except:
+            except Exception:
                 key_len = 2048
 
             backup_file = None
@@ -138,11 +140,11 @@ class YubikeypivClientHandler(object):
             else:
                 try:
                     backup_file = self.local_command_args['backup_file']
-                except:
+                except Exception:
                     backup_file = None
                 try:
                     restore_file = self.local_command_args['restore_file']
-                except:
+                except Exception:
                     restore_file = None
                     if private_key_backup_key is None:
                         backup_file = "/dev/shm/" + object_identifier.replace("/", "_")
@@ -170,19 +172,19 @@ class YubikeypivClientHandler(object):
                 # Get key backup and parameters.
                 try:
                     enc_mod = server_private_key_backup['enc_mod']
-                except KeyError:
+                except KeyError as err:
                     msg = _("Server key backup misses encryption module.")
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from err
                 try:
                     enc_key_encrypted = server_private_key_backup['enc_key']
-                except KeyError:
+                except KeyError as err:
                     msg = _("Server key backup misses encryption key.")
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from err
                 try:
                     _private_key_backup = server_private_key_backup['private_key_backup']
-                except KeyError:
+                except KeyError as err:
                     msg = _("Server key backup misses private key.")
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from err
                 # Try to load backup key.
                 try:
                     backup_key = RSAKey(key_file=self.master_backup_key_file)
@@ -194,7 +196,7 @@ class YubikeypivClientHandler(object):
                     except Exception as e:
                         msg = _("Error loading masetr backup key: {e}")
                         msg = msg.format(e=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                 # Try to decrypt fernet key.
                 try:
                     enc_key_encrypted = bytes.fromhex(enc_key_encrypted)
@@ -202,13 +204,13 @@ class YubikeypivClientHandler(object):
                 except Exception as e:
                     msg = _("Failed to decrypt fernet backup key: {e}")
                     msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 try:
                     enc_mod = config.get_encryption_module(enc_mod)
                 except Exception as e:
                     msg = _("Failed to load backup key encryption: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 try:
                     _private_key_backup = json.decode(_private_key_backup,
                                                     encryption=enc_mod,
@@ -216,18 +218,18 @@ class YubikeypivClientHandler(object):
                 except Exception as e:
                     msg = _("Faild to decode key backup: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 try:
                     private_key_pem = _private_key_backup['private_key']
-                except KeyError:
+                except KeyError as err:
                     msg = _("Private key backup does not include private key.")
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from err
                 try:
                     token_key = RSAKey(key=private_key_pem)
                 except Exception as e:
                     msg = _("Failed to load backup key: {e}")
                     msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
             elif restore_file:
                 try:
                     token_key = RSAKey(key_file=restore_file)
@@ -239,11 +241,11 @@ class YubikeypivClientHandler(object):
                     except Exception as e:
                         msg = _("Error loading RSA key: {e}")
                         msg = msg.format(e=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                 except Exception as e:
                     msg = _("Error loading RSA key: {e}")
                     msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 # Get private key as PEM.
                 private_key_pem = token_key.export_private_key(encoding='PEM')
             else:
@@ -253,7 +255,7 @@ class YubikeypivClientHandler(object):
                 except Exception as e:
                     msg = _("Error creating RSA key: {e}")
                     msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 if private_key_backup_key is None:
                     # Backup RSA key.
@@ -270,7 +272,7 @@ class YubikeypivClientHandler(object):
                     except Exception as e:
                         msg = _("Failed to open backup file: {e}")
                         msg = msg.format(e=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                     # Write key.
                     try:
                         fd.write(private_key_enc_pem)
@@ -282,13 +284,13 @@ class YubikeypivClientHandler(object):
                     except Exception as e:
                         msg = _("Error loading backup key: {e}")
                         msg = msg.format(e=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                     try:
                         enc_mod = config.get_encryption_module("FERNET")
                     except Exception as e:
                         msg = _("Failed to load backup key encryption: {error}")
                         msg = msg.format(error=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                     # Gen fernet encryption key.
                     enc_key = enc_mod.gen_key()
                     # Get private key as PEM.
@@ -303,7 +305,7 @@ class YubikeypivClientHandler(object):
                     except Exception as e:
                         msg = _("Faild to build preauth request: {error}")
                         msg = msg.format(error=e)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
                     # Encrypt fernet key with backup key.
                     enc_key_encrypted = backup_key_pub.encrypt(enc_key)
                     enc_key_encrypted = enc_key_encrypted.hex()
@@ -346,7 +348,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error deriving dot1x secret: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Add SSH public key to deployment args.
         deploy_args = {}
         deploy_args['public_key'] = public_key
@@ -370,7 +372,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
-            raise SmartcardAuthFailed(msg)
+            raise SmartcardAuthFailed(msg) from e
         smartcard_data = self.token_options.copy()
         smartcard_data['signature'] = signature
         smartcard_data['token_rel_path'] = self.token_rel_path
@@ -386,7 +388,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error sending signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
-            raise SmartcardAuthFailed(msg)
+            raise SmartcardAuthFailed(msg) from e
         return signature
 
     def handle_offline_token_challenge(self, smartcard, password, enc_challenge, **kwargs):
@@ -397,7 +399,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error sending offline token encryption challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return enc_pass
 
     def handle_offline_challenge(self, smartcard, token, password, enc_challenge, **kwargs):
@@ -408,7 +410,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error sending offline encryption challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return enc_pass
 
     def get_smartcard_data(self, smartcard, token, password, **kwargs):
@@ -421,7 +423,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
-            raise SmartcardAuthFailed(msg)
+            raise SmartcardAuthFailed(msg) from e
         smartcard_data = {
                         'challenge' : challenge,
                         'signature' : signature,
@@ -436,7 +438,7 @@ class YubikeypivClientHandler(object):
         except Exception as e:
             msg = _("Error sending offline encryption challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         otp = sotp.gen(password_hash=secret)
         return otp
 

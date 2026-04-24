@@ -9,15 +9,17 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import json
 from otpme.lib.exceptions import *
 
-def build_request(command, command_args={}, encryption=None,
+def build_request(command, command_args=None, encryption=None,
     enc_key=None, compress=True, encoding="base64", binary_data=None):
     """ Build JSON request. """
+    if command_args is None:
+        command_args = {}
     request = {
             'command'       : command,
             'command_args'  : command_args,
@@ -65,16 +67,16 @@ def decode_request(request, encoding="base64", encryption=None, enc_key=None):
     except Exception as e:
         msg = _("Failed to decode request: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     # Get command and args.
     try:
         command = request['command']
-    except:
+    except Exception:
         msg = "Received invalid request: Command is missing"
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     try:
         command_args = request['command_args']
-    except:
+    except Exception:
         msg = "Received invalid request: Command args missing"
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     return command, command_args, binary_data

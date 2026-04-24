@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import backend
@@ -69,37 +69,39 @@ def register():
 
 def row_getter(realm, site, host_order, host_data, acls, object_type=None,
     max_roles=5, max_tokens=5, max_sync_users=5, max_sync_groups=5,
-    max_policies=5, output_fields=[], acl_checker=None, **kwargs):
+    max_policies=5, output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for hosts. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for host_uuid in host_order:
         row = []
         host_name = host_data[host_uuid]['name']
         try:
             enabled = host_data[host_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             unit_uuid = host_data[host_uuid]['unit'][0]
-        except:
+        except Exception:
             unit_uuid = None
         try:
             logins_limited = host_data[host_uuid]['logins_limited'][0]
-        except:
+        except Exception:
             logins_limited = False
         try:
             description = host_data[host_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = host_data[host_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             host_acls = acls[host_uuid]
-        except:
+        except Exception:
             host_acls = {}
 
         # Get ACL checker.

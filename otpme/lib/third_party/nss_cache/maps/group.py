@@ -35,13 +35,13 @@ class GroupMap(maps.Map):
 
     def __init__(self, iterable=None):
         """Construct a GroupMap object using optional iterable."""
-        super(GroupMap, self).__init__(iterable)
+        super().__init__(iterable)
 
     def Add(self, entry):
         """Add a new object, verify it is a GroupMapEntry object."""
         if not isinstance(entry, GroupMapEntry):
             raise TypeError
-        return super(GroupMap, self).Add(entry)
+        return super().Add(entry)
 
 
 class GroupMapEntry(maps.MapEntry):
@@ -59,7 +59,7 @@ class GroupMapEntry(maps.MapEntry):
         self.members = None
         self.groupmembers = None
 
-        super(GroupMapEntry, self).__init__(data)
+        super().__init__(data)
 
         # Seed data with defaults if needed
         if self.passwd is None:

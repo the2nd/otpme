@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import help
@@ -222,7 +222,7 @@ def show_compgen():
         for x_command in list(sub_commands):
             try:
                 help_dict[x_command]['_cmd_usage_help']
-            except:
+            except Exception:
                 sub_commands.remove(x_command)
         sub_commands = " ".join(sub_commands)
         print(sub_commands)

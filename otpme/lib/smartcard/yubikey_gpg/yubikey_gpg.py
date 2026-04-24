@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -51,10 +51,10 @@ class YubikeygpgClientHandler(object):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['yubikey_gpg']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         local_command_args = {}
@@ -68,11 +68,11 @@ class YubikeygpgClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
         # Try to find yubikey
         try:
@@ -80,7 +80,7 @@ class YubikeygpgClientHandler(object):
         except Exception as e:
             msg = _("Error detecting yubikey: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Handle deployment of yubikey GPG applet (token type ssh in OTPme)
         ssh_public_key = None
@@ -91,12 +91,12 @@ class YubikeygpgClientHandler(object):
         else:
             try:
                 gpg_backup_file = local_command_args['gpg_backup_file']
-            except:
+            except Exception:
                 gpg_backup_file = None
 
             try:
                 gpg_restore_file = local_command_args['gpg_restore_file']
-            except:
+            except Exception:
                 gpg_restore_file = None
 
             if gpg_restore_file and not os.path.exists(gpg_restore_file):

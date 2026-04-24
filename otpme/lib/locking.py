@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import multiprocessing
@@ -42,7 +42,7 @@ def register_lock_type(lock_type, module):
     global registered_lock_types
     try:
         x_module = registered_lock_types[lock_type]
-    except:
+    except Exception:
         x_module = None
     if x_module and x_module != module:
         msg = _("Lock type already registered: {lock_type}")
@@ -98,27 +98,27 @@ def object_lock(write=True, recursive=False, timeout=None,
             lock_caller = f.__name__
             try:
                 callback = f_kwargs['callback']
-            except:
+            except Exception:
                 callback = config.get_callback()
             # Check if locking was disabled by lock_object kwarg.
             try:
                 lock_object = f_kwargs.pop('lock_object')
-            except:
+            except Exception:
                 lock_object = None
             # Check if lock clustering was disabled.
             try:
                 cluster_lock = f_kwargs.pop('cluster_lock')
-            except:
+            except Exception:
                 cluster_lock = True
             # Wait timeout for the object lock.
             try:
                 lock_wait_timeout = f_kwargs.pop('lock_wait_timeout')
-            except:
+            except Exception:
                 lock_wait_timeout = timeout
             # Reload object if it was changed while waiting for the lock.
             try:
                 lock_reload_on_change = f_kwargs.pop('reload_on_change')
-            except:
+            except Exception:
                 lock_reload_on_change = reload_on_change
 
             if full_lock:
@@ -185,7 +185,7 @@ def forget_fd(fd):
     thread_id = multiprocessing.get_thread_id()
     try:
         current_thread_fds[thread_id].pop(fd)
-    except:
+    except Exception:
         pass
 
 def get_lock_id(lock_type, lock_id):
@@ -212,7 +212,7 @@ def forget_lock(lock_id):
     thread_id = multiprocessing.get_thread_id()
     try:
         current_thread_locks[thread_id].pop(lock_id)
-    except:
+    except Exception:
         pass
 
 def acquire_lock(lock_type, lock_id, write=True, timeout=None,
@@ -242,7 +242,7 @@ def acquire_lock(lock_type, lock_id, write=True, timeout=None,
             config.raise_exception()
             msg = _("Failed to get lock: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Add lock to cache.
         remember_lock(_lock)
 
@@ -257,13 +257,13 @@ def cleanup_fds():
     thread_id = multiprocessing.get_thread_id()
     try:
         lock_list = dict(current_thread_fds[thread_id])
-    except:
+    except Exception:
         return
     for x in lock_list:
         fd = lock_list[x]
         try:
             fd.close()
-        except:
+        except Exception:
             pass
         # FIXME: Removing files with os.remove here will lead to deadlocks.
         #        We need to do it atomic to prevent us from deleting a file
@@ -282,7 +282,7 @@ def cleanup():
             logger = config.logger
             log_msg = _("Doing process exit cleanup.", log=True)[1]
             logger.debug(log_msg)
-    except:
+    except Exception:
         pass
     cleanup_fds()
 
@@ -331,10 +331,10 @@ class OTPmeFakeLock(object):
         # Remove lock caller from list.
         try:
             self.lock_callers.remove(lock_caller)
-        except:
+        except Exception:
             msg = _("Got lock release request from unknown caller: {lock_id}: {caller}")
             msg = msg.format(lock_id=self.lock_id, caller=lock_caller)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if self.lock_callers:
             return
         if not _forget_lock:
@@ -359,7 +359,7 @@ class OTPmeLock(OTPmeFakeLock):
         from otpme.lib import config
         from otpme.lib.oid import oid_to_fs_name
         # Call parent class stuff.
-        super(OTPmeLock, self).__init__(lock_type, lock_id, write=write)
+        super().__init__(lock_type, lock_id, write=write)
         self.write = write
         self.cluster = cluster
         self.callback = callback
@@ -456,7 +456,7 @@ class OTPmeLock(OTPmeFakeLock):
                 log_msg = log_msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
                 self.logger.debug(log_msg)
 
-        super(OTPmeLock, self).acquire_lock(lock_caller=lock_caller,
+        super().acquire_lock(lock_caller=lock_caller,
                                         skip_same_caller=skip_same_caller)
 
     def release_lock(self, lock_caller=None, force=False):
@@ -483,7 +483,7 @@ class OTPmeLock(OTPmeFakeLock):
             lock_caller = self.lock_id
 
         # Call parent class stuff.
-        super(OTPmeLock, self).release_lock(lock_caller=lock_caller,
+        super().release_lock(lock_caller=lock_caller,
                                                 _forget_lock=False)
 
         # We do not release the lock if there are still any open callers.

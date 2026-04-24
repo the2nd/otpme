@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -70,7 +70,7 @@ class ConnectSocket(object):
             except socket.error as msg:
                 msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
                 msg = msg.format(code=msg[0], message=msg[1])
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
 
         # Handle TCP sockets.
         elif self.socket_uri.startswith("tcp://"):
@@ -93,7 +93,7 @@ class ConnectSocket(object):
             except socket.error as msg:
                 msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
                 msg = msg.format(code=msg[0], message=msg[1])
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             # Set send/recv buffer.
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_send_buffer)
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
@@ -152,8 +152,15 @@ class ConnectSocket(object):
 
                 # Verify server certificate and CRL.
                 if verify_server:
-                    # FIXME: do we want to enable hostname checks?
-                    # Disable hostname checks.
+                    # Hostname verification is intentionally disabled:
+                    # OTPme issues separate single-SAN certs per role
+                    # (node_fqdn, mgmt_fqdn, sso_fqdn) but the listen
+                    # socket in otpme/lib/socket/listen.py loads exactly
+                    # one cert without an SNI callback. A client that
+                    # connects via mgmt_fqdn would therefore fail the
+                    # hostname check against a node_fqdn cert.
+                    # Future fix: multi-SAN certs, server-side SNI
+                    # dispatch, or certificate pinning against the PKI.
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_REQUIRED
                     ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
@@ -234,7 +241,7 @@ class ConnectSocket(object):
             #config.raise_exception()
             msg = _("Error connecting to '{uri}': {error}")
             msg = msg.format(uri=self.socket_uri, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         if self.use_ssl:
             # Set cert info of peer.
@@ -247,7 +254,7 @@ class ConnectSocket(object):
             msg = _("Error receiving data from '{uri}': {error}")
             msg = msg.format(uri=self.socket_uri, error=e)
             config.raise_exception()
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         return data
 
@@ -288,15 +295,15 @@ class ConnectSocket(object):
                     return self._socket.send(data)
                 except socket.timeout as e:
                     self._close()
-                    raise ConnectionTimeout(_("Connection timed out."))
+                    raise ConnectionTimeout(_("Connection timed out.")) from e
         except ConnectionQuit as e:
             self._close()
-            raise ConnectionQuit(e)
+            raise ConnectionQuit(e) from e
         except Exception as e:
             self._close()
             msg = _("Error sending data: {error} ({socket_uri})")
             msg = msg.format(error=e, socket_uri=self.socket_uri)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             if timeout is not None:
                 self.set_timeout(org_timeout)
@@ -316,15 +323,15 @@ class ConnectSocket(object):
                     return self._socket.sendall(data)
                 except socket.timeout as e:
                     self._close()
-                    raise ConnectionTimeout(_("Connection timed out."))
+                    raise ConnectionTimeout(_("Connection timed out.")) from e
         except ConnectionQuit as e:
             self._close()
-            raise ConnectionQuit(e)
+            raise ConnectionQuit(e) from e
         except Exception as e:
             self._close()
             msg = _("Error sending all data: {error} ({socket_uri})")
             msg = msg.format(error=e, socket_uri=self.socket_uri)
-            raise ConnectionError(msg)
+            raise ConnectionError(msg) from e
         finally:
             if timeout is not None:
                 self.set_timeout(org_timeout)
@@ -344,19 +351,19 @@ class ConnectSocket(object):
                     data = self._socket.recv(recv_buffer)
                 except socket.timeout as e:
                     self._close()
-                    raise ConnectionTimeout(_("Connection timed out."))
+                    raise ConnectionTimeout(_("Connection timed out.")) from e
         except ConnectionTimeout as e:
             self._close()
             raise
         except ConnectionQuit as e:
             self._close()
-            raise ConnectionQuit(e)
+            raise ConnectionQuit(e) from e
         except Exception as e:
             self._close()
             msg = _("Error receiving data: {error}")
             msg = msg.format(error=e)
             config.raise_exception()
-            raise ConnectionError(msg)
+            raise ConnectionError(msg) from e
         finally:
             if timeout is not None:
                 self.set_timeout(org_timeout)

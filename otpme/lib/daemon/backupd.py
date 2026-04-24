@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -81,7 +81,7 @@ def register_config_params():
 class BackupDaemon(OTPmeDaemon):
     """ BackupDaemon """
     def __init__(self, *args, **kwargs):
-        super(BackupDaemon, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.backup_childs = {}
 
     def signal_handler(self, _signal, frame):
@@ -95,7 +95,7 @@ class BackupDaemon(OTPmeDaemon):
         self.logger.info(log_msg)
         # Shutdown backup childs.
         self.shutdown_backup_childs()
-        return super(BackupDaemon, self).signal_handler(_signal, frame)
+        return super().signal_handler(_signal, frame)
 
     def set_proctitle(self, backup_object):
         """ Set proctitle to contain backup object. """
@@ -110,15 +110,15 @@ class BackupDaemon(OTPmeDaemon):
     def in_backup_window(self, now, start_time, end_time):
         try:
             start_time = datetime.strptime(start_time, "%H:%M").time()
-        except ValueError:
+        except ValueError as err:
             msg = "Invalid start time."
-            raise ValueError(msg)
+            raise ValueError(msg) from err
 
         try:
             end_time = datetime.strptime(end_time, "%H:%M").time()
-        except ValueError:
+        except ValueError as err:
             msg = "Invalid end time."
-            raise ValueError(msg)
+            raise ValueError(msg) from err
 
         #now = datetime.now().time()
 
@@ -348,7 +348,7 @@ class BackupDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 # Check if command can be handled by parent class.
                 if daemon_command:

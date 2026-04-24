@@ -7,10 +7,10 @@ import setproctitle
 # python3.
 try:
     from imp import reload
-except:
+except Exception:
     try:
         from importlib import reload
-    except:
+    except Exception:
         pass
 
 try:
@@ -18,7 +18,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -87,7 +87,7 @@ class OTPmeDaemon(object):
         except Exception as e:
             msg = _("Failed to send local daemon message: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return
 
     def _handle_daemon_command(self, sender, command, data=None, timeout=1):
@@ -227,10 +227,10 @@ class OTPmeDaemon(object):
         # Get listen port from config.
         try:
             listen_port = config.default_listen_ports[self.name]
-        except:
+        except Exception:
             msg = _("Unable to get listen port from config: {name}")
             msg = msg.format(name=self.name)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         # Get listen addresses from config.
         if config.site_address == "127.0.0.1":
             c_listen_sockets = f'127.0.0.1:{listen_port}'
@@ -238,7 +238,7 @@ class OTPmeDaemon(object):
         else:
             try:
                 c_listen_sockets = list(config.listen_sockets[self.name])
-            except:
+            except Exception:
                 c_listen_sockets = f'0.0.0.0:{listen_port}'
                 c_listen_sockets = [c_listen_sockets]
 
@@ -304,9 +304,11 @@ class OTPmeDaemon(object):
                                 timeout=1)
         return restart
 
-    def set_connection_handler(self, handler_args={}):
+    def set_connection_handler(self, handler_args=None):
         """ Set default connection handler. """
         # Get handler to receive messages from  connection processes.
+        if handler_args is None:
+            handler_args = {}
         child_name = f"{self.name}-connection"
         comm_handler = self.comm_handler.get_child(child_name)
         handler_args['comm_handler'] = comm_handler
@@ -346,8 +348,10 @@ class OTPmeDaemon(object):
                 self.logger.critical(log_msg)
 
     def default_startup(self, use_ssl=True, ssl_verify_client=True,
-        handler_args={}, dont_drop_privileges=False, listen=True):
+        handler_args=None, dont_drop_privileges=False, listen=True):
         """ Do default daemon startup stuff. """
+        if handler_args is None:
+            handler_args = {}
         if listen:
             # Set connection handler.
             try:
@@ -447,7 +451,7 @@ class OTPmeDaemon(object):
         # Append new socket to list of daemon sockets.
         try:
             socket_data = self.sockets[new_socket]
-        except:
+        except Exception:
             socket_data = {}
         self.sockets[new_socket] = socket_data
         # Return new socket.

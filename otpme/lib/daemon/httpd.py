@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -54,7 +54,7 @@ class HttpDaemon(OTPmeDaemon):
             os.remove(self.cert_file)
         if os.path.exists(self.key_file):
             os.remove(self.key_file)
-        return super(HttpDaemon, self).signal_handler(_signal, frame)
+        return super().signal_handler(_signal, frame)
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
@@ -82,7 +82,7 @@ class HttpDaemon(OTPmeDaemon):
                 check_ssl_cert_key(own_site.sso_cert, own_site.sso_key)
             except Exception as e:
                 msg = _("SSO cert/key mismatch.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         ssl_cert = own_site.sso_cert
         ssl_key = own_site.sso_key
@@ -126,7 +126,7 @@ class HttpDaemon(OTPmeDaemon):
                 # Write file content.
                 fd.write(file_content)
                 fd.close()
-            except:
+            except Exception:
                 raise
 
         # Configure flask app.
@@ -232,7 +232,7 @@ class HttpDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 # Check if command can be handled by parent class.
                 try:

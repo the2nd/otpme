@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 common_alt_chars = {
@@ -102,15 +102,12 @@ def count_combinations(string):
 
 def to_alt(word):
     """ Translate word to alt. """
-    import random
+    import secrets
     new_word = ""
     for x in  word:
         if x.lower() in common_alt_chars:
             alt_chars = common_alt_chars[x.lower()]
-            alt_chars_count = len(alt_chars)
-            char_pos = random.randint(0,alt_chars_count-1)
-            new_word = "%s%s" % (new_word,
-                                common_alt_chars[x.lower()][char_pos])
+            new_word = "%s%s" % (new_word, secrets.choice(alt_chars))
         else:
             new_word = "%s%s" % (new_word, x)
     return new_word
@@ -523,10 +520,14 @@ def get_match_combinations(matches, debug=False):
 
 class SPSC(object):
     """ SPSC class to check password strength. """
-    def __init__(self, dictionaries={}, dict_order=[],
+    def __init__(self, dictionaries=None, dict_order=None,
         recent_years_past=150, recent_years_future=10,
         pass_per_sec=1000000):
         """ Init. """
+        if dictionaries is None:
+            dictionaries = {}
+        if dict_order is None:
+            dict_order = []
         self.dictionaries = dictionaries
         if dictionaries and dict_order:
             self.dict_order = dict_order
@@ -606,7 +607,7 @@ class SPSC(object):
             encoding = cchardet.detect(word)['encoding']
             try:
                 word = word.decode(encoding)
-            except:
+            except Exception:
                 continue
             word = word.lower()
             if word in dictionary:
@@ -811,7 +812,7 @@ class SPSC(object):
         # word start/end (e.g. word_guessing() -> found_start, found_end).
         try:
             number = int(word)
-        except:
+        except Exception:
             number = False
         if number is not False:
             # Check recent years.

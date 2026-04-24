@@ -6,10 +6,10 @@ import datetime
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 from prettytable import NONE
@@ -21,7 +21,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -186,20 +186,20 @@ def read_entry(trash_id, object_id):
     except Exception as e:
         msg = _("Failed to read object from trash: {trash_file}: {error}")
         msg = msg.format(trash_file=trash_file, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     # Decode data.
     try:
         object_data = json.loads(file_content)
     except Exception as e:
         msg = _("Failed to parse JSON data from trash file: {trash_file}: {error}")
         msg = msg.format(trash_file=trash_file, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     # Get object config.
     try:
         object_config = object_data['object_config']
-    except KeyError:
+    except KeyError as err:
         msg = _("JSON data misses object object_config.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     # Decrypt object config.
     object_config = ObjectConfig(object_id, object_config)
     object_config = object_config.decrypt(config.master_key)
@@ -209,9 +209,9 @@ def read_entry(trash_id, object_id):
 def write_entry(trash_id, object_id, object_data, deleted_by):
     try:
         object_config = object_data['object_config']
-    except KeyError:
+    except KeyError as err:
         msg = _("Missing object object_config.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     # Encrypt object config.
     object_id = oid.get(object_id)
     object_config = ObjectConfig(object_id, object_config, encrypted=False)
@@ -227,7 +227,7 @@ def write_entry(trash_id, object_id, object_data, deleted_by):
     except Exception as e:
         msg = _("Failed to write trash file: {object_id}: {trash_file}: {error}")
         msg = msg.format(object_id=object_id, trash_file=trash_file, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     # Get deleted by file.
     deleted_by_file = get_deleted_by_file(trash_id)
     try:
@@ -235,7 +235,7 @@ def write_entry(trash_id, object_id, object_data, deleted_by):
     except Exception as e:
         msg = _("Failed to write deleted by file: {object_id}: {deleted_by_file}: {error}")
         msg = msg.format(object_id=object_id, deleted_by_file=deleted_by_file, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
 def add(object_id, deleted_by, callback=default_callback):
     try:
@@ -414,7 +414,9 @@ def empty(cluster=True, callback=default_callback, **kwargs):
     return callback.ok()
 
 def show_trash(max_len=10, border=True, header=True,
-    output_fields=[], callback=default_callback, **kwargs):
+    output_fields=None, callback=default_callback, **kwargs):
+    if output_fields is None:
+        output_fields = []
     table_headers = [
                     "trash_id",
                     "object",

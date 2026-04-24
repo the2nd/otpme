@@ -86,8 +86,7 @@ class FilesCache(caches.Cache):
          automount_mountpoint: A string containing the automount mountpoint, used
            only by automount maps.
         """
-        super(FilesCache,
-              self).__init__(conf,
+        super().__init__(conf,
                              map_name,
                              automount_mountpoint=automount_mountpoint)
 
@@ -284,8 +283,7 @@ class FilesPasswdMapHandler(FilesCache):
     def __init__(self, conf, map_name=None, automount_mountpoint=None):
         if map_name is None:
             map_name = config.MAP_PASSWORD
-        super(FilesPasswdMapHandler,
-              self).__init__(conf,
+        super().__init__(conf,
                              map_name,
                              automount_mountpoint=automount_mountpoint)
         self.map_parser = file_formats.FilesPasswdMapParser()
@@ -326,8 +324,7 @@ class FilesGroupMapHandler(FilesCache):
     def __init__(self, conf, map_name=None, automount_mountpoint=None):
         if map_name is None:
             map_name = config.MAP_GROUP
-        super(FilesGroupMapHandler,
-              self).__init__(conf,
+        super().__init__(conf,
                              map_name,
                              automount_mountpoint=automount_mountpoint)
         self.map_parser = file_formats.FilesGroupMapParser()
@@ -359,8 +356,7 @@ class FilesShadowMapHandler(FilesCache):
     def __init__(self, conf, map_name=None, automount_mountpoint=None):
         if map_name is None:
             map_name = config.MAP_SHADOW
-        super(FilesShadowMapHandler,
-              self).__init__(conf,
+        super().__init__(conf,
                              map_name,
                              automount_mountpoint=automount_mountpoint)
         self.map_parser = file_formats.FilesShadowMapParser()

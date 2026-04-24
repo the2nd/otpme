@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -181,7 +181,7 @@ class RevokedSignature(OTPmeDataObject):
         self.revoked_object = revoked_object
         self.revocation_time = revocation_time
         # Call parent class init.
-        super(RevokedSignature, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
         # List and dict attributes must be set after calling super because
         # self.incremental_update is only available after calling super.
         self.sign_tags = sign_tags
@@ -277,4 +277,4 @@ class RevokedSignature(OTPmeDataObject):
         if self.revoked_object:
             self.add_index('revoked_object', self.revoked_object)
         # Call base class add method.
-        return super(RevokedSignature, self).add()
+        return super().add()

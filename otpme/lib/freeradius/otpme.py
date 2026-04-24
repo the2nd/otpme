@@ -45,7 +45,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 otpme_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))

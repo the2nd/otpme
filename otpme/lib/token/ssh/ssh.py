@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -338,7 +338,7 @@ class SshToken(Token):
         ):
 
         # Call parent class init.
-        super(SshToken, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,
@@ -630,7 +630,7 @@ class SshToken(Token):
             ssh_public_key = callback.ask(_("Please enter/paste SSH public key: "))
         if ssh_public_key:
             self.ssh_public_key = ssh_public_key
-            self.offline_challenge = stuff.gen_md5(ssh_public_key)
+            self.offline_challenge = stuff.gen_sha256(ssh_public_key)
         else:
             self.ssh_public_key = None
             self.offline_challenge = None
@@ -646,7 +646,7 @@ class SshToken(Token):
         except Exception as e:
             msg = _("Error decrypting private key: {error}")
             msg = msg.format(error=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
         if instance:
             return key
         private_key = key.private_key_base64
@@ -760,8 +760,8 @@ class SshToken(Token):
         # verified successful. We do this to make offline logins faster because
         # we need only one singing process via ssh-agent.
         if self.offline and not password:
-            public_key_md5 = stuff.gen_md5(self.ssh_public_key)
-            if self.offline_challenge != public_key_md5:
+            public_key_hash = stuff.gen_sha256(self.ssh_public_key)
+            if self.offline_challenge != public_key_hash:
                 log_msg = _("Failed to verify offline challenge.", log=True)[1]
                 logger.warning(log_msg)
                 return False
@@ -778,7 +778,7 @@ class SshToken(Token):
                 # When authenticating with the private key encryption passphrase
                 # set our pass type to static.
                 self.pass_type = "static"
-            except:
+            except Exception:
                 # If we got the wrong password this is not a failure because
                 # it may match an other token. So we continue to next token.
                 return None
@@ -1029,7 +1029,7 @@ class SshToken(Token):
         try:
             private_key = self.get_private_key(password=current_pass,
                                                 instance=True)
-        except:
+        except Exception:
             return callback.error(_("Wrong password."))
 
         password_checked = False

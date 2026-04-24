@@ -16,10 +16,10 @@ except ImportError:
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -27,7 +27,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -55,7 +55,7 @@ class MemcacheHandler(object):
     def get_pid(self):
         try:
             pid = filetools.read_file(self.pidfile)
-        except:
+        except Exception:
             pid = None
         return pid
 
@@ -173,7 +173,7 @@ class MemcacheClient(object):
         pid = os.getpid()
         try:
             pool = self.pools[pid]
-        except:
+        except Exception:
             pool = self.pool_getter()
             self.pools[pid] = pool
         return pool
@@ -189,7 +189,7 @@ class MemcacheClient(object):
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
-            raise KeyError(msg)
+            raise KeyError(msg) from e
         except pylibmc.ConnectionError as e:
             msg, log_msg = _("Memcache connection error: {error}", log=True)
             msg = msg.format(error=e)
@@ -197,7 +197,7 @@ class MemcacheClient(object):
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
-            raise KeyError(msg)
+            raise KeyError(msg) from e
         if value is None:
             raise KeyError(key)
         # Decompress value.
@@ -273,7 +273,7 @@ class MemcacheDict(SharedDict):
     """ A simple memcached dict. """
     def __init__(self, name, pool, locking=False, lock_type="memcached",
         clear=False, refresh_keys=False, compression=None, pickle=False):
-        super(MemcacheDict, self).__init__(name)
+        super().__init__(name)
         self.client = MemcacheClient(pool, compression=compression, pickle=pickle)
         self.dict_keys_key = f"{self.name}.dict_keys"
         self.refresh_keys = refresh_keys
@@ -312,7 +312,7 @@ class MemcacheDict(SharedDict):
             key = self.get_key_id(x)
             try:
                 self.client.get(key)
-            except:
+            except Exception:
                 keys.remove(x)
         return keys
 
@@ -344,7 +344,7 @@ class MemcacheDict(SharedDict):
         try:
             dict_keys = self.client.get(dict_keys_key)
             keys = dict_keys[self.name]
-        except:
+        except Exception:
             keys = []
         return keys
 
@@ -352,7 +352,7 @@ class MemcacheDict(SharedDict):
         dict_keys_key = self.dict_keys_key
         try:
             dict_keys = self.client.get(dict_keys_key)
-        except:
+        except Exception:
             dict_keys = {}
         dict_keys[self.name] = keys
         self.client.set(key=dict_keys_key,
@@ -382,7 +382,7 @@ class MemcacheDict(SharedDict):
             our_keys = self.get_dict_keys()
             try:
                 our_keys.remove(key)
-            except:
+            except Exception:
                 return
             self.set_dict_keys(our_keys)
         finally:
@@ -417,14 +417,14 @@ class MemcacheDict(SharedDict):
         _key = self.get_key_id(key)
         try:
             value = self.client.get(_key)
-        except:
-            raise KeyError(key)
+        except Exception:
+            raise KeyError(key) from None
         # Check for key expiry refresh.
         if self.refresh_keys:
             expire_key = self.get_key_expire_id(key)
             try:
                 key_expire = self.client.get(expire_key)
-            except:
+            except Exception:
                 key_expire = None
             if key_expire is not None:
                 self.client.touch(_key, key_expire)
@@ -447,7 +447,7 @@ class MemcacheList(SharedList):
     """ A simple memcached list. """
     def __init__(self, name, pool, clear=False, compression=None,
         lock_type="memcached", pickle=False, **kwargs):
-        super(MemcacheList, self).__init__(name)
+        super().__init__(name)
         self.lock_type = lock_type
         self.client = MemcacheClient(pool, compression=compression, pickle=pickle)
         if clear:
@@ -457,7 +457,7 @@ class MemcacheList(SharedList):
     def list(self):
         try:
             _list = self.client.get(self.name)
-        except:
+        except Exception:
             _list = []
         return _list
 

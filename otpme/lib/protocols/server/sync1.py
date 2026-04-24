@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -50,7 +50,7 @@ def add_sync_list_checksum(realm, site, peer_realm, peer_site, checksum,
                                         peer_site=peer_site)
         try:
             map_sync_time = sync_map['time']
-        except:
+        except Exception:
             map_sync_time = 0
         if sync_time < map_sync_time:
             response = _("Not updating sync list checksum due to time missmatch.")
@@ -366,7 +366,7 @@ class OTPmeSyncP1(OTPmeServer1):
                 local_checksum = stuff.gen_md5(value)
                 try:
                     remote_checksum = remote_checksums[attribute]
-                except:
+                except Exception:
                     remote_checksum = None
                 if attribute != "CHECKSUM" and attribute != "SYNC_CHECKSUM":
                     if remote_checksum == local_checksum:
@@ -375,7 +375,7 @@ class OTPmeSyncP1(OTPmeServer1):
         if o.type in config.tree_object_types:
             try:
                 parent_object = o.get_parent_object()
-            except:
+            except Exception:
                 status = False
                 response, log_msg = _("Unable to get parent object of: {o}", log=True)
                 response = response.format(o=o)
@@ -917,23 +917,23 @@ class OTPmeSyncP1(OTPmeServer1):
         # Get sync realm/site.
         try:
             sync_realm = command_args['realm']
-        except:
+        except Exception:
             sync_realm = config.realm
         try:
             sync_site = command_args['site']
-        except:
+        except Exception:
             sync_site = config.site
         try:
             peer_skip_admin = command_args['skip_admin']
-        except:
+        except Exception:
             peer_skip_admin = False
         try:
             peer_skip_users = command_args['skip_users']
-        except:
+        except Exception:
             peer_skip_users = []
         try:
             peer_skip_list = command_args['skip_list']
-        except:
+        except Exception:
             peer_skip_list = []
 
         if command == "start_sync":
@@ -981,7 +981,7 @@ class OTPmeSyncP1(OTPmeServer1):
         valid_object_types = list(sync_params['valid_object_types'])
         try:
             include_uuids = dict(sync_params['include_uuids'])
-        except:
+        except Exception:
             include_uuids = None
         # Check admin user access.
         if peer_skip_admin:
@@ -1032,7 +1032,7 @@ class OTPmeSyncP1(OTPmeServer1):
         if command == "add_sync_list_checksum":
             try:
                 peer_checksum = command_args['checksum']
-            except:
+            except Exception:
                 status = False
                 response = _("Missing peer checksum: add_sync_list_checksum: {peer}")
                 response = response.format(peer=self.peer)
@@ -1040,7 +1040,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
             try:
                 object_types = command_args['object_types']
-            except:
+            except Exception:
                 object_types = None
 
             response = self.add_sync_list_checksum_command(sync_realm,
@@ -1057,7 +1057,7 @@ class OTPmeSyncP1(OTPmeServer1):
         if command == "get_object":
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 response = _("SYNC_INCOMPLETE_COMMAND: Missing object ID.")
                 status = False
                 return self.build_response(status, response)
@@ -1065,7 +1065,7 @@ class OTPmeSyncP1(OTPmeServer1):
             object_id = oid.get(object_id=object_id)
             try:
                 remote_checksums = command_args['object_checksums']
-            except:
+            except Exception:
                 remote_checksums = None
 
             status, response = self.get_object_command(object_id,
@@ -1085,7 +1085,7 @@ class OTPmeSyncP1(OTPmeServer1):
         if command == "sync_offline_token_data":
             try:
                 data_type = command_args['data_type']
-            except:
+            except Exception:
                 data_type = None
                 response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing data type.", log=True)
                 status = False
@@ -1094,7 +1094,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
             try:
                 object_id = command_args['token_oid']
-            except:
+            except Exception:
                 response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing object ID.", log=True)
                 status = False
                 self.logger.warning(log_msg)
@@ -1102,7 +1102,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
             try:
                 session_uuid = command_args['session_uuid']
-            except:
+            except Exception:
                 session_uuid = None
                 response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing session UUID.", log=True)
                 status = False
@@ -1111,7 +1111,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
             try:
                 remote_objects = command_args['remote_objects']
-            except:
+            except Exception:
                 remote_objects = None
                 response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing list with known OTPs.", log=True)
                 status = False
@@ -1127,7 +1127,7 @@ class OTPmeSyncP1(OTPmeServer1):
         if command == "sync_token_data":
             try:
                 data_type = command_args['data_type']
-            except:
+            except Exception:
                 data_type = None
                 response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing data type.", log=True)
                 status = False
@@ -1136,7 +1136,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
             try:
                 remote_objects = command_args['remote_objects']
-            except:
+            except Exception:
                 remote_objects = None
                 response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing list with known OTPs.", log=True)
                 status = False

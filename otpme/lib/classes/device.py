@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -485,7 +485,7 @@ class OTPmeDevice(OTPmeObject):
         **kwargs,
         ):
         # Call parent class init.
-        super(OTPmeDevice, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
         # List and dict attributes must be set after calling super because
         # self.incremental_update is only available after calling super.
         self.mac_address = None
@@ -545,8 +545,10 @@ class OTPmeDevice(OTPmeObject):
         self.update_index('mac_address', mac_address)
         return self._cache(callback=callback)
 
-    def show_config(self, config_lines=[], callback: JobCallback=default_callback, **kwargs):
+    def show_config(self, config_lines=None, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """
+        if config_lines is None:
+            config_lines = []
         if not self.verify_acl("view_public:object"):
             msg = _("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
@@ -579,7 +581,7 @@ class Device(OTPmeDevice):
         ):
         self.type = "device"
         # Call parent class init.
-        super(Device, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -641,7 +643,7 @@ class Device(OTPmeDevice):
         if result is False:
             return callback.error()
         # Add device.
-        add_result = super(Device, self).add(callback=callback, **kwargs)
+        add_result = super().add(callback=callback, **kwargs)
         # Check for default accessgroup.
         device_ag = self.get_config_parameter("devices_accessgroup")
         if device_ag:
@@ -706,7 +708,7 @@ class Device(OTPmeDevice):
             except Exception as e:
                 return callback.error()
 
-        return super(Device, self).delete(callback=callback, **kwargs)
+        return super().delete(callback=callback, **kwargs)
 
     @object_lock(full_lock=True)
     @backend.transaction

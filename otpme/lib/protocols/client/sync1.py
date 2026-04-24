@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -111,13 +111,13 @@ class OTPmeSyncP1(OTPmeClient1):
         self.removed_objects = multiprocessing.get_list()
         self.blacklisted_users = multiprocessing.get_list()
         self.last_sync_status_update = 0.0
-        super(OTPmeSyncP1, self).__init__(self.daemon, **kwargs)
+        super().__init__(self.daemon, **kwargs)
 
     def update_sync_progress(self, realm, site, sync_type, object_count=0):
         """ Update sync progress. """
         try:
             x_counter = self.sync_progress[realm][site][sync_type]
-        except:
+        except Exception:
             x_counter = None
 
         if x_counter is None:
@@ -302,14 +302,14 @@ class OTPmeSyncP1(OTPmeClient1):
             for x_uuid in remote_last_used[x_type]:
                 try:
                     timestamp = remote_last_used[x_type][x_uuid]
-                except:
+                except Exception:
                     log_msg = _("Remote last used data misses timestamp: {x_uuid}", log=True)[1]
                     log_msg = log_msg.format(x_uuid=x_uuid)
                     self.logger.warning(log_msg)
                     continue
                 try:
                     local_last_used_time = local_last_used[x_type][x_uuid]
-                except:
+                except Exception:
                     local_last_used_time = 0.0
                 if str(local_last_used_time) == str(timestamp):
                     continue
@@ -449,11 +449,11 @@ class OTPmeSyncP1(OTPmeClient1):
         remote_sync_list_checksum = sync_list_response['sync_list_checksum']
         try:
             include_uuids = sync_params['include_uuids']
-        except:
+        except Exception:
             include_uuids = None
         try:
             checksum_only_types= sync_params['checksum_only_types']
-        except:
+        except Exception:
             checksum_only_types = None
         # Set sync parameters to cache.
         self.sync_cache.sync_parameters = sync_params
@@ -575,7 +575,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 if local_checksum is None:
                     try:
                         local_checksum = self.sync_cache[object_id]['SYNC_CHECKSUM']
-                    except:
+                    except Exception:
                         local_checksum = None
 
                 # Check if we need to update this object.
@@ -585,7 +585,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 object_type = oid.get_object_type(object_id)
                 try:
                     sync_data = _sync_objects[object_type]
-                except:
+                except Exception:
                     sync_data = {}
                 sync_data[object_id] = {}
                 sync_data[object_id]['local_checksum'] = local_checksum
@@ -601,7 +601,7 @@ class OTPmeSyncP1(OTPmeClient1):
             for object_type in config.object_sync_order:
                 try:
                     object_list = _sync_objects[object_type]
-                except:
+                except Exception:
                     continue
                 for object_id in sorted(object_list):
                     # Count.
@@ -614,7 +614,7 @@ class OTPmeSyncP1(OTPmeClient1):
                     # Check if object is already in sync cache.
                     try:
                         object_config = self.sync_cache[object_id]
-                    except:
+                    except Exception:
                         # If its not in our sync cache check it already exist
                         # on our site.
                         try:
@@ -878,7 +878,7 @@ class OTPmeSyncP1(OTPmeClient1):
             # Try to get local checksum.
             try:
                 local_checksum = local_sync_list[x]
-            except:
+            except Exception:
                 local_checksum = None
 
             # Increase progress.
@@ -1304,7 +1304,7 @@ class OTPmeSyncP1(OTPmeClient1):
             # Check if the objects is present in remote sync list.
             try:
                 remote_sync_list[x]
-            except:
+            except Exception:
                 x_oid = oid.get(object_id=x)
                 # Add remote missing objects to del list.
                 object_type = x_oid.object_type
@@ -1317,7 +1317,7 @@ class OTPmeSyncP1(OTPmeClient1):
             # Get object list.
             try:
                 object_list = del_list[object_type]
-            except:
+            except Exception:
                 object_list = []
             # Skip object types not in list.
             if not object_list:
@@ -1493,7 +1493,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 if not stuff.is_uuid(uuid):
                     continue
                 user_uuids.append(uuid)
-        except:
+        except Exception:
             log_msg = _("No offline tokens found.", log=True)[1]
             self.logger.debug(log_msg)
             return True

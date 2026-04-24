@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.multiprocessing import register_atfork_method
@@ -33,7 +33,7 @@ def close_log_handlers():
     for handler in list(active_log_handlers):
         try:
             handler.close()
-        except:
+        except Exception:
             pass
     active_log_handlers.clear()
 register_cleanup_method(close_log_handlers)
@@ -54,12 +54,12 @@ def get_reconnecting_handler(handler_class):
             facility_id = f"LOG_{facility}"
             try:
                 facility = getattr(logging.handlers.SysLogHandler, facility_id)
-            except:
+            except Exception:
                 msg = _("Unknown facility: {facility}")
                 msg = msg.format(facility=facility)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             try:
-                super(ReconnectingSysLogHandler, self).__init__(*args, **kwargs)
+                super().__init__(*args, **kwargs)
             except Exception as e:
                 # We ignore socket errors because SysLogHandler calls createSocket()
                 # and we dont want the log handler to fail on __init__() because we
@@ -77,11 +77,11 @@ def get_reconnecting_handler(handler_class):
             if self.socket:
                 self.socket.close()
                 self.socket = None
-            super(ReconnectingSysLogHandler, self).createSocket()
+            super().createSocket()
 
         def handleError(self, record):
             # use the default error handling (writes an error message to stderr)
-            super(ReconnectingSysLogHandler, self).handleError(record)
+            super().handleError(record)
 
             # If we get an error within a retry, just return.  We don't want an
             # infinite, recursive loop telling us something is broken.
@@ -108,7 +108,7 @@ def get_reconnecting_handler(handler_class):
                 if isinstance(exception, socket.error) and (exception.errno == 111 or exception.errno == 32 or exception.errno == 8):
                     try:
                         self._reconnect()
-                    except:
+                    except Exception:
                         if self.exception_on_emit:
                             raise
                     # Make an effort to rescue the record.
@@ -123,7 +123,7 @@ def get_reconnecting_handler(handler_class):
                 # Attempt graceful SSL shutdown
                 if hasattr(self.socket, 'unwrap'):
                     self.socket.unwrap()
-            super(ReconnectingSysLogHandler, self).close()
+            super().close()
             try:
                 active_log_handlers.remove(self)
             except ValueError:

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -117,13 +117,15 @@ def search_regex_getter(show_all=False):
         login_user = backend.get_object(object_type="user",
                             uuid=config.auth_token.owner_uuid)
         search_regex = f"{login_user.name}/*"
-    except:
+    except Exception:
         search_regex = None
     return search_regex
 
 def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
-    output_fields=[], acl_checker=None, max_roles=5, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_roles=5, max_policies=5, **kwargs):
     """ Build table rows for tokens. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for token_uuid in token_order:
         row = []
@@ -134,37 +136,37 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
         owner_uuid = token_data[token_uuid]['owner_uuid'][0]
         try:
             policies = token_data[token_uuid]['policy']
-        except:
+        except Exception:
             policies = None
         try:
             auth_script_uuid  = token_data[token_uuid]['auth_script'][0]
-        except:
+        except Exception:
             auth_script_uuid = None
         try:
             auth_script_enabled = token_data[token_uuid]['auth_script_enabled'][0]
-        except:
+        except Exception:
             auth_script_enabled = None
         try:
             description = token_data[token_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             keep_session = token_data[token_uuid]['keep_session'][0]
-        except:
+        except Exception:
             keep_session = None
         try:
             allow_offline = token_data[token_uuid]['allow_offline'][0]
-        except:
+        except Exception:
             allow_offline = None
         try:
             acl_inheritance_enabled = token_data[token_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             token_acls = acls[token_uuid]
-        except:
+        except Exception:
             token_acls = {}
 
         # Get ACL checker.

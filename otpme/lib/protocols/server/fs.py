@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -360,9 +360,9 @@ class OTPmeFsServer1(OTPmeServer1):
             return xattr.getxattr(path, name)
         except OSError as e:
             if e.errno == errno.ENOENT:
-                raise OSError(errno.ENODATA, "No such attribute")
+                raise OSError(errno.ENODATA, "No such attribute") from e
             if e.errno == errno.ENODATA:
-                raise OSError(errno.ENODATA, "No such attribute")
+                raise OSError(errno.ENODATA, "No such attribute") from e
             raise
 
     @with_root_path()
@@ -401,7 +401,7 @@ class OTPmeFsServer1(OTPmeServer1):
             return 0
         except OSError as e:
             if e.errno == errno.ENODATA:
-                raise OSError(errno.ENODATA, "No such attribute")
+                raise OSError(errno.ENODATA, "No such attribute") from e
             raise
 
     @with_root_path()
@@ -1016,18 +1016,18 @@ class OTPmeFsServer1(OTPmeServer1):
             except Exception as e:
                 msg = _("Failed to decode orjson request: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Get command and args.
             try:
                 command = request_data['command']
-            except:
+            except Exception:
                 msg = _("Received invalid request: Command is missing")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             try:
                 command_args = request_data['command_args']
-            except:
+            except Exception:
                 msg = _("Received invalid request: Command args missing")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
         return command, command_args, binary_data
 
     def _close(self):

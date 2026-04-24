@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import backend
@@ -77,10 +77,12 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, group_order, group_data, acls, table=None,
-    max_roles=5, max_tokens=5, max_policies=5, output_fields=[],
+    max_roles=5, max_tokens=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for accessgroups. """
     # Align table headers.
+    if output_fields is None:
+        output_fields = []
     if table:
         table.align["maxfail"] = "c"
         table.align["reset"] = "c"
@@ -109,25 +111,25 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
         unused_session_timeout = group_data[ag_uuid]['unused_session_timeout'][0]
         try:
             relogin_timeout = group_data[ag_uuid]['relogin_timeout'][0]
-        except:
+        except Exception:
             relogin_timeout = None
         try:
             enabled = group_data[ag_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             description = group_data[ag_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = group_data[ag_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             group_acls = acls[ag_uuid]
-        except:
+        except Exception:
             group_acls = {}
 
         # Get ACL checker.

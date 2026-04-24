@@ -17,10 +17,10 @@ class JsonEncodedData(TypeDecorator):
     def process_bind_param(self, value, dialect):
         try:
             import simdjson as json
-        except:
+        except Exception:
             try:
                 import ujson as json
-            except:
+            except Exception:
                 import json
         if value is None:
             return ''
@@ -30,10 +30,10 @@ class JsonEncodedData(TypeDecorator):
     def process_result_value(self, value, dialect):
         try:
             import simdjson as json
-        except:
+        except Exception:
             try:
                 import ujson as json
-            except:
+            except Exception:
                 import json
         if value is None:
             return

@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -45,8 +45,10 @@ def register():
     config.register_otpme_daemon("scriptd")
 
 def run_script(script_type, script_uuid, script_parms,
-    user, group, groups=[], script_path=None):
+    user, group, groups=None, script_path=None):
     """ Run script via scriptd. """
+    if groups is None:
+        groups = []
     if 'user' in script_parms:
         msg = "<user> in script parameters is not allowed."
         raise OTPmeException(msg)
@@ -196,7 +198,7 @@ class ScriptDaemon(OTPmeDaemon):
         log_msg = _("Received SIGTERM.", log=True)[1]
         self.logger.info(log_msg)
         self.close_childs()
-        return super(ScriptDaemon, self).signal_handler(_signal, frame)
+        return super().signal_handler(_signal, frame)
 
     def close_childs(self):
         self.script_handler_child.terminate()
@@ -333,7 +335,7 @@ class ScriptDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 # Check if command can be handled by parent class.
                 try:

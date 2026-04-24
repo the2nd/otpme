@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -130,7 +130,7 @@ class OTPmeFsP1(OTPmeFsServer1):
             msg = msg.format(host_name=host, e=e)
             log_msg = log_msg.format(host_name=host, e=e)
             self.logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return backupd_conn
 
     def _process(self, command, command_args, binary_data):
@@ -358,7 +358,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         return self.build_response(status, message)
                     try:
                         self.force_group_gid = grp.getgrnam(group.name).gr_gid
-                    except:
+                    except Exception:
                         status = status_codes.UNKNOWN_OBJECT
                         message, log_msg = _("Force group does not exists: {group_name}", log=True)
                         message = message.format(group_name=group.name)

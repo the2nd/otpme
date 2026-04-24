@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -29,4 +29,4 @@ class OTPmeJoinP1(OTPmeClient1):
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeJoinP1, self).__init__(self.daemon, **kwargs)
+        super().__init__(self.daemon, **kwargs)

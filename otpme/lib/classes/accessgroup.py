@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -892,7 +892,7 @@ class AccessGroup(OTPmeObject):
         self.type = "accessgroup"
 
         # Call parent class init.
-        super(AccessGroup, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -1272,7 +1272,7 @@ class AccessGroup(OTPmeObject):
             if skip_disabled:
                 try:
                     group_enabled = childs[uuid]['enabled'][0]
-                except:
+                except Exception:
                     group_enabled = False
                 if not group_enabled:
                     continue
@@ -1520,7 +1520,7 @@ class AccessGroup(OTPmeObject):
                 return callback.error()
         try:
             self.max_sessions = int(max_sessions)
-        except:
+        except Exception:
             return callback.error("Max sesssions must be an integer.")
         # Update index.
         self.update_index("max_sessions", self.max_sessions)
@@ -1585,7 +1585,7 @@ class AccessGroup(OTPmeObject):
                 return callback.error()
         try:
             self.max_fail = int(max_fail)
-        except:
+        except Exception:
             return callback.error("Max fail must be an integer.")
         # Update index.
         self.update_index("max_fail", self.max_fail)
@@ -1621,7 +1621,7 @@ class AccessGroup(OTPmeObject):
             return callback.error(msg)
         try:
             self.max_fail_reset = int(reset_time)
-        except:
+        except Exception:
             return callback.error("Max fail reset must be an integer.")
         # Update index.
         self.update_index("max_fail_reset", self.max_fail_reset)

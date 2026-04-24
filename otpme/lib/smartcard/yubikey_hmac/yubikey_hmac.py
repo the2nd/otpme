@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -55,10 +55,10 @@ class YubikeyHmacClientHandler(object):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['yubikey_hmac']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         local_command_args = {}
@@ -72,11 +72,11 @@ class YubikeyHmacClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
         # Try to find yubikey
         try:
@@ -84,7 +84,7 @@ class YubikeyHmacClientHandler(object):
         except Exception as e:
             msg = _("Error detecting yubikey: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         try:
             slot = local_command_args['slot']
@@ -106,7 +106,7 @@ class YubikeyHmacClientHandler(object):
             try:
                 hmac_secret = yk.add_hmac_sha1(**local_command_args)
             except Exception as e:
-                raise OTPmeException(str(e))
+                raise OTPmeException(str(e)) from e
 
             msg = _("Configuration successfully written to slot {slot}")
             msg = msg.format(slot=slot)
@@ -132,13 +132,13 @@ class YubikeyHmacClientHandler(object):
         except Exception as e:
             msg = _("Unable to get serial number: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Generate challenge used to generate token secret on client site.
         hmac_challenge = stuff.gen_secret(len=16)
 
         # Generate HMAC ID to identify token.
-        id_challenge = stuff.gen_md5(f"HMAC_ID:{token_pass}")
+        id_challenge = stuff.gen_sha256(f"HMAC_ID:{token_pass}")
         hmac_id = yk.send_challenge(challenge=id_challenge,
                                     **local_command_args)
 
@@ -180,7 +180,7 @@ class YubikeyHmacClientHandler(object):
         except OTPmeException as e:
             msg = _("Error sending HMAC challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         # If we got the token secret we can generate a OTPme
         # OTP as response.
         epoch_time = time.time()
@@ -210,7 +210,7 @@ class YubikeyHmacClientHandler(object):
         except OTPmeException as e:
             msg = _("Error sending HMAC challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise AuthFailed(msg) from e
         # If we got the token secret we can generate a OTPme
         # OTP as response.
         response = motp.generate(secret=secret, otp_count=1,
@@ -225,18 +225,18 @@ class YubikeyHmacClientHandler(object):
         except Exception as e:
             msg = _("Error sending offline encryption HMAC challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return enc_pass
 
     def handle_offline_challenge(self, smartcard, token, password, enc_challenge, **kwargs):
         # Generate HMAC ID to identifiy token.
-        id_challenge = stuff.gen_md5(f"HMAC_ID:{password}")
+        id_challenge = stuff.gen_sha256(f"HMAC_ID:{password}")
         try:
             hmac_id = smartcard.send_challenge(challenge=id_challenge)
         except Exception as e:
             msg = _("Error sending HMAC ID challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Check if we found the correct smartcard.
         if hmac_id != token.hmac_id:
             msg = _("Found wrong smartcard or wrong password given: {type}")
@@ -251,18 +251,18 @@ class YubikeyHmacClientHandler(object):
             config.raise_exception()
             msg = _("Error sending offline encryption HMAC challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return enc_pass
 
     def get_smartcard_data(self, smartcard, token, password, **kwargs):
         # Generate HMAC ID to identifiy token.
-        id_challenge = stuff.gen_md5(f"HMAC_ID:{password}")
+        id_challenge = stuff.gen_sha256(f"HMAC_ID:{password}")
         try:
             hmac_id = smartcard.send_challenge(challenge=id_challenge)
         except Exception as e:
             msg = _("Error sending HMAC ID challenge to smartcard: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Check if we found the correct smartcard.
         if hmac_id != token.hmac_id:
             msg = _("Found wrong smartcard or wrong password given: {type}")
@@ -277,7 +277,7 @@ class YubikeyHmacClientHandler(object):
         except Exception as e:
             msg = _("Error sending secret challenge to smartcard: {type}: {error}")
             msg = msg.format(type=self.smartcard.type, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # If we got the token secret we can generate a OTPme OTP to verify
         # the offline token.

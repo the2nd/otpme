@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import encryption
@@ -52,10 +52,10 @@ def encrypt(key, data, encoding=None, mode="GCM", backend=None):
     else:
         try:
             _mode = getattr(modes, mode)
-        except:
+        except Exception:
             msg = _("Unknown AES mode: {mode}")
             msg = msg.format(mode=mode)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if backend is None:
             backend = default_backend()
         try:
@@ -63,14 +63,14 @@ def encrypt(key, data, encoding=None, mode="GCM", backend=None):
         except Exception as e:
             msg = _("Failed to gen IV data: {error}")
             msg = msg.format(error=e)
-            raise EncryptException(msg)
+            raise EncryptException(msg) from e
         try:
             algo = algorithms.AES(_key)
             cipher = Cipher(algo, _mode(iv), backend=backend)
         except Exception as e:
             msg = _("Failed to load AES key: {error}")
             msg = msg.format(error=e)
-            raise EncryptException(msg)
+            raise EncryptException(msg) from e
         try:
             encryptor = cipher.encryptor()
             ciphertext = encryptor.update(data)
@@ -79,7 +79,7 @@ def encrypt(key, data, encoding=None, mode="GCM", backend=None):
         except Exception as e:
             msg = _("Failed encrypt data: {error}")
             msg = msg.format(error=e)
-            raise EncryptException(msg)
+            raise EncryptException(msg) from e
         result = ciphertext
 
     if encoding is None:
@@ -96,7 +96,7 @@ def decrypt(key, aesdata, encoding=None, mode="GCM", backend=None):
         except Exception as e:
             msg = _("Failed to decode AES data: {error}")
             msg = msg.format(error=e)
-            raise DecryptException(msg)
+            raise DecryptException(msg) from e
 
     _key = decode(key, "hex")
 
@@ -109,14 +109,14 @@ def decrypt(key, aesdata, encoding=None, mode="GCM", backend=None):
         except Exception as e:
             msg = _("Failed to decrypt data: {error}")
             msg = msg.format(error=e)
-            raise DecryptException(msg)
+            raise DecryptException(msg) from e
     else:
         try:
             _mode = getattr(modes, mode)
-        except:
+        except Exception:
             msg = _("Unknown AES mode: {mode}")
             msg = msg.format(mode=mode)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if backend is None:
             backend = default_backend()
         iv = aesdata[:16]
@@ -127,7 +127,7 @@ def decrypt(key, aesdata, encoding=None, mode="GCM", backend=None):
         except Exception as e:
             msg = _("Failed to load AES key: {error}")
             msg = msg.format(error=e)
-            raise EncryptException(msg)
+            raise EncryptException(msg) from e
         try:
             decryptor = cipher.decryptor()
             cleartext = decryptor.update(data)
@@ -135,7 +135,7 @@ def decrypt(key, aesdata, encoding=None, mode="GCM", backend=None):
         except Exception as e:
             msg = _("Failed to decrypt data: {error}")
             msg = msg.format(error=e)
-            raise DecryptException(msg)
+            raise DecryptException(msg) from e
 
     # Try to return string.
     try:

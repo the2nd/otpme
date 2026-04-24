@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import net
@@ -126,36 +126,36 @@ def get(daemon, ping=True, **kwargs):
     kwargs['daemon'] = daemon
     try:
         node = kwargs['node']
-    except:
+    except Exception:
         node = None
         kwargs['node'] = node
     try:
         realm = kwargs['realm']
-    except:
+    except Exception:
         realm = None
         kwargs['realm'] = realm
     try:
         site = kwargs['site']
-    except:
+    except Exception:
         site = None
         kwargs['site'] = site
     try:
         use_agent = kwargs['use_agent']
-    except:
+    except Exception:
         use_agent = None
     try:
         use_ssh_agent = kwargs['use_ssh_agent']
-    except:
+    except Exception:
         use_ssh_agent = None
         kwargs['use_ssh_agent'] = use_ssh_agent
     try:
         use_smartcard = kwargs['use_smartcard']
-    except:
+    except Exception:
         use_smartcard = "auto"
         kwargs['use_smartcard'] = use_smartcard
     try:
         user = kwargs['user']
-    except:
+    except Exception:
         try:
             user = os.environ['OTPME_USER']
         except KeyError:
@@ -163,52 +163,52 @@ def get(daemon, ping=True, **kwargs):
         kwargs['user'] = user
     try:
         username = kwargs['username']
-    except:
+    except Exception:
         username = None
         kwargs['username'] = username
     try:
         password = kwargs['password']
-    except:
+    except Exception:
         password = None
         kwargs['password'] = password
     try:
         aes_pass = kwargs['aes_pass']
-    except:
+    except Exception:
         aes_pass = None
         kwargs['aes_pass'] = aes_pass
     try:
         socket_uri = kwargs['socket_uri']
-    except:
+    except Exception:
         socket_uri = None
         kwargs['socket_uri'] = socket_uri
     try:
         autoconnect = kwargs['autoconnect']
-    except:
+    except Exception:
         autoconnect = True
         kwargs['autoconnect'] = autoconnect
     try:
         timeout = kwargs['timeout']
-    except:
+    except Exception:
         timeout = config.connection_timeout
         kwargs['timeout'] = timeout
     try:
         connect_timeout = kwargs['connect_timeout']
-    except:
+    except Exception:
         connect_timeout = config.connect_timeout
         kwargs['connect_timeout'] = connect_timeout
     try:
         interactive = kwargs['interactive']
-    except:
+    except Exception:
         interactive = None
         kwargs['interactive'] = interactive
     try:
         login_session_id = kwargs['login_session_id']
-    except:
+    except Exception:
         login_session_id = None
         kwargs['login_session_id'] = login_session_id
     try:
         print_messages = kwargs['print_messages']
-    except:
+    except Exception:
         print_messages = None
         kwargs['print_messages'] = print_messages
 
@@ -234,14 +234,14 @@ def get(daemon, ping=True, **kwargs):
     except Exception as e:
         config.raise_exception()
         msg = _("Failed to parse function args.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
     # Get job ID.
     proc_id = multiprocessing.get_id()
 
     try:
         conn = connections[proc_id][daemon][conn_key]
-    except:
+    except Exception:
         conn = None
     if conn is not None:
         if conn.connected:
@@ -278,7 +278,7 @@ def get(daemon, ping=True, **kwargs):
         except Exception as e:
             msg = _("Error getting agent connection: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         add_connection(proc_id, daemon, conn_key, agent_conn)
         return agent_conn
 
@@ -304,10 +304,10 @@ def get(daemon, ping=True, **kwargs):
     if node and not socket_uri:
         try:
             port = config.default_ports[daemon]
-        except KeyError:
+        except KeyError as err:
             msg = _("Unable to get port of daemon: {daemon}")
             msg = msg.format(daemon=daemon)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         socket_uri = f"tcp://{node}:{port}"
         conn_kwargs['socket_uri'] = socket_uri
 
@@ -359,7 +359,7 @@ def get(daemon, ping=True, **kwargs):
                     if use_agent is True:
                         msg = _("Error getting agent user: {e}")
                         msg = msg.format(e=e)
-                        raise Exception(msg)
+                        raise Exception(msg) from e
                     else:
                         log_msg = str(e)
                         logger.debug(log_msg)
@@ -425,7 +425,7 @@ def get(daemon, ping=True, **kwargs):
         if not socket_uri:
             try:
                 otpme_agent_user = kwargs['otpme_agent_user']
-            except:
+            except Exception:
                 otpme_agent_user = None
             socket_uri = config.get_agent_socket(otpme_agent_user)
         conn_kwargs['socket_uri'] = socket_uri
@@ -458,7 +458,7 @@ def get(daemon, ping=True, **kwargs):
         except ConnectionError as e:
             msg = _("Unable to get site FQDN: {e}")
             msg = msg.format(e=e)
-            raise ConnectionError(msg)
+            raise ConnectionError(msg) from e
         if site_fqdn:
             try:
                 connect_addresses = net.query_dns(site_fqdn, 'A')
@@ -480,7 +480,7 @@ def get(daemon, ping=True, **kwargs):
             except ConnectionError as e:
                 msg = _("Unable to get site address: {e}")
                 msg = msg.format(e=e)
-                raise ConnectionError(msg)
+                raise ConnectionError(msg) from e
             connect_addresses = [site_address]
     else:
         if daemon == "mgmtd" or daemon == "clusterd":

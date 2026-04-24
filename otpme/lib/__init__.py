@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -46,7 +46,7 @@ def set_realm_site():
         try:
             config.realm = config.host_data['realm']
             config.site = config.host_data['site']
-        except:
+        except Exception:
             pass
 
     if not config.realm or not config.site:
@@ -62,9 +62,9 @@ def set_realm_site():
         try:
             config.realm = result[config.uuid]['realm']
             config.site = result[config.uuid]['site']
-        except KeyError:
+        except KeyError as err:
             msg = _("Host misses realm/site. Maybe corrupt index?")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
 
     # Check if realm exists, set realm and realm master.
     try:
@@ -72,7 +72,7 @@ def set_realm_site():
     except Exception as e:
         msg = _("Failed to load realm: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     if not _realm.exists():
         msg = _("Unknown realm: {config.realm}")
         msg = msg.format(config=config)
@@ -152,7 +152,7 @@ def do_direct_init(load_host_data=True):
     if load_host_data:
         try:
             host.update_data()
-        except:
+        except Exception:
             config.raise_exception()
             raise
 
@@ -164,23 +164,23 @@ def do_hostd_init(load_host_data=True):
     # Try to get realm data from users environment
     try:
         config.realm = os.environ['OTPME_REALM']
-    except:
+    except Exception:
         pass
     try:
         config.realm_uuid = os.environ['OTPME_REALM_UUID']
-    except:
+    except Exception:
         pass
     try:
         config.site = os.environ['OTPME_SITE']
-    except:
+    except Exception:
         pass
     try:
         config.site_uuid = os.environ['OTPME_SITE_UUID']
-    except:
+    except Exception:
         pass
     try:
         config.site_address = os.environ['OTPME_SITE_ADDRESS']
-    except:
+    except Exception:
         pass
 
     if load_host_data:
@@ -191,7 +191,7 @@ def do_hostd_init(load_host_data=True):
         # Try to set our host data.
         try:
             host.load_data(ignore_missing)
-        except:
+        except Exception:
             config.raise_exception()
             raise
 

@@ -6,10 +6,10 @@ import shutil
 
 try:
     import simdjson as _json
-except:
+except Exception:
     try:
         import ujson as _json
-    except:
+    except Exception:
         import json as _json
 
 try:
@@ -17,7 +17,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -213,7 +213,7 @@ class SyncCache(dict):
         """ Read sync list from file. """
         try:
             sync_list_file = self.sync_list_files[list_type]
-        except:
+        except Exception:
             log_msg = _("Invalid sync list type: {list_type}", log=True)[1]
             log_msg = log_msg.format(list_type=list_type)
             self.logger.warning(log_msg)
@@ -241,7 +241,7 @@ class SyncCache(dict):
         """ Write sync list to file. """
         try:
             sync_list_file = self.sync_list_files[list_type]
-        except:
+        except Exception:
             log_msg = _("Invalid sync list type: {list_type}", log=True)[1]
             log_msg = log_msg.format(list_type=list_type)
             self.logger.warning(log_msg)
@@ -283,7 +283,7 @@ class SyncCache(dict):
         if self.mem_cache:
             try:
                 data = self._cache[object_id]
-            except:
+            except Exception:
                 data = None
             if data is not None:
                 return data
@@ -298,7 +298,7 @@ class SyncCache(dict):
         # Try to remove object.
         try:
             cache_file = self.object_ids.pop(object_id)
-        except:
+        except Exception:
             return
         if not os.path.exists(cache_file):
             return
@@ -321,7 +321,7 @@ class SyncCache(dict):
         except Exception as e:
             msg = _("Error creating cache directory: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def load(self):
         """ Read all object IDs from sync dir into sync cache dict. """
@@ -386,4 +386,4 @@ class SyncCache(dict):
         except Exception as e:
             msg = _("Error writing cache file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e

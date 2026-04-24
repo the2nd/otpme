@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.cli import register_cli
@@ -40,27 +40,29 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, job_order, job_data, acls, max_roles=5,
-    max_tokens=5, max_nodes=5, max_policies=5, output_fields=[],
+    max_tokens=5, max_nodes=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for jobs. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for job_uuid in job_order:
         row = []
         try:
             job_name = job_data[job_uuid]['job_name'][0]
-        except:
+        except Exception:
             job_name = "Unknown"
         try:
             realm = job_data[job_uuid]['realm']
-        except:
+        except Exception:
             realm = "Unknown"
         try:
             site = job_data[job_uuid]['site']
-        except:
+        except Exception:
             site = "Unknown"
         try:
             job_status = job_data[job_uuid]['job_status'][0]
-        except:
+        except Exception:
             job_status = "Unknown"
 
         # Job UUID.

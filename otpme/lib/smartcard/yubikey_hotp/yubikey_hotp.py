@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -54,10 +54,10 @@ class YubikeyHotpClientHandler(object):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['yubikey_hotp']['deploy']['cmd']
-        except:
+        except Exception:
             msg = _("Unknown token type: {type}")
             msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         # Parse command line.
         local_command_args = {}
@@ -71,11 +71,11 @@ class YubikeyHotpClientHandler(object):
         except Exception as e:
             if str(e) == "help":
                 exception = command_handler.get_help()
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
             elif str(e) != "":
                 msg = str(e)
                 exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception)
+                raise ShowHelp(exception) from e
 
         # Try to find yubikey.
         try:
@@ -83,11 +83,11 @@ class YubikeyHotpClientHandler(object):
         except Exception as e:
             msg = _("Error detecting yubikey: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         try:
             slot = local_command_args['slot']
-        except:
+        except Exception:
             # Set default slot=1 if we got no slot from user.
             slot = 1
             local_command_args['slot'] = slot
@@ -138,13 +138,13 @@ class YubikeyHotpClientHandler(object):
             msg = msg.format(slot=slot)
             message(msg)
         except Exception as e:
-            raise OTPmeException(str(e))
+            raise OTPmeException(str(e)) from e
 
         # FIXME: do we need this?
         # Workaround for http://bugs.python.org/issue24596
         try:
             del yk
-        except:
+        except Exception:
             pass
 
         ask = cli.user_input(_("Please re-plug your yubikey now and "

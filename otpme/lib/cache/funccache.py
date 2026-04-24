@@ -8,10 +8,10 @@ from functools import wraps
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 #from cachetools import keys
@@ -25,7 +25,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -43,9 +43,13 @@ _CacheInfo = collections.namedtuple('CacheInfo', [
 
 class Cache(object):
     """ Cache class. """
-    def __init__(self, name, cache_type="lru", maxsize=256, ignore_args=[],
-        ignore_classes=[], cache_name_var=None, cache_name_func=None,
+    def __init__(self, name, cache_type="lru", maxsize=256, ignore_args=None,
+        ignore_classes=None, cache_name_var=None, cache_name_func=None,
         default_cache=None, caches=None, shared=False, copy_cache=False):
+        if ignore_args is None:
+            ignore_args = []
+        if ignore_classes is None:
+            ignore_classes = []
         self.name = name
         self._stats = {}
         self._caches = {}
@@ -73,11 +77,11 @@ class Cache(object):
             cache_name = self.default_cache
         try:
             cache_type = self.caches[cache_name]['cache_type']
-        except:
+        except Exception:
             cache_type = self.cache_type
         try:
             maxsize = self.caches[cache_name]['maxsize']
-        except:
+        except Exception:
             maxsize = self.maxsize
         if cache_type == "lru":
             cache_class = LRUCache
@@ -117,7 +121,7 @@ class Cache(object):
                     cache_name = func_kwargs[self.cache_name_var]
                 else:
                     cache_name = func_args[self.cache_name_var]
-            except:
+            except Exception:
                 pass
         if self.cache_name_func is not None:
             try:
@@ -134,17 +138,17 @@ class Cache(object):
             cache_name = self.default_cache
         try:
             _cache = self._caches[cache_name]['cache']
-        except:
+        except Exception:
             msg = _("Unknown cache: {cache_name}")
             msg = msg.format(cache_name=cache_name)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         return _cache
 
     def get_shared_cache(self, cache_name):
         shared_cache_name = f"funccache.{cache_name}"
         try:
             _shared_cache = self._shared_caches[shared_cache_name]
-        except:
+        except Exception:
             _shared_cache = multiprocessing.get_dict(shared_cache_name)
             self._shared_caches[shared_cache_name] = _shared_cache
         return _shared_cache
@@ -175,11 +179,11 @@ class Cache(object):
                     use_shared_cache = True
                 try:
                     ignore_args = self.caches[cache_name]['ignore_args']
-                except:
+                except Exception:
                     ignore_args = self.ignore_args
                 try:
                     ignore_classes = self.caches[cache_name]['ignore_classes']
-                except:
+                except Exception:
                     ignore_classes = self.ignore_classes
 
                 f_args = list(args)
@@ -199,14 +203,14 @@ class Cache(object):
                 except Exception as e:
                     msg = _("Failed to parse function args: {name} ({cache_name}): {method_name}: {e}")
                     msg = msg.format(name=self.name, cache_name=cache_name, method_name=method_name, e=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 # Build key to cache result.
                 k = f"{method_name}.{k}"
                 # Try to get cache.
                 try:
                     _cache = self.get_cache(cache_name)
                     check_cache = True
-                except:
+                except Exception:
                     # Init new cache if none exists. This is required to allow
                     # caches that do not exist on cache creation (e.g. by
                     # UUID caches).
@@ -243,12 +247,12 @@ class Cache(object):
                         config.logger.debug(log_msg)
                     try:
                         self._stats[cache_name][0] += 1
-                    except:
+                    except Exception:
                         pass
                 except KeyError:
                     try:
                         self._stats[cache_name][1] += 1
-                    except:
+                    except Exception:
                         pass
 
             # Try to get result from shared cache.
@@ -273,12 +277,12 @@ class Cache(object):
                         config.logger.debug(log_msg)
                     try:
                         self._stats[cache_name][0] += 1
-                    except:
+                    except Exception:
                         pass
                 except KeyError:
                     try:
                         self._stats[cache_name][1] += 1
-                    except:
+                    except Exception:
                         pass
 
             # Run func/method if no cache hit was available.
@@ -364,14 +368,14 @@ class Cache(object):
             cache_name = self.default_cache
         try:
             _cache = self.get_cache(cache_name)
-        except:
+        except Exception:
             return
         try:
             hits, misses = self._stats[cache_name]
-        except:
+        except Exception:
             msg = _("Unknown cache: {cache_name}")
             msg = msg.format(cache_name=cache_name)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         maxsize = _cache.maxsize
         currsize = _cache.currsize
         return _CacheInfo(hits, misses, maxsize, currsize)
@@ -382,7 +386,7 @@ class Cache(object):
         # Get local cache
         try:
             _cache = self.get_cache(cache_name)
-        except:
+        except Exception:
             pass
         else:
             if config.debug_level("func_cache_adds") > 0 \
@@ -396,7 +400,7 @@ class Cache(object):
             finally:
                 try:
                     self._stats[cache_name][:] = [0, 0]
-                except:
+                except Exception:
                     pass
         if not self.shared:
             return
@@ -440,7 +444,7 @@ class FuncCache(object):
         #thread_id = "test"
         try:
             _cache = self._caches[thread_id]
-        except:
+        except Exception:
             _cache = Cache(self.name, **self._cache_kwargs)
             self._caches[thread_id] = _cache
         return _cache
@@ -489,7 +493,7 @@ class FuncCache(object):
                         clear_time = clear_trigger[cache_name]
                         try:
                             cache_last_clear = _cache.last_clear[cache_name]
-                        except:
+                        except Exception:
                             cache_last_clear = None
                         if cache_last_clear is not None:
                             if clear_time < cache_last_clear:
@@ -531,7 +535,7 @@ class FuncCache(object):
         # Make sure we update the clear trigger to get other processes notified.
         try:
             clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
-        except:
+        except Exception:
             clear_trigger = {}
         clear_trigger[trigger_name] = time.time()
         # Expire clear trigger after 1h. This is required for caches based on

@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.cli import register_cli
@@ -62,8 +62,10 @@ def register():
                 max_len=None)
 
 def row_getter(realm, site, unit_order, unit_data, acls,
-    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for units. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for unit_uuid in unit_order:
         row = []
@@ -71,29 +73,29 @@ def row_getter(realm, site, unit_order, unit_data, acls,
         unit_path = unit_data[unit_uuid]['rel_path']
         try:
             enabled = unit_data[unit_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             unit_unit_uuid = unit_data[unit_uuid]['unit'][0]
-        except:
+        except Exception:
             unit_unit_uuid = None
         try:
             policies = unit_data[unit_uuid]['policy']
-        except:
+        except Exception:
             policies = None
         try:
             description = unit_data[unit_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = unit_data[unit_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             unit_acls = acls[unit_uuid]
-        except:
+        except Exception:
             unit_acls = {}
 
         # Get ACL checker.

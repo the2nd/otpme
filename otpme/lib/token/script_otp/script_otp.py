@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -121,7 +121,7 @@ class ScriptToken(Token):
         ):
 
         # Call parent class init.
-        super(ScriptToken, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,

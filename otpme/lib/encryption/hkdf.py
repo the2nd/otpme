@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -70,10 +70,10 @@ def derive(secret, hash_algo="SHA256", key_len=32,
     try:
         algo_method = getattr(hashes, hash_algo)
         _hash_algo = algo_method()
-    except:
+    except Exception:
         msg = _("Unknown hash type: {hash_algo}")
         msg = msg.format(hash_algo=hash_algo)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     # Encode pw and salt.
     secret = secret.encode("utf-8")
     _salt = salt

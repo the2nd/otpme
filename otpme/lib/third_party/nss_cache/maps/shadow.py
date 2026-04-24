@@ -35,13 +35,13 @@ class ShadowMap(maps.Map):
 
     def __init__(self, iterable=None):
         """Construct a ShadowMap object using optional iterable."""
-        super(ShadowMap, self).__init__(iterable)
+        super().__init__(iterable)
 
     def Add(self, entry):
         """Add a new object, verify it is a ShadowMapEntry object."""
         if not isinstance(entry, ShadowMapEntry):
             raise TypeError
-        return super(ShadowMap, self).Add(entry)
+        return super().Add(entry)
 
 
 class ShadowMapEntry(maps.MapEntry):
@@ -64,7 +64,7 @@ class ShadowMapEntry(maps.MapEntry):
         self.expire = None
         self.flag = None
 
-        super(ShadowMapEntry, self).__init__(data)
+        super().__init__(data)
 
         # Seed data with defaults if needed
         if self.passwd is None:

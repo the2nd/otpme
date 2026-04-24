@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -130,10 +130,10 @@ class OTPmeAuthP1(OTPmeServer1):
             try:
                 ag_site = access_group.split("/")[0]
                 ag_name = access_group.split("/")[1]
-            except IndexError:
+            except IndexError as err:
                 msg = _("Invalid accessgroup name: {access_group}")
                 msg = msg.format(access_group=access_group)
-                raise AccessDenied(msg)
+                raise AccessDenied(msg) from err
             result = backend.search(object_type="accessgroup",
                                     attribute="name",
                                     value=ag_name,
@@ -164,9 +164,9 @@ class OTPmeAuthP1(OTPmeServer1):
         jwt_valid = user_site.get_config_parameter(jwt_valid_para)
         try:
             jwt_valid = units.time2int(jwt_valid, time_unit="s")
-        except Exception:
+        except Exception as err:
             msg = _("Invalid auth JWT validity.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
 
         # Build JWT.
         now = time.time()
@@ -194,21 +194,21 @@ class OTPmeAuthP1(OTPmeServer1):
     def get_jwt(self, command_args):
         try:
             jwt_reason = command_args['jwt_reason']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
 
         try:
             jwt_challenge = command_args['jwt_challenge']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
 
         try:
             jwt_access_group = command_args['jwt_access_group']
-        except:
+        except Exception:
             jwt_access_group = None
 
         try:
@@ -337,7 +337,7 @@ class OTPmeAuthP1(OTPmeServer1):
     def fido2_auth_begin(self, username, command_args):
         try:
             rp_id = command_args['rp_id']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -397,25 +397,25 @@ class OTPmeAuthP1(OTPmeServer1):
     def fido2_auth_complete(self, username, client, client_ip, sso_challenge, command_args):
         try:
             rp_id = command_args['rp_id']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             auth_state = command_args['auth_state']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             auth_response = command_args['auth_response']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             matched_token_name = command_args['matched_token_name']
-        except:
+        except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
@@ -497,23 +497,23 @@ class OTPmeAuthP1(OTPmeServer1):
         smartcard_data=None):
         try:
             jwt_reason = command_args['jwt_reason']
-        except:
+        except Exception:
             jwt_reason = None
         try:
             jwt_challenge = command_args['jwt_challenge']
-        except:
+        except Exception:
             jwt_challenge = None
         try:
             jwt_access_group = command_args['jwt_access_group']
-        except:
+        except Exception:
             jwt_access_group = None
         try:
             sso_login = command_args['sso_login']
-        except:
+        except Exception:
             sso_login = False
         try:
             sso_challenge = command_args['sso_challenge']
-        except:
+        except Exception:
             sso_challenge = None
         # Get audit logger.
         audit_logger = config.audit_logger
@@ -881,67 +881,67 @@ class OTPmeAuthP1(OTPmeServer1):
         # Try to get username.
         try:
             username = command_args['username']
-        except:
+        except Exception:
             username = None
 
         try:
             client = command_args['client']
-        except:
+        except Exception:
             client = None
 
         try:
             client_ip = command_args['client_ip']
-        except:
+        except Exception:
             client_ip = None
 
         try:
             host = command_args['host']
-        except:
+        except Exception:
             host = None
 
         try:
             host_type = command_args['host_type']
-        except:
+        except Exception:
             host_type = None
 
         try:
             host_ip = command_args['host_ip']
-        except:
+        except Exception:
             host_ip = None
 
         try:
             password = command_args['password']
-        except:
+        except Exception:
             password = None
 
         try:
             mschap_challenge = command_args['mschap_challenge']
-        except:
+        except Exception:
             mschap_challenge = None
 
         try:
             mschap_response = command_args['mschap_response']
-        except:
+        except Exception:
             mschap_response = None
 
         try:
             smartcard_data = command_args['smartcard_data']
-        except:
+        except Exception:
             smartcard_data = None
 
         try:
             access_group = command_args['access_group']
-        except:
+        except Exception:
             access_group = None
 
         try:
             sso_logout = command_args['sso_logout']
-        except:
+        except Exception:
             sso_logout = False
 
         try:
             sso_challenge = command_args['sso_challenge']
-        except:
+        except Exception:
             sso_challenge = None
 
         # Set host IP from source IP if requested.

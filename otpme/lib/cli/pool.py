@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import backend
@@ -62,9 +62,11 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, pool_order, pool_data, acls, max_roles=5,
-    max_tokens=5, max_nodes=5, max_policies=5, output_fields=[],
+    max_tokens=5, max_nodes=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for pools. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for pool_uuid in pool_order:
         row = []
@@ -72,21 +74,21 @@ def row_getter(realm, site, pool_order, pool_data, acls, max_roles=5,
         unit_uuid = pool_data[pool_uuid]['unit'][0]
         try:
             enabled = pool_data[pool_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             description = pool_data[pool_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = pool_data[pool_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             pool_acls = acls[pool_uuid]
-        except:
+        except Exception:
             pool_acls = {}
 
         # Get ACL checker.

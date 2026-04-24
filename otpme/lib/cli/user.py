@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import backend
@@ -67,8 +67,10 @@ def register():
                 max_len=10)
 
 def row_getter(realm, site, user_order, user_data, acls,
-    acl_checker=None, output_fields=[], max_policies=5, **kwargs):
+    acl_checker=None, output_fields=None, max_policies=5, **kwargs):
     """ Build table rows for users. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for user_uuid in user_order:
         row = []
@@ -79,29 +81,29 @@ def row_getter(realm, site, user_order, user_data, acls,
             unit_uuid = None
         try:
             enabled = user_data[user_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             auth_script_uuid = user_data[user_uuid]['auth_script'][0]
-        except:
+        except Exception:
             auth_script_uuid = None
         try:
             auth_script_enabled = user_data[user_uuid]['auth_script_enabled'][0]
-        except:
+        except Exception:
             auth_script_enabled = None
         try:
             description = user_data[user_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = user_data[user_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             user_acls = acls[user_uuid]
-        except:
+        except Exception:
             user_acls = {}
 
         # Get ACL checker.

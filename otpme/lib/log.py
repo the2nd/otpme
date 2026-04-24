@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.syslog import get_log_handler
@@ -256,6 +256,22 @@ def setup_logger(*args, **kwargs):
                                 **kwargs)
     return logger
 
+def _maybe_add_exc_info(kwargs):
+    """ When config.log_exc_info is enabled, attach the active exception
+    (if any) to the log record. Only kicks in inside an except: block —
+    outside of one sys.exc_info() is (None, None, None) and exc_info=True
+    would be a no-op. A caller that passes exc_info explicitly (True or
+    False) always wins.
+    """
+    if 'exc_info' in kwargs:
+        return
+    from otpme.lib import config
+    if not config.log_exc_info:
+        return
+    if sys.exc_info()[0] is None:
+        return
+    kwargs['exc_info'] = True
+
 def log_lock():
     """ Decorator to serialize logger calls across threads in this process.
 
@@ -302,23 +318,25 @@ class OTPmeLogger(object):
 
     @log_lock()
     def warning(self, *args, **kwargs):
-        #kwargs['exc_info'] = True
+        _maybe_add_exc_info(kwargs)
         return self.logger.warning(*args, **kwargs)
 
     @log_lock()
     def error(self, *args, **kwargs):
-        #kwargs['exc_info'] = True
+        _maybe_add_exc_info(kwargs)
         return self.logger.error(*args, **kwargs)
 
     @log_lock()
     def critical(self, *args, **kwargs):
-        #kwargs['exc_info'] = True
+        _maybe_add_exc_info(kwargs)
         return self.logger.critical(*args, **kwargs)
 
     @log_lock()
     def warn(self, *args, **kwargs):
+        _maybe_add_exc_info(kwargs)
         return self.logger.warn(*args, **kwargs)
 
     @log_lock()
     def fatal(self, *args, **kwargs):
+        _maybe_add_exc_info(kwargs)
         return self.logger.fatal(*args, **kwargs)

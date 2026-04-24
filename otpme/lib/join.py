@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -155,7 +155,7 @@ class JoinHandler(object):
             config.raise_exception()
             msg = _("Unable to connect to join daemon: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return joind_conn
 
     def init_host(self):
@@ -218,7 +218,7 @@ class JoinHandler(object):
             dns_result = net.get_otpme_site(domain)
             dns_realm = dns_result['realm']
             dns_site = dns_result['site']
-        except:
+        except Exception:
             dns_site = None
             dns_realm = None
 
@@ -431,7 +431,7 @@ class JoinHandler(object):
                     config.raise_exception()
                     msg = _("Joining {host_type} failed: Error adding object {obj_id}: {error}")
                     msg = msg.format(host_type=self.host_type, obj_id=object_id, error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 # Update signers cache.
                 if object_type == "user":
                     x_user = backend.get_object(object_type="user",
@@ -488,7 +488,7 @@ class JoinHandler(object):
         except Exception as e:
             msg = _("Error writing UUID file: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def send_join_request(self, jotp, force, conn_kwargs):
         """ Send initial join request. """
@@ -618,7 +618,7 @@ class JoinHandler(object):
         except Exception as e:
             msg = _("Error generating master key: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Initialize backend (e.g. set file permissions)
         backend.init(init_file_dir_perms=True)
@@ -946,7 +946,7 @@ class JoinHandler(object):
                 except Exception as e:
                     msg = _("Error removing file: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
             for x in remove_dirs:
                 log_msg = _("Removing dir: {x}", log=True)[1]
@@ -959,7 +959,7 @@ class JoinHandler(object):
                 except Exception as e:
                     msg = _("Error removing dir: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
         if os.path.exists(config.uuid_file):
             log_msg = _("Removing UUID file: {uuid_file}", log=True)[1]
@@ -970,6 +970,6 @@ class JoinHandler(object):
             except Exception as e:
                 msg = _("Error removing UUID file: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         return response

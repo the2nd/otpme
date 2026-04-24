@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -40,6 +40,7 @@ debug_opts_mapping = {
                 'd'         : 'base',
                 'D'         : 'daemonize',
                 'e'         : 'raise_exceptions',
+                'E'         : 'log_exc_info',
                 'h'         : 'func_cache_hits',
                 'L'         : 'locking',
                 'm'         : 'module_loading',
@@ -72,7 +73,7 @@ def get_cmd_help(command, mod_name=None):
         mod_name = config.cli_object_type
     try:
         help_dict = command_map[command][mod_name]
-    except:
+    except Exception:
         help_dict = {}
     return help_dict
 
@@ -111,6 +112,7 @@ register_global_opt("-dC", "Enable debug logging for client messages")
 register_global_opt("-dD", "Do not go to background and log to stdout.")
 register_global_opt("-de", "Print tracebacks.")
 register_global_opt("-dee", "Raise debug exceptions.")
+register_global_opt("-dE", "Include exception info in warning/error/critical/fatal log records.")
 register_global_opt("-dh", "Debug function cache hits.")
 register_global_opt("-dL", "Debug locks.")
 register_global_opt("-dm", "Print loading of OTPme modules")
@@ -165,7 +167,7 @@ def get_help(command, subcommand=None, command_map=None,
     if subcommand:
         try:
             return command_map[command][mod_name][subcommand]['_cmd_usage_help']
-        except:
+        except Exception:
             subcommand = None
 
     main_usage_help = ""
@@ -181,16 +183,16 @@ def get_help(command, subcommand=None, command_map=None,
     # Get main command help
     try:
         main_command_help = command_map[command][mod_name]['_help']
-    except:
+    except Exception:
         main_command_help = None
 
     command_count = 0
     try:
         cmd_map = command_map[command][mod_name]
-    except KeyError:
+    except KeyError as err:
         msg = _("Unknown help: {command}/{mod_name}")
         msg = msg.format(command=command, mod_name=mod_name)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
 
     for c in sorted(cmd_map):
         opt_count = 0
@@ -225,7 +227,7 @@ def get_help(command, subcommand=None, command_map=None,
 
     try:
         include_main_opts = command_map[command][mod_name]['_include_main_opts']
-    except:
+    except Exception:
         include_main_opts = False
 
     main_command_opts = None
@@ -237,7 +239,7 @@ def get_help(command, subcommand=None, command_map=None,
 
     try:
         include_global_opts = command_map[command][mod_name]['_include_global_opts']
-    except:
+    except Exception:
         include_global_opts = False
 
     glob_opt_table = []
@@ -316,7 +318,7 @@ def get_main_opts(clear_cache=False, mod_name=None):
     # freeradius as a module).
     try:
         sys.argv[0]
-    except:
+    except Exception:
         # By default we dont print tracebacks.
         main_opts['print_tracebacks'] = False
         return main_opts
@@ -331,11 +333,11 @@ def get_main_opts(clear_cache=False, mod_name=None):
         global main_opts
         try:
             debug_levels = main_opts['debug_levels']
-        except:
+        except Exception:
             debug_levels = {}
         try:
             x_debug_level = debug_levels[slot]
-        except:
+        except Exception:
             x_debug_level = 0
         x_debug_level += 1
         debug_levels[slot] = x_debug_level
@@ -355,6 +357,8 @@ def get_main_opts(clear_cache=False, mod_name=None):
             main_opts['print_tracebacks'] = True
             if x_debug_level > 1:
                 main_opts['raise_exceptions'] = True
+        if slot == "log_exc_info":
+            main_opts['log_exc_info'] = True
 
     def parse_debug_opts(opts):
         """ Parse debug options + level. """
@@ -388,10 +392,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
                         for c in cur_opt:
                             try:
                                 debug_opt = debug_opts_mapping[c]
-                            except:
+                            except Exception:
                                 msg = _("Invalid option: {option}")
                                 msg = msg.format(option=c)
-                                raise OTPmeException(msg)
+                                raise OTPmeException(msg) from None
                             set_debug_level(debug_opt)
                 continue
 
@@ -403,10 +407,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
                         for c in cur_opt:
                             try:
                                 debug_opt = debug_opts_mapping[c]
-                            except:
+                            except Exception:
                                 msg = _("Invalid option: {option}")
                                 msg = msg.format(option=c)
-                                raise OTPmeException(msg)
+                                raise OTPmeException(msg) from None
                             set_debug_level(debug_opt)
                         cur_opt = x
 
@@ -414,10 +418,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
                     for c in cur_opt:
                         try:
                             debug_opt = debug_opts_mapping[c]
-                        except:
+                        except Exception:
                             msg = _("Invalid option: {option}")
                             msg = msg.format(option=c)
-                            raise OTPmeException(msg)
+                            raise OTPmeException(msg) from None
                         set_debug_level(debug_opt)
                     cur_opt = x
                     cur_type = "number"
@@ -428,10 +432,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
                     cur_opt = f"{x}{cur_opt}"
                     try:
                         debug_opt = debug_opts_mapping[cur_opt]
-                    except:
+                    except Exception:
                         msg = _("Invalid option: {option}")
                         msg = msg.format(option=cur_opt)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from None
                     set_debug_level(debug_opt)
                     cur_opt = None
                     cur_type = None
@@ -445,10 +449,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
                     for c in cur_opt:
                         try:
                             debug_opt = debug_opts_mapping[c]
-                        except:
+                        except Exception:
                             msg = _("Invalid option: {option}")
                             msg = msg.format(option=c)
-                            raise OTPmeException(msg)
+                            raise OTPmeException(msg) from None
                         set_debug_level(debug_opt)
 
     verbose_re = re.compile('^-[v]*$')
@@ -547,32 +551,32 @@ def get_main_opts(clear_cache=False, mod_name=None):
             sys.argv.pop(0)
             try:
                 connect_timeout = int(sys.argv[0])
-            except:
-                raise OTPmeException("-t requires seconds as integer")
+            except Exception:
+                raise OTPmeException("-t requires seconds as integer") from None
             main_opts['connect_timeout'] = connect_timeout
             sys.argv.pop(0)
         elif sys.argv[0] == "-tt":
             sys.argv.pop(0)
             try:
                 connection_timeout = int(sys.argv[0])
-            except:
-                raise OTPmeException("-tt requires seconds as integer")
+            except Exception:
+                raise OTPmeException("-tt requires seconds as integer") from None
             main_opts['connection_timeout'] = connection_timeout
             sys.argv.pop(0)
         elif sys.argv[0] == "--reneg-timeout":
             sys.argv.pop(0)
             try:
                 reneg_timeout = int(sys.argv[0])
-            except:
-                raise OTPmeException("--reneg-timeout requires seconds as integer")
+            except Exception:
+                raise OTPmeException("--reneg-timeout requires seconds as integer") from None
             main_opts['reneg_timeout'] = reneg_timeout
             sys.argv.pop(0)
         elif sys.argv[0] == "--log-filter":
             sys.argv.pop(0)
             try:
                 log_filter = sys.argv[0].split(",")
-            except:
-                raise OTPmeException("--log-filter requires a comma separated list")
+            except Exception:
+                raise OTPmeException("--log-filter requires a comma separated list") from None
             main_opts['log_filter'] = log_filter
             sys.argv.pop(0)
         elif sys.argv[0] == "--cache-flush":
@@ -588,16 +592,16 @@ def get_main_opts(clear_cache=False, mod_name=None):
             sys.argv.pop(0)
             try:
                 debug_daemons = sys.argv[0].split(",")
-            except:
-                raise OTPmeException("--debug-daemons requires a comma separated list")
+            except Exception:
+                raise OTPmeException("--debug-daemons requires a comma separated list") from None
             main_opts['debug_daemons'] = debug_daemons
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-users":
             sys.argv.pop(0)
             try:
                 debug_users = sys.argv[0].split(",")
-            except:
-                raise OTPmeException("--debug-users requires a comma separated list")
+            except Exception:
+                raise OTPmeException("--debug-users requires a comma separated list") from None
             main_opts['debug_users'] = debug_users
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-profile-sort":
@@ -608,56 +612,56 @@ def get_main_opts(clear_cache=False, mod_name=None):
             sys.argv.pop(0)
             try:
                 debug_func_start = sys.argv[0].split(",")
-            except:
-                raise OTPmeException("--debug-func-start requires a comma separated list")
+            except Exception:
+                raise OTPmeException("--debug-func-start requires a comma separated list") from None
             main_opts['debug_func_start'] = debug_func_start
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-func-names":
             sys.argv.pop(0)
             try:
                 debug_func_names = sys.argv[0].split(",")
-            except:
-                raise OTPmeException("--debug-func-names requires a comma separated list")
+            except Exception:
+                raise OTPmeException("--debug-func-names requires a comma separated list") from None
             main_opts['debug_func_names'] = debug_func_names
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-func-caches":
             sys.argv.pop(0)
             try:
                 debug_func_caches = sys.argv[0].split(",")
-            except:
-                raise OTPmeException("--debug-func-caches requires a comma separated list")
+            except Exception:
+                raise OTPmeException("--debug-func-caches requires a comma separated list") from None
             main_opts['debug_func_caches'] = debug_func_caches
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-timing-limit":
             sys.argv.pop(0)
             try:
                 debug_timing_limit = float(sys.argv[0])
-            except:
-                raise OTPmeException("--debug-timing-limit requires a int/float")
+            except Exception:
+                raise OTPmeException("--debug-timing-limit requires a int/float") from None
             main_opts['debug_timing_limit'] = debug_timing_limit
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-counter-limit":
             sys.argv.pop(0)
             try:
                 debug_counter_limit = int(sys.argv[0])
-            except:
-                raise OTPmeException("--debug-counter-limit requires a int")
+            except Exception:
+                raise OTPmeException("--debug-counter-limit requires a int") from None
             main_opts['debug_counter_limit'] = debug_counter_limit
             sys.argv.pop(0)
         elif sys.argv[0] == "--lock-timeout":
             sys.argv.pop(0)
             try:
                 main_opts['lock_timeout'] = int(sys.argv.pop(0))
-            except:
+            except Exception:
                 msg = ("--lock-timeout requires an int")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
         elif sys.argv[0] == "--lock-wait-timeout":
             sys.argv.pop(0)
             try:
                 main_opts['lock_wait_timeout'] = int(sys.argv.pop(0))
-            except:
+            except Exception:
                 msg = ("--lock-wait-timeout requires an int")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
         elif sys.argv[0] == "--lock-ignore-changed-objects":
             sys.argv.pop(0)
             main_opts['ignore_changed_objects'] = True

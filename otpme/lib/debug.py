@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -83,7 +83,7 @@ def end_timing(warn_seconds=0.1, quiet=False):
     end_time = time.time()
     try:
         age = end_time- start_times[caller]
-    except:
+    except Exception:
         return
     if age < warn_seconds:
         return
@@ -94,8 +94,10 @@ def end_timing(warn_seconds=0.1, quiet=False):
     start_times.pop(caller)
     return age
 
-def trace(ignore_callers=[], trace_len=10):
+def trace(ignore_callers=None, trace_len=10):
     """ Use inspect module to trace callers. """
+    if ignore_callers is None:
+        ignore_callers = []
     trace_start = 2
     caller = inspect.stack()[trace_start][3]
     if caller == "debug_wrapper":
@@ -183,7 +185,7 @@ def get_timing_result(sort_by="time", print_status=False):
             try:
                 method_counts = traced_methods[thread_id][method]['counts']
                 method_time_sum = traced_methods[thread_id][method]['timer_sum']
-            except:
+            except Exception:
                 if thread_id not in traced_methods:
                     traced_methods[thread_id] = {}
                 traced_methods[thread_id][method] = {}
@@ -240,7 +242,7 @@ def decorator(func, _otpme_class_debug=False):
     global adding_decorators
     try:
         debug_func_start_regex
-    except:
+    except Exception:
         debug_func_start_regex = []
         for f_regex in config.debug_func_start:
             f_re = re.compile(f_regex)
@@ -253,7 +255,7 @@ def decorator(func, _otpme_class_debug=False):
         global method_tracing_start
         try:
             fn = func.__name__
-        except:
+        except Exception:
             fn = func.func_name
         if _otpme_class_debug:
             func_type = "method"
@@ -330,11 +332,11 @@ def decorator(func, _otpme_class_debug=False):
         debug_wrapper.call_counter = 0
         try:
             last_caller = debug_wrapper.last_caller
-        except:
+        except Exception:
             last_caller = None
         try:
             call_counter = debug_wrapper.call_counter
-        except:
+        except Exception:
             call_counter = 0
 
         if last_caller == func_name:
@@ -353,17 +355,17 @@ def decorator(func, _otpme_class_debug=False):
                 stacks[thread_id] = {}
             try:
                 counts = stacks[thread_id]['counts']
-            except:
+            except Exception:
                 counts = {}
                 stacks[thread_id]['counts'] = counts
             try:
                 timing = stacks[thread_id]['timing']
-            except:
+            except Exception:
                 timing = {}
                 stacks[thread_id]['timing'] = timing
             try:
                 traceback = stacks[thread_id]['traceback']
-            except:
+            except Exception:
                 traceback = []
                 stacks[thread_id]['traceback'] = traceback
             traceback.append(method)
@@ -393,7 +395,7 @@ def decorator(func, _otpme_class_debug=False):
                     counter = longest_timings[method]['counter']
                     slowest = longest_timings[method]['slowest']
                     fastest = longest_timings[method]['fastest']
-                except:
+                except Exception:
                     longest_timings[method] = {}
                     slowest = 0.0
                     fastest = 0.0
@@ -504,7 +506,7 @@ def add_decorator(module):
                 try:
                     m = getattr(f, y)
                     m_module = m.__module__
-                except:
+                except Exception:
                     continue
                 if m_module != module_name:
                     continue
@@ -581,7 +583,7 @@ def show_objects_with_reference():
                 frame = tb[0]
                 origin = f"{frame.filename}:{frame.lineno}"
                 origins[obj_type].append(origin)
-        except:
+        except Exception:
             pass
 
     print("\n=== Objects with Origins ===")

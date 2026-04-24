@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -164,6 +164,6 @@ class FailedPass(UsedHash):
         # Set our type (used in parent class).
         self.type = "failed_pass"
         # Call parent class init.
-        super(FailedPass, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         # Track last used for failed password hashes.
         self.track_last_used = True

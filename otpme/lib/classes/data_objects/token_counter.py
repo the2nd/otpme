@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -150,4 +150,4 @@ class TokenCounter(UsedHash):
         # Set our type (used in parent class).
         self.type = "token_counter"
         # Call parent class init.
-        super(TokenCounter, self).__init__(**kwargs)
+        super().__init__(**kwargs)

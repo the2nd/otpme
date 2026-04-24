@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -65,13 +65,13 @@ def register():
         except Exception as e:
             msg = _("Failed to load daemon status: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             status_data = json.loads(status_data)
         except Exception as e:
             msg = _("Failed to decode daemon status: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return status_data
     def write_daemon_status(self, daemon_name, status_data):
         """ Write daemon status to status file. """
@@ -83,13 +83,13 @@ def register():
         except Exception as e:
             msg = _("Failed to encode daemon status: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             filetools.create_file(status_file, status_data)
         except Exception as e:
             msg = _("Failed to write daemon status: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
     def daemon_status_getter(self):
         """ Daemon status. """
         if self.daemon_name is None:
@@ -98,7 +98,7 @@ def register():
         status_data = self.read_daemon_status(self.daemon_name)
         try:
             _status = status_data['status']
-        except:
+        except Exception:
             _status = None
         return _status
     def daemon_status_setter(self, new_status):
@@ -123,7 +123,7 @@ def register():
         status_data = self.read_daemon_status(config.daemon_name)
         try:
             _pid = status_data['pid']
-        except:
+        except Exception:
             _pid = None
         return _pid
     config.register_property(name="daemon_pid", getx=pid_getter)
@@ -284,7 +284,7 @@ class ControlDaemon(UnixDaemon):
         # Daemon handler process.
         self.daemon_handler_proc = None
         # Call parent class init.
-        super(ControlDaemon, self).__init__(self.full_name, *args, **kwargs)
+        super().__init__(self.full_name, *args, **kwargs)
 
     def signal_handler(self, _signal, frame):
         """ Handle signals and notify ourselves via queue.put() """
@@ -476,7 +476,7 @@ class ControlDaemon(UnixDaemon):
             msg = msg.format(site=config.site, error=e)
             log_msg = log_msg.format(site=config.site, error=e)
             self.logger.critical(log_msg)
-            raise Exception(msg)
+            raise Exception(msg) from e
         finally:
             # Remember address we configured.
             self.floating_address = address
@@ -494,7 +494,7 @@ class ControlDaemon(UnixDaemon):
             msg = msg.format(site=config.site, error=e)
             log_msg = log_msg.format(site=config.site, error=e)
             self.logger.critical(log_msg)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
     def configure(self):
         """ Make sure we are configured correctly. """
@@ -1360,7 +1360,7 @@ class ControlDaemon(UnixDaemon):
         """ Get child daemon process. """
         try:
             daemon = self.childs[child_name]['instance']
-        except:
+        except Exception:
             return
         return daemon
 

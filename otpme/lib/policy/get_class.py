@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -35,5 +35,5 @@ def get_class(policy_type):
     except Exception as e:
         msg = _("Error loading policy '{}': {}")
         msg = msg.format(class_name, e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return policy_class

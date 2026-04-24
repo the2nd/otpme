@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -181,12 +181,12 @@ class OTPmeAgentP1(object):
                 #             between psutil versions.
                 try:
                    proc = proc.parent()
-                except:
+                except Exception:
                    proc = proc.parent
                 # Stop loop if we reached process tree's top.
                 if proc is None:
                     break
-        except:
+        except Exception:
             pass
 
     def get_login_pid(self, pid):
@@ -204,12 +204,12 @@ class OTPmeAgentP1(object):
                 #             between psutil versions.
                 try:
                    proc = proc.parent()
-                except:
+                except Exception:
                    proc = proc.parent
                 # Stop loop if we reached process tree's top.
                 if proc is None:
                     break
-        except:
+        except Exception:
             pass
 
     def authorize_user(self, session, username, pid, command=None):
@@ -227,7 +227,7 @@ class OTPmeAgentP1(object):
         # Check session ACLs for the user of the connecting PID.
         try:
             user_acls = session['acls'][username]
-        except:
+        except Exception:
             user_acls = []
 
         if 'all' in user_acls:
@@ -321,7 +321,7 @@ class OTPmeAgentP1(object):
         # Get DNS option.
         try:
             use_dns = command_args['use_dns']
-        except:
+        except Exception:
             use_dns = config.use_dns
 
         # Check if we got a valid command.
@@ -349,13 +349,13 @@ class OTPmeAgentP1(object):
             if command == "auth":
                 try:
                     session_id = command_args['login_session_id']
-                except:
+                except Exception:
                     message = "AGENT_INCOMPLETE_COMMAND"
                     status = False
                     return self.build_response(status, message)
                 try:
                     self.login_pid = self.session_ids[session_id]
-                except:
+                except Exception:
                     message = _("Unknown session")
                     status = status_codes.UNKNOWN_LOGIN_SESSION
                     return self.build_response(status, message)
@@ -384,7 +384,7 @@ class OTPmeAgentP1(object):
                 session = self.login_sessions[login_pid]
                 try:
                     ssh_agent_pid = session['ssh_agent_pid']
-                except:
+                except Exception:
                     continue
                 if not self.check_ssh_agent_pid(self.client_pid, ssh_agent_pid):
                     continue
@@ -405,59 +405,59 @@ class OTPmeAgentP1(object):
         if self.authorized and self.session:
             try:
                 self.session_id = self.session['session_id']
-            except:
+            except Exception:
                 pass
             try:
                 self.session_type = self.session['session_type']
-            except:
+            except Exception:
                 pass
             try:
                 self.login_user = self.session['login_user']
-            except:
+            except Exception:
                 pass
             try:
                 self.login_token = self.session['login_token']
-            except:
+            except Exception:
                 pass
             try:
                 self.login_token_type = self.session['login_token_type']
-            except:
+            except Exception:
                 pass
             try:
                 self.login_pass_type = self.session['login_pass_type']
-            except:
+            except Exception:
                 pass
             try:
                 self.ssh_agent_pid = self.session['ssh_agent_pid']
-            except:
+            except Exception:
                 pass
             try:
                 self.realm = self.session['realm']
-            except:
+            except Exception:
                 pass
             try:
                 self.site = self.session['site']
-            except:
+            except Exception:
                 pass
             try:
                 self.tty = self.session['tty']
-            except:
+            except Exception:
                 pass
             try:
                 self.rsp = self.session['server_sessions'][self.realm][self.site]['rsp']
-            except:
+            except Exception:
                 pass
             try:
                 self.srp = self.session['server_sessions'][self.realm][self.site]['srp']
-            except:
+            except Exception:
                 pass
             try:
                 self.slp = self.session['server_sessions'][self.realm][self.site]['slp']
-            except:
+            except Exception:
                 pass
             try:
                 self.offline_allowed = self.session['server_sessions'][self.realm][self.site]['offline']
-            except:
+            except Exception:
                 pass
 
         if command == "add_session":
@@ -472,18 +472,18 @@ class OTPmeAgentP1(object):
             else:
                 try:
                     self.login_user = command_args['username']
-                except:
+                except Exception:
                     message = "AGENT_INCOMPLETE_COMMAND"
                     status = False
 
                 try:
                     self.session_id = command_args['session_id']
-                except:
+                except Exception:
                     pass
 
                 try:
                     self.tty = command_args['tty']
-                except:
+                except Exception:
                     self.tty = None
 
                 if self.login_user:
@@ -664,7 +664,7 @@ class OTPmeAgentP1(object):
         elif command == "debug_session":
             try:
                 debug_session = command_args['debug_session']
-            except:
+            except Exception:
                 debug_session = None
 
             if debug_session:
@@ -674,7 +674,7 @@ class OTPmeAgentP1(object):
                     self.authorized = True
                     message = str(self.session)
                     status = True
-                except:
+                except Exception:
                     message = _("Unknown session")
                     status = False
             else:
@@ -767,7 +767,7 @@ class OTPmeAgentP1(object):
 
                 try:
                     server_sessions = login_session['server_sessions']
-                except:
+                except Exception:
                     server_sessions = []
 
                 # Remove session attributes based on access permissions.
@@ -778,7 +778,7 @@ class OTPmeAgentP1(object):
                             if x == "rsp":
                                 try:
                                     session.pop(x)
-                                except:
+                                except Exception:
                                     pass
                                 continue
                             if x == "srp":
@@ -797,7 +797,7 @@ class OTPmeAgentP1(object):
                             # Remove attribute access was denied to.
                             try:
                                 session.pop(x)
-                            except:
+                            except Exception:
                                 pass
 
                 # Update server sessions.
@@ -828,19 +828,19 @@ class OTPmeAgentP1(object):
         elif command == "set_login_token":
             try:
                 self.login_token = command_args['login_token']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
 
             try:
                 self.login_token_type = command_args['login_token_type']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
 
             try:
                 self.login_pass_type = command_args['login_pass_type']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
 
@@ -869,7 +869,7 @@ class OTPmeAgentP1(object):
                     self.ssh_agent_pid = command_args['ssh_agent_pid']
                     ssh_key_pass = command_args['ssh_key_pass']
                     status = True
-                except:
+                except Exception:
                     message = "AGENT_INCOMPLETE_COMMAND"
                     status = False
 
@@ -879,7 +879,7 @@ class OTPmeAgentP1(object):
                 if status and self.ssh_agent_pid:
                     try:
                         ssh_agent_proc = psutil.Process(int(self.ssh_agent_pid))
-                    except:
+                    except Exception:
                         ssh_agent_proc = None
 
                     if ssh_agent_proc:
@@ -933,7 +933,7 @@ class OTPmeAgentP1(object):
                     self.login_sessions.pop(self.ssh_agent_pid)
                     message = "SSH key passphrase removed"
                     status = True
-                except:
+                except Exception:
                     pass
                 finally:
                     session_lock.release_lock()
@@ -942,48 +942,48 @@ class OTPmeAgentP1(object):
             status = True
             try:
                 realm = command_args['realm']
-            except:
+            except Exception:
                 realm = None
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 site = command_args['site']
-            except:
+            except Exception:
                 site = None
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 rsp = command_args['rsp']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 slp = command_args['slp']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 login_time = float(command_args['login_time'])
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 session_timeout = int(command_args['timeout'])
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 session_unused_timeout = int(command_args['unused_timeout'])
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
                 offline = command_args['offline']
-            except:
+            except Exception:
                 offline = False
             try:
                 session_key = command_args['session_key']
-            except:
+            except Exception:
                 status = False
                 message = "Missing session key."
 
@@ -1044,7 +1044,7 @@ class OTPmeAgentP1(object):
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.login_sessions[self.login_pid] = self.session
-                except:
+                except Exception:
                     pass
                 finally:
                     session_lock.release_lock()
@@ -1070,19 +1070,19 @@ class OTPmeAgentP1(object):
             try:
                 username = command_args['username']
                 acl = command_args['acl']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
 
             if acl in valid_acls:
                 try:
                     self.session['acls']
-                except:
+                except Exception:
                     self.session['acls'] = {}
 
                 try:
                     self.session['acls'][username]
-                except:
+                except Exception:
                     self.session['acls'][username] = []
 
                 user_acls = self.session['acls'][username]
@@ -1099,7 +1099,7 @@ class OTPmeAgentP1(object):
                     session_lock = self.acquire_session_lock(self.session_id)
                     try:
                         self.login_sessions[self.login_pid] = self.session
-                    except:
+                    except Exception:
                         pass
                     finally:
                         session_lock.release_lock()
@@ -1114,19 +1114,19 @@ class OTPmeAgentP1(object):
             try:
                 username = command_args['username']
                 acl = command_args['acl']
-            except:
+            except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
 
             if acl in valid_acls:
                 try:
                     self.session['acls']
-                except:
+                except Exception:
                     self.session['acls'] = {}
 
                 try:
                     self.session['acls'][username]
-                except:
+                except Exception:
                     self.session['acls'][username] = []
 
                 user_acls = self.session['acls'][username]
@@ -1137,13 +1137,13 @@ class OTPmeAgentP1(object):
                     self.logger.info(log_msg)
                     try:
                         user_acls.remove(acl)
-                    except:
+                    except Exception:
                         pass
                     self.session['acls'][username] = user_acls
                     session_lock = self.acquire_session_lock(self.session_id)
                     try:
                         self.login_sessions[self.login_pid] = self.session
-                    except:
+                    except Exception:
                         pass
                     finally:
                         session_lock.release_lock()
@@ -1183,11 +1183,11 @@ class OTPmeAgentP1(object):
                 try:
                     try:
                         self.session_ids.pop(self.session_id)
-                    except:
+                    except Exception:
                         pass
                     try:
                         self.login_sessions.pop(self.login_pid)
-                    except:
+                    except Exception:
                         pass
                 finally:
                     session_lock.release_lock()
@@ -1221,7 +1221,7 @@ class OTPmeAgentP1(object):
                 site = command_args['site']
                 daemon = command_args['daemon']
                 proxy_request = command_args['proxy_request']
-            except:
+            except Exception:
                 daemon = None
                 message = "Invalid syntax"
                 status = False
@@ -1276,7 +1276,7 @@ class OTPmeAgentP1(object):
             if site:
                 try:
                     rsp = self.session['server_sessions'][self.realm][site]['rsp']
-                except:
+                except Exception:
                     # If no RSP exists for this site, try login to the site.
                     login_request = {
                                 'login_pid' : self.login_pid,
@@ -1298,7 +1298,7 @@ class OTPmeAgentP1(object):
                     # Try to get RSP.
                     try:
                         rsp = self.session['server_sessions'][self.realm][site]['rsp']
-                    except:
+                    except Exception:
                         rsp = None
             else:
                 rsp = self.rsp
@@ -1332,7 +1332,7 @@ class OTPmeAgentP1(object):
             try:
                 realm = command_args['realm']
                 site = command_args['site']
-            except:
+            except Exception:
                 realm = self.realm
                 site = self.site
 

@@ -40,7 +40,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -121,7 +121,7 @@ def get_ldap_cache(auth_token, client, object_id):
             return
         try:
             object_checksum = backend.get_checksum(object_id)
-        except:
+        except Exception:
             object_checksum = None
         if object_checksum != cached_object_checksum:
             return
@@ -214,7 +214,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         else:
             try:
                 self.auth_token
-            except:
+            except Exception:
                 self.auth_token = None
 
         if client:
@@ -222,7 +222,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         else:
             try:
                 self.client
-            except:
+            except Exception:
                 self.client = None
 
         entry.BaseLDAPEntry.__init__(self, dn, *a, **kw)
@@ -427,7 +427,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 log_msg = _("Failed to authenticate user: {username}: {error}", log=True)[1]
                 log_msg = log_msg.format(username=username, error=e)
                 self.logger.warning(log_msg)
-                raise ldaperrors.LDAPInvalidCredentials
+                raise ldaperrors.LDAPInvalidCredentials from e
             finally:
                 authd_conn.close()
 
@@ -729,16 +729,18 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         try:
             try:
                 ldif_attribute = config.ldap_object_class_mappings[x]
-            except:
+            except Exception:
                 ldif_attribute = config.ldap_attribute_type_mappings[x]
         except Exception as e:
             msg = _("Invalid attribute: {attribute}")
             msg = msg.format(attribute=attribute)
-            raise ldapsyntax.MatchNotImplemented(msg)
+            raise ldapsyntax.MatchNotImplemented(msg) from e
         ldif_attribute = f"ldif:{ldif_attribute}"
         return ldif_attribute
 
-    def decode_and_filter(self, filterObject, search_attributes={}):
+    def decode_and_filter(self, filterObject, search_attributes=None):
+        if search_attributes is None:
+            search_attributes = {}
         for f in filterObject:
             if isinstance(f, pureldap.LDAPFilter_and):
                 search_attributes = self.decode_and_filter(f, search_attributes)
@@ -770,7 +772,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 and_values.append(value)
         return search_attributes
 
-    def decode_or_filter(self, filterObject, search_attributes={}):
+    def decode_or_filter(self, filterObject, search_attributes=None):
+        if search_attributes is None:
+            search_attributes = {}
         for f in filterObject:
             if isinstance(f, pureldap.LDAPFilter_or):
                 search_attributes = self.decode_or_filter(f, search_attributes)
@@ -786,7 +790,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             # Set attribute.
             try:
                 attr_data = search_attributes[ldif_attribute]
-            except:
+            except Exception:
                 attr_data = {}
                 search_attributes[ldif_attribute] = attr_data
             try:
@@ -947,7 +951,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 object_data = user_ldif_cache[auth_token][read_oid]['data']
                 object_data = copy.deepcopy(object_data)
                 cache_time = user_ldif_cache[auth_token][read_oid]['time']
-            except:
+            except Exception:
                 object_data = None
             if object_data:
                 check_cache_time = True
@@ -972,7 +976,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             object_data = copy.deepcopy(object_data)
             cache_time = global_ldif_cache[read_oid]['time']
             do_search = False
-        except:
+        except Exception:
             do_search = True
         if not do_search:
             object_checksum = object_data['checksum']
@@ -993,10 +997,10 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         try:
             object_data = global_ldif_cache[read_oid]['data']
             object_data = copy.deepcopy(object_data)
-        except:
+        except Exception:
             msg = _("Unknown object: {oid}")
             msg = msg.format(oid=read_oid)
-            raise UnknownObject(msg)
+            raise UnknownObject(msg) from None
 
         object_ldif = object_data['ldif']
         if not object_ldif:
@@ -1224,7 +1228,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                                     scope=scope)
                 except SizeLimitExceeded as e:
                     log.msg(str(e), logLevel=logging.WARNING)
-                    raise ldaperrors.LDAPSizeLimitExceeded()
+                    raise ldaperrors.LDAPSizeLimitExceeded() from e
 
                 result_objects = {}
                 for x_uuid in result_uuids:
@@ -1298,15 +1302,15 @@ def otpme_log_translate(conf):
     logger = config.logger
     try:
         debug_message = conf['debug']
-    except:
+    except Exception:
         debug_message = False
     try:
         message = conf['message']
-    except:
+    except Exception:
         message = False
     try:
         loglevel = logging.getLevelName(conf['logLevel'])
-    except:
+    except Exception:
         loglevel = config.loglevel
 
     if message:
@@ -1391,7 +1395,7 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
     def _cbSearchGotBase(self, base, dn, request, response):
         # Pass on auth token.
         base.auth_token = self.boundUser.auth_token
-        return super(OTPmeLDAPServer, self)._cbSearchGotBase(base, dn, request, response)
+        return super()._cbSearchGotBase(base, dn, request, response)
 
 class LDAPServer(object):
     """ Class to start an LDAP server as OTPme daemon using ldaptor. """

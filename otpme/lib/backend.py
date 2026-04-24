@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -138,7 +138,7 @@ def register_object_type(
 
     try:
         class_config = object_type_map[object_type]
-    except:
+    except Exception:
         class_config = {}
 
     if class_config:
@@ -179,12 +179,14 @@ def get_class_getter(object_type: str):
 @match_typing
 def read_config(
     object_id: oid.OTPmeOid,
-    parameters: list=[],
+    parameters: list=None,
     checksum_only: bool=False,
     decrypt: bool=True
     ):
     """ Read object config from backend. """
     # Get logger.
+    if parameters is None:
+        parameters = []
     logger = config.logger
     # Replay any leftover transaction.
     replay_transactions()
@@ -254,9 +256,9 @@ def write_config(
     full_data_update: bool=False,
     full_ldif_update: bool=False,
     full_acl_update: bool=False,
-    index_journal: Union[List,None]=[],
-    ldif_journal: Union[List,None]=[],
-    acl_journal: Union[List,None]=[],
+    index_journal: Union[List,None]=None,
+    ldif_journal: Union[List,None]=None,
+    acl_journal: Union[List,None]=None,
     use_index_journal: bool=False,
     use_ldif_journal: bool=False,
     use_acl_journal: bool=False,
@@ -266,6 +268,12 @@ def write_config(
     ):
     """ Write object config to backend and update config cache. """
     # Get logger.
+    if index_journal is None:
+        index_journal = []
+    if ldif_journal is None:
+        ldif_journal = []
+    if acl_journal is None:
+        acl_journal = []
     logger = config.logger
     if not config.master_key:
         msg, log_msg = _("Missing AES master key. Unable to encrypt config data.", log=True)
@@ -429,7 +437,7 @@ def import_config(
         # Try to get object ID.
         try:
             object_id = object_config['OID']
-        except:
+        except Exception:
             object_id = None
 
     if not object_id:
@@ -438,7 +446,7 @@ def import_config(
     # Detect duplicate UUIDs
     try:
         object_uuid = object_config['UUID']
-    except:
+    except Exception:
         object_uuid = None
 
     if object_uuid:
@@ -473,7 +481,7 @@ def import_config(
         write_config(object_id=object_id,
                     object_config=object_config,
                     cluster=True)
-    except:
+    except Exception:
         config.raise_exception()
         return callback.error(_("Error writing object config."))
 
@@ -556,7 +564,7 @@ def add_sync_map(
     try:
         map_entry = multiprocessing.sync_map[sync_map_id]
         map_entry = map_entry.copy()
-    except:
+    except Exception:
         map_entry = {}
 
     if realm not in map_entry:
@@ -592,12 +600,12 @@ def get_sync_map(
     # Get site/node entry from sync map.
     try:
         map_entry = multiprocessing.sync_map[sync_map_id].copy()
-    except:
+    except Exception:
         map_entry = {}
     # Get sync list checksum.
     try:
         sync_list_checksum = map_entry[realm][site]['checksum']
-    except:
+    except Exception:
         sync_list_checksum = None
 
     # Release sync lock.
@@ -628,7 +636,7 @@ def outdate_sync_map(
                             return_type="oid")
     try:
         current_clear_queue = multiprocessing.sync_map_cache_clear_queue
-    except:
+    except Exception:
         current_clear_queue = []
     for x in sites_list:
         x_realm = x.realm
@@ -685,7 +693,7 @@ def clear_sync_map(realm: str, site: str, object_types: Union[List,None]=None):
                     try:
                         map_entry = multiprocessing.sync_map[x]
                         map_entry[x_realm].pop(x_site)
-                    except:
+                    except Exception:
                         map_entry = {}
                     # Update entry.
                     multiprocessing.sync_map[x] = map_entry
@@ -909,7 +917,7 @@ def get_instance_from_oid(
             getter_arg = getter_args[conf_arg]
             try:
                 val = _object_config[conf_arg]
-            except:
+            except Exception:
                 log_msg = _("Missing object config parameter: {object_id}: {conf_arg}", log=True)[1]
                 log_msg = log_msg.format(object_id=object_id, conf_arg=conf_arg)
                 logger.critical(log_msg)
@@ -923,7 +931,7 @@ def get_instance_from_oid(
         msg = _("Error creating {object_type} class '{object_id}': {e}")
         msg = msg.format(object_type=object_type, object_id=object_id, e=e)
         config.raise_exception()
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
     # Try to load class.
     try:
@@ -935,7 +943,7 @@ def get_instance_from_oid(
         log_msg = log_msg.format(object_id=object_id, e=e)
         logger.critical(log_msg, exc_info=True)
         config.raise_exception()
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
     # Try to load instance.
     try:
@@ -946,7 +954,7 @@ def get_instance_from_oid(
         log_msg = log_msg.format(object_id=object_id, e=e)
         logger.critical(log_msg)
         config.raise_exception()
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
     return instance
 
@@ -988,7 +996,7 @@ def get_object(
             #config.raise_exception()
             msg = _("Failed to get object from cache: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if instance:
             return instance
 
@@ -1139,7 +1147,7 @@ def get_object_from_cache(
     if run_policies:
         try:
             last_read = instance_cache_read_times[read_oid.read_oid]
-        except:
+        except Exception:
             last_read = 0
         age = now - last_read
         if age > config.backend_policy_interval:
@@ -1190,7 +1198,7 @@ def search(
     attribute: str=None,
     value: str=None,
     values: List=None,
-    attributes: dict={},
+    attributes: dict=None,
     less_than: int=None,
     greater_than: int=None,
     ignore_case: bool=False,
@@ -1214,6 +1222,8 @@ def search(
     **kwargs
     ) -> Union[List,dict]:
     """ Search objects. """
+    if attributes is None:
+        attributes = {}
     _result = []
     result = []
 

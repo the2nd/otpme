@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -52,7 +52,7 @@ class OTPmeBackupP1(OTPmeFsClient1):
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeBackupP1, self).__init__(self.daemon, **kwargs)
+        super().__init__(self.daemon, **kwargs)
         if self.backup_key:
             backup_key = bytes.fromhex(self.backup_key)
             self.backup_client = BackupClient(key=backup_key)

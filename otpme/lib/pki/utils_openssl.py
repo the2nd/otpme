@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -46,15 +46,15 @@ def create_csr(common_name, key=None, key_len=2048, sign_algo=b"sha256",
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
 
     # Make sure we convert strings to int()
     try:
         key_len = int(key_len)
-    except:
-        raise Exception(_("'key_len' must be int"))
+    except Exception:
+        raise Exception(_("'key_len' must be int")) from None
 
     # Load given key.
     if key:
@@ -104,20 +104,20 @@ def create_certificate(common_name, serial_number, cert_type, cert_req=None,
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
 
     # Make sure we convert strings to int()
     try:
         key_len = int(key_len)
-    except:
-        raise Exception(_("'key_len' must be int"))
+    except Exception:
+        raise Exception(_("'key_len' must be int")) from None
 
     try:
         valid = int(valid)
-    except:
-        raise Exception(_("'valid' must be int"))
+    except Exception:
+        raise Exception(_("'valid' must be int")) from None
 
     # Output formats we support
     supported_out_formats = [ b"pem", b"p12" ]
@@ -307,7 +307,7 @@ def revoke_certificate(ca_cert, ca_key, cert=None, serial_number=None,
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
 
@@ -323,9 +323,9 @@ def revoke_certificate(ca_cert, ca_key, cert=None, serial_number=None,
     # Make sure we convert strings to int()
     try:
         valid = int(valid)
-    except:
+    except Exception:
         msg = _("'valid' must be int")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
     #print(revoked.all_reasons())
     #print(x509.get_subject().get_components())
@@ -431,7 +431,7 @@ def get_issuer(cert):
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
     c = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
@@ -445,7 +445,7 @@ def get_cn(cert):
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
     c = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
@@ -455,7 +455,7 @@ def get_cn(cert):
 
 def pem_to_der(cert):
     """ Convert cert form PEM to DER. """
-    from Crypto.PublicKey import RSA
+    from Cryptodome.PublicKey import RSA
     key = RSA.importKey(cert)
     der_cert = key.publickey().exportKey("DER")
     return der_cert
@@ -467,7 +467,7 @@ def check_crl(crl, serial_number):
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
 
@@ -494,7 +494,7 @@ def verify_cn(cn, cert=None, csr=None):
         global OpenSSL
         if OpenSSL is None:
             raise
-    except:
+    except Exception:
         import OpenSSL
         check_pyopenssl_version()
 

@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -734,7 +734,7 @@ class Ca(OTPmeObject):
         self.type = "ca"
 
         # Call parent class init.
-        super(Ca, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -879,7 +879,7 @@ class Ca(OTPmeObject):
         ):
         try:
             crl_validity = int(crl_validity)
-        except:
+        except Exception:
             msg = "CRL validity must be <int>."
             return callback.error(msg)
         self.crl_validity = crl_validity
@@ -1372,7 +1372,7 @@ class Ca(OTPmeObject):
             config.raise_exception()
             msg = _("Unable to update realm CA data: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def get_crl(
         self,

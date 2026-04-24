@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -169,7 +169,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 break
         self._close()
         # Call parent class protocol handler.
-        super(OTPmeMgmtP1, self).signal_handler(_signal, frame)
+        super().signal_handler(_signal, frame)
         # Using sys.exit() may result in hanging process.
         os._exit(0)
 
@@ -189,7 +189,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         """ Receive job messages and join job process on exit. """
         try:
             job = self.running_jobs[job_uuid]
-        except:
+        except Exception:
             return
         # Get comm handler to communicate with job.
         job_comm_handler = job.comm_queue.get_handler("client")
@@ -207,7 +207,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if command and command != "job_end":
             try:
                 job_queries = self.job_queries[job_uuid]
-            except:
+            except Exception:
                 job_queries = []
                 self.job_queries[job_uuid] = job_queries
             message = {'command':command, 'message':callback_message}
@@ -267,7 +267,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         for a in global_args:
             try:
                 _method_args[a] = command_args.pop(a)
-            except:
+            except Exception:
                 pass
 
         # Get mandatory args.
@@ -282,12 +282,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                 except KeyError:
                     try:
                         _method_args[a] = _dargs[a]
-                    except KeyError:
+                    except KeyError as err:
                         # If args and command_args misses a required arg the
                         # command is incomplete.
                         msg = _("Missing required argument: {arg}")
                         msg = msg.format(arg=a)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from err
 
         # Get optional args.
         for a in _opt_args:
@@ -314,7 +314,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Make sure we pass only allowed API callers.
         try:
             _caller = command_args['_caller']
-        except:
+        except Exception:
             _caller = "CLIENT"
 
         if _caller not in api_callers:
@@ -327,9 +327,21 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return _method_args
 
-    def start_job(self, name, target_method, args={}, _args={}, opt_args={},
-        _opt_args={}, _dargs={}, command_args={}, thread=True, process=False):
+    def start_job(self, name, target_method, args=None, _args=None, opt_args=None,
+        _opt_args=None, _dargs=None, command_args=None, thread=True, process=False):
         """ Start command as child process. """
+        if args is None:
+            args = {}
+        if _args is None:
+            _args = {}
+        if opt_args is None:
+            opt_args = {}
+        if _opt_args is None:
+            _opt_args = {}
+        if _dargs is None:
+            _dargs = {}
+        if command_args is None:
+            command_args = {}
         if len(self.running_jobs) >= self.max_jobs:
             job_response = _("Max jobs reached ({max})")
             job_response = job_response.format(max=self.max_jobs)
@@ -348,7 +360,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Get timeout arg.
         try:
             job_timeout = command_args['job_timeout']
-        except:
+        except Exception:
             job_status = False
             job_response = _("Job request missing timeout parameter: {name}")
             job_response = job_response.format(name=name)
@@ -357,14 +369,14 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             lock_timeout = command_args['lock_timeout']
             lock_wait_timeout = command_args['lock_wait_timeout']
-        except:
+        except Exception:
             job_status = False
             job_response = "Job request missing lock parameters."
             return job_status, job_response
         # Get object auto-reload arg.
         try:
             reload_on_change = command_args['lock_reload_on_change']
-        except:
+        except Exception:
             job_status = False
             job_response = "Job request missing auto-reload parameter."
             return job_status, job_response
@@ -401,7 +413,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(status, message)
             try:
                 current_master_node = multiprocessing.master_node['master']
-            except:
+            except Exception:
                 current_master_node = None
             if current_master_node != config.host_data['name']:
                 message = _("Please connect to master node.")
@@ -433,12 +445,14 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return job_response
 
-    def handle_job(self, job_uuid, callbacks={}, stop=False):
+    def handle_job(self, job_uuid, callbacks=None, stop=False):
         """ Handle command job. """
+        if callbacks is None:
+            callbacks = {}
         job_status = True
         try:
             job = self.jobs[job_uuid]
-        except:
+        except Exception:
             msg = _("Unknown job: {uuid}")
             msg = msg.format(uuid=job_uuid)
             return False, msg
@@ -505,7 +519,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             # Get job messages/queries.
             try:
                 message = self.job_queries[job_uuid].pop(0)
-            except:
+            except Exception:
                 message = None
             if message is not None:
                 callback_message = message['message']
@@ -515,7 +529,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             # Process callbacks.
             try:
                 job_callbacks = self.job_callbacks.pop(job_uuid)
-            except:
+            except Exception:
                 job_callbacks = []
             for x in job_callbacks:
                 for answer_id in x:
@@ -546,15 +560,15 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             try:
                 job_status = self.job_exit_status[job_uuid]['exit_status']
-            except:
+            except Exception:
                 continue
             try:
                 job_response = self.job_exit_status[job_uuid]['exit_message']
-            except:
+            except Exception:
                 continue
             try:
                 objects_written = self.job_exit_status[job_uuid]['objects_written']
-            except:
+            except Exception:
                 continue
 
             if objects_written:
@@ -1183,7 +1197,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except Exception as e:
             msg = _("Unable to get public key of site certificate: {site}: {error}")
             msg = msg.format(site=src_site, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             jwt_data = _jwt.decode(jwt=jwt,
                                 key=jwt_key,
@@ -1191,7 +1205,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except Exception as e:
             msg = _("Failed to decode JWT: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return jwt_data
 
     def verify_move_objects(self, jwt_data, objects):
@@ -1211,10 +1225,10 @@ class OTPmeMgmtP1(OTPmeServer1):
             x_uuid = x_oc['UUID']
             try:
                 y_uuid = jwt_objects[x_oid]
-            except KeyError:
+            except KeyError as err:
                 msg = _("Got object that was not signed by JWT: {oid}")
                 msg = msg.format(oid=x_oid)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from err
             if x_uuid == y_uuid:
                 continue
             msg = _("Found object UUID missmatch: {oid}: {uuid1} <> {uuid2}")
@@ -1231,7 +1245,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except Exception as e:
             msg = _("Unable to get public key of site certificate: {site}: {error}")
             msg = msg.format(site=our_site, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         jwt = _jwt.encode(payload=moved_objects,
                         key=jwt_key,
                         algorithm='RS256')
@@ -1730,7 +1744,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except Exception as e:
             msg = _("Unable to get public key of site certificate: {site}: {error}")
             msg = msg.format(site=our_site, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         jwt = _jwt.encode(payload=jwt_data,
                         key=jwt_key,
@@ -1920,7 +1934,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if backend_command == "get_uuid":
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
@@ -1943,13 +1957,13 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
             try:
                 password = command_args['password']
-            except:
+            except Exception:
                 password = None
 
             # Decode object config and convert it to dict.
@@ -1958,7 +1972,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             try:
                 key_salt = object_config.pop("ENC_SALT")
-            except:
+            except Exception:
                 key_salt = None
 
             aes_key = None
@@ -2004,7 +2018,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(status, message)
             try:
                 object_data = command_args.pop('object_data')
-            except:
+            except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
@@ -2021,7 +2035,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             try:
                 job_type = command_map['backup']['exists']['restore_object']['job_type']
-            except:
+            except Exception:
                 job_type = "thread"
 
             if job_type == "thread":
@@ -2058,7 +2072,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 search_command = " ".join(search_command)
                 search_command = decode(search_command, "base64")
                 search_command = search_command.split("\0")
-            except:
+            except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
@@ -2080,7 +2094,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                         value = v
                     if n == "return_type":
                         return_type = v
-                except:
+                except Exception:
                     message = _("Syntax error: {command}")
                     message = message.format(command=search_command)
                     status = False
@@ -2182,7 +2196,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         try:
             job_type = command_map['trash']['exists'][trash_command]['job_type']
-        except:
+        except Exception:
             job_type = "thread"
 
         if job_type == "thread":
@@ -2217,7 +2231,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             try:
                 trash_id = command_args.pop('object_identifier')
                 command_args['trash_id'] = trash_id
-            except:
+            except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
@@ -2240,7 +2254,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             try:
                 trash_id = command_args.pop('object_identifier')
                 command_args['trash_id'] = trash_id
-            except:
+            except Exception:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
@@ -2389,7 +2403,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             try:
                 share_site = share_id.split("/")[0]
                 share_name = share_id.split("/")[1]
-            except:
+            except Exception:
                 status = False
                 response = _("Invalid share id: {id}")
                 response = response.format(id=share_id)
@@ -2711,7 +2725,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Try to get object identifier from command.
         try:
             object_identifier = command_args['object_identifier']
-        except:
+        except Exception:
             object_identifier = None
 
         if object_identifier:
@@ -2723,7 +2737,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                         o = backend.get_sessions(session_id=session_id,
                                                 return_type="instance")[0]
                         object_status = "exists"
-                    except:
+                    except Exception:
                         response = f"MGMT_INVALID_SESSION_ID: {object_identifier}"
                 else:
                     # Check if we add a template.
@@ -2731,7 +2745,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     if subcommand == "add":
                         try:
                             template = command_args['template']
-                        except:
+                        except Exception:
                             pass
 
                     # Resolv object path (e.g. user/token)
@@ -2753,16 +2767,16 @@ class OTPmeMgmtP1(OTPmeServer1):
                     if subcommand == "add" and not object_unit:
                         try:
                             object_unit = command_args['_object_unit']
-                        except:
+                        except Exception:
                             if template:
                                 try:
                                     object_unit = config.get_default_unit("template")
-                                except:
+                                except Exception:
                                     pass
                             else:
                                 try:
                                     object_unit = self.get_default_unit(object_type)
-                                except:
+                                except Exception:
                                     pass
 
                     # Check if object name does contain invalid chars.
@@ -2956,7 +2970,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             sub_type_attribute = sub_types[object_type]
             #sub_type = getattr(o, sub_type_attribute)
             sub_type = command_args[sub_type_attribute]
-        except:
+        except Exception:
             pass
         # Try to get command methods.
         try:
@@ -2965,23 +2979,23 @@ class OTPmeMgmtP1(OTPmeServer1):
                 x_type = f"{object_type}:{sub_type}"
             try:
                 method = command_map[x_type][object_status][subcommand]['method']
-            except:
+            except Exception:
                 method = command_map[object_type][object_status][subcommand]['method']
 
             if isinstance(method, str):
                 command_method = getattr(o, method)
             else:
                 command_method = method
-        except:
+        except Exception:
             command_method = None
 
         if object_name and not command_method:
             try:
                 _test = command_map[x_type][object_status]
-            except:
+            except Exception:
                 try:
                     _test = command_map[object_type][object_status]
-                except:
+                except Exception:
                     _test = False
 
             if _test:
@@ -3012,7 +3026,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             # Get optional args.
             try:
                 _opt_args = command_map[x_type][object_status][subcommand]['oargs']
-            except:
+            except Exception:
                 try:
                     _opt_args = command_map[object_type][object_status][subcommand]['oargs']
                 except KeyError:
@@ -3027,7 +3041,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     _dargs = {}
             try:
                 job_type = command_map[x_type][object_status][subcommand]['job_type']
-            except:
+            except Exception:
                 job_type = command_map[object_type][object_status][subcommand]['job_type']
 
             if job_type == "thread":

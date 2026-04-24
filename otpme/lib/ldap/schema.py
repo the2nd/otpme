@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -247,7 +247,7 @@ def load(schema_file):
         object_classes, \
         attribute_types = config.ldap_schema_files_loaded[schema_file]
         return object_classes, attribute_types
-    except:
+    except Exception:
         pass
 
     try:
@@ -255,7 +255,7 @@ def load(schema_file):
     except Exception as e:
         msg = _("Error reading schema file: {e}")
         msg = msg.format(e=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
 
     log_msg = _("Loading schema file: {schema_file}", log=True)[1]
     log_msg = log_msg.format(schema_file=schema_file)
@@ -296,7 +296,7 @@ def load(schema_file):
                 try:
                     config.ldap_object_classes[name]
                     oc_exists = True
-                except:
+                except Exception:
                     oc_exists = False
                 if oc_exists:
                     log_msg = _("Error loading file: {schema_file}: ObjectClass '{name}' already exists.", log=True)[1]
@@ -314,7 +314,7 @@ def load(schema_file):
                 try:
                     config.ldap_attribute_types[name]
                     at_exists = True
-                except:
+                except Exception:
                     at_exists = False
                 if at_exists:
                     log_msg = _("Error loading file: {schema_file}: AttributeType '{name}' already exists.", log=True)[1]
@@ -327,7 +327,7 @@ def load(schema_file):
                     config.ldap_attribute_type_mappings[name.lower()] = name
                 try:
                     config.ldap_attribute_deps[name]
-                except:
+                except Exception:
                     config.ldap_attribute_deps[name] = []
 
         processing = False

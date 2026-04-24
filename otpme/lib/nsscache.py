@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -122,7 +122,7 @@ def update_sync_map(lock=None, syncing=False):
     # Get object types to sync.
     try:
         host_type = config.host_data['type']
-    except:
+    except Exception:
         return
     object_types = config.get_sync_object_types(host_type)
 
@@ -440,7 +440,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             if result:
                 try:
                     x_updated_objects = updated_objects[object_type]
-                except:
+                except Exception:
                     x_updated_objects = []
                 x_updated_objects += result
                 updated_objects[object_type] = x_updated_objects
@@ -486,7 +486,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             if action == "update":
                 try:
                     x_updated_objects = updated_objects[object_type]
-                except:
+                except Exception:
                     x_updated_objects = []
                 x_updated_objects.append(full_oid)
                 updated_objects[object_type] = x_updated_objects
@@ -494,7 +494,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             if action == "remove":
                 try:
                     x_removed_objects = removed_objects[object_type]
-                except:
+                except Exception:
                     x_removed_objects = []
                 x_removed_objects.append(object_id)
                 removed_objects[object_type] = x_removed_objects
@@ -548,7 +548,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             counter += 1
             try:
                 extensions = object_attrs[uuid]['extension']
-            except:
+            except Exception:
                 extensions = []
             if "posix" not in extensions:
                 continue
@@ -582,32 +582,32 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     continue
                 try:
                     cn = object_attrs[uuid]['ldif:cn'][0]
-                except:
+                except Exception:
                     cn = ''
                 try:
                     uidnumber = object_attrs[uuid]['ldif:uidNumber'][0]
-                except:
+                except Exception:
                     log_msg = _("Cannot create nsscache map: Object is missing uidNumber: {full_oid}", log=True)[1]
                     log_msg = log_msg.format(full_oid=full_oid)
                     logger.warning(log_msg)
                     continue
                 try:
                     gidnumber = object_attrs[uuid]['ldif:gidNumber'][0]
-                except:
+                except Exception:
                     log_msg = _("Cannot create nsscache map: Object is missing gidNumber: {full_oid}", log=True)[1]
                     log_msg = log_msg.format(full_oid=full_oid)
                     logger.warning(log_msg)
                     continue
                 try:
                     homedir = object_attrs[uuid]['ldif:homeDirectory'][0]
-                except:
+                except Exception:
                     log_msg = _("Cannot create nsscache map: Object is missing homeDirectory: {full_oid}", log=True)[1]
                     log_msg = log_msg.format(full_oid=full_oid)
                     logger.warning(log_msg)
                     continue
                 try:
                     loginshell = object_attrs[uuid]['ldif:loginShell'][0]
-                except:
+                except Exception:
                     log_msg = _("Cannot create nsscache map: Object is missing loginShell: {full_oid}", log=True)[1]
                     log_msg = log_msg.format(full_oid=full_oid)
                     logger.warning(log_msg)
@@ -651,7 +651,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     continue
                 try:
                     group_members = object_attrs[uuid]['ldif:memberUid']
-                except:
+                except Exception:
                     group_members = None
                 # Gen group entry.
                 map_entry = group.GroupMapEntry()
@@ -687,7 +687,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
         for object_type in del_order:
             try:
                 oids = removed_objects[object_type]
-            except:
+            except Exception:
                 continue
             for object_id in oids:
                 object_type = object_id.object_type

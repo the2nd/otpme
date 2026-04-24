@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -22,7 +22,9 @@ from otpme.lib.exceptions import *
 
 class ObjectConfig(object):
     """ Handle object config encryption etc.. """
-    def __init__(self, object_id, object_config={}, encrypted=True, **kwargs):
+    def __init__(self, object_id, object_config=None, encrypted=True, **kwargs):
+        if object_config is None:
+            object_config = {}
         self.object_id = object_id
         self.encrypted = encrypted
         self.deleted_attributes = []
@@ -33,7 +35,7 @@ class ObjectConfig(object):
         else:
             self.encrypted_config = {}
             self.decrypted_config = dict(object_config)
-        super(ObjectConfig, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def __setitem__(self, key, item):
         self.add(key, item)
@@ -98,7 +100,7 @@ class ObjectConfig(object):
                 self.modified_attributes.append(key)
         try:
             self.deleted_attributes.remove(key)
-        except:
+        except Exception:
             pass
         # Handle compression tags. Actual compression is done in backend.
         if compression:
@@ -119,8 +121,8 @@ class ObjectConfig(object):
             self.update_checksums()
         try:
             value = self.decrypted_config[key]
-        except:
-            raise KeyError(key)
+        except Exception:
+            raise KeyError(key) from None
         if no_headers:
             # Remove encryption header.
             status, \
@@ -139,18 +141,18 @@ class ObjectConfig(object):
     def delete(self, key):
         try:
             deleted_item = self.decrypted_config.pop(key)
-        except:
+        except Exception:
             return
         finally:
             if key not in self.deleted_attributes:
                 self.deleted_attributes.append(key)
             try:
                 self.modified_attributes.remove(key)
-            except:
+            except Exception:
                 pass
             try:
                 self.encrypted_config.pop(key)
-            except:
+            except Exception:
                 pass
         return deleted_item
 
@@ -158,10 +160,10 @@ class ObjectConfig(object):
     def salt(self):
         try:
             salt = self.decrypted_config['SALT']
-        except:
+        except Exception:
             try:
                 salt = self.encrypted_config['SALT']
-            except:
+            except Exception:
                 salt = None
         return salt
 
@@ -174,10 +176,10 @@ class ObjectConfig(object):
     def _checksum(self):
         try:
             checksum = self.decrypted_config['CHECKSUM']
-        except:
+        except Exception:
             try:
                 checksum = self.encrypted_config['CHECKSUM']
-            except:
+            except Exception:
                 checksum = None
         return checksum
 
@@ -195,10 +197,10 @@ class ObjectConfig(object):
     def _sync_checksum(self):
         try:
             sync_checksum = self.decrypted_config['SYNC_CHECKSUM']
-        except:
+        except Exception:
             try:
                 sync_checksum = self.decrypted_config['SYNC_CHECKSUM']
-            except:
+            except Exception:
                 sync_checksum = None
         return sync_checksum
 
@@ -253,39 +255,39 @@ class ObjectConfig(object):
         # Remove old checksum before generating new one.
         try:
             temp_oc.pop('CHECKSUM')
-        except:
+        except Exception:
             pass
         # Remove sync checksum before generating new checksum.
         try:
             temp_oc.pop('SYNC_CHECKSUM')
-        except:
+        except Exception:
             pass
         # Remove modified attributes before generating new checksum.
         try:
             temp_oc.pop('MODIFIED_ATTRIBUTES')
-        except:
+        except Exception:
             pass
         # Remove deleted attributes before generating new checksum.
         try:
             temp_oc.pop('DELETED_ATTRIBUTES')
-        except:
+        except Exception:
             pass
         # Remove incremental stuff before generating new checksum.
         try:
             temp_oc.pop('INCREMENT_IDS')
-        except:
+        except Exception:
             pass
         try:
             temp_oc.pop('INCREMENTAL_UPDATES')
-        except:
+        except Exception:
             pass
         try:
             temp_oc.pop('INCREMENTAL_CHECKSUM')
-        except:
+        except Exception:
             pass
         try:
             temp_oc.pop('INDEX_JOURNAL')
-        except:
+        except Exception:
             pass
 
         # Add object salt. This salt is added to each object config to make
@@ -429,7 +431,7 @@ class ObjectConfig(object):
                 # Decode "fake" (hex) encrypted value.
                 try:
                     value = stuff.decode(value, "hex")
-                except:
+                except Exception:
                     pass
             # Remove encoding header.
             status, \
@@ -458,10 +460,10 @@ class ObjectConfig(object):
                 if compression.startswith("GZIP_"):
                     try:
                         level = int(compression.split("_")[1])
-                    except:
+                    except Exception:
                         msg = _("Unknown compression string: {compression}")
                         msg = msg.format(compression=compression)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from None
                 _compression = "gzip"
 
             elif compression.startswith("BZIP2"):
@@ -469,10 +471,10 @@ class ObjectConfig(object):
                 if compression.startswith("BZIP2_"):
                     try:
                         level = int(compression.split("_")[1])
-                    except:
+                    except Exception:
                         msg = _("Unknown compression string: {compression}")
                         msg = msg.format(compression=compression)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from None
                 _compression = "bzip"
 
             elif compression.startswith("ZLIB"):
@@ -480,10 +482,10 @@ class ObjectConfig(object):
                 if compression.startswith("ZLIB_"):
                     try:
                         level = int(compression.split("_")[1])
-                    except:
+                    except Exception:
                         msg = _("Unknown compression string: {compression}")
                         msg = msg.format(compression=compression)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from None
                 _compression = "zlib"
 
             else:
@@ -601,7 +603,7 @@ class ObjectConfig(object):
             except Exception as e:
                 msg = _("Failed to load encryption module: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             if not fake:
                 value = enc_module.encrypt(enc_key, value)
@@ -611,8 +613,10 @@ class ObjectConfig(object):
 
         return encrypted_config
 
-    def decrypt_object_config(self, object_config, check_encrypted=[], enc_key=None):
+    def decrypt_object_config(self, object_config, check_encrypted=None, enc_key=None):
         """ Decrypt object config. """
+        if check_encrypted is None:
+            check_encrypted = []
         decrypted_config = dict(object_config)
         for p in dict(object_config):
             val = object_config[p]
@@ -634,7 +638,7 @@ class ObjectConfig(object):
                 # Decode "fake" (hex) encrypted value.
                 try:
                     value = stuff.decode(value, "hex")
-                except:
+                except Exception:
                     pass
             else:
                 try:
@@ -642,7 +646,7 @@ class ObjectConfig(object):
                 except Exception as e:
                     msg = _("Failed to load encryption module: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 if not enc_key:
                     raise OTPmeException(_("Need 'enc_key' to decrypt."))
                 try:
@@ -650,7 +654,7 @@ class ObjectConfig(object):
                 except Exception as e:
                     msg = _("Failed to decrypt key: {param}")
                     msg = msg.format(param=p)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
             value = f'{encryption}[{value}]'
 
@@ -689,14 +693,14 @@ class ObjectConfig(object):
         except Exception as e:
             msg = _("Failed to compress object config: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Encode object config.
         try:
             encoded_oc = self.encode_object_config(compressed_oc)
         except Exception as e:
             msg = _("Failed to encode object config: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Encrypt object config.
         try:
             encrypted_oc = self.encrypt_object_config(object_config=encoded_oc,
@@ -704,11 +708,13 @@ class ObjectConfig(object):
         except Exception as e:
             msg = _("Failed to encrypt object config: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         self.encrypted_config = encrypted_oc
         return self.encrypted_config
 
-    def decrypt(self, key=None, check_encrypted=[]):
+    def decrypt(self, key=None, check_encrypted=None):
+        if check_encrypted is None:
+            check_encrypted = []
         encrypted_oc = dict(self.encrypted_config)
         # Decrypt config.
         try:
@@ -718,21 +724,21 @@ class ObjectConfig(object):
         except Exception as e:
             msg = _("Failed to decrypt object config: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Decode config.
         try:
             decodec_oc = self.decode_object_config(decrypted_oc)
         except Exception as e:
             msg = _("Failed to decode object config: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Decompress config.
         try:
             decompressed_oc = self.decompress_object_config(decodec_oc)
         except Exception as e:
             msg = _("Failed to decompress object config: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         self.decrypted_config = decompressed_oc
         return self.decrypted_config
 

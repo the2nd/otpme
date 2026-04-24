@@ -47,7 +47,7 @@ class PasswdMap(maps.Map):
         """
         if not isinstance(entry, PasswdMapEntry):
             raise TypeError
-        return super(PasswdMap, self).Add(entry)
+        return super().Add(entry)
 
 
 class PasswdMapEntry(maps.MapEntry):
@@ -67,7 +67,7 @@ class PasswdMapEntry(maps.MapEntry):
         self.dir = None
         self.shell = None
 
-        super(PasswdMapEntry, self).__init__(data)
+        super().__init__(data)
 
         # Seed data with defaults if still empty
         if self.passwd is None:

@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {name}")
         msg = msg.format(name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -326,7 +326,7 @@ class PasswordToken(Token):
         ):
 
         # Call parent class init.
-        super(PasswordToken, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,

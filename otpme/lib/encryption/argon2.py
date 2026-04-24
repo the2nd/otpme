@@ -16,7 +16,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -215,10 +215,10 @@ def derive(secret, salt=None, key_len=128, hash_algo="Argon2_i",
         logger.debug(f"Iterations: {iterations}")
     try:
         argon_type = _ARGON2_TYPE_MAP[hash_algo]
-    except KeyError:
+    except KeyError as err:
         msg = _("Unknown argon_type: {hash_algo}")
         msg = msg.format(hash_algo=hash_algo)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     # Argon2 spec version (0x10 / 0x13). Caller may override via kwargs
     # when verifying existing hashes so we reproduce the exact bytes.
     argon2_version = kwargs.get('argon2_version')
@@ -236,7 +236,7 @@ def derive(secret, salt=None, key_len=128, hash_algo="Argon2_i",
         config.raise_exception()
         msg = _("Error generating argon2 hash: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
     # Build result.
     result = {

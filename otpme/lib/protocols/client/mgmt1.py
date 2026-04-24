@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -30,10 +30,12 @@ class OTPmeMgmtP1(OTPmeClient1):
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeMgmtP1, self).__init__(self.daemon, **kwargs)
+        super().__init__(self.daemon, **kwargs)
 
-    def send_command(self, command, command_args={}, client_type="RAPI"):
+    def send_command(self, command, command_args=None, client_type="RAPI"):
         """ Send command to mgmtd. """
+        if command_args is None:
+            command_args = {}
         args = {}
         # Add given command args.
         for opt in command_args:
@@ -138,7 +140,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get role member users: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return users
 
     def get_user_key(self, username=None, user_uuid=None, private=False):
@@ -159,7 +161,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get users RSA key: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return user_key
 
     def get_user_key_mode(self, username):
@@ -176,7 +178,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get users key mode: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if not key_mode:
             key_mode = None
         return key_mode
@@ -200,7 +202,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get user key script name: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return key_script_path, key_script_opts
 
     def get_user_ssh_script_path(self, username):
@@ -222,7 +224,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get user SSH agent script name: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return ssh_script_path, ssh_script_opts
 
     def get_script(self, script_path):
@@ -239,7 +241,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get script: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return script
 
     def get_script_sign(self, script_path, username=None, user_uuid=None):
@@ -262,7 +264,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to get script signatures: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return script_signatures
 
     def set_user_key(self, username, key, private=False, force=None):
@@ -292,4 +294,4 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = _("Unable to set users {key_type} key: {e}")
             msg = msg.format(key_type=key_type, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e

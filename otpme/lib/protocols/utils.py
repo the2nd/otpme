@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -31,7 +31,7 @@ def register_commands(command, subcommands,
                 if sub_type_attribute:
                     try:
                         x_sub_type_attribute = sub_types[command]
-                    except:
+                    except Exception:
                         x_sub_type_attribute = None
                     if x_sub_type_attribute \
                     and x_sub_type_attribute != sub_type_attribute:

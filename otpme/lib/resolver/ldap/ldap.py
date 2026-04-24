@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -304,7 +304,7 @@ class LdapResolver(Resolver):
         realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(LdapResolver, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             name=name,
@@ -658,10 +658,10 @@ class LdapResolver(Resolver):
         if ldap_re.match(server_uri):
             try:
                 server_port = int(server_uri.split(":")[-1:])
-            except:
+            except Exception:
                 msg = _("Invalid port in server URI: {server_uri}")
                 msg = msg.format(server_uri=server_uri)
-                raise Exception(msg)
+                raise Exception(msg) from None
 
         if server_uri.startswith("ldaps://"):
             if server_port is None:
@@ -678,7 +678,7 @@ class LdapResolver(Resolver):
         # Try to get server address from URI.
         try:
             server_address = server_uri.split("/")[2]
-        except:
+        except Exception:
             pass
 
         if server_address is None:
@@ -709,7 +709,7 @@ class LdapResolver(Resolver):
             msg = msg.format(server_uri=server_uri, error=e)
             log_msg = log_msg.format(server_uri=server_uri, error=e)
             logger.warning(log_msg)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
         if use_start_tls:
             conn.start_tls()
@@ -733,7 +733,7 @@ class LdapResolver(Resolver):
             # Get attribute mappings.
             try:
                 attr_list = list(self.attribute_mappings[object_type].values())
-            except:
+            except Exception:
                 attr_list = []
 
             return_attributes = attr_list
@@ -836,22 +836,22 @@ class LdapResolver(Resolver):
         for o_type in self.ldap_filters:
             try:
                 self.key_attributes[o_type]
-            except:
+            except Exception:
                 msg = _("No key attribute configured for: {o_type}")
                 msg = msg.format(o_type=o_type)
-                raise Exception(msg)
+                raise Exception(msg) from None
             try:
                 self.attribute_mappings[o_type]['name']
-            except:
+            except Exception:
                 msg = _("Please add a attribute mapping for 'name': {o_type}")
                 msg = msg.format(o_type=o_type)
-                raise Exception(msg)
+                raise Exception(msg) from None
 
         for server_uri in self.ldap_servers:
             try:
                 ldap_conn = self.get_ldap_connection(server_uri)
                 break
-            except:
+            except Exception:
                 pass
 
         if ldap_conn is None:
@@ -867,7 +867,7 @@ class LdapResolver(Resolver):
         except Exception as e:
             msg = _("Failed to fetch objects: {error}")
             msg = msg.format(error=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
         finally:
             ldap_conn.unbind()
 

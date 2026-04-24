@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -51,7 +51,7 @@ def get_sources(database):
                     break
     except Exception as e:
         msg = "Could not read %s: %s" % (NSSWITCH_CONF, e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return sources
 
 def _load_nss_module(source):
@@ -60,7 +60,7 @@ def _load_nss_module(source):
     try:
         return ctypes.CDLL(lib_name, use_errno=True)
     except OSError as e:
-        raise OTPmeException("Could not load NSS module '%s': %s" % (lib_name, e))
+        raise OTPmeException("Could not load NSS module '%s': %s" % (lib_name, e)) from e
 
 def group_exists(group_name, skip_sources=None):
     """Check if a group exists in any NSS source except those in skip_sources.

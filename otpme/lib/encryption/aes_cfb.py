@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.encryption import get_module
@@ -43,7 +43,7 @@ try:
 except Exception as e:
     msg = _("Unable to load encryption module: {error}")
     msg = msg.format(error=e)
-    raise OTPmeException(msg)
+    raise OTPmeException(msg) from e
 
 gen_key = getattr(enc_module, "gen_key")
 derive_key = getattr(enc_module, "derive_key")

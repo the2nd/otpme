@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -238,11 +238,11 @@ class OTPmeHostP1(OTPmeServer1):
             status = True
             try:
                 realm = command_args['realm']
-            except:
+            except Exception:
                 realm = None
             try:
                 site = command_args['site']
-            except:
+            except Exception:
                 site = None
 
             if realm and site:
@@ -293,11 +293,11 @@ class OTPmeHostP1(OTPmeServer1):
             status = True
             try:
                 realm = command_args['realm']
-            except:
+            except Exception:
                 realm = None
             try:
                 site = command_args['site']
-            except:
+            except Exception:
                 site = None
 
             if realm and site:
@@ -317,11 +317,11 @@ class OTPmeHostP1(OTPmeServer1):
             status = True
             try:
                 realm = command_args['realm']
-            except:
+            except Exception:
                 realm = None
             try:
                 site = command_args['site']
-            except:
+            except Exception:
                 site = None
 
             if realm and site:
@@ -343,13 +343,13 @@ class OTPmeHostP1(OTPmeServer1):
             status = True
             try:
                 realm_name = command_args['realm']
-            except:
+            except Exception:
                 realm_name = None
                 message = "INCOMPLETE_COMMAND"
                 status = False
             try:
                 site_name = command_args['site']
-            except:
+            except Exception:
                 site_name = None
                 message = "INCOMPLETE_COMMAND"
                 status = False
@@ -369,14 +369,14 @@ class OTPmeHostP1(OTPmeServer1):
             status = True
             try:
                 realm_name = command_args['realm']
-            except:
+            except Exception:
                 realm_name = None
             if not realm_name:
                 message = "INCOMPLETE_COMMAND"
                 status = False
             try:
                 site_name = command_args['site']
-            except:
+            except Exception:
                 site_name = None
             if not site_name:
                 message = "INCOMPLETE_COMMAND"
@@ -406,7 +406,7 @@ class OTPmeHostP1(OTPmeServer1):
             try:
                 username = command_args['username']
                 status = True
-            except:
+            except Exception:
                 username = None
                 message = _("{error_code} INCOMPLETE_COMMAND")
                 message = message.format(error_code=status_codes.ERR)
@@ -437,7 +437,7 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "get_user_uuid":
             try:
                 username = command_args['username']
-            except:
+            except Exception:
                 username = None
                 message = _("{error_code} INCOMPLETE_COMMAND")
                 message = message.format(error_code=status_codes.ERR)
@@ -457,7 +457,7 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "get_user_name":
             try:
                 user_uuid = command_args['user_uuid']
-            except:
+            except Exception:
                 user_uuid = None
                 message = "INCOMPLETE_COMMAND"
                 status = False
@@ -475,7 +475,7 @@ class OTPmeHostP1(OTPmeServer1):
             try:
                 object_id = command_args['object_id']
                 status = True
-            except:
+            except Exception:
                 message = "INCOMPLETE_COMMAND"
                 status = False
 
@@ -495,18 +495,18 @@ class OTPmeHostP1(OTPmeServer1):
             try:
                 object_uuid = command_args['object_uuid']
                 status = True
-            except:
+            except Exception:
                 message = "INCOMPLETE_COMMAND"
                 status = False
 
             if status:
                 try:
                     object_type = command_args['object_type']
-                except:
+                except Exception:
                     object_type = None
                 try:
                     object_types = command_args['object_types']
-                except:
+                except Exception:
                     object_types = None
                 try:
                     message = backend.get_oid(object_uuid,
@@ -524,7 +524,7 @@ class OTPmeHostP1(OTPmeServer1):
             try:
                 object_id = command_args['object_id']
                 status = True
-            except:
+            except Exception:
                 message = "INCOMPLETE_COMMAND"
                 status = False
             if status:
@@ -552,14 +552,14 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "authorize_token":
             try:
                 token_uuid = command_args['token_uuid']
-            except:
+            except Exception:
                 token_uuid = None
                 message = "INCOMPLETE_COMMAND"
                 status = False
 
             try:
                 login_interface = command_args['login_interface']
-            except:
+            except Exception:
                 login_interface = None
 
             if token_uuid:
@@ -586,7 +586,7 @@ class OTPmeHostP1(OTPmeServer1):
             # Get password to check.
             try:
                 password = command_args['password']
-            except:
+            except Exception:
                 password = None
                 message = _("Need <password>.")
                 status = False
@@ -595,7 +595,7 @@ class OTPmeHostP1(OTPmeServer1):
                # Try to get policy name.
                 try:
                     policy_name = command_args['policy']
-                except:
+                except Exception:
                     policy_name = None
 
                 try:
@@ -611,7 +611,7 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "dump_instance_cache":
             try:
                 parameter = command_args['parameter']
-            except:
+            except Exception:
                 parameter = None
 
             if parameter:
@@ -639,7 +639,7 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "dump_acl_cache":
             try:
                 parameter = command_args['parameter']
-            except:
+            except Exception:
                 parameter = None
 
             if parameter:
@@ -703,11 +703,11 @@ class OTPmeHostP1(OTPmeServer1):
             # Build sync command.
             try:
                 realm = command_args['realm']
-            except:
+            except Exception:
                 realm = None
             try:
                 site = command_args['site']
-            except:
+            except Exception:
                 site = None
             sync_attrs = {
                             'realm' : realm,
@@ -729,11 +729,11 @@ class OTPmeHostP1(OTPmeServer1):
             # Build resync command.
             try:
                 realm = command_args['realm']
-            except:
+            except Exception:
                 realm = None
             try:
                 site = command_args['site']
-            except:
+            except Exception:
                 site = None
             sync_attrs = {
                             'realm' : realm,
@@ -804,11 +804,11 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "get_daemon_socket":
             try:
                 daemon = command_args['daemon']
-            except:
+            except Exception:
                 daemon = None
             try:
                 node_name = command_args['node_name']
-            except:
+            except Exception:
                 node_name = None
             try:
                 message = stuff.get_daemon_socket(daemon, node_name)

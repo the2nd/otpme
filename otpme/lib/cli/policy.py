@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -81,8 +81,10 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, policy_order, policy_data, acls,
-    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for policies. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for policy_uuid in policy_order:
         row = []
@@ -90,25 +92,25 @@ def row_getter(realm, site, policy_order, policy_data, acls,
         unit_uuid = policy_data[policy_uuid]['unit'][0]
         try:
             enabled = policy_data[policy_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             policy_type = policy_data[policy_uuid]['policy_type'][0]
-        except:
+        except Exception:
             policy_type = False
         try:
             description = policy_data[policy_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = policy_data[policy_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             policy_acls = acls[policy_uuid]
-        except:
+        except Exception:
             policy_acls = {}
 
         # Get ACL checker.

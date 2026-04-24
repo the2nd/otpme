@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -693,7 +693,7 @@ class Unit(OTPmeObject):
                 path = f"/{realm}/{site}/{name}"
 
         # Call parent class init.
-        super(Unit, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -747,13 +747,15 @@ class Unit(OTPmeObject):
         acl: object,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
-        object_types: Union[List,None]=[],
+        object_types: Union[List,None]=None,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Method to call inherit_default_acl() for all member objects. """
+        if object_types is None:
+            object_types = []
         exception = None
         if action == "add":
             inherit_method = "inherit_default_acl"
@@ -792,7 +794,7 @@ class Unit(OTPmeObject):
         for object_type in members:
             try:
                 objects = members[object_type]
-            except:
+            except Exception:
                 continue
             for o in objects:
                 # Make sure we inherit ACLs recursive through all units.
@@ -888,7 +890,7 @@ class Unit(OTPmeObject):
         while True:
             try:
                 child_units = x_members['unit']
-            except:
+            except Exception:
                 child_units = []
 
             if not child_units:
@@ -992,7 +994,7 @@ class Unit(OTPmeObject):
         for t in unit_members:
             try:
                 t_members = unit_members[t]
-            except:
+            except Exception:
                 continue
             for x in t_members:
                 if x.type != "ca":
@@ -1242,7 +1244,7 @@ class Unit(OTPmeObject):
             for object_type in members:
                 try:
                     object_names = members[object_type]
-                except:
+                except Exception:
                     continue
                 x = _("Unit '{unit_name}' contains {obj_type}s: {obj_names}")
                 x = x.format(unit_name=self.name, obj_type=object_type, obj_names=', '.join(object_names))

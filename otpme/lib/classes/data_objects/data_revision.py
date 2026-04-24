@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -131,7 +131,7 @@ class DataRevision(OTPmeDataObject):
         self.type = "data_revision"
 
         # Call parent class init.
-        super(DataRevision, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
 
         self._data_revision = None
         self.data_revision = data_revision
@@ -186,4 +186,4 @@ class DataRevision(OTPmeDataObject):
     def add(self):
         """ Add the object. """
         # Call base class add method.
-        return super(DataRevision, self).add()
+        return super().add()

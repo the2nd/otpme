@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -189,7 +189,7 @@ class DefaultunitsPolicy(Policy):
         realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(DefaultunitsPolicy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                                     realm=realm,
                                                     site=site,
                                                     name=name,
@@ -252,10 +252,10 @@ class DefaultunitsPolicy(Policy):
         """ Get default unit of object. """
         try:
             unit_uuid = self.default_units[object_type]
-        except KeyError:
+        except KeyError as err:
             msg = _("No default unit configured for object type: {}")
             msg = msg.format(object_type)
-            raise NoUnitFound(msg)
+            raise NoUnitFound(msg) from err
         unit_oid = backend.get_oid(unit_uuid)
         unit_oid = oid.get(unit_oid)
         return unit_oid.rel_path

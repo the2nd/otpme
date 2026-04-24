@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -66,7 +66,7 @@ def load_mod_files():
         except Exception as e:
             msg = _("Failed to read register file: {}: {}")
             msg = msg.format(x, e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if mod_name in module_list:
             msg = _("Orphan module registration file: {} ({})")
             msg = msg.format(x, mod_name)
@@ -85,16 +85,16 @@ def get_mod_deps(mod):
     REGISTER_AFTER = "REGISTER_AFTER"
     try:
         before = getattr(x_module, REGISTER_BEFORE)
-    except:
+    except Exception:
         msg = _("Missing {} in module: {}")
         msg = msg.format(REGISTER_BEFORE, mod)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     try:
         after = getattr(x_module, REGISTER_AFTER)
-    except:
+    except Exception:
         msg = _("Missing {} in module: {}")
         msg = msg.format(REGISTER_AFTER, mod)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     _mod_deps_cache[mod] = (before, after)
     return before, after
 
@@ -105,8 +105,10 @@ def get_modules(_modules):
     ordered_mods = sort_modules(module_list)
     return ordered_mods
 
-def get_dep_tree(module_list, seen=[]):
+def get_dep_tree(module_list, seen=None):
     """ Get modules dependency tree. """
+    if seen is None:
+        seen = []
     order_data = {}
     module_list = set(module_list)
     for mod_name in module_list:
@@ -195,7 +197,7 @@ def _register_module(mod):
         try:
             logger = config.logger
             logger.debug(log_msg)
-        except:
+        except Exception:
             print(msg)
     #register_str = f"from {mod} import register;register()"
     #code = compile(register_str, '<string>', 'exec')
@@ -207,7 +209,7 @@ def _register_module(mod):
     except Exception as e:
         msg = _("Unable to register module: {}: {}")
         msg = msg.format(mod, e)
-        raise ImportError(msg)
+        raise ImportError(msg) from e
     x_method()
 
 def _register_modules(mod_list, ignore_deps=False):

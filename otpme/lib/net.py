@@ -14,7 +14,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import arp
@@ -27,7 +27,7 @@ def is_ip(ip):
     try:
         socket.inet_aton(ip)
         return True
-    except:
+    except Exception:
         return False
 
 def get_ip(fqdn):
@@ -37,7 +37,7 @@ def get_ip(fqdn):
     config.logger.debug(log_msg)
     try:
         ip = socket.gethostbyname(fqdn)
-    except:
+    except Exception:
         log_msg = _("Unable to resolve: {fqdn}", log=True)[1]
         log_msg = log_msg.format(fqdn=fqdn)
         config.logger.debug(log_msg)
@@ -55,7 +55,7 @@ def get_host_fqdn():
     except Exception as e:
         msg = _("Unable to get host FQDN: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return host_fqdn
 
 def get_host_domainname():
@@ -66,7 +66,7 @@ def get_host_domainname():
     except Exception as e:
         msg = _("Unable to get host domainname: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     # Try to get search domain from host FQDN.
     domain = ".".join(host_fqdn.split(".")[1:])
     if len(domain) == 0:
@@ -102,7 +102,7 @@ def get_otpme_site(domain):
         except Exception as e:
             msg = _("Failed to query OTPme {type} via DNS: {error}")
             msg = msg.format(type=x, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         for a in answers:
             text = a.to_text().strip('"')
             result[x] = text
@@ -144,7 +144,7 @@ def get_daemon_uri(daemon, domain):
     except Exception as e:
         msg = _("Failed to query OTPme {daemon} attributes via DNS: {error}")
         msg = msg.format(daemon=daemon, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     for a in answers:
         text = a.to_text().strip('"')
         host = text.split()[-1].rstrip(".")
@@ -162,7 +162,7 @@ def get_daemon_uri(daemon, domain):
         port = config.default_ports[daemon]
         socket_uri = f"tcp://{domain}:{port}"
         return socket_uri
-    except:
+    except Exception:
         return None
 
 def query_dns(name, record="A"):

@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -136,7 +136,7 @@ class ConnHandler(object):
                     # If we got a client helo try to get protocol version
                     try:
                         client_supported_protocols = command_args['supported_protocols']
-                    except:
+                    except Exception:
                         final_response = _("Client supported protocols missing in request.")
                         status = status_codes.SERVER_QUIT
                         break
@@ -198,7 +198,7 @@ class ConnHandler(object):
                     # Get proto the client uses.
                     try:
                         client_proto = command_args['client_proto']
-                    except:
+                    except Exception:
                         final_response = _("Client protocol missing in request.")
                         status = status_codes.SERVER_QUIT
                         break

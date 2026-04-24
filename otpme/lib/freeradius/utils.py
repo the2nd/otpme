@@ -362,7 +362,7 @@ def start():
     try:
         status()
         freeradius_running = True
-    except:
+    except Exception:
         freeradius_running = False
     if freeradius_running:
         msg = _("Freeradius already running.")
@@ -391,7 +391,7 @@ def stop():
     try:
         status()
         freeradius_running = True
-    except:
+    except Exception:
         freeradius_running = False
     if not freeradius_running:
         return

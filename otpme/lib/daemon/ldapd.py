@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -94,7 +94,7 @@ class LdapDaemon(OTPmeDaemon):
                     # Write file content.
                     fd.write(file_content)
                     fd.close()
-                except:
+                except Exception:
                     raise
 
             for x in self.listen_sockets:
@@ -109,7 +109,7 @@ class LdapDaemon(OTPmeDaemon):
                 os.remove(self.cert_file)
             if os.path.exists(self.key_file):
                 os.remove(self.key_file)
-        except:
+        except Exception:
             raise
 
         # We can drop privileges AFTER sockets are created. This is needed when
@@ -150,7 +150,7 @@ class LdapDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 # Check if command can be handled by parent class.
                 try:

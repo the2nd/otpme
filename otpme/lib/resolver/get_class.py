@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -35,5 +35,5 @@ def get_class(resolver_type):
         config.raise_exception()
         msg = _("Error loading resolver '{}': {}")
         msg = msg.format(class_name, e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return resolver_class

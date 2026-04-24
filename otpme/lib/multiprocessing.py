@@ -17,7 +17,7 @@ from multiprocessing.managers import SyncManager
 
 try:
     import ujson as json
-except:
+except Exception:
     import json
 
 try:
@@ -25,7 +25,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -504,7 +504,7 @@ def drop_privileges(user=None, group=None, groups=None):
             except Exception as e:
                 msg = _("Failed to resolve group: {g}")
                 msg = msg.format(g=g)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             group_ids.append(x)
         os.setgroups(group_ids)
 
@@ -515,7 +515,7 @@ def drop_privileges(user=None, group=None, groups=None):
             os.setgid(gid)
         except Exception as e:
             msg = _("Failed to drop privileges (group)")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if config.debug_level() > 3:
             log_msg = _("Changed group to: {group}", log=True)[1]
             log_msg = log_msg.format(group=group)
@@ -528,7 +528,7 @@ def drop_privileges(user=None, group=None, groups=None):
             os.setuid(uid)
         except Exception as e:
             msg = _("Failed to drop privileges (group)")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if config.debug_level() > 3:
             log_msg = _("Changed user to: {user}", log=True)[1]
             log_msg = log_msg.format(user=user)
@@ -541,7 +541,7 @@ def drop_privileges(user=None, group=None, groups=None):
             except Exception as e:
                 msg = _("Failed to change cwd: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
 def start_process(name, target, target_args=None,
     target_kwargs=None, daemon=False,
@@ -611,17 +611,17 @@ class OTPmeSyncManager(SyncManager):
     def __init__(self, *args, **kwargs):
         try:
             OTPmeSyncManager._otpme_proc_title = kwargs.pop('_otpme_proc_title')
-        except:
+        except Exception:
             OTPmeSyncManager._otpme_user = None
         try:
             OTPmeSyncManager._otpme_user = kwargs.pop('_otpme_user')
-        except:
+        except Exception:
             OTPmeSyncManager._otpme_user = None
         try:
             OTPmeSyncManager._otpme_group = kwargs.pop('_otpme_group')
-        except:
+        except Exception:
             OTPmeSyncManager._otpme_group = None
-        super(OTPmeSyncManager, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     @classmethod
     def _run_server(cls, *args, **kwargs):
@@ -636,7 +636,7 @@ class OTPmeSyncManager(SyncManager):
             setproctitle.setproctitle(cls._otpme_proc_title)
         # Drop privileges.
         drop_privileges(cls._otpme_user, cls._otpme_group)
-        super(OTPmeSyncManager, cls)._run_server(*args, **kwargs)
+        super()._run_server(*args, **kwargs)
 
 def get_sync_manager(name, proc_title=None, user=None, group=None):
     """
@@ -713,8 +713,8 @@ class Event(object):
             self.open()
         try:
             self._semaphore.acquire(timeout=timeout)
-        except posix_ipc.BusyError:
-            raise TimeoutReached()
+        except posix_ipc.BusyError as err:
+            raise TimeoutReached() from err
         except posix_ipc.SignalError:
             pass
         self.close()
@@ -856,31 +856,31 @@ class MessageQueue(object):
         except Exception as e:
             msg = _("Failed to decode received data: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def raw_send(self, data, timeout=None):
         try:
             self.queue.send(data, timeout=timeout)
         except posix_ipc.BusyError:
             pass
-        except posix_ipc.ExistentialError:
+        except posix_ipc.ExistentialError as err:
             msg = _("Queue closed.")
-            raise QueueClosed(msg)
-        except posix_ipc.SignalError:
+            raise QueueClosed(msg) from err
+        except posix_ipc.SignalError as err:
             msg = _("Exiting on signal.")
-            raise ExitOnSignal(msg)
+            raise ExitOnSignal(msg) from err
 
     def raw_recv(self, timeout=None):
         try:
             (data, prio) = self.queue.receive(timeout=timeout)
         except posix_ipc.BusyError:
             data = None
-        except posix_ipc.ExistentialError:
+        except posix_ipc.ExistentialError as err:
             msg = _("Queue closed.")
-            raise QueueClosed(msg)
-        except posix_ipc.SignalError:
+            raise QueueClosed(msg) from err
+        except posix_ipc.SignalError as err:
             msg = _("Exiting on signal.")
-            raise ExitOnSignal(msg)
+            raise ExitOnSignal(msg) from err
         return data
 
     def close(self):
@@ -901,7 +901,7 @@ class MessageQueue(object):
             pass
         try:
             message_queues.remove(self._queue)
-        except:
+        except Exception:
             pass
 
 class InterProcessQueue(object):
@@ -957,12 +957,12 @@ class InterProcessQueue(object):
         if pop:
             try:
                 queue = self.queues[name].pop("queue")
-            except:
+            except Exception:
                 queue = MessageQueue(name, identifier=self.identifier)
             return queue
         try:
             queue = self.queues[name]['queue']
-        except:
+        except Exception:
             self.queues[name] = {}
             queue = MessageQueue(name, identifier=self.identifier)
             self.queues[name]['queue'] = queue
@@ -983,20 +983,20 @@ class InterProcessQueue(object):
         # Get sender.
         try:
             sender = message['sender']
-        except:
+        except Exception:
             msg = _("Receive invalid message: Sender missing")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         # Get command.
         try:
             command = message['command']
-        except:
+        except Exception:
             msg = _("Receive invalid message: Command missing")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         # Get data.
         try:
             data = message['data']
             message = message['command']
-        except:
+        except Exception:
             pass
         return sender, command, data
 
@@ -1004,11 +1004,11 @@ class InterProcessQueue(object):
         """ Queue messages. """
         try:
             recipient_queue = self.message_queue[recipient]
-        except:
+        except Exception:
             recipient_queue = {}
         try:
             sender_messages = recipient_queue[sender]
-        except:
+        except Exception:
             sender_messages = []
         sender_messages.append((sender, command, data))
         recipient_queue[sender] = sender_messages
@@ -1018,19 +1018,19 @@ class InterProcessQueue(object):
         """ Get queued message. """
         try:
             recipient_queue = self.message_queue[recipient]
-        except:
+        except Exception:
             return
         if sender is None:
              sender = list(recipient_queue)[0]
         try:
             sender_messages = recipient_queue[sender]
-        except:
+        except Exception:
             return
         try:
             sender, command, data = sender_messages.pop()
             if not sender_messages:
                 recipient_queue.pop(sender)
-        except:
+        except Exception:
             return
         recipient_queue[sender] = sender_messages
         self.message_queue[recipient] = recipient_queue
@@ -1044,10 +1044,10 @@ class InterProcessQueue(object):
         # Get queue.
         try:
             queue = self.get_queue(recipient, pop=autoclose, autoclean=False)
-        except:
+        except Exception:
             msg = _("Unknown recipient: {recipient}")
             msg = msg.format(recipient=recipient)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         # Send message.
         try:
             queue.send(message, timeout=timeout)
@@ -1063,7 +1063,7 @@ class InterProcessQueue(object):
         try:
             sender, command, data = self.get_queued_message(recipient, sender)
             return sender, command, data
-        except:
+        except Exception:
             pass
         while True:
             # Get queue.
@@ -1076,7 +1076,7 @@ class InterProcessQueue(object):
             except Exception as e:
                 msg = _("Failed to decode message: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Check if message is from requested sender.
             sender_ok = False
             if sender is None:
@@ -1092,7 +1092,7 @@ class InterProcessQueue(object):
         for x in self.queues:
             try:
                 queue = self.queues[x]['queue']
-            except:
+            except Exception:
                 continue
             try:
                 queue.close()
@@ -1103,7 +1103,7 @@ class InterProcessQueue(object):
         for x in self.queues:
             try:
                 queue = self.queues[x]['queue']
-            except:
+            except Exception:
                 continue
             try:
                 queue.unlink()

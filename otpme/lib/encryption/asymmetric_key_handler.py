@@ -19,7 +19,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import encryption
@@ -52,7 +52,7 @@ class AsymmetricKeyHandler(object):
             self.load_key(key=key, password=key_password)
         else:
             self._private_key = self.gen_key(**kwargs)
-        super(AsymmetricKeyHandler, self).__init__()
+        super().__init__()
 
     @property
     def private_key(self):
@@ -96,10 +96,10 @@ class AsymmetricKeyHandler(object):
         """ Get cert fingerprint. """
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         public_key_der = self.export_public_key(encoding="DER")
         hasher = hashes.Hash(hash_algo_method(), backend=default_backend())
         hasher.update(public_key_der)
@@ -220,7 +220,7 @@ class AsymmetricKeyHandler(object):
             except Exception as e:
                 msg = _("Unable to load key from file: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         else:
             msg = ("Need 'key' or 'key_file'!")
             raise OTPmeException(msg)
@@ -237,11 +237,11 @@ class AsymmetricKeyHandler(object):
             except TypeError as e:
                 msg = _("Failed to load private key: {e}")
                 msg = msg.format(e=e)
-                raise TypeError(msg)
+                raise TypeError(msg) from e
         except Exception as e:
             msg = _("Error loading public key: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def encrypt_key(self, password=None, hash_type=None,
         aes_key=None, encoding="base64"):

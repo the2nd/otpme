@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -344,7 +344,7 @@ class JobCallback(object):
                     if raise_exception is False:
                         try:
                             self.send(message, error=True, timeout=timeout)
-                        except:
+                        except Exception:
                             pass
                 else:
                     # For API/RAPI calls we have to set the return value.
@@ -475,7 +475,7 @@ class JobCallback(object):
         except Exception as e:
             msg = _("Unable to get public key of site certificate: {user_site}: e{}")
             msg = msg.format(user_site=user.site, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             jwt_data = _jwt.decode(jwt=jwt,
                                    key=jwt_key,
@@ -483,7 +483,7 @@ class JobCallback(object):
         except Exception as e:
             config.raise_exception()
             msg = _("JWT decoding failed.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # We do not allow SOTP generated JWTs. A login with a real
         # token is required.
         jwt_auth_type = jwt_data['auth_type']
@@ -713,7 +713,7 @@ class JobCallback(object):
                         log_msg = _("Failed to add exit message: {}", log=True)[1]
                         log_msg = log_msg.format(e)
                         self.logger.critical(log_msg)
-            except:
+            except Exception:
                 pass
 
         # Wakeup mgmtd waiting for new job messages/queries.

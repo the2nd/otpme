@@ -10,10 +10,10 @@ from prettytable import PrettyTable
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -21,7 +21,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -93,9 +93,9 @@ class OTPmeClusterP1(OTPmeServer1):
         # Try to cluster key.
         try:
             cluster_key = preauth_args['cluster_key']
-        except:
+        except Exception:
             msg = _("Missing cluster key.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         own_site = backend.get_object(uuid=config.site_uuid)
         if own_site.cluster_key == cluster_key:
             return
@@ -270,7 +270,7 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             try:
                 cluster_quorum = config.cluster_quorum
-            except:
+            except Exception:
                 cluster_quorum = False
             message = cluster_quorum
             if cluster_quorum:
@@ -509,7 +509,7 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 remote_objects = command_args['remote_objects']
-            except:
+            except Exception:
                 message = _("Missing remote objects.")
                 status = False
             if status:
@@ -556,7 +556,7 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 remote_objects = command_args['remote_objects']
-            except:
+            except Exception:
                 message = _("Missing remote objects.")
                 status = False
             if status:
@@ -595,7 +595,7 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = _("Missing object ID.")
                 status = False
             if status:
@@ -607,63 +607,63 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = _("Missing object ID.")
                 status = False
             try:
                 object_uuid = command_args['object_uuid']
-            except:
+            except Exception:
                 message = _("Missing object UUID.")
                 status = False
             try:
                 object_config = command_args['object_config']
-            except:
+            except Exception:
                 message = _("Missing object config.")
                 status = False
             try:
                 acl_journal = command_args['acl_journal']
-            except:
+            except Exception:
                 message = _("Missing ACL journal.")
                 status = False
             try:
                 ldif_journal = command_args['ldif_journal']
-            except:
+            except Exception:
                 message = _("Missing LDIF journal.")
                 status = False
             try:
                 index_journal = command_args['index_journal']
-            except:
+            except Exception:
                 message = _("Missing index journal.")
                 status = False
             try:
                 use_acl_journal = command_args['use_acl_journal']
-            except:
+            except Exception:
                 message = _("Missing use_acl_journal.")
                 status = False
             try:
                 use_index_journal = command_args['use_index_journal']
-            except:
+            except Exception:
                 message = _("Missing use_index_journal.")
                 status = False
             try:
                 full_data_update = command_args['full_data_update']
-            except:
+            except Exception:
                 full_data_update = False
             try:
                 full_index_update = command_args['full_index_update']
-            except:
+            except Exception:
                 full_index_update = False
             try:
                 full_ldif_update = command_args['full_ldif_update']
-            except:
+            except Exception:
                 full_ldif_update = False
             try:
                 full_acl_update = command_args['full_acl_update']
-            except:
+            except Exception:
                 full_acl_update = False
             try:
                 last_used = command_args['last_used']
-            except:
+            except Exception:
                 last_used = None
             if config.daemon_shutdown:
                 message = _("Daemon shutdown.")
@@ -749,12 +749,12 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = _("Missing object ID.")
                 status = False
             try:
                 new_object_id = command_args['new_object_id']
-            except:
+            except Exception:
                 message = _("Missing new object ID.")
                 status = False
             if config.daemon_shutdown:
@@ -792,12 +792,12 @@ class OTPmeClusterP1(OTPmeServer1):
             message = "done"
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = _("Missing object ID.")
                 status = False
             try:
                 object_uuid = command_args['object_uuid']
-            except:
+            except Exception:
                 message = _("Missing object UUID.")
                 status = False
             if config.daemon_shutdown:
@@ -865,22 +865,22 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 trash_id = command_args['trash_id']
-            except:
+            except Exception:
                 message = _("Missing trash ID.")
                 status = False
             try:
                 object_id = command_args['object_id']
-            except:
+            except Exception:
                 message = _("Missing object ID.")
                 status = False
             try:
                 deleted_by = command_args['deleted_by']
-            except:
+            except Exception:
                 message = _("Missing deleted_by.")
                 status = False
             try:
                 object_data = command_args['object_data']
-            except:
+            except Exception:
                 message = _("Missing object data.")
                 status = False
             try:
@@ -914,7 +914,7 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 trash_id = command_args['trash_id']
-            except:
+            except Exception:
                 message = _("Missing trash ID.")
                 status = False
             if config.daemon_shutdown:
@@ -959,7 +959,7 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 object_types = command_args['object_types']
-            except:
+            except Exception:
                 message = _("Missing object type.")
                 status = False
             if config.daemon_shutdown:
@@ -981,12 +981,12 @@ class OTPmeClusterP1(OTPmeServer1):
             message = None
             try:
                 object_type = command_args['object_type']
-            except:
+            except Exception:
                 message = _("Missing object type.")
                 status = False
             try:
                 objects = command_args['objects']
-            except:
+            except Exception:
                 message = _("Missing objects.")
                 status = False
             if config.daemon_shutdown:
@@ -1283,7 +1283,7 @@ class OTPmeClusterP1(OTPmeServer1):
                     #multiprocessing.node_votes[config.host_data['name']] = new_master_vote
                     try:
                         master_node = multiprocessing.master_node['master']
-                    except:
+                    except Exception:
                         time.sleep(0.01)
                         continue
                     if master_node != self.host_name:

@@ -4,7 +4,7 @@ import os
 # python3.
 try:
     from thread import *
-except:
+except Exception:
     from _thread import *
 
 try:
@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {name}")
         msg = msg.format(name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -57,7 +57,7 @@ def get(script_path):
             config.raise_exception()
             msg = _("Error getting script: {script_path}: {e}")
             msg = msg.format(script_path=script_path, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Try to get script UUID.
         try:
@@ -66,7 +66,7 @@ def get(script_path):
             config.raise_exception()
             msg = _("Error getting script UUID: {script_path}: {e}")
             msg = msg.format(script_path=script_path, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Try to get script signatures.
         try:
@@ -77,7 +77,7 @@ def get(script_path):
             config.raise_exception()
             msg = _("Error getting script signatures: {script_path}: {e}")
             msg = msg.format(script_path=script_path, e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     return script, script_uuid, signatures
 
@@ -138,12 +138,12 @@ def run(script_type, script_path, realm=None, site=None, options=None,
             config.raise_exception()
             msg = _("Failed to verify script signatures: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         except Exception as e:
             config.raise_exception()
             msg = _("Error verifying signatures: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     # Will hold the command line parameters we get from 'variables'.
     command_line = []
@@ -185,10 +185,10 @@ def run(script_type, script_path, realm=None, site=None, options=None,
                     # Only put env variables that are not bool/None.
                     if not isinstance(var_val, bool) and var_val is not None:
                         script_env[var_name] = str(variables[var_name.lower()])
-                except:
+                except Exception:
                     msg = _("Unknown variable in script command: {script_path}: {var_name}")
                     msg = msg.format(script_path=script_path, var_name=var_name)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from None
                 # Remove special option from options.
                 options.remove(i)
 
@@ -200,10 +200,10 @@ def run(script_type, script_path, realm=None, site=None, options=None,
                 # Try to get variable value from dictionary.
                 try:
                     var_value = variables[var_name.lower()]
-                except:
+                except Exception:
                     msg = _("Unknown variable in script command: {script_path}: {var_name}")
                     msg = msg.format(script_path=script_path, var_name=var_name)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from None
                 # Check if we got a bool or None value and convert it to an
                 # emtpy script parameter.
                 if isinstance(var_value, bool) or var_value is None:

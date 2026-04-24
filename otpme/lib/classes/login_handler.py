@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import net
@@ -37,11 +37,11 @@ class LoginHandler(object):
         except UnknownLoginSession as e:
             msg = _("Unknown session: {session_id}")
             msg = msg.format(session_id=agent_conn.login_session_id)
-            raise UnknownLoginSession(msg)
+            raise UnknownLoginSession(msg) from e
         except Exception as e:
             msg = _("Unable to get agent connection: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return agent_conn
 
     def login(self, realm=None, site=None, username=None, password=None,
@@ -53,10 +53,14 @@ class LoginHandler(object):
         sync_token_data=False, auth_only=False, start_otpme_agent=True, jwt_auth=False,
         jwt_method=None, message_method=None, error_message_method=None, connect_timeout=3,
         timeout=None, node=None, save_offline_token=None, offline_key_derivation_func=None,
-        offline_token=None, request_token=None, mount_shares=False, offline_key_func_opts={},
-        check_offline_pass_strength=False, offline_iterations_by_score={}, login_session_id=None,
+        offline_token=None, request_token=None, mount_shares=False, offline_key_func_opts=None,
+        check_offline_pass_strength=False, offline_iterations_by_score=None, login_session_id=None,
         add_agent_acl=False, cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):
         """ Send realm login request. """
+        if offline_key_func_opts is None:
+            offline_key_func_opts = {}
+        if offline_iterations_by_score is None:
+            offline_iterations_by_score = {}
         login = True
         exception = None
 
@@ -148,7 +152,7 @@ class LoginHandler(object):
             config.raise_exception()
             msg = _("Unable to connect to auth daemon: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Send auth/login request.
         login_message = None
@@ -212,9 +216,9 @@ class LoginHandler(object):
                 agent_conn = self.get_agent_connection()
             except UnknownLoginSession as e:
                 msg = _("You are not logged in.")
-                raise NotLoggedIn(msg)
+                raise NotLoggedIn(msg) from e
             except Exception as e:
-                raise Exception(str(e))
+                raise Exception(str(e)) from e
 
             # Get login status from otpme-agent.
             if not agent_conn.get_status():
@@ -236,14 +240,14 @@ class LoginHandler(object):
             except Exception as e:
                 msg = _("Error unmounting shares: {error}")
                 msg = msg.format(error=e)
-                raise Exception(msg)
+                raise Exception(msg) from e
             # Logout user via agent command.
             try:
                 logout_message = agent_conn.del_session()
             except Exception as e:
                 msg = _("Error logging out: {error}")
                 msg = msg.format(error=e)
-                raise Exception(msg)
+                raise Exception(msg) from e
         finally:
             if agent_conn:
                 agent_conn.close()
@@ -263,10 +267,10 @@ class LoginHandler(object):
         try:
             agent_conn = self.get_agent_connection()
         except UnknownLoginSession as e:
-            raise NotLoggedIn(msg)
+            raise NotLoggedIn(msg) from e
         except Exception as e:
             msg = str(e)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
         # Get login status from otpme-agent.
         login_status = agent_conn.get_status()

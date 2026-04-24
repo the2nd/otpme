@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -33,7 +33,7 @@ def pidfile_handler(pidfile, proc_name="Process"):
             # Run function.
             try:
                 result = func(*args, **kwargs)
-            except:
+            except Exception:
                 raise
             finally:
                 # Remove PIDFILE.

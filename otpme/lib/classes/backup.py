@@ -62,7 +62,7 @@ try:
         msg = "Loading module: {module_name}"
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -408,9 +408,9 @@ class BackupServer:
         fd = open(lock_path, "w")
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (OSError, IOError):
+        except (OSError, IOError) as err:
             fd.close()
-            raise RuntimeError("Backup repository is locked by another process.")
+            raise RuntimeError("Backup repository is locked by another process.") from err
         fd.write(str(os.getpid()) + "\n")
         fd.flush()
         self._lock_fd = fd

@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -58,7 +58,7 @@ def register_backend():
                                                 "used_dir")
             user_used_dir = user_used_dir['used_dir']['path']
             used_sotp_dir = os.path.join(user_used_dir, path_id)
-        except:
+        except Exception:
             return
         return used_sotp_dir
     backend.register_object_dir(object_type="user",
@@ -155,4 +155,4 @@ class UsedSOTP(UsedHash):
         # Set our type (used in parent class).
         self.type = "used_sotp"
         # Call parent class init.
-        super(UsedSOTP, self).__init__(**kwargs)
+        super().__init__(**kwargs)

@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -491,7 +491,7 @@ class Policy(OTPmeObject):
         # Set our type (used in parent class).
         self.type = "policy"
         # Call parent class init.
-        super(Policy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -680,11 +680,13 @@ class Policy(OTPmeObject):
 
     def show_config(
         self,
-        config_lines: List=[],
+        config_lines: List=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Show policy config. """
+        if config_lines is None:
+            config_lines = []
         lines = []
 
         if self.verify_acl("view:policy_type"):

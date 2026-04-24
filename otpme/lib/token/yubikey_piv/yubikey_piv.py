@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -298,7 +298,7 @@ class YubikeypivToken(Token):
         **kwargs,
         ):
         # Call parent class init.
-        super(YubikeypivToken, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,
@@ -626,12 +626,14 @@ class YubikeypivToken(Token):
     @object_lock(full_lock=True)
     def pre_deploy(
         self,
-        pre_deploy_args: dict={},
+        pre_deploy_args: dict=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         ):
         """ Deploy token. """
+        if pre_deploy_args is None:
+            pre_deploy_args = {}
         response = {}
         try:
             restore_from_server = pre_deploy_args['restore_from_server']
@@ -639,7 +641,7 @@ class YubikeypivToken(Token):
             restore_from_server = False
         try:
             private_key_backup_key = self.get_config_parameter("private_key_backup_key")
-        except:
+        except Exception:
             private_key_backup_key = None
         if restore_from_server:
             try:

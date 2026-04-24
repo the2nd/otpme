@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -161,10 +161,12 @@ class OTPmeTreeJob(OTPmeDataObject):
         src_realm: str=None,
         src_site: str=None,
         job_name: Union[str,None]=None,
-        job_data: Union[dict,None]={},
+        job_data: Union[dict,None]=None,
         object_id: Union[oid.OTPmeOid,None]=None,
         **kwargs,
         ):
+        if job_data is None:
+            job_data = {}
         self.type = "job"
         self.realm = realm
         self.site = site
@@ -174,7 +176,7 @@ class OTPmeTreeJob(OTPmeDataObject):
         self.job_status = "New"
         self.uuid = stuff.gen_uuid()
         # Call parent class init.
-        super(OTPmeTreeJob, self).__init__(realm=self.realm,
+        super().__init__(realm=self.realm,
                                             site=self.site,
                                             uuid=self.uuid,
                                             object_id=object_id,
@@ -228,25 +230,25 @@ class OTPmeTreeJob(OTPmeDataObject):
         self.add_index('job_name', self.job_name)
         self.add_index('job_status', self.job_status)
         # Call base class add method.
-        return super(OTPmeTreeJob, self).add()
+        return super().add()
 
     @property
     def action(self):
         try:
             action = self.job_data['action']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses action.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         return action
 
     def add_gidnumber(self, check_only, callback):
         try:
             user_uuid = self.job_data['user_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses user UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         # Try to get user.
         user = backend.get_object(uuid=user_uuid)
         if not user:
@@ -274,7 +276,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             log_msg = log_msg.format(user=user)
             logger.warning(log_msg)
             msg = msg.format(user=user)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if status is False:
             msg = f"Failed: {callback.job.return_value}"
             logger.warning(msg)
@@ -285,16 +287,16 @@ class OTPmeTreeJob(OTPmeDataObject):
     def add_token_to_role(self, check_only, callback):
         try:
             role_uuid = self.job_data['role_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses role UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         try:
             token_uuid = self.job_data['token_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses user UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         # Try to get role.
         role = backend.get_object(uuid=role_uuid)
         if not role:
@@ -330,7 +332,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             log_msg = log_msg.format(error=e)
             logger.warning(log_msg)
             msg = _("Error adding token.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if status is False:
             if verify_acls_only:
                 msg = _("Permission denied.")
@@ -345,16 +347,16 @@ class OTPmeTreeJob(OTPmeDataObject):
     def add_token_to_group(self, check_only, callback):
         try:
             group_uuid = self.job_data['group_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses group UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         try:
             token_uuid = self.job_data['token_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses user UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         # Try to get group.
         group = backend.get_object(uuid=group_uuid)
         if not group:
@@ -390,7 +392,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             log_msg = log_msg.format(error=e)
             logger.warning(log_msg)
             msg = _("Error adding token.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if status is False:
             if verify_acls_only:
                 msg = _("Permission denied.")
@@ -404,16 +406,16 @@ class OTPmeTreeJob(OTPmeDataObject):
     def add_default_group_user(self, check_only, callback):
         try:
             group_uuid = self.job_data['group_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses group UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         try:
             user_uuid = self.job_data['user_uuid']
-        except KeyError:
+        except KeyError as err:
             msg, log_msg = _("Job data misses user UUID.", log=True)
             logger.warning(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from err
         # Try to get group.
         group = backend.get_object(uuid=group_uuid)
         if not group:
@@ -437,7 +439,7 @@ class OTPmeTreeJob(OTPmeDataObject):
             log_msg = log_msg.format(error=e)
             logger.warning(log_msg)
             msg = _("Error setting default group.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if status is False:
             if verify_acls_only:
                 msg = _("Permission denied.")
@@ -473,7 +475,7 @@ class OTPmeTreeJob(OTPmeDataObject):
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         if self.action == "add_token_to_group":
             try:
@@ -484,7 +486,7 @@ class OTPmeTreeJob(OTPmeDataObject):
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         if self.action == "add_token_to_role":
             try:
@@ -495,7 +497,7 @@ class OTPmeTreeJob(OTPmeDataObject):
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         if self.action == "add_gidnumber":
             try:
@@ -506,4 +508,4 @@ class OTPmeTreeJob(OTPmeDataObject):
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -83,8 +83,10 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, resolver_order, resolver_data, acls,
-    acl_checker=None, output_fields=[], max_policies=5, **kwargs):
+    acl_checker=None, output_fields=None, max_policies=5, **kwargs):
     """ Build table rows for resolvers. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for resolver_uuid in resolver_order:
         row = []
@@ -93,25 +95,25 @@ def row_getter(realm, site, resolver_order, resolver_data, acls,
         resolver_type = resolver_data[resolver_uuid]['resolver_type'][0]
         try:
             enabled = resolver_data[resolver_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             sync_deletions = resolver_data[resolver_uuid]['sync_deletions'][0]
-        except:
+        except Exception:
             sync_deletions = None
         try:
             description = resolver_data[resolver_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = resolver_data[resolver_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             resolver_acls = acls[resolver_uuid]
-        except:
+        except Exception:
             resolver_acls = {}
 
         # Get ACL checker.

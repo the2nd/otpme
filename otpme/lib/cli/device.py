@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 #from otpme.lib import backend
@@ -66,37 +66,39 @@ def register():
 
 def row_getter(realm, site, device_order, device_data, acls, object_type=None,
     max_roles=5, max_tokens=5, max_sync_users=5, max_sync_groups=5,
-    max_policies=5, output_fields=[], acl_checker=None, **kwargs):
+    max_policies=5, output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for devices. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for device_uuid in device_order:
         row = []
         device_name = device_data[device_uuid]['name']
         try:
             enabled = device_data[device_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             unit_uuid = device_data[device_uuid]['unit'][0]
-        except:
+        except Exception:
             unit_uuid = None
         try:
             mac_address = device_data[device_uuid]['mac_address'][0]
-        except:
+        except Exception:
             mac_address = None
         try:
             description = device_data[device_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = device_data[device_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             device_acls = acls[device_uuid]
-        except:
+        except Exception:
             device_acls = {}
 
         # Get ACL checker.

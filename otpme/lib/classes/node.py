@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -860,7 +860,7 @@ class Node(OTPmeHost):
         # Set our type (used in parent class)
         self.type = "node"
         # Call parent class init.
-        super(Node, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -1082,7 +1082,7 @@ class Node(OTPmeHost):
             if self.name == config.host_data['name']:
                 msg = "Cannot disable master node."
                 return callback.error(msg)
-        return super(Node, self).disable(*args, callback=callback, **kwargs)
+        return super().disable(*args, callback=callback, **kwargs)
 
     @backend.transaction
     def add(
@@ -1094,7 +1094,7 @@ class Node(OTPmeHost):
         ):
         """ Add node. """
         # Add object using parent class.
-        add_result = super(Node, self).add(verbose_level=verbose_level,
+        add_result = super().add(verbose_level=verbose_level,
                                             callback=callback, **kwargs)
         backup_enabled = self.get_config_parameter("backup_enabled")
         if backup_enabled:
@@ -1211,7 +1211,7 @@ class Node(OTPmeHost):
         lines.append(f'VOTE_SCRIPT="{vote_script}"')
         lines.append(f'VOTE_SCRIPT_ENABLED="{vote_script_enabled}"')
 
-        return super(Node, self).show_config(
+        return super().show_config(
                                 config_lines=lines,
                                 callback=callback,
                                 **kwargs)

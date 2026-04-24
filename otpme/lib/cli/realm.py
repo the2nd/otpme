@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -62,33 +62,35 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, realm_order, realm_data, acls,
-    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for realms. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for realm_uuid in realm_order:
         row = []
         realm_name = realm_data[realm_uuid]['name']
         try:
             sync_enabled = realm_data[realm_uuid]['sync_enabled'][0]
-        except:
+        except Exception:
             sync_enabled = False
         try:
             auth_enabled = realm_data[realm_uuid]['auth_enabled'][0]
-        except:
+        except Exception:
             auth_enabled = False
         try:
             description = realm_data[realm_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = realm_data[realm_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             realm_acls = acls[realm_uuid]
-        except:
+        except Exception:
             realm_acls = {}
 
         # Get ACL checker.

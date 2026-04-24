@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import json
@@ -598,7 +598,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Try to get host unit.
         try:
             host_unit = _request['unit']
-        except:
+        except Exception:
             host_unit = None
 
         # Set default unit.
@@ -674,22 +674,22 @@ class OTPmeJoinP1(OTPmeServer1):
             # Try to get host cert.
             try:
                 host_cert = _request['host_cert']
-            except:
+            except Exception:
                 host_cert = None
             # Try to get host cert request.
             try:
                 host_cert_req = _request['host_cert_req']
-            except:
+            except Exception:
                 host_cert_req = None
             # Try to get CSR for new site CA.
             try:
                 site_cert_req = _request['site_cert_req']
-            except:
+            except Exception:
                 site_cert_req = None
             # Try to get host public key.
             try:
                 host_public_key = _request['host_public_key']
-            except:
+            except Exception:
                 host_public_key = None
 
             # Try to finalize join process of host.
@@ -780,12 +780,12 @@ class OTPmeJoinP1(OTPmeServer1):
 
         try:
             keep_cert = _request['keep_cert']
-        except:
+        except Exception:
             keep_cert = False
 
         try:
             keep_host = _request['keep_host']
-        except:
+        except Exception:
             keep_host = False
 
         if keep_cert:
@@ -807,7 +807,7 @@ class OTPmeJoinP1(OTPmeServer1):
             except Exception as e:
                 msg = _("Error leaving realm: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             try:
                 host.disable(force=True,
@@ -816,7 +816,7 @@ class OTPmeJoinP1(OTPmeServer1):
             except Exception as e:
                 msg = _("Error disabling {host_type}: {error}")
                 msg = msg.format(host_type=host.type, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         else:
             try:
                 host.delete(force=True,
@@ -825,7 +825,7 @@ class OTPmeJoinP1(OTPmeServer1):
             except Exception as e:
                 msg = _("Error deleting {host_type}: {error}")
                 msg = msg.format(host_type=host.type, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         # Write changed objects.
         cache.flush()
@@ -871,7 +871,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Get join request.
         try:
             _request = command_args['request']
-        except:
+        except Exception:
             message = _("No request found.")
             status = False
             return self.build_response(status, message)
@@ -879,13 +879,13 @@ class OTPmeJoinP1(OTPmeServer1):
         # Try to get site to join host to.
         try:
             site = command_args['site']
-        except:
+        except Exception:
             site = config.site
 
         # Try to get FQDN of host/node.
         try:
             host_fqdn = command_args['host_fqdn']
-        except:
+        except Exception:
             message, log_msg = _("JOIN_INCOMPLETE_COMMAND: Missing host FQDN.", log=True)
             self.logger.warning(log_msg)
             status = False
@@ -909,7 +909,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Try to get host type.
         try:
             host_type = command_args['host_type']
-        except:
+        except Exception:
             host_type = "host"
 
         if host_type == "node":
@@ -970,7 +970,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Check if we got an encrypted request.
         try:
             encrypted = command_args['encrypted']
-        except:
+        except Exception:
             encrypted = False
 
         if not self.session_otp:
@@ -1003,7 +1003,7 @@ class OTPmeJoinP1(OTPmeServer1):
             # Make sure request includes encryption type.
             try:
                 enc_type = command_args['enc_type']
-            except:
+            except Exception:
                 message, log_msg = _("Got encrypted join request without encryption type.",  log=True)
                 self.logger.debug(log_msg)
                 status = False
@@ -1011,7 +1011,7 @@ class OTPmeJoinP1(OTPmeServer1):
             # Make sure request includes key salt.
             try:
                 key_salt = command_args['key_salt']
-            except:
+            except Exception:
                 message, log_msg = _("Got encrypted join request without key salt.", log=True)
                 self.logger.debug(log_msg)
                 status = False
@@ -1019,7 +1019,7 @@ class OTPmeJoinP1(OTPmeServer1):
             # Make sure request includes JOTP hash type.
             try:
                 otp_hash_type = command_args['otp_hash_type']
-            except:
+            except Exception:
                 message, log_msg = _("Got encrypted join request without JOTP hash type.", log=True)
                 self.logger.debug(log_msg)
                 status = False
@@ -1079,23 +1079,23 @@ class OTPmeJoinP1(OTPmeServer1):
         if encrypted:
             try:
                 r_command = _request['command']
-            except:
+            except Exception:
                 message = _("Request is missing command.")
                 status = False
                 return self.build_response(status, message)
             try:
                 r_site = _request['site']
-            except:
+            except Exception:
                 r_site = config.site
             try:
                 r_host_fqdn = _request['host_fqdn']
-            except:
+            except Exception:
                 message = _("Request is missing FQDN.")
                 status = False
                 return self.build_response(status, message)
             try:
                 r_host_name = _request['host_name']
-            except:
+            except Exception:
                 message = _("Request is missing hostname.")
                 status = False
                 return self.build_response(status, message)
@@ -1123,25 +1123,25 @@ class OTPmeJoinP1(OTPmeServer1):
         # Try to get force parameter.
         try:
             force = _request['force']
-        except:
+        except Exception:
             force = False
 
         # Try to get JOTP.
         try:
             jotp = _request['jotp']
-        except:
+        except Exception:
             jotp = None
 
         # Try to get LOTP.
         try:
             lotp = _request['lotp']
-        except:
+        except Exception:
             lotp = None
 
         # Try to get finish flag.
         try:
             finish = _request['finish']
-        except:
+        except Exception:
             finish = False
 
         # We need at least JOTP/LOTP or an authenticated user.
@@ -1267,7 +1267,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 # Try to get cert.
                 try:
                     cert = _request['cert']
-                except:
+                except Exception:
                     status = False
                     message = (_("Malformed command: missing certificate"))
                     return self.build_response(status, message)
@@ -1302,7 +1302,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 # Try to get CRL.
                 try:
                     crl = _request['crl']
-                except:
+                except Exception:
                     status = False
                     message = (_("Malformed command: missing CRL"))
                     return self.build_response(status, message)

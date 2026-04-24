@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -175,7 +175,7 @@ class ObjecttemplatesPolicy(Policy):
         realm=None, site=None, path=None, **kwargs):
 
         # Call parent class init.
-        super(ObjecttemplatesPolicy, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                                     realm=realm,
                                                     site=site,
                                                     name=name,
@@ -238,10 +238,10 @@ class ObjecttemplatesPolicy(Policy):
         """ Get object template. """
         try:
             template_uuid = self.object_templates[object_type]
-        except:
+        except Exception:
             msg = _("No template configured for type: {}")
             msg = msg.format(object_type)
-            raise NotConfigured(msg)
+            raise NotConfigured(msg) from None
         search_attrs = {
                         'uuid'      : {
                                     'value'     : template_uuid,
@@ -365,7 +365,7 @@ class ObjecttemplatesPolicy(Policy):
         template_uuid = result[0]
         try:
             current_template_uuid = self.object_templates[object_type]
-        except:
+        except Exception:
             current_template_uuid = None
 
         if template_uuid == current_template_uuid:

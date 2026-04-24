@@ -212,7 +212,7 @@ except OTPmeException as e:
 
 try:
     need_command = command_map[command][object_type]['_need_command']
-except:
+except Exception:
     need_command = False
 if need_command:
     if len(sys.argv) == 0:
@@ -223,7 +223,7 @@ if need_command:
             command_min_args = 0
             try:
                 cmd_line = command_map[command][object_type][subcommand]['cmd'].split(" ")
-            except:
+            except Exception:
                 cmd_line = []
             for x in cmd_line:
                 if x.startswith("<") and x.endswith(">"):
@@ -259,7 +259,7 @@ if not help_needed:
                 from redis.connection import UnixDomainSocketConnection
                 try:
                     redis_socket = main_config['REDIS_SOCKET']
-                except:
+                except Exception:
                     redis_socket = "/var/run/otpme/sockets/redis.sock"
                 pool = redis.ConnectionPool(path=redis_socket,
                             connection_class=UnixDomainSocketConnection)
@@ -269,7 +269,7 @@ if not help_needed:
                 import pylibmc
                 try:
                     memcache_socket = main_config['MEMCACHED_SOCKET']
-                except:
+                except Exception:
                     memcache_socket = "/var/run/otpme/sockets/memcached.sock"
                 mc = pylibmc.Client([memcache_socket])
                 pool = pylibmc.ThreadMappedPool(mc)
@@ -287,13 +287,13 @@ if not help_needed:
             # Handle caching.
             try:
                 cache_seconds = command_args['cache_seconds']
-            except:
+            except Exception:
                 cache_seconds = 0
             if cache_seconds > 0:
                 client = command_args['client']
                 try:
                     client_ip = command_args['client_ip']
-                except:
+                except Exception:
                     client_ip = None
                 if client or client_ip:
                     username = command_args['username']
@@ -337,7 +337,7 @@ try:
 except Exception as e:
     msg = _("OTPme config verification failed: {e}")
     msg = msg.format(e=e)
-    raise Exception(msg)
+    raise Exception(msg) from e
 
 for x in sys.argv:
     if x != "--compgen":

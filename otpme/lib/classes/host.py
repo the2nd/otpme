@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -971,7 +971,7 @@ class Host(OTPmeHost, OTPmeDevice):
         self.type = "host"
 
         # Call parent class init.
-        super(Host, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -1065,7 +1065,7 @@ class Host(OTPmeHost, OTPmeDevice):
     def get_sync_parameters(self, realm: str, site: str, peer_uuid: str):
         """ Get data to build sync list. """
         # Get sync paramters via parten class.
-        sync_params = super(Host, self).get_sync_parameters(realm, site, peer_uuid)
+        sync_params = super().get_sync_parameters(realm, site, peer_uuid)
         skip_admin = sync_params['skip_admin']
         sync_object_types = sync_params['object_types']
         # Tokens/users to include.
@@ -1456,7 +1456,7 @@ class Host(OTPmeHost, OTPmeDevice):
         ):
         """ Add a host. """
         # Add host.
-        add_result = super(Host, self).add(callback=callback, **kwargs)
+        add_result = super().add(callback=callback, **kwargs)
         # Check for default accessgroup.
         host_ag = self.get_config_parameter("hosts_accessgroup")
         if host_ag:
@@ -1494,7 +1494,7 @@ class Host(OTPmeHost, OTPmeDevice):
         for ag in result:
             ag.remove_host(self.name, verify_acl=False, callback=callback)
             ag._cache(callback=callback)
-        return super(Host, self).delete(callback=callback, **kwargs)
+        return super().delete(callback=callback, **kwargs)
 
     def show_config( self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """
@@ -1605,5 +1605,5 @@ class Host(OTPmeHost, OTPmeDevice):
             sync_group_list = [""]
         lines.append(f'SYNC_GROUPS="{",".join(sync_group_list)}"')
 
-        return super(Host, self).show_config(config_lines=lines,
+        return super().show_config(config_lines=lines,
                                     callback=callback, **kwargs)

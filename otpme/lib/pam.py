@@ -19,7 +19,7 @@ try:
         msg = _("Loading module: {name}")
         msg = msg.format(name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import net
@@ -135,39 +135,39 @@ class PamHandler(object):
         # pam_sm_open_session())
         try:
             self.login_session_id = self.pamh.env['OTPME_LOGIN_SESSION']
-        except:
+        except Exception:
             # Fallback to environment variable.
             try:
                 self.login_session_id = os.environ['OTPME_LOGIN_SESSION']
-            except:
+            except Exception:
                 pass
         try:
             self.login_session_dir = self.pamh.env['OTPME_LOGIN_SESSION_DIR']
-        except:
+        except Exception:
             # Fallback to environment variable.
             try:
                 self.login_session_dir = os.environ['OTPME_LOGIN_SESSION_DIR']
-            except:
+            except Exception:
                 pass
         # Get login token.
         try:
             self.login_token = self.pamh.env['OTPME_LOGIN_TOKEN']
-        except:
+        except Exception:
             # Fallback to environment variable.
             try:
                 self.login_token = os.environ['OTPME_LOGIN_TOKEN']
-            except:
+            except Exception:
                 pass
         # Check if the user logged in offline.
         try:
             if self.pamh.env['OTPME_OFFLINE_LOGIN'] == "True":
                 self.offline_login = True
-        except:
+        except Exception:
             # Fallback to environment variable.
             try:
                 if os.environ['OTPME_OFFLINE_LOGIN'] == "True":
                     self.offline_login = True
-            except:
+            except Exception:
                 pass
 
         if "debug" in argv:
@@ -184,7 +184,7 @@ class PamHandler(object):
                     log_msg = _("Got option: {arg}={val}", log=True)[1]
                     log_msg = log_msg.format(arg=arg, val=val)
                     self.logger.debug(log_msg)
-                except:
+                except Exception:
                     log_msg = _("Ignoring malformed PAM parameter: {param}", log=True)[1]
                     log_msg = log_msg.format(param=x)
                     self.logger.warning(log_msg)
@@ -304,7 +304,7 @@ class PamHandler(object):
                 # Try to get key derivation function.
                 try:
                     offline_key_func = val.split(";")[0]
-                except:
+                except Exception:
                     offline_key_func = None
                     log_msg = _("Ignoring malformed PAM parameter: offline_key_func", log=True)[1]
                     self.logger.warning(log_msg)
@@ -364,7 +364,7 @@ class PamHandler(object):
         agent_conn = self.get_agent_connection()
         try:
             self._login_token_type = agent_conn.get_login_token_type()
-        except:
+        except Exception:
             pass
         finally:
             agent_conn.close()
@@ -412,7 +412,7 @@ class PamHandler(object):
             except Exception as e:
                 msg = _("Unable to get password from PAM: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             password = resp.resp
             # Check if null passwords are allowed.
             if not password:
@@ -524,7 +524,7 @@ class PamHandler(object):
         else:
             try:
                 os.remove(self.display_file)
-            except:
+            except Exception:
                 pass
 
         # Ensure ssh agent.
@@ -659,8 +659,10 @@ class PamHandler(object):
 
     def start_ssh_agent(self, session_id=None, script=None,
         script_uuid=None, script_path=None, script_options=None,
-        script_signatures=None, additional_opts=[], verify_signs=None):
+        script_signatures=None, additional_opts=None, verify_signs=None):
         """ Make sure SSH/GPG agent is running and needed variables are set """
+        if additional_opts is None:
+            additional_opts = []
         ssh_auth_sock = None
         ssh_agent_pid = None
         ssh_agent_name = None
@@ -843,7 +845,7 @@ class PamHandler(object):
         except Exception as e:
             msg = _("Login script error: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Make sure script output is string.
         if isinstance(script_stdout, bytes):
@@ -878,7 +880,7 @@ class PamHandler(object):
                 if retry_count >= agent_conn_retry:
                     msg = _("Error getting agent connection: {error}")
                     msg = msg.format(error=e)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 retry_count += 1
                 time.sleep(0.01)
         return agent_conn
@@ -907,7 +909,7 @@ class PamHandler(object):
             except Exception as e:
                 msg = _("Error detecting smartcard: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Get smartcard handler.
             try:
                 smartcard_client_handler = config.get_smartcard_handler(self.dot1x_token_type)[0]
@@ -948,11 +950,11 @@ class PamHandler(object):
         except Exception as e:
             msg = _("Error loading offline tokens: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             self.offline_login_token = self.offline_tokens['login_token']
-        except:
-            raise OTPmeException(_("Unable to find offline login token."))
+        except Exception:
+            raise OTPmeException(_("Unable to find offline login token.")) from None
 
         # Make sure we use destination token for linked tokens.
         if self.offline_login_token.destination_token:
@@ -961,10 +963,10 @@ class PamHandler(object):
                 self.offline_verify_token = self.offline_tokens[dst_token_uuid]
                 log_msg = _("Using destination token: {self.offline_verify_token.rel_path}", log=True)[1]
                 self.logger.debug(log_msg)
-            except:
+            except Exception:
                 msg = _("Unable to find destination token: {token}")
                 msg = msg.format(token=self.offline_login_token.destination_token)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
         else:
             self.offline_verify_token = self.offline_login_token
 
@@ -1028,7 +1030,7 @@ class PamHandler(object):
         except Exception as e:
             msg = _("Unable to get SSH agent script from offline token: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # When doing a login (not a screen unlock) check if token is authorized
         # for login (e.g. check policies).
@@ -1070,7 +1072,7 @@ class PamHandler(object):
             except Exception as e:
                 msg = _("Error detecting smartcard: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             if not self.smartcard:
                 raise OTPmeException(_("No smartcard detected."))
             # Get smartcard client handler.
@@ -1101,7 +1103,7 @@ class PamHandler(object):
             # Try to get SSH agent PID from environment.
             try:
                 ssh_agent_pid = os.environ['SSH_AGENT_PID']
-            except:
+            except Exception:
                 ssh_agent_pid = None
             # For software-only OTPme SSH tokens the encryption passphrase is
             # the SSH key passphrase.
@@ -1151,7 +1153,7 @@ class PamHandler(object):
                                                             ssh_key_pass=ssh_key_pass)
                             except Exception as e:
                                 msg = (_("Unable to add SSH key passphrase to otpme-agent"))
-                                raise OTPmeException(msg)
+                                raise OTPmeException(msg) from e
                     finally:
                         agent_conn.close()
 
@@ -1174,7 +1176,7 @@ class PamHandler(object):
                     except Exception as e:
                         config.raise_exception()
                         msg = _("Error deriving AES key for offline token decryption via ssh-agent: {e}")
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from e
 
         # Handle static password tokens.
         elif verify_token.pass_type == "static":
@@ -1243,7 +1245,7 @@ class PamHandler(object):
             config.raise_exception()
             msg = _("Error verifying token '{path}': {error}")
             msg = msg.format(path=verify_token.rel_path, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             self.offline_token_verified = True
 
@@ -1306,7 +1308,7 @@ class PamHandler(object):
                     agent_conn.del_session()
                 except Exception as e:
                     msg = _("Error removing empty session from agent: {e}")
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
             # Add login session to otpme-agent.
             self.login_session_id = agent_conn.add_session(self.username, tty=self.tty)
@@ -1681,7 +1683,7 @@ class PamHandler(object):
         else:
             try:
                 self.tty = os.ttyname(0)
-            except:
+            except Exception:
                 self.tty = None
         if self.tty:
             os.environ['GPG_TTY'] = self.tty
@@ -1758,7 +1760,7 @@ class PamHandler(object):
         except Exception as e:
             msg = _("Error initializing offline tokens: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Remove outdated login session directories.
         try:
@@ -1794,7 +1796,7 @@ class PamHandler(object):
             self.login_status = agent_conn.get_status()
             #login_pass_type = agent_conn.get_login_pass_type()
             #login_token = agent_conn.get_login_token()
-        except:
+        except Exception:
             self.login_status = False
             #login_pass_type = None
             #login_token = None
@@ -1841,7 +1843,7 @@ class PamHandler(object):
 
             try:
                 offline_allowed = agent_conn.get_offline()
-            except:
+            except Exception:
                 offline_allowed = False
 
             # If the user logged in offline or the login session allows offline
@@ -2160,9 +2162,14 @@ class PamHandler(object):
                                                 ssh_key_pass=self.password)
                 except Exception as e:
                     msg = (_("Unable to add SSH key passphrase to otpme-agent"))
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
             # For yubikey-piv tokens we unlock the card on login to omit
             # smartcard pin prompts.
+            # Note: the os.system() argument is a static literal — the
+            # PIN is passed through the environment, not interpolated
+            # into the shell command, so there is no injection surface.
+            # os.system() is used deliberately here because under PAM
+            # the minimal $PATH breaks subprocess.run() PATH lookups.
             if self.login_token_type == "yubikey_piv":
                 os.environ['PIN'] = self.password
                 os.system('otpme-yk-piv --piv-login --pin "env:PIN"')

@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -886,7 +886,7 @@ class Client(OTPmeClientObject):
         self.type = "client"
 
         # Call parent class init.
-        super(Client, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -1021,7 +1021,7 @@ class Client(OTPmeClientObject):
                                                     },
             }
 
-        return super(Client, self)._get_object_config(object_config=object_config)
+        return super()._get_object_config(object_config=object_config)
 
     def set_variables(self):
         """ Set instance variables. """
@@ -1048,7 +1048,7 @@ class Client(OTPmeClientObject):
 
     def _write(self, **kwargs):
         """ Wrapper to make sure radius gets reloaded. """
-        result = super(Client, self)._write(**kwargs)
+        result = super()._write(**kwargs)
         if not self.radius_reload:
             return result
         self.radius_reload = False
@@ -1762,7 +1762,7 @@ class Client(OTPmeClientObject):
             return callback.error()
         self.secret = stuff.gen_secret(32)
         # Add object using parent class.
-        add_result = super(Client, self).add(verbose_level=verbose_level,
+        add_result = super().add(verbose_level=verbose_level,
                                             callback=callback, **kwargs)
         if not add_result:
             msg = _("Failed to add client.")
@@ -1815,7 +1815,7 @@ class Client(OTPmeClientObject):
             return callback.abort()
 
         # Delete object using parent class.
-        result = super(Client, self).delete(verbose_level=verbose_level,
+        result = super().delete(verbose_level=verbose_level,
                                         force=force, callback=callback)
         # Make sure radius gets reloaded.
         cluster_radius_reload()
@@ -1911,7 +1911,7 @@ class Client(OTPmeClientObject):
             helper_url = self.helper_url
         lines.append(f'HELPER_URL="{helper_url}"')
 
-        return super(Client, self).show_config(config_lines=lines,
+        return super().show_config(config_lines=lines,
                                         callback=callback, **kwargs)
 
     def show(self, **kwargs):

@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -723,7 +723,7 @@ class Realm(OTPmeObject):
         # set our type (used in parent class)
         self.type = "realm"
         # Call parent class init.
-        super(Realm, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                     name=name,
                                     path=path,
                                     **kwargs)
@@ -1195,11 +1195,13 @@ class Realm(OTPmeObject):
         id_ranges: Union[str,None]=None,
         no_dicts: bool=False,
         no_index_indices: bool=False,
-        dictionaries: List=[],
+        dictionaries: List=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Init OTPme realm. """
+        if dictionaries is None:
+            dictionaries = []
         from otpme.lib.classes.site import Site
         if ca_valid is None:
             ca_valid = config.default_ca_validity
@@ -1258,7 +1260,7 @@ class Realm(OTPmeObject):
             except Exception as e:
                 msg = _("Unable to configure floaging IP: {site_address}: {error}")
                 msg = msg.format(site_address=site_address, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             # Deconfigure floating IP after testing.
             net.deconfigure_floating_ip(site_address)
 
@@ -1597,7 +1599,7 @@ class Realm(OTPmeObject):
             return callback.error()
 
         # Add object using parent class.
-        return super(Realm, self).add(verbose_level=verbose_level,
+        return super().add(verbose_level=verbose_level,
                                     callback=callback, **kwargs)
 
     @object_lock(full_lock=True)

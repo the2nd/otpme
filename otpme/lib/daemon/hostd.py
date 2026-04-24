@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -55,7 +55,7 @@ def handle_sync_child():
         def wrapped(self, *f_args, **f_kwargs):
             try:
                 sync_type = f_kwargs['sync_type']
-            except:
+            except Exception:
                 sync_type = "sync_sites"
             # Call given class method.
             try:
@@ -84,7 +84,7 @@ class HostDaemon(OTPmeDaemon):
         self.auto_disabled_run_child = None
         self.remove_outdated_tokens_child = None
         self.clear_outdated_cache_objects_child = None
-        super(HostDaemon, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
@@ -101,7 +101,7 @@ class HostDaemon(OTPmeDaemon):
         self.stop_auto_disable()
         # Shutdown sync childs.
         self.shutdown_sync_childs()
-        return super(HostDaemon, self).signal_handler(_signal, frame)
+        return super().signal_handler(_signal, frame)
 
     def set_proctitle(self, proctitle=None, sync_type=None,
         resync=False, realm=None, site=None):
@@ -196,7 +196,7 @@ class HostDaemon(OTPmeDaemon):
     def host_type(self):
         try:
             host_type = config.host_data['type']
-        except:
+        except Exception:
             return
         return host_type
 
@@ -313,7 +313,7 @@ class HostDaemon(OTPmeDaemon):
 
         try:
             last_sync_notify = self.last_notify[last_notify_id]
-        except:
+        except Exception:
             last_sync_notify = 0
 
         notify_age = (int(time.time()) - int(last_sync_notify))
@@ -728,7 +728,7 @@ class HostDaemon(OTPmeDaemon):
             sync_type = x['sync_type']
             try:
                 sync_child = self._sync_childs[sync_type]
-            except:
+            except Exception:
                 sync_child = None
 
             if not sync_child:
@@ -795,7 +795,7 @@ class HostDaemon(OTPmeDaemon):
             # Check for existing sync child.
             try:
                 sync_child = self._sync_childs[sync_type]
-            except:
+            except Exception:
                 sync_child = None
 
             if sync_child:
@@ -900,7 +900,7 @@ class HostDaemon(OTPmeDaemon):
             # Check for existing sync child.
             try:
                 sync_child = self._sync_childs[sync_type]
-            except:
+            except Exception:
                 sync_child = None
 
             if sync_child and queue:
@@ -979,7 +979,7 @@ class HostDaemon(OTPmeDaemon):
             while True:
                 try:
                     sites_sync_child = self._sync_childs['sites']
-                except:
+                except Exception:
                     sites_sync_child = None
                 if not sites_sync_child:
                     break
@@ -1597,7 +1597,7 @@ class HostDaemon(OTPmeDaemon):
         self.logger = log.setup_logger(pid=True)
         try:
             user_uuids = os.listdir(config.offline_dir)
-        except:
+        except Exception:
             user_uuids = []
 
         for uuid in user_uuids:
@@ -1638,7 +1638,7 @@ class HostDaemon(OTPmeDaemon):
         """ Wait for syncd to get ready. """
         try:
             syncd_status = config.read_daemon_status("syncd")['status']
-        except:
+        except Exception:
             syncd_status = False
         return syncd_status
 
@@ -1869,7 +1869,7 @@ class HostDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 now = time.time()
 

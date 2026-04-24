@@ -8,10 +8,10 @@ import threading
 #from functools import wraps
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -19,7 +19,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -100,7 +100,7 @@ def handle_transaction(func):
         close_session = True
         try:
             no_transaction = kwargs.pop('no_transaction')
-        except:
+        except Exception:
             no_transaction = False
         # Get transactions, even not actives anymore to use the session
         # e.g. for reading from sqlite transaction.
@@ -138,7 +138,7 @@ def handle_transaction(func):
             result = func(*args, session=session,
                         transaction_id=transaction_id,
                         **kwargs)
-        except:
+        except Exception:
             session.rollback()
             session.close()
             raise
@@ -406,7 +406,7 @@ def transaction(func):
     def wrapper(*args, **kwargs):
         try:
             callback = kwargs['callback']
-        except:
+        except Exception:
             callback = default_callback
         start_transaction = True
         # Make sure we do not try to start another transaction
@@ -726,10 +726,10 @@ class BaseTransaction(object):
             self._lock = locking.acquire_lock(lock_type=self.lock_type,
                                                 lock_id=self.id,
                                                 **kwargs)
-        except LockWaitTimeout:
+        except LockWaitTimeout as err:
             msg = _("Transaction is locked: {id} ({lock_type})")
             msg = msg.format(id=self.id, lock_type=self.lock_type)
-            raise ObjectLocked(msg)
+            raise ObjectLocked(msg) from err
 
     def release_lock(self):
         """ Release transaction lock. """
@@ -822,7 +822,7 @@ class BaseTransaction(object):
         except Exception as e:
             msg = _("Error reading transaction status: {status_file}: {error}")
             msg = msg.format(status_file=self.status_file, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Decode transaction meta data.
         try:
             self.status, \
@@ -839,7 +839,7 @@ class BaseTransaction(object):
         except Exception as e:
             msg = _("Error decoding transaction status data: {status_file}: {error}")
             msg = msg.format(status_file=self.status_file, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Break if transaction is incomplete.
         if self.status != "written":
@@ -871,7 +871,7 @@ class BaseTransaction(object):
                 config.raise_exception()
                 msg = _("Error reading transaction: {file}: {error}")
                 msg = msg.format(file=x, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             journal_entry = json.loads(file_content)
 
@@ -899,7 +899,7 @@ class BaseTransaction(object):
                 config.raise_exception()
                 msg = _("Error reading transaction: {file}: {error}")
                 msg = msg.format(file=x, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             journal_entry = json.loads(file_content)
 
@@ -1032,7 +1032,7 @@ class BaseTransaction(object):
 class FileTransaction(BaseTransaction):
     """ File backend write transaction. """
     def __init__(self, name=None, id=None, commit_files=None, **kwargs):
-        super(FileTransaction, self).__init__("file", name=name, id=id,
+        super().__init__("file", name=name, id=id,
                             lock_type=F_TRANSACTION_LOCK_TYPE, **kwargs)
         self.journal_dir = os.path.join(self.spool_dir, "journal")
         self.commits_dir = os.path.join(self.spool_dir, "parents")
@@ -1045,7 +1045,7 @@ class FileTransaction(BaseTransaction):
         if object_transaction:
             object_transaction.add_file_transaction(self)
         # Call parent class method.
-        super(FileTransaction, self).begin()
+        super().begin()
         if not self.commit_files:
             return
         for x in self.commit_files:
@@ -1074,7 +1074,7 @@ class FileTransaction(BaseTransaction):
         except EmptyTransaction:
             return
         # Call parent class write method to finalize write.
-        return super(FileTransaction, self)._write()
+        return super()._write()
 
     def write_object_file(self, object_id, config_file,
         object_config, full_data_update=None):
@@ -1213,7 +1213,7 @@ class FileTransaction(BaseTransaction):
             msg = _("Failed to commit transaction: {log_name}: {error}")
             msg = msg.format(log_name=self.log_name, error=e)
             config.raise_exception()
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         config.active_transactions.remove(self)
         return result
 
@@ -1314,7 +1314,7 @@ class FileTransaction(BaseTransaction):
             msg = _("Failed to replay transaction: {log_name}: {error}")
             msg = msg.format(log_name=self.log_name, error=e)
             config.raise_exception()
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             self._replay = False
         return result
@@ -1325,7 +1325,7 @@ class FileTransaction(BaseTransaction):
             return
         try:
             commit_files = filetools.list_dir(self.commits_dir)
-        except:
+        except Exception:
             commit_files = []
         for x in commit_files:
             commit_link = os.path.join(self.commits_dir, x)
@@ -1340,12 +1340,12 @@ class FileTransaction(BaseTransaction):
     def remove(self):
         """ Delete transaction. """
         self.remove_commit_files()
-        return super(FileTransaction, self).remove()
+        return super().remove()
 
 class ObjectTransaction(BaseTransaction):
     """ Object transaction. """
     def __init__(self, name=None, id=None, callback=default_callback, **kwargs):
-        super(ObjectTransaction, self).__init__("object", name=name, id=id,
+        super().__init__("object", name=name, id=id,
                             lock_type=O_TRANSACTION_LOCK_TYPE, **kwargs)
         self.spool_dir = os.path.join(OBJECT_TRANSACTIONS_DIR, self.id)
         self.journal_dir = os.path.join(self.spool_dir, "journal")
@@ -1376,7 +1376,7 @@ class ObjectTransaction(BaseTransaction):
 
     def index_add(self, *args, **kwargs):
         # Add action to journal.
-        super(ObjectTransaction, self).index_add(*args, **kwargs)
+        super().index_add(*args, **kwargs)
         # Disable autocommit.
         kwargs['autocommit'] = False
         # Add object to index.
@@ -1384,7 +1384,7 @@ class ObjectTransaction(BaseTransaction):
 
     def index_del(self, *args, **kwargs):
         # Add action to journal.
-        super(ObjectTransaction, self).index_del(*args, **kwargs)
+        super().index_del(*args, **kwargs)
         # Disable autocommit.
         kwargs['autocommit'] = False
         # Delete object from index.
@@ -1439,7 +1439,7 @@ class ObjectTransaction(BaseTransaction):
         # Try to get key.
         try:
             signer_key = self.sign_cache[user_uuid]
-        except:
+        except Exception:
             signer_key = None
         return signer_key
 
@@ -1453,7 +1453,7 @@ class ObjectTransaction(BaseTransaction):
         # Del key from transaction sign cache.
         try:
             self.sign_cache.pop(user_uuid)
-        except:
+        except Exception:
             pass
         # Get spool file.
         journal_file = self.get_journal_file(action)
@@ -1513,7 +1513,7 @@ class ObjectTransaction(BaseTransaction):
         """ Get OID of object. """
         try:
             full_oid = self.journal_oid_uuid[uuid]
-        except:
+        except Exception:
             return
         need_instance = False
         if not full:
@@ -1542,7 +1542,7 @@ class ObjectTransaction(BaseTransaction):
         # Handle UUID/OID mapping.
         try:
             object_uuid = x_oc['UUID']
-        except:
+        except Exception:
             return
         self.journal_oid_uuid[object_uuid] = full_oid
         self.journal_oid_uuid[read_oid] = object_uuid
@@ -1555,23 +1555,23 @@ class ObjectTransaction(BaseTransaction):
             journal_entry = self.journal_entries[str(x)]
             try:
                 x_oid = journal_entry['object_id']
-            except:
+            except Exception:
                 continue
             if x_oid != full_oid:
                 continue
             self.journal.remove(x)
         try:
             self.modified_objects.remove(object_id)
-        except:
+        except Exception:
             pass
         try:
             self.journal_objects.pop(read_oid)
-        except:
+        except Exception:
             pass
         try:
             object_uuid = self.journal_oid_uuid.pop(read_oid)
             self.journal_oid_uuid.pop(object_uuid)
-        except:
+        except Exception:
             pass
 
     def add_object(self, object_id, object_config, **kwargs):
@@ -1611,7 +1611,7 @@ class ObjectTransaction(BaseTransaction):
         # Try to get object from cache.
         try:
             object_config = self.journal_objects[read_oid][-1]
-        except:
+        except Exception:
             return
         if parameters:
             for x in object_config.copy():
@@ -1718,12 +1718,12 @@ class ObjectTransaction(BaseTransaction):
             log_msg = log_msg.format(log_name=self.log_name)
             logger.debug(log_msg)
         # Call parent class write method to finalize write.
-        return super(ObjectTransaction, self)._write()
+        return super()._write()
 
     def begin(self):
         """ Start transaction. """
         # Call parent class method.
-        super(ObjectTransaction, self).begin()
+        super().begin()
         # Start nested transaction.
         self.session.begin_nested()
 
@@ -1744,7 +1744,7 @@ class ObjectTransaction(BaseTransaction):
         try:
             added_objects, \
             deleted_objects = self._commit(no_index_writes=no_index_writes)
-        except:
+        except Exception:
             # Rollback DB transaction on error.
             self.session.rollback()
             raise
@@ -1944,4 +1944,4 @@ class ObjectTransaction(BaseTransaction):
     def remove(self):
         """ Delete transaction. """
         self.remove_file_transactions()
-        return super(ObjectTransaction, self).remove()
+        return super().remove()

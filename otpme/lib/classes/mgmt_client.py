@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -19,8 +19,10 @@ from otpme.lib.exceptions import *
 
 class OTPmeMgmtClient(object):
     """ Class that implements OTPme management client. """
-    def __init__(self, login_data={}, interactive=True, aes_pass=None):
+    def __init__(self, login_data=None, interactive=True, aes_pass=None):
         # Get logger.
+        if login_data is None:
+            login_data = {}
         self.logger = config.logger
         # May hold username + OTPs/passwords to connect to realms.
         self.login_data = login_data
@@ -87,7 +89,7 @@ class OTPmeMgmtClient(object):
         except Exception as e:
             msg = _("Error requesting JWT: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             authd_conn.close()
         if not status:
@@ -100,11 +102,11 @@ class OTPmeMgmtClient(object):
         """ Connect to mgmtd in the given realm/site. """
         try:
             username = self.login_data[realm]['username']
-        except:
+        except Exception:
             username = None
         try:
             password = self.login_data[realm]['password']
-        except:
+        except Exception:
             password = None
 
         socket_uri = None
@@ -140,10 +142,14 @@ class OTPmeMgmtClient(object):
         return daemon_conn
 
     def send(self, command, subcommand=None,
-        command_args={}, object_list=[],
+        command_args=None, object_list=None,
         realm=None, site=None, **kwargs):
         """ Send the given command to mgmtd. """
         # realm/site we will connect to.
+        if command_args is None:
+            command_args = {}
+        if object_list is None:
+            object_list = []
         if realm is None:
             connect_realm = config.connect_realm
         else:

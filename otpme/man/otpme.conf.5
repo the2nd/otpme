@@ -517,6 +517,9 @@ Log level: CRITICAL, ERROR, WARNING, INFO or DEBUG.
 .B LOG_AUTH_DATA
 Log authentication data (passwords, challenge/response). Can be True, False or a comma separated list of usernames.
 .TP
+.B LOG_EXC_INFO
+Attach exception info (traceback of the exception currently being handled) to warning/error/critical/fatal log records. Only takes effect inside an except: block. Callers that pass exc_info explicitly override this. Default: False.
+.TP
 .B TRACEBACKS
 Print Python tracebacks.
 .TP

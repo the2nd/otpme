@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -441,7 +441,7 @@ def drop():
     except Exception as e:
         msg = _("Failed to delete index dir: {}")
         msg = msg.format(e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     return True
 
 def command(command):

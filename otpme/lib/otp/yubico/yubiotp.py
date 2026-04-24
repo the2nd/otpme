@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -64,13 +64,13 @@ def verify(otp, token_uid, token_counter, token_time, token_aeskey):
     # Try to get encrypted message (token) from OTP.
     try:
         otp_aes_message = modhex2hex(match.group(2))
-    except:
-        raise Exception("Unable to get encrypted message from OTP.")
+    except Exception:
+        raise Exception("Unable to get encrypted message from OTP.") from None
 
     try:
         otp_plaintext_message = decode(aes.decrypt(token_aeskey, otp_aes_message, encoding="hex", mode="ECB"))
-    except:
-        raise Exception("Error decrypting message from OTP.")
+    except Exception:
+        raise Exception("Error decrypting message from OTP.") from None
 
     otp_uid = otp_plaintext_message[:12]
 
@@ -79,8 +79,8 @@ def verify(otp, token_uid, token_counter, token_time, token_aeskey):
 
     try:
         otp_crc = gen_crc(otp_plaintext_message)
-    except:
-        raise Exception("OTP CRC generation failed.")
+    except Exception:
+        raise Exception("OTP CRC generation failed.") from None
 
     if not verify_crc(otp_crc):
         raise Exception("OTP CRC verification failed.")

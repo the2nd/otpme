@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -49,7 +49,7 @@ def resolve_tags(tags, from_uuid=True):
             try:
                 object_type = tag.split(":")[0]
                 object_xxx = tag.split(":")[1]
-            except:
+            except Exception:
                 continue
 
         if object_type not in config.tree_object_types:
@@ -57,7 +57,7 @@ def resolve_tags(tags, from_uuid=True):
 
         try:
             x_list = object_tags[object_type]
-        except:
+        except Exception:
             x_list = []
 
         if from_uuid:
@@ -95,7 +95,7 @@ def resolve_tags(tags, from_uuid=True):
     for object_type in config.tree_object_types:
         try:
             x_list = object_tags[object_type]
-        except:
+        except Exception:
             continue
         sorted_tags += x_list
     sorted_tags += tags
@@ -122,7 +122,7 @@ def get_signers(signer_type, username=None):
         force_signers_para = config.find_conf_para_by_var(force_signers_var)
         force_signers_attr = getattr(config, force_signers_var)
         force_global_signers = True
-    except:
+    except Exception:
         force_signers_attr = None
         force_global_signers = False
 
@@ -326,11 +326,11 @@ class OTPmeSigner(object):
         except UnknownUUID as e:
             msg = _("Unknown object: {object_uuid}")
             msg = msg.format(object_uuid=self.object_uuid)
-            raise UnknownObject(msg)
+            raise UnknownObject(msg) from e
         except Exception as e:
             msg = _("Unable to resolve UUID to OID: {object_uuid}: {e}")
             msg = msg.format(object_uuid=self.object_uuid, e=e)
-            raise UnknownObject(msg)
+            raise UnknownObject(msg) from e
 
         if not object_id:
             msg = _("Unknown user/role: {uuid}")
@@ -363,7 +363,7 @@ class OTPmeSigner(object):
             x_oid = role_members[x_uuid]
             try:
                 x_key = self.get_signer_key(x_uuid)
-            except:
+            except Exception:
                 # Ignore users without public key.
                 continue
             signer = {
@@ -384,7 +384,7 @@ class OTPmeSigner(object):
             signer_dict = json.decode(data, "base64")
         except Exception as e:
             msg = _("Found faulty signer")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get data from signer info.
         for attr in self._attributes:
             if not attr in signer_dict:
@@ -484,10 +484,10 @@ class OTPmeSigner(object):
         # Check if signer key is outdated.
         try:
             x_signer_key = self.signers[uuid]['public_key']
-        except:
+        except Exception:
             msg = _("Invalid signer UUID: {uuid}")
             msg = msg.format(uuid=uuid)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         if uuid not in c_signer.signers:
             return removed_val
@@ -611,7 +611,7 @@ class OTPmeSignature(object):
         if self.tags:
             # Sort tags (needed for sign ID).
             self.tags.sort()
-            self.sign_id = stuff.gen_md5(",".join(self.tags))
+            self.sign_id = stuff.gen_sha256(",".join(self.tags))
 
         # Generate sign data hash.
         if sign_data:
@@ -664,7 +664,7 @@ class OTPmeSignature(object):
         except Exception as e:
             config.raise_exception()
             msg = _("Found faulty signature")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get data from signature info.
         for attr in self._attributes:
             if not attr in sign_info:
@@ -726,11 +726,11 @@ class OTPmeSignature(object):
         except InvalidTag as e:
             msg = _("Unable to add signature data: {e}")
             msg = msg.format(e=e)
-            raise e(msg)
+            raise e(msg) from e
         except Exception as e:
             msg = _("Unknown error adding signature data: {e}")
             msg = msg.format(e=e)
-            raise e(msg)
+            raise e(msg) from e
         self.signature = data
 
     def revoke(self):
@@ -758,7 +758,7 @@ class OTPmeSignature(object):
         except Exception as e:
             msg = _("Error writing signature revocation object: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     def get_sign_template(self):
         """ Return sign template as json/base64 string. """
@@ -772,7 +772,7 @@ class OTPmeSignature(object):
         """ Build signature hash for OID. """
         # Build hash of signature.
         sign_dump = self.dumps()
-        signature_hash = stuff.gen_md5(sign_dump)
+        signature_hash = stuff.gen_sha256(sign_dump)
         return signature_hash
 
     def build_sign_template(self):
@@ -869,7 +869,7 @@ class OTPmeSignature(object):
         except Exception as e:
             msg = _("Unable to load public key: {e}")
             msg = msg.format(e=e)
-            raise InvalidPublicKey(msg)
+            raise InvalidPublicKey(msg) from e
 
         # Verify signature.
         sign_template = self.get_sign_template()
@@ -878,14 +878,14 @@ class OTPmeSignature(object):
         except Exception as e:
             msg = _("Unable to decode signature: {e}")
             msg = msg.format(e=e)
-            raise FaultySignature(msg)
+            raise FaultySignature(msg) from e
 
         try:
             verify_status = key.verify(signature, sign_template)
         except Exception as e:
             msg = _("Ignoring faulty signature: {e}")
             msg = msg.format(e=e)
-            raise FaultySignature(msg)
+            raise FaultySignature(msg) from e
 
         if not verify_status:
             msg = _("Invalid signature.")

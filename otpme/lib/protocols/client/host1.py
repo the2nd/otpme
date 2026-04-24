@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -30,7 +30,7 @@ class OTPmeHostP1(OTPmeClient1):
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeHostP1, self).__init__(self.daemon, **kwargs)
+        super().__init__(self.daemon, **kwargs)
 
     def get_oid(self, object_uuid, object_type=None, object_types=None):
         """ Send 'get_oid' command to hostd. """
@@ -113,7 +113,7 @@ class OTPmeHostP1(OTPmeClient1):
             try:
                 site_cert = config.host_data['site_cert']
                 return site_cert
-            except:
+            except Exception:
                 pass
         if (config.daemon_mode or config.use_api) and config.use_backend:
             # Load certificate of site we want to connect to.

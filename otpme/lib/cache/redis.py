@@ -35,17 +35,17 @@ def _load_make_region():
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -425,7 +425,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "config_set" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -442,7 +442,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "scan_iter" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -456,7 +456,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "set" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -469,7 +469,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "exists" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -483,7 +483,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "get" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -496,7 +496,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "delete" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -509,7 +509,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "ttl" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -522,7 +522,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "expire" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -535,7 +535,7 @@ class RedisHandler(object):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             if "flushall" in self.raise_exceptions:
-                raise KeyError(msg)
+                raise KeyError(msg) from e
             if not self.connection_error_logged:
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
@@ -545,7 +545,7 @@ class RedisDict(SharedDict):
     def __init__(self, name, pool, locking=None, clear=False,
         raise_exceptions=False, refresh_keys=False,
         compression=None, pickle=False):
-        super(RedisDict, self).__init__(name)
+        super().__init__(name)
         self.name = name
         self.pickle = pickle
         self.pickle_handler = None
@@ -651,7 +651,7 @@ class RedisDict(SharedDict):
                 expire_key = self.get_key_expire_id(key)
                 try:
                     key_expire = self.redis_db.get(expire_key)
-                except:
+                except Exception:
                     key_expire = None
                 if key_expire is not None:
                     self.redis_db.expire(_key, key_expire)
@@ -715,7 +715,7 @@ class RedisList(SharedList):
     """ A simple redis list. """
     def __init__(self, name, pool, clear=False, pickle=False,
         compression=None, raise_exceptions=False, **kwargs):
-        super(RedisList, self).__init__(name)
+        super().__init__(name)
         #self.logger = config.logger
         self.pool = pool
         self.pickle = pickle
@@ -745,7 +745,7 @@ class RedisList(SharedList):
                 _list = self.pickle_handler.loads(_list)
             else:
                 _list = json.loads(_list)
-        except:
+        except Exception:
             _list = []
         return _list
 
@@ -801,12 +801,12 @@ class RedisList(SharedList):
 
 class RedisInvalidationStrategy(CustomInvalidationStrategy):
     def __init__(self, region, redis_pool, **kwargs):
-        super(RedisInvalidationStrategy, self).__init__(region, **kwargs)
+        super().__init__(region, **kwargs)
         self.redis_db = RedisHandler(connection_pool=redis_pool,
                                     raise_exceptions=False,
                                     db=0)
     def invalidate(self, hard=None):
-        super(RedisInvalidationStrategy, self).invalidate(hard=hard)
+        super().invalidate(hard=hard)
         # Do real cache invalidation.
         search_regex = f"dogpile.{self.region}.*"
         keys = self.redis_db.scan_iter(search_regex)

@@ -32,10 +32,10 @@ def cached_getpwuid(uid):
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -43,7 +43,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 # FIXME: any problems with re2?
@@ -236,10 +236,10 @@ def update_reload_file():
         os.utime(config.reload_file_path, None)
     except IOError as e:
         if e.errno == e.errno.EACCES:
-            raise Exception(_("Permission denied."))
+            raise Exception(_("Permission denied.")) from e
     except Exception as e:
         msg = _("Error accessing reload file: ") % e
-        raise Exception(msg)
+        raise Exception(msg) from e
     msg = _("You must wait up to {reload_config_interval} seconds for config reload to happen.")
     msg = msg.format(reload_config_interval=config.reload_config_interval)
     raise OTPmeException(msg)
@@ -290,7 +290,7 @@ def get_val(argv_val):
             var_value = re.sub('^"', '', var_value)
             var_value = re.sub('"$', '', var_value)
             return var_value
-        except:
+        except Exception:
             return False
     else:
         return argv_val
@@ -312,6 +312,14 @@ def gen_md5(string):
         string = string.encode("utf-8")
     md5sum = hashlib.md5(string).hexdigest()
     return md5sum
+
+def gen_sha256(string):
+    """ Generate SHA-256 hash from string. """
+    import hashlib
+    if isinstance(string, str):
+        string = string.encode("utf-8")
+    sha256sum = hashlib.sha256(string).hexdigest()
+    return sha256sum
 
 def gen_sha512(string):
     """ Generate SHA512 hash from string. """
@@ -616,7 +624,7 @@ def get_logged_in_users():
     # versions.
     try:
         psutil_method = psutil.users
-    except:
+    except Exception:
         psutil_method = psutil.get_users
     for i in psutil_method():
         if i.name in user_list:
@@ -666,7 +674,7 @@ def get_pid_by_name(name):
         # versions.
         try:
             proc_name = proc.name()
-        except:
+        except Exception:
             proc_name = proc.name
         if proc_name == name:
             pids.append(proc.pid)
@@ -684,7 +692,7 @@ def get_pid(name=None, user=None):
                 # versions.
                 try:
                     proc_name = proc.name()
-                except:
+                except Exception:
                     proc_name = proc.name
                 if proc_name != name:
                     continue
@@ -693,12 +701,12 @@ def get_pid(name=None, user=None):
                 # versions.
                 try:
                     username = proc.username()
-                except:
+                except Exception:
                     username = proc.username
                 if username != user:
                     continue
             pids.append(proc.pid)
-        except:
+        except Exception:
             pass
     return pids
 
@@ -710,19 +718,19 @@ def wait_pid(pid, timeout=10, recursive=False, message_method=None):
     pid_status = False
     try:
         proc = psutil.Process(int(pid))
-    except:
+    except Exception:
         return False
 
     # WORKAROUND: name method changed between psutil versions.
     try:
         proc_name = proc.name()
-    except:
+    except Exception:
         proc_name = proc.name
 
     if recursive:
         try:
             children = proc.get_children(recursive=True)
-        except:
+        except Exception:
             children = proc.children(recursive=True)
         children.reverse()
         for child in children:
@@ -740,7 +748,7 @@ def wait_pid(pid, timeout=10, recursive=False, message_method=None):
         # WORKAROUND: status method changed between psutil versions.
         try:
             status_method = proc.is_alive
-        except:
+        except Exception:
             status_method = proc.is_running
         wait_time = int(count / 100)
         if not status_method():
@@ -776,7 +784,7 @@ def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
     import psutil
     try:
         proc = psutil.Process(int(pid))
-    except:
+    except Exception:
         return False
 
     if proc.status() == "zombie":
@@ -792,20 +800,20 @@ def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
     # WORKAROUND: name method changed between psutil versions.
     try:
         proc_name = proc.name()
-    except:
+    except Exception:
         proc_name = proc.name
 
     if recursive:
         try:
             children = proc.get_children(recursive=True)
-        except:
+        except Exception:
             children = proc.children(recursive=True)
         children.reverse()
         for child in children:
             # WORKAROUND: name method changed between psutil versions.
             try:
                 child_name = child.name()
-            except:
+            except Exception:
                 child_name = child.name
             try:
                 kill_pid(pid=child.pid,
@@ -848,7 +856,7 @@ def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
         # WORKAROUND: status method changed between psutil versions.
         try:
             status_method = proc.is_alive
-        except:
+        except Exception:
             status_method = proc.is_running
         if not status_method():
             if kill_count > 0 and print_messages:
@@ -878,7 +886,7 @@ def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
                 break
             try:
                 proc.kill()
-            except:
+            except Exception:
                 pass
             kill_count += 1
         if print_messages:
@@ -914,7 +922,7 @@ def get_pid_user(pid):
         # versions.
         try:
             proc_username = proc.username()
-        except:
+        except Exception:
             proc_username = proc.username
     except Exception as e:
         proc_username = None
@@ -929,7 +937,7 @@ def get_pid_tty(pid):
             proc_tty = proc.terminal
         else:
             proc_tty = proc.terminal()
-    except:
+    except Exception:
         proc_tty = None
 
     return proc_tty
@@ -940,14 +948,14 @@ def get_pid_group(pid):
     import grp
     try:
         proc = psutil.Process(int(pid))
-    except:
+    except Exception:
         return None
 
     # WORKAROUND: proc.name changed from var to method between psutil
     # versions.
     try:
         proc_group = proc.gids()[0]
-    except:
+    except Exception:
         proc_group = proc.gids.real
 
     proc_group = grp.getgrgid(proc_group)[0]
@@ -959,14 +967,14 @@ def get_pid_name(pid):
     import psutil
     try:
         proc = psutil.Process(int(pid))
-    except:
+    except Exception:
         return None
 
     # WORKAROUND: proc.name changed from var to method between psutil
     # versions.
     try:
         proc_name = proc.name()
-    except:
+    except Exception:
         proc_name = proc.name
 
     return proc_name
@@ -980,16 +988,16 @@ def get_pid_parent(pid):
         # versions.
         try:
             return proc.ppid()
-        except:
+        except Exception:
             return proc.ppid
-    except:
+    except Exception:
         return None
 
 def which(filename):
     """ Search environment PATH for given file. """
     try:
         locations = os.environ.get("PATH").split(os.pathsep)
-    except:
+    except Exception:
         locations = []
     for location in locations:
         x = os.path.join(location, filename)
@@ -1020,9 +1028,15 @@ def deumlaut(s):
     s = s.replace('\xc4', 'Ae')
     return s
 
-def args_to_hash(arguments, ignore_args=[],
-    ignore_classes=[], class_key_attributes={}):
+def args_to_hash(arguments, ignore_args=None,
+    ignore_classes=None, class_key_attributes=None):
     """ Create key from args. """
+    if ignore_args is None:
+        ignore_args = []
+    if ignore_classes is None:
+        ignore_classes = []
+    if class_key_attributes is None:
+        class_key_attributes = {}
     fargs = arguments['args']
     fkwargs = arguments['kwargs']
     key = []
@@ -1122,7 +1136,7 @@ def string_to_type(value, ignore_int=False, ignore_float=False):
             int_val = int(value)
             if str(int_val) == str(value):
                 return int_val
-        except:
+        except Exception:
             pass
     # Check if value is float().
     if not ignore_float:
@@ -1133,7 +1147,7 @@ def string_to_type(value, ignore_int=False, ignore_float=False):
             float_val = float(value)
             if str(float_val) == str(value):
                 return float_val
-        except:
+        except Exception:
             pass
 
     ## Check if value is boolean
@@ -1198,10 +1212,10 @@ def conf_to_dict(file_content, parameters=None):
                 para_name, para_val = line.split('=', 1)
                 para_name = para_name.strip()
                 para_val = para_val.strip()
-            except:
+            except Exception:
                 msg = _("Wrong config file format: {line}")
                 msg = msg.format(line=line)
-                raise Exception(msg)
+                raise Exception(msg) from None
             if parameters and not para_name in parameters:
                 continue
 
@@ -1310,20 +1324,20 @@ def user_exists(username):
     import pwd
     try:
         pwd.getpwnam(username)
-    except KeyError:
+    except KeyError as err:
         msg = _("System user does not exist: {username}")
         msg = msg.format(username=username)
-        raise Exception(msg)
+        raise Exception(msg) from err
 
 def group_exists(groupname):
     """ Check if given system user exists. """
     import grp
     try:
         grp.getgrnam(groupname)
-    except KeyError:
+    except KeyError as err:
         msg = _("System group does not exist: {groupname}")
         msg = msg.format(groupname=groupname)
-        raise Exception(msg)
+        raise Exception(msg) from err
 
 def contains_non_ascii(string):
     """" Check if string contains non-ascii chars. """
@@ -1363,12 +1377,7 @@ def websafe_decode(data):
 def seed_rng(fork=True, quiet=False):
     """ Reinitialize RNG. """
     import ssl
-    try:
-        from Cryptodome import Random
-    except:
-        from Crypto import Random
-        msg = _("Failed to load pycryptodome, using pycrypto.")
-        print(msg)
+    from Cryptodome import Random
     from otpme.lib import config
 
     logger = config.logger
@@ -1444,7 +1453,7 @@ def resolve_uuid(object_uuid, object_type=None, object_types=None):
         except Exception as e:
             msg = _("Error connecting to hostd: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         object_id = hostd_conn.get_oid(object_uuid=object_uuid,
                                     object_type=object_type,
                                     object_types=object_types)
@@ -1469,7 +1478,7 @@ def resolve_oid(object_id):
         except Exception as e:
             msg = _("Error connecting to hostd: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         object_uuid = hostd_conn.get_uuid(str(object_id))
     if not object_uuid:
         msg = _("Unable to resolve OID: {object_id}")
@@ -1491,7 +1500,7 @@ def object_exists(object_id):
     except Exception as e:
         msg = _("Error connecting to hostd: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     if hostd_conn.object_exists(str(object_id)):
         return True
     return False
@@ -1721,14 +1730,14 @@ def get_key_script(username):
             log_msg = _("Error getting user key script from server: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             logger.debug(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             key_mode = command_handler.get_user_key_mode(username=username)
         except Exception as e:
             log_msg = _("Error getting user key mode from server: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             logger.debug(log_msg)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     if not key_script_path:
         msg = _("User does not have a key script configured.")
@@ -1764,7 +1773,7 @@ def verify_key_script(username, key_script=None,
         except Exception as e:
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Do not override given signatures.
         if not signatures and key_script_signs:
             signatures = key_script_signs
@@ -1792,12 +1801,12 @@ def verify_key_script(username, key_script=None,
         config.raise_exception()
         msg = _("No valid key script signatures found: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     except Exception as e:
         config.raise_exception()
         msg = _("Error verifying signatures: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
 def run_key_script(username, script_command, script_options=None,
     key_pass=None, key_pass_new=None, private_key=None, aes_pass=None,
@@ -1832,7 +1841,7 @@ def run_key_script(username, script_command, script_options=None,
             config.raise_exception()
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     if not key_script_path:
         msg = _("User does not have a key script configured.")
@@ -2024,7 +2033,7 @@ def get_agent_user():
     except Exception as e:
         msg = _("Error getting agent connection: {e}")
         msg = msg.format(e=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return agent_user
 
 def get_user_uuid(username):
@@ -2069,7 +2078,7 @@ def get_username_by_uuid(uuid):
         except Exception as e:
             msg = _("Error connecting to hostd: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
         command_args = {'user_uuid':uuid}
         command = "get_user_name"
         status, \
@@ -2102,7 +2111,7 @@ def get_site_address(realm, site):
         except Exception as e:
             msg = _("Error connecting to hostd: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         daemon_command = "get_site_address"
         command_args = {
                         'realm' : realm,
@@ -2143,7 +2152,7 @@ def get_site_fqdn(realm, site, mgmt=False):
         except Exception as e:
             msg = _("Error connecting to hostd: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if mgmt:
             daemon_command = "get_site_mgmt_fqdn"
         else:
@@ -2201,7 +2210,7 @@ def get_site_cert(realm, site):
     except Exception as e:
         msg = _("Error connecting to hostd: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     site_cert = hostd_conn.get_site_cert(realm=realm, site=site)
     _site_cert_cache[cache_key] = site_cert
     return site_cert
@@ -2250,7 +2259,7 @@ def get_site_trust_status(realm, site):
     except Exception as e:
         msg = _("Error connecting to hostd: {e}")
         msg = msg.format(e=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     # Get site trust status.
     hostd_command = "get_site_trust_status"
     command_args = {
@@ -2313,9 +2322,13 @@ def check_login_user(user_name, user_uuid):
             msg = msg.format(user_name=user_name)
             raise Exception(msg)
 
-def add_decorators(decorator, blacklist_functions=[],
-    blacklist_methods=[], func_names_regex=None):
+def add_decorators(decorator, blacklist_functions=None,
+    blacklist_methods=None, func_names_regex=None):
     """ Add decorators to functions and classes. """
+    if blacklist_functions is None:
+        blacklist_functions = []
+    if blacklist_methods is None:
+        blacklist_methods = []
     import importlib
     from otpme.lib import preload
     for x in preload.preload_modules:
@@ -2327,11 +2340,15 @@ def add_decorators(decorator, blacklist_functions=[],
                     blacklist_methods,
                     func_names_regex)
 
-def add_decorator(decorator, module, blacklist_functions=[],
-    blacklist_methods=[], func_names_regex=None):
+def add_decorator(decorator, module, blacklist_functions=None,
+    blacklist_methods=None, func_names_regex=None):
     """
     Add decorator if the method/function module matches module name.
     """
+    if blacklist_functions is None:
+        blacklist_functions = []
+    if blacklist_methods is None:
+        blacklist_methods = []
     import types
     for x in dir(module):
         module_name = module.__name__
@@ -2343,7 +2360,7 @@ def add_decorator(decorator, module, blacklist_functions=[],
                 try:
                     m = getattr(f, y)
                     m_module = m.__module__
-                except:
+                except Exception:
                     continue
                 if m_module != module_name:
                     continue
@@ -2369,7 +2386,7 @@ def add_decorator(decorator, module, blacklist_functions=[],
                 except Exception as e:
                     msg = _("Unable to get method type: {method_path}")
                     msg = msg.format(method_path=method_path)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
                 # FIXME: How to add decorator to class method with @classmethod??
                 #        "TypeError: unbound method xy() must be called with..."
                 if class_method:

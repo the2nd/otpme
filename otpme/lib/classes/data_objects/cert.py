@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -66,7 +66,7 @@ class OTPmeCert(SSLCert):
         self._modified = False
         self._object_lock = None
         # Call parent class init.
-        super(OTPmeCert, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.set_oid()
 
     @property

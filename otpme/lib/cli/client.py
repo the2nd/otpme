@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -74,53 +74,55 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
-    max_roles=5, max_policies=5, output_fields=[], acl_checker=None, **kwargs):
+    max_roles=5, max_policies=5, output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for clients. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for client_uuid in client_order:
         row = []
         client_name = client_data[client_uuid]['name']
         try:
             enabled = client_data[client_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             unit_uuid = client_data[client_uuid]['unit'][0]
-        except:
+        except Exception:
             unit_uuid = None
         try:
             addresses = client_data[client_uuid]['address']
-        except:
+        except Exception:
             addresses = None
         try:
             auth_cache_enabled = client_data[client_uuid]['auth_cache_enabled']
-        except:
+        except Exception:
             auth_cache_enabled = False
         try:
             auth_cache_timeout = client_data[client_uuid]['auth_cache_timeout'][0]
-        except:
+        except Exception:
             auth_cache_timeout = "Not set"
         try:
             logins_limited = client_data[client_uuid]['logins_limited'][0]
-        except:
+        except Exception:
             logins_limited = False
         try:
             access_group = client_data[client_uuid]['accessgroup'][0]
-        except:
+        except Exception:
             access_group = None
         try:
             description = client_data[client_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = client_data[client_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             client_acls = acls[client_uuid]
-        except:
+        except Exception:
             client_acls = {}
 
         # Get ACL checker.

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -112,7 +112,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         """ Cleanup stuff """
         try:
             gpg.stop_agent()
-        except:
+        except Exception:
             pass
         if os.path.islink(gpg_dir):
             os.unlink(gpg_dir)

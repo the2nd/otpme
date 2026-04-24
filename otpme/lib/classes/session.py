@@ -3,6 +3,7 @@
 import os
 import hmac
 import time
+import secrets
 from typing import List
 from typing import Union
 from datetime import datetime
@@ -10,10 +11,10 @@ from datetime import timedelta
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -21,7 +22,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import cli
@@ -32,7 +33,6 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
-from otpme.lib import encryption
 from otpme.lib import otpme_pass
 from otpme.lib import mschap_util
 from otpme.lib.locking import object_lock
@@ -259,7 +259,7 @@ class Session(OTPmeLockObject):
         slp: Union[str,None]=None,
         ):
         """ Init. """
-        super(Session, self).__init__()
+        super().__init__()
         self.realm = config.realm
         self.site = config.site
         #if pass_hash is not None:
@@ -455,31 +455,16 @@ class Session(OTPmeLockObject):
             pass
 
     def gen_session_id(self):
-        """ Gen session ID. """
-        # Get salt from user.
-        result = backend.search(object_type="user",
-                                attribute="name",
-                                value=self.username,
-                                return_type="instance",
-                                realm=self.realm)
-        if not result:
-            msg = _("Unknown user: {username}")
-            msg = msg.format(username=self.username)
-            raise OTPmeException(msg)
+        """ Gen session ID.
 
-        user = result[0]
-        salt = user.used_pass_salt
-        if not salt:
-            msg = _("Unable to generate session ID: User is missing used_pass_salt parameter")
-            raise OTPmeException(msg)
-        # Generate session ID.
-        hash_value = f"{self.access_group}:{self.pass_hash}"
-        session_id = encryption.derive_key(hash_value,
-                                            hash_type="HKDF",
-                                            hash_algo="SHA256",
-                                            salt=salt,
-                                            key_len=16)['key']
-        return session_id
+        Returns a 32-char hex string backed by secrets.token_hex(16),
+        i.e. 128 bits from the OS CSPRNG. Previously this was an HKDF
+        derivation over (access_group, pass_hash) salted with the
+        user's pass salt — deterministic IDs that would become
+        predictable if the pass hash ever leaked, and that collided
+        across re-logins of the same user in the same access group.
+        """
+        return secrets.token_hex(16)
 
     def get_session_name(self):
         """ Gen session name. """
@@ -692,7 +677,7 @@ class Session(OTPmeLockObject):
         # Get object index.
         try:
             self.index = self.object_config['INDEX']
-        except:
+        except Exception:
             pass
 
         return True

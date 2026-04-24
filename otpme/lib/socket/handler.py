@@ -10,7 +10,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -73,7 +73,7 @@ class SocketProtoHandler(object):
                     first_loop = False
                 else:
                     msg = "Connection closed while sending data"
-                raise ConnectionQuit(msg)
+                raise ConnectionQuit(msg) from e
             if sent == 0:
                 raise OTPmeException("Broken connection while sending data.")
             totalsent = totalsent + sent
@@ -86,12 +86,12 @@ class SocketProtoHandler(object):
         try:
             data = self.connection.recv(recv_buffer)
         except socket.timeout as e:
-            raise ConnectionTimeout(_("Connection timed out."))
+            raise ConnectionTimeout(_("Connection timed out.")) from e
         except ssl.SSLError as e:
             if e.errno != errno.EINTR:
                 msg = _("SSL error: {error}")
                 msg = msg.format(error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             data = self.connection.recv(recv_buffer)
         except socket.error as e:
             if e.errno != errno.EINTR:
@@ -128,14 +128,14 @@ class SocketProtoHandler(object):
         except Exception as e:
             msg = _("Error sending socket protocol negotiation: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         # Get response.
         try:
             response = self.raw_recv()
         except Exception as e:
             msg = _("Error receiving socket protocol negotiation: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         response = response.decode()
         # Handle quit message (e.g. remote site wants to close connection).
         if len(response) == 4:
@@ -159,10 +159,10 @@ class SocketProtoHandler(object):
             self.send_handler = SOCKET_PROTOS[socket_proto]['send']
             self.recv_handler = SOCKET_PROTOS[socket_proto]['recv']
             self.sendall_handler = SOCKET_PROTOS[socket_proto]['sendall']
-        except:
+        except Exception:
             msg = _("Received invalid socket protocol from peer: {response}")
             msg = msg.format(response=response)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
     def negotiate_socket_protocol_server(self):
         """ Negotiate socket protocol. """
@@ -171,13 +171,13 @@ class SocketProtoHandler(object):
             proto_neg_req = self.raw_recv()
         except Exception as e:
             msg = ("Failed to receive protocol negotiation.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         proto_neg_req = proto_neg_req.decode()
         try:
             client_socket_protos = proto_neg_req.split(":")[1].split(",")
-        except:
+        except Exception:
             msg = "Received invalid protocol string."
-            raise ConnectionQuit(msg)
+            raise ConnectionQuit(msg) from None
         socket_proto = None
         for x in sorted(SOCKET_PROTOS):
             if x in client_socket_protos:
@@ -188,7 +188,7 @@ class SocketProtoHandler(object):
                 self.raw_send(request)
             except Exception as e:
                 msg = ("Failed to send protocol negotiation quit command.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             msg = "Socket protocol negotiation failed."
             raise ConnectionQuit(msg)
         # Send protocol to use to peer.
@@ -197,14 +197,14 @@ class SocketProtoHandler(object):
             self.raw_send(request)
         except Exception as e:
             msg = ("Failed to send protocol negotiation.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         try:
             self.send_handler = SOCKET_PROTOS[socket_proto]['send']
             self.recv_handler = SOCKET_PROTOS[socket_proto]['recv']
             self.sendall_handler = SOCKET_PROTOS[socket_proto]['sendall']
-        except:
+        except Exception:
             msg = "Failed to load socket protocol."
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
     def send(self, data):
         """ Function to handle data sending through socket connection. """

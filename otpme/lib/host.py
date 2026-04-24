@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -30,7 +30,7 @@ def host_data_getter(self):
     # Make sure host data is (re)loaded (e.g. if cache was down).
     try:
         host_data['name']
-    except:
+    except Exception:
         try:
             update_data()
         except Exception as e:
@@ -50,7 +50,7 @@ def get_ssl_file_perms():
     try:
         stuff.group_exists(config.realm_users_group)
         realm_users_group = config.realm_users_group
-    except:
+    except Exception:
         realm_users_group = config.group
 
     files = {
@@ -86,28 +86,28 @@ def get_file_owner_group(file):
     ssl_files_data = get_ssl_file_perms()
     try:
         file_data = ssl_files_data[file]
-    except KeyError:
+    except KeyError as err:
         msg = _("Missing file permissions: {file}")
         msg = msg.format(file=file)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         file_owner = file_data['file_owner']
-    except KeyError:
+    except KeyError as err:
         msg = _("Missing owner for file: {file}")
         msg = msg.format(file=file)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         file_group = file_data['file_group']
-    except KeyError:
+    except KeyError as err:
         msg = _("Missing group for file: {file}")
         msg = msg.format(file=file)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     try:
         file_mode = file_data['file_mode']
-    except KeyError:
+    except KeyError as err:
         msg = _("Missing mode for file: {file}")
         msg = msg.format(file=file)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from err
     return file_owner, file_group, file_mode
 
 def set_ssl_file_perms():
@@ -329,13 +329,13 @@ def load_data(ignore_missing=False):
     except Exception as e:
         msg = _("Unable to get host FQDN: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     try:
         host_name = socket.gethostname()
     except Exception as e:
         msg = _("Unable to get host FQDN: {e}")
         msg = msg.format(e=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
     if not ignore_missing:
         if not f_host_cert:
@@ -357,15 +357,15 @@ def load_data(ignore_missing=False):
 
     try:
         multiprocessing.host_data['type']
-    except:
+    except Exception:
         multiprocessing.host_data['type'] = None
     try:
         multiprocessing.host_data['realm']
-    except:
+    except Exception:
         multiprocessing.host_data['realm'] = None
     try:
         multiprocessing.host_data['site']
-    except:
+    except Exception:
         multiprocessing.host_data['site'] = None
     multiprocessing.host_data['name'] = host_name
     multiprocessing.host_data['fqdn'] = host_fqdn

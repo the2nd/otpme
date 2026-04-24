@@ -7,7 +7,7 @@ from typing import Union
 
 try:
     import ujson as json
-except:
+except Exception:
     import json
 
 try:
@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -1017,7 +1017,7 @@ class Token(OTPmeObject):
             self.owner = user
 
         # Call parent class init.
-        super(Token, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         name=name,
@@ -1125,7 +1125,7 @@ class Token(OTPmeObject):
                                     user=self.owner,
                                     path=self.path,
                                     name=self.name)
-        super(Token, self).set_oid(new_oid=new_oid, **kwargs)
+        super().set_oid(new_oid=new_oid, **kwargs)
 
     def set_path(self):
         """ Set object path. """
@@ -1773,16 +1773,11 @@ class Token(OTPmeObject):
         raise OTPmeException(msg)
 
     def gen_used_hash(self, data: str):
-        """ Generate hash for used OTP/counter. """
-        # FIXME: Are there any security implications with this????
-        # Generate OTP hash from used OTP and salt. We use MD5 for this
-        # because on server side we need performance and it is pointless to
-        # secure the hash of an OTP that can be generated with token secrets
-        # we own. On client side (e.g. a notebook) the salt is saved encrypted
-        # in the token config (if possible) and thus it should also be save to
-        # use MD5.
+        """ Generate SHA-256 hash for used OTP/counter, salted with the
+        per-token used_otp_salt (encrypted-at-rest in the token
+        config). Used to detect replay of already-consumed OTPs. """
         used_salt = self.used_otp_salt
-        used_hash = stuff.gen_md5(data + used_salt)
+        used_hash = stuff.gen_sha256(data + used_salt)
         return used_hash
 
     def _get_used_otps(self):
@@ -1791,9 +1786,9 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 get_method = config.offline_methods['get_used_otps'][self.oid.read_oid]
-            except KeyError:
+            except KeyError as err:
                 msg = _("Unable to get offline used OTPs method.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from err
             try:
                 used_otps = get_method(self.oid)
             except Exception as e:
@@ -1852,9 +1847,9 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 delete_method = config.offline_methods['delete_object'][self.oid.read_oid]
-            except:
+            except Exception:
                 msg = _("Unable to get offline delete method.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
 
         # Indicates if OTP was already used.
         otp_was_used = False
@@ -1946,9 +1941,9 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 add_method = config.offline_methods['add_used_otp'][self.oid.read_oid]
-            except:
+            except Exception:
                 msg = _("Unable to get offline add used OTP method.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             try:
                 add_method(used_otp)
             except Exception as e:
@@ -1991,15 +1986,15 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 add_method = config.offline_methods['add_token_counter'][self.oid.read_oid]
-            except:
+            except Exception:
                 msg = _("Unable to get offline add token counter method.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             try:
                 add_method(_token_counter)
             except Exception as e:
                 msg = _("Failed to add offline token counter: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
         else:
             try:
                 _token_counter.add()
@@ -2011,9 +2006,9 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 get_method = config.offline_methods['get_token_counter'][self.oid.read_oid]
-            except:
+            except Exception:
                 msg = _("Unable to get offline token counter method.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             token_counter =  get_method(self.oid)
         else:
             token_counter = backend.search(object_type="token_counter",
@@ -2028,9 +2023,9 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 delete_method = config.offline_methods['delete_object'][self.oid.read_oid]
-            except:
+            except Exception:
                 msg = _("Unable to get offline delete token counter method.")
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
 
         counter_list = self._get_token_counter()
 
@@ -2124,7 +2119,7 @@ class Token(OTPmeObject):
         try:
             if not self._enable_pin(pre=True, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.pin_enabled = True
@@ -2168,7 +2163,7 @@ class Token(OTPmeObject):
         try:
             if not self._disable_pin(pre=True, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.pin_enabled = False
@@ -2393,7 +2388,7 @@ class Token(OTPmeObject):
         try:
             if not self._enable_offline(pre=True, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.allow_offline = True
@@ -2403,7 +2398,7 @@ class Token(OTPmeObject):
         try:
             if not self._enable_offline(pre=False, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         return self._cache(callback=callback)
@@ -2432,7 +2427,7 @@ class Token(OTPmeObject):
         try:
             if not self._disable_offline(pre=True, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         if run_policies:
@@ -2453,7 +2448,7 @@ class Token(OTPmeObject):
         try:
             if not self._disable_offline(pre=False, callback=callback, **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         return self._cache(callback=callback)
@@ -2500,7 +2495,7 @@ class Token(OTPmeObject):
                                                 callback=callback,
                                                 **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.offline_expiry = expiry
@@ -2511,7 +2506,7 @@ class Token(OTPmeObject):
                                                 callback=callback,
                                                 **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         return self._cache(callback=callback)
@@ -2558,7 +2553,7 @@ class Token(OTPmeObject):
                                                     callback=callback,
                                                     **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.offline_unused_expiry = expiry
@@ -2569,7 +2564,7 @@ class Token(OTPmeObject):
                                                     callback=callback,
                                                     **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         return self._cache(callback=callback)
@@ -2610,7 +2605,7 @@ class Token(OTPmeObject):
                                             callback=callback,
                                             **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.keep_session = True
@@ -2622,7 +2617,7 @@ class Token(OTPmeObject):
                                             callback=callback,
                                             **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         return self._cache(callback=callback)
@@ -2665,7 +2660,7 @@ class Token(OTPmeObject):
                                             callback=callback,
                                             **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         self.keep_session = False
@@ -2677,7 +2672,7 @@ class Token(OTPmeObject):
                                             callback=callback,
                                             **kwargs):
                 return callback.abort()
-        except:
+        except Exception:
             pass
 
         return self._cache(callback=callback)
@@ -3436,7 +3431,7 @@ class Token(OTPmeObject):
                 msg = _("Unknown format: {otp_format}")
                 msg = msg.format(otp_format=otp_format)
                 return callback.error(msg)
-        except:
+        except Exception:
             return callback.error(_("Token does not support different OTP formats."))
 
         if run_policies:
@@ -3462,7 +3457,7 @@ class Token(OTPmeObject):
         """ Get valid token OTP formats """
         try:
             otp_formats = self.valid_otp_formats
-        except:
+        except Exception:
             otp_formats = []
         if _caller == "CLIENT":
             otp_formats = "\n".join(otp_formats)
@@ -3477,7 +3472,7 @@ class Token(OTPmeObject):
         """ Get valid token OTP modes """
         try:
             modes = self.valid_modes
-        except:
+        except Exception:
             modes = []
         if _caller == "CLIENT":
             modes = "\n".join(modes)
@@ -3500,7 +3495,7 @@ class Token(OTPmeObject):
             logger.critical(log_msg)
             return callback.error(msg)
 
-        return super(Token, self).inherit_acls(parent_object=user,
+        return super().inherit_acls(parent_object=user,
                                         callback=callback, **kwargs)
 
     def pre_deploy(
@@ -3578,7 +3573,7 @@ class Token(OTPmeObject):
                                     **kwargs)
 
         # Add object using parent class.
-        add_status = super(Token, self).add(verbose_level=verbose_level,
+        add_status = super().add(verbose_level=verbose_level,
                                             force=force,
                                             write=write,
                                             callback=callback,
@@ -3656,7 +3651,7 @@ class Token(OTPmeObject):
         try:
             new_owner_name = new_token_path.split("/")[0]
             new_token_name = new_token_path.split("/")[1]
-        except:
+        except Exception:
             new_owner_name = new_token_path
             new_token_name = None
 
@@ -3707,7 +3702,7 @@ class Token(OTPmeObject):
                 try:
                     new_token_name = self.name.split(":")[1]
                     send_moved_message = True
-                except:
+                except Exception:
                     pass
 
         if new_token_name is None:
@@ -3950,16 +3945,18 @@ class Token(OTPmeObject):
         self.delete_used_data_objects()
 
         # Delete object using parent class.
-        return super(Token, self).delete(verbose_level=verbose_level,
+        return super().delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
     def show_config(
         self,
-        config_lines: List=[],
+        config_lines: List=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Show token config. """
+        if config_lines is None:
+            config_lines = []
         lines = []
 
         lines.append(f'TOKEN_PATH="{self.rel_path}"')
@@ -4118,6 +4115,6 @@ class Token(OTPmeObject):
         # Append lines from child class.
         lines += config_lines
 
-        return super(Token, self).show_config(config_lines=lines,
+        return super().show_config(config_lines=lines,
                                                 callback=callback,
                                                 **kwargs)

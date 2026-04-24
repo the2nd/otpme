@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -80,9 +80,11 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
-    max_tokens=5, max_nodes=5, max_pools=5, max_policies=5, output_fields=[],
+    max_tokens=5, max_nodes=5, max_pools=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for shares. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for share_uuid in share_order:
         row = []
@@ -90,49 +92,49 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         unit_uuid = share_data[share_uuid]['unit'][0]
         try:
             root_dir = share_data[share_uuid]['root_dir'][0]
-        except:
+        except Exception:
             root_dir = None
         try:
             encrypted = share_data[share_uuid]['encrypted'][0]
-        except:
+        except Exception:
             encrypted = False
         try:
             block_size = share_data[share_uuid]['block_size'][0]
-        except:
+        except Exception:
             block_size = "N/A"
         try:
             read_only = share_data[share_uuid]['read_only'][0]
-        except:
+        except Exception:
             read_only = False
         try:
             force_group_uuid = share_data[share_uuid]['force_group_uuid'][0]
-        except:
+        except Exception:
             force_group_uuid = None
         try:
             create_mode = share_data[share_uuid]['create_mode'][0]
-        except:
+        except Exception:
             create_mode = None
         try:
             directory_mode = share_data[share_uuid]['directory_mode'][0]
-        except:
+        except Exception:
             directory_mode = None
         try:
             enabled = share_data[share_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             description = share_data[share_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = share_data[share_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             share_acls = acls[share_uuid]
-        except:
+        except Exception:
             share_acls = {}
 
         # Get ACL checker.

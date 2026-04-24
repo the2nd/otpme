@@ -3,7 +3,7 @@
 import os
 try:
     import ujson as json
-except:
+except Exception:
     import json
 
 try:
@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -48,7 +48,7 @@ def encode(data, encoding=None, encryption=None, enc_key=None,
         except Exception as e:
             msg = _("Error while compressing: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
     # Encrypt data.
     if encryption:
         if encoding is None:
@@ -62,7 +62,7 @@ def encode(data, encoding=None, encryption=None, enc_key=None,
             config.raise_exception()
             msg = _("Error while encrypting: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
     # Encode data.
     if encoding:
         try:
@@ -70,7 +70,7 @@ def encode(data, encoding=None, encryption=None, enc_key=None,
         except Exception as e:
             msg = _("Error while encoding: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
     # Add headers.
     if compress:
         json_string = add_header(json_string, "JSON_COMPRESSED")
@@ -89,7 +89,7 @@ def decode(string, encoding=None, encryption=None,
     try:
         if string.startswith("JSON{"):
             wrong_type = False
-    except:
+    except Exception:
         pass
     if wrong_type:
         raise OTPmeTypeError("No JSON data found.")
@@ -133,7 +133,7 @@ def decode(string, encoding=None, encryption=None,
         except Exception as e:
             msg = _("Error while decoding: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     # Decrypt data.
     if encryption:
@@ -142,7 +142,7 @@ def decode(string, encoding=None, encryption=None,
         except Exception as e:
             msg = _("Error while decrypting: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     # Decompress data.
     if compress:
@@ -151,7 +151,7 @@ def decode(string, encoding=None, encryption=None,
         except Exception as e:
             msg = _("Error while decompressing: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
     # Return on empty string.
     if len(json_string) == 0:
@@ -165,6 +165,6 @@ def decode(string, encoding=None, encryption=None,
     try:
         data = json.loads(json_string)
     except Exception as e:
-        raise OTPmeException(f"{e}: {json_string}")
+        raise OTPmeException(f"{e}: {json_string}") from e
 
     return data

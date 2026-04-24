@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -56,7 +56,7 @@ class UsedHash(OTPmeDataObject):
         self.counter = counter
 
         # Call parent class init.
-        super(UsedHash, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
 
     def _get_object_config(self):
         """ Get object config dict. """
@@ -131,4 +131,4 @@ class UsedHash(OTPmeDataObject):
         if self.expiry:
             self.add_index('expiry', self.expiry)
         # Call base class add method.
-        return super(UsedHash, self).add()
+        return super().add()

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -490,7 +490,7 @@ class Pool(OTPmeObject):
         ):
         self.type = "pool"
         # Call parent class init.
-        super(Pool, self).__init__(object_id=object_id, **kwargs)
+        super().__init__(object_id=object_id, **kwargs)
         # List and dict attributes must be set after calling super because
         # self.incremental_update is only available after calling super.
         self.nodes = []
@@ -557,7 +557,7 @@ class Pool(OTPmeObject):
         if result is False:
             return callback.error()
         # Add object using parent class.
-        add_result = super(Pool, self).add(verify_acls=verify_acls,
+        add_result = super().add(verify_acls=verify_acls,
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
         return add_result

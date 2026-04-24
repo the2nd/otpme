@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -21,7 +21,7 @@ def generate_hotp(counter, secret):
     except Exception as e:
         msg = _("Error generating HOTP: {e}")
         msg = msg.format(e=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return otp
 
 
@@ -35,7 +35,7 @@ def verify_hotp(counter_start, counter_end, secret, otp):
         except Exception as e:
             msg = _("Error verifying HOTP: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         if hotp_status is True:
             last_used_count = i
             return True, last_used_count

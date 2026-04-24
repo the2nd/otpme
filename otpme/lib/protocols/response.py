@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import json
@@ -75,15 +75,15 @@ def decode_response(response, encryption=None, encoding="base64", enc_key=None):
     except Exception as e:
         msg = _("Failed to decode JSON response: {error}")
         msg = msg.format(error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     try:
         data = response['data']
-    except:
+    except Exception:
         msg = "Invalid response: Data is missing"
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     try:
         status_code = response['status_code']
-    except:
+    except Exception:
         msg = "Invalid response: Status code missing"
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     return status_code, data, binary_data

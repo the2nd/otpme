@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {__name__}")
         msg = msg.format(__name__=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -24,8 +24,8 @@ class SSHAgent(object):
         if not login_session_id:
             try:
                 login_session_id = os.environ['OTPME_LOGIN_SESSION']
-            except:
-                raise Exception("Please set OTPME_LOGIN_SESSION variable.")
+            except Exception:
+                raise Exception("Please set OTPME_LOGIN_SESSION variable.") from None
         self.logger = config.logger
         self.username = username
         self.login_session_id = login_session_id
@@ -40,8 +40,10 @@ class SSHAgent(object):
         self.ssh_agent_pid = None
         self.ssh_agent_name = None
 
-    def run_ssh_agent_script(self, command, verify_signs="auto", additional_opts=[]):
+    def run_ssh_agent_script(self, command, verify_signs="auto", additional_opts=None):
         """ Run users SSH agent script. """
+        if additional_opts is None:
+            additional_opts = []
         if not self.ssh_agent_script:
             raise OTPmeException("Got no SSH agent script.")
 
@@ -104,7 +106,7 @@ class SSHAgent(object):
         except Exception as e:
             msg = _("Error running SSH agent script: {e}")
             msg = msg.format(e=e)
-            raise Exception(msg)
+            raise Exception(msg) from e
 
         # Make sure script output is string.
         if isinstance(agent_stdout, bytes):
@@ -152,8 +154,10 @@ class SSHAgent(object):
 
         return False
 
-    def start(self, verify_signs=None, additional_opts=[]):
+    def start(self, verify_signs=None, additional_opts=None):
         """ Make sure SSH/GPG agent is running and needed variables are set """
+        if additional_opts is None:
+            additional_opts = []
         log_msg = _("Starting user SSH agent script...", log=True)[1]
         self.logger.debug(log_msg)
         # Start SSH agent script.
@@ -166,15 +170,19 @@ class SSHAgent(object):
                 self.gpg_agent_info
 
 
-    def stop(self, verify_signs=None, additional_opts=[]):
+    def stop(self, verify_signs=None, additional_opts=None):
         """ Stop SSH/GPG agent """
+        if additional_opts is None:
+            additional_opts = []
         self.run_ssh_agent_script(command="stop",
                                 verify_signs=verify_signs,
                                 additional_opts=additional_opts)
 
 
-    def add_key(self, verify_signs=None, additional_opts=[]):
+    def add_key(self, verify_signs=None, additional_opts=None):
         """ Send 'add_key' command to agent script """
+        if additional_opts is None:
+            additional_opts = []
         self.run_ssh_agent_script(command="add_key",
                                 verify_signs=verify_signs,
                                 additional_opts=additional_opts)
@@ -184,8 +192,10 @@ class SSHAgent(object):
                 self.gpg_agent_info
 
 
-    def unlock(self, verify_signs=None, additional_opts=[]):
+    def unlock(self, verify_signs=None, additional_opts=None):
         """ Send 'unlock' command to agent script """
+        if additional_opts is None:
+            additional_opts = []
         self.run_ssh_agent_script(command="unlock",
                                 verify_signs=verify_signs,
                                 additional_opts=additional_opts)
@@ -195,8 +205,10 @@ class SSHAgent(object):
                 self.gpg_agent_info
 
 
-    def status(self, verify_signs=None, additional_opts=[]):
+    def status(self, verify_signs=None, additional_opts=None):
         """ Check SSH/GPG agent status """
+        if additional_opts is None:
+            additional_opts = []
         return self.run_ssh_agent_script(command="status",
                                     verify_signs=verify_signs,
                                     additional_opts=additional_opts)

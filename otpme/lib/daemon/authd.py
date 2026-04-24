@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import log
@@ -30,7 +30,7 @@ class AuthDaemon(OTPmeDaemon):
     """ AuthDaemon """
     def __init__(self, *args, **kwargs):
         self.last_session_outdate = time.time()
-        super(AuthDaemon, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def outdate_sessions(self):
         now = time.time()
@@ -119,7 +119,7 @@ class AuthDaemon(OTPmeDaemon):
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg, exc_info=True)
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from e
 
                 # Check if command can be handled by parent class.
                 try:

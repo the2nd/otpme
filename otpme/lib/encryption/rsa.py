@@ -13,7 +13,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import stuff
@@ -28,7 +28,7 @@ from otpme.lib.exceptions import *
 class RSAKey(AsymmetricKeyHandler):
     """ Represents a RSA private/public key pair. """
     def __init__(self, **kwargs):
-        super(RSAKey, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def gen_key(self, bits=2048, public_exponent=65537, backend=None):
         """ Generate RSA private/public key pair of len 'bits'. """
@@ -43,10 +43,10 @@ class RSAKey(AsymmetricKeyHandler):
         """ Encrypt cleartext with our public key. """
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         # Get cleartext as bytes.
         if isinstance(cleartext, str):
             cleartext = cleartext.encode()
@@ -72,10 +72,10 @@ class RSAKey(AsymmetricKeyHandler):
             ciphertext = decode(ciphertext, encoding)
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if cipher == 'PKCS1_OAEP':
             _mgf = _padding.MGF1(algorithm=hash_algo_method())
             padding = _padding.OAEP(mgf=_mgf,
@@ -96,10 +96,10 @@ class RSAKey(AsymmetricKeyHandler):
             raise OTPmeException("Need at least 'message' or 'digest'.")
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if padding == 'PSS':
             _mgf = _padding.MGF1(algorithm=hash_algo_method())
             padding = _padding.PSS(mgf=_mgf, salt_length=_padding.PSS.MAX_LENGTH)
@@ -128,10 +128,10 @@ class RSAKey(AsymmetricKeyHandler):
             raise OTPmeException("Need at least 'message' or 'digest'.")
         try:
             hash_algo_method = getattr(hashes, algorithm)
-        except:
+        except Exception:
             msg = _("Unknown hash algorithm: {algorithm}")
             msg = msg.format(algorithm=algorithm)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
         if padding == 'PSS':
             _mgf = _padding.MGF1(algorithm=hash_algo_method())
             padding = _padding.PSS(mgf=_mgf, salt_length=_padding.PSS.MAX_LENGTH)

@@ -15,7 +15,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 # Needed when running as fake pinentry.
@@ -29,7 +29,7 @@ if __name__ == '__main__':
 
 try:
     from otpme.lib import config
-except:
+except Exception:
     # Add PYTHONPATH.
     PYTHONPATH_FILE = "/etc/otpme/PYTHONPATH"
     if os.path.exists(PYTHONPATH_FILE):
@@ -64,9 +64,9 @@ tmp_dir = "/dev/shm"
 
 try:
     import pexpect
-except:
+except Exception:
     raise Exception("Please install python pexpect module. (e.g. apt-get "
-                    "install python-pexpect)")
+                    "install python-pexpect)") from None
 
 # Make sure we get english messages (for use with expect)
 os.environ['LANG'] = ''
@@ -532,9 +532,11 @@ def change_sc_pin(old_pin, new_pin, admin_pin=False, debug=False):
     #print("Unable to change smartcard PIN.")
     return True
 
-def send_passphrases(name, passphrases=[], debug_file=None):
+def send_passphrases(name, passphrases=None, debug_file=None):
     """ Send card PIN to gpp-agent/pinentry via unix socket. """
     #debug_file = "/tmp/otpme.log"
+    if passphrases is None:
+        passphrases = []
     log = None
     if debug_file:
         log = open(debug_file, "a")
@@ -625,7 +627,7 @@ def receive_passphrase():
         _socket.close()
         msg = _("Socket error: {error}")
         msg = msg.format(error=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     _socket.close()
     return passphrase
 
@@ -640,7 +642,7 @@ def is_authorized(auth_pid, pid):
         #             proc.children() between versions.
         try:
             proc_children = proc.children(recursive=True)
-        except:
+        except Exception:
             proc_children = proc.get_children(recursive=True)
         # Walk through all child processes of client_pid and
         # check if one is the requesting process.

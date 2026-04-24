@@ -2,14 +2,14 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-from Crypto.PublicKey import RSA
+from Cryptodome.PublicKey import RSA
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import json
@@ -116,7 +116,7 @@ def add_agent_key(ssh_key, passphrase=None):
         try:
             child.expect(connection_error, timeout=0.1)
             connection_failed = True
-        except:
+        except Exception:
             connection_failed = False
         if connection_failed:
             result = 3
@@ -179,7 +179,7 @@ def sign_challenge(challenge):
                 config.raise_exception()
                 msg = _("Error signing SSH challenge: {error}")
                 msg = msg.format(error=e)
-                raise Exception(msg)
+                raise Exception(msg) from e
             finally:
                 agent.close()
             # Encode response.
@@ -201,7 +201,7 @@ def verify_sign(public_key, data, plaintext):
         config.raise_exception()
         msg = _("Unable to verify SSH signature: {error}")
         msg = msg.format(error=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return return_value
 
 def read_cached_ssh_keys():
@@ -219,14 +219,14 @@ def read_cached_ssh_keys():
     except Exception as e:
         msg = _("Unable to read SSH keys cache file: {error}")
         msg = msg.format(error=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     # Decode cached SSH keys.
     try:
         ssh_keys = json.decode(ssh_keys_json_string)
     except Exception as e:
         msg = _("Unable to decode SSH keys: {error}")
         msg = msg.format(error=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return ssh_keys
 
 def write_cached_ssh_keys(ssh_keys):
@@ -244,7 +244,7 @@ def write_cached_ssh_keys(ssh_keys):
     except Exception as e:
         msg = _("Unable to create SSH keys cache file: {error}")
         msg = msg.format(error=e)
-        raise Exception(msg)
+        raise Exception(msg) from e
 
 def update_authorized_keys():
     """ Update SSH authorized_keys files from cache. """
@@ -261,9 +261,9 @@ def update_authorized_keys():
     try:
         host_name = config.host_data['name']
         host_type = config.host_data['type']
-    except:
+    except Exception:
         msg = _("Failed to load host data.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
     result = backend.search(object_type=host_type,
                             attribute="name",
                             value=host_name,
@@ -471,7 +471,7 @@ def update_authorized_keys():
             token_opts = dict(key_opts)
             try:
                 token_opts.remove(otpme_user_env)
-            except:
+            except Exception:
                 pass
             # Add token options to e.g. prevent an SSH key from being used for
             # interactive login even if the "command=" option is used.
@@ -488,7 +488,7 @@ def update_authorized_keys():
                                 signatures=signatures,
                                 sign_data=sign_data,
                                 stop_on_fist_match=True)
-            except:
+            except Exception:
                 continue
 
         # Add OTPME_USER to environment.
@@ -529,7 +529,7 @@ def update_authorized_keys():
         # Remove processed user from orphans list.
         try:
             orphan_authorized_keys.remove(username)
-        except:
+        except Exception:
             pass
 
         current_keys = []

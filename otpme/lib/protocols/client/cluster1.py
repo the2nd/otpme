@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -33,7 +33,7 @@ class OTPmeClusterP1(OTPmeClient1):
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeClusterP1, self).__init__(self.daemon, **kwargs)
+        super().__init__(self.daemon, **kwargs)
 
     def ping(self):
         """ Send 'ping' command to clusterd. """
@@ -395,14 +395,14 @@ class OTPmeClusterP1(OTPmeClient1):
             for x_uuid in remote_last_used[x_type]:
                 try:
                     timestamp = remote_last_used[x_type][x_uuid]
-                except:
+                except Exception:
                     log_msg = _("Remote last used data misses timestamp: {x_uuid}", log=True)[1]
                     log_msg = log_msg.format(x_uuid=x_uuid)
                     self.logger.warning(log_msg)
                     continue
                 try:
                     local_last_used_time = local_last_used[x_type][x_uuid]
-                except:
+                except Exception:
                     local_last_used_time = 0.0
                 if str(local_last_used_time) == str(timestamp):
                     continue

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -34,15 +34,15 @@ def check_acls(acls):
         def wrapped(self, *f_args, **f_kwargs):
             try:
                 callback = f_kwargs['callback']
-            except:
+            except Exception:
                 callback = default_callback
             try:
                 verify_acls = f_kwargs['verify_acls']
-            except:
+            except Exception:
                 verify_acls = True
             try:
                 verify_acls_only = f_kwargs['verify_acls_only']
-            except:
+            except Exception:
                 verify_acls_only = False
 
             if verify_acls_only:
@@ -75,7 +75,7 @@ def check_special_user():
         def wrapped(self, *f_args, **f_kwargs):
             try:
                 callback = f_kwargs['callback']
-            except:
+            except Exception:
                 callback = default_callback
 
             internal_users = config.get_internal_objects("user")
@@ -177,16 +177,16 @@ def decode(acl):
         try:
             acl_value = acl.split(":")[2:]
             acl_value = ":".join(acl_value)
-        except:
+        except Exception:
             pass
         try:
             _acl_value = acl.split(":")[2]
-        except:
+        except Exception:
             _acl_value = None
         try:
             _acl_sub_value = acl.split(":")[3:]
             _acl_sub_value = ":".join(_acl_sub_value)
-        except:
+        except Exception:
             _acl_sub_value = None
     else:
         acl_object_type = None
@@ -194,16 +194,16 @@ def decode(acl):
         try:
             acl_value = acl.split(":")[1:]
             acl_value = ":".join(acl_value)
-        except:
+        except Exception:
             pass
         try:
             _acl_value = acl.split(":")[1]
-        except:
+        except Exception:
             _acl_value = None
         try:
             _acl_sub_value = acl.split(":")[2:]
             _acl_sub_value = ":".join(_acl_sub_value)
-        except:
+        except Exception:
             _acl_sub_value = None
 
     acl_name_re = re.compile('^[a-zA-Z0-9]+[a-zA-Z0-9_]*[a-zA-Z0-9]+$')
@@ -331,7 +331,7 @@ def access_granted(acl, object_id=None, uuid=None, check_admin_user=True,
             object_acls = backend.read_config(object_id=object_id)['ACLS']
             if object_acls:
                 acl_list = object_acls.split(",")
-        except:
+        except Exception:
             pass
 
         return verify(uuid=uuid,
@@ -416,11 +416,11 @@ def check_acl(acl, verify_acl, token_roles, need_exact_acl=False, auth_token=Non
     requested_acl_name = verify_acl.split(":")[0]
     try:
         requested_acl_value = verify_acl.split(":")[1]
-    except:
+    except Exception:
         requested_acl_value = None
     try:
         requested_acl_sub_value = ":".join(verify_acl.split(":")[2:])
-    except:
+    except Exception:
         requested_acl_sub_value = None
 
     if requested_acl_sub_value:
@@ -510,11 +510,11 @@ def get_raw_acls(acls, token):
         acl_name = acl.split(":")[0]
         try:
             acl_value = acl.split(":")[1]
-        except:
+        except Exception:
             acl_value = None
         try:
             acl_sub_value = ":".join(acl.split(":")[2:])
-        except:
+        except Exception:
             acl_sub_value = None
 
         # Add the "all" ACL.

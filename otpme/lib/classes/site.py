@@ -12,7 +12,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -921,7 +921,7 @@ def register_config():
         from otpme.lib.encoding.base import encode
         try:
             key_len = config_object.get_config_parameter("private_key_backup_key_len")
-        except:
+        except Exception:
             key_len = 2048
         key_name = f"{config_object.type}-{config_object.name}-{config_object.uuid}"
         public_key = callback.gen_backup_rsa_key(key_name=key_name,
@@ -936,7 +936,7 @@ def register_config():
             RSAKey(key=public_key)
         except Exception as e:
             msg = _("Invalid public key.")
-            raise ValueError(msg)
+            raise ValueError(msg) from e
         return public_key
     # Public key used for encryption of user private keys.
     config.register_config_parameter(name="private_key_backup_key",
@@ -1032,19 +1032,19 @@ def register_config():
         try:
             start_time = backup_time.split("-")[0]
             end_time = backup_time.split("-")[1]
-        except Exception:
+        except Exception as err:
             msg = _("Invalid backup time.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         try:
             datetime.strptime(start_time, "%H:%M")
-        except ValueError:
+        except ValueError as err:
             msg = _("Invalid time.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         try:
             datetime.strptime(end_time, "%H:%M")
-        except ValueError:
+        except ValueError as err:
             msg = _("Invalid time.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return backup_time
     config.register_config_parameter(name="backup_time",
                                     ctype=str,
@@ -1055,17 +1055,17 @@ def register_config():
         from otpme.lib.humanize import units
         try:
             backup_interval = units.time2int(backup_interval, time_unit="s")
-        except Exception:
+        except Exception as err:
             msg = _("Invalid backup interval.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return backup_interval
     def backup_interval_getter(backup_interval, **kwargs):
         from otpme.lib.humanize import units
         try:
             backup_interval = units.int2time(backup_interval, time_unit="s")[0]
-        except Exception:
+        except Exception as err:
             msg = _("Invalid backup interval.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return backup_interval
     config.register_config_parameter(name="backup_interval",
                                     ctype=int,
@@ -1089,7 +1089,7 @@ def register_config():
         except Exception as e:
             msg = _("Failed to encrypt backup key: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         backup_key = backup_key.hex()
         return backup_key
     def backup_key_getter(backup_key, callback=default_callback, **kwargs):
@@ -1105,7 +1105,7 @@ def register_config():
         except Exception as e:
             msg = _("Failed to decrypt backup key: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         backup_key = backup_key.decode()
         return backup_key
     def backup_key_default_genner(**kwargs):
@@ -1130,7 +1130,7 @@ def register_config():
         except Exception as e:
             msg = _("Failed to encrypt backup repo password: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         backup_pass = backup_pass.hex()
         return backup_pass
     def backup_pass_getter(backup_pass, callback=default_callback, **kwargs):
@@ -1146,7 +1146,7 @@ def register_config():
         except Exception as e:
             msg = _("Failed to decrypt backup repo password: {error}")
             msg = msg.format(error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         backup_pass = backup_pass.decode()
         return backup_pass
     config.register_config_parameter(name="backup_repo_password",
@@ -1236,17 +1236,17 @@ def register_config():
         from otpme.lib.humanize import units
         try:
             auth_jwt_valid = units.time2int(auth_jwt_valid, time_unit="s")
-        except Exception:
+        except Exception as err:
             msg = _("Invalid auth JWT validity.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return auth_jwt_valid
     def auth_jwt_valid_getter(auth_jwt_valid, **kwargs):
         from otpme.lib.humanize import units
         try:
             auth_jwt_valid = units.int2time(auth_jwt_valid, time_unit="s")[0]
-        except Exception:
+        except Exception as err:
             msg = _("Invalid auth JWT validity.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return auth_jwt_valid
     config.register_config_parameter(name="auth_jwt_valid",
                                     ctype=int,
@@ -1259,17 +1259,17 @@ def register_config():
         from otpme.lib.humanize import units
         try:
             sso_jwt_valid = units.time2int(sso_jwt_valid, time_unit="s")
-        except Exception:
+        except Exception as err:
             msg = _("Invalid SSO JWT validity.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return sso_jwt_valid
     def sso_jwt_valid_getter(sso_jwt_valid, **kwargs):
         from otpme.lib.humanize import units
         try:
             sso_jwt_valid = units.int2time(sso_jwt_valid, time_unit="s")[0]
-        except Exception:
+        except Exception as err:
             msg = _("Invalid sso JWT validity.")
-            raise ValueError(msg)
+            raise ValueError(msg) from err
         return sso_jwt_valid
     config.register_config_parameter(name="sso_jwt_valid",
                                     ctype=int,
@@ -1477,7 +1477,7 @@ class Site(OTPmeObject):
         self.type = "site"
 
         # Call parent class init.
-        super(Site, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                     realm=realm,
                                     name=name,
                                     path=path,
@@ -1776,7 +1776,7 @@ class Site(OTPmeObject):
 
     def _write(self, **kwargs):
         """ Wrapper to make sure radius gets reloaded. """
-        result = super(Site, self)._write(**kwargs)
+        result = super()._write(**kwargs)
         if not self.radius_reload:
             return result
         self.radius_reload = False
@@ -1784,7 +1784,7 @@ class Site(OTPmeObject):
         if self.radius_cert and self.radius_key:
             try:
                 check_ssl_cert_key(self.radius_cert, self.radius_key)
-            except:
+            except Exception:
                 reload_radius = False
         if reload_radius:
             cluster_radius_reload()
@@ -1802,13 +1802,15 @@ class Site(OTPmeObject):
         acl: object,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
-        object_types: List=[],
+        object_types: List=None,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Method to call inherit_default_acl() for all site units. """
+        if object_types is None:
+            object_types = []
         exception = None
 
         if action == "add":
@@ -2544,7 +2546,7 @@ class Site(OTPmeObject):
         except Exception as e:
             msg = _("Unable to create site certificate: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         return cert, key
 
@@ -2751,7 +2753,7 @@ class Site(OTPmeObject):
             config.raise_exception()
             msg = _("Error adding node: {e}")
             msg = msg.format(e=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
 
         # Write UUID file only on realm init.
         if config.realm_init:
@@ -2765,7 +2767,7 @@ class Site(OTPmeObject):
             except Exception as e:
                 msg = _("Error writing UUID file: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         return self._write(callback=callback)
 
@@ -3014,7 +3016,7 @@ class Site(OTPmeObject):
                 msg = _("Problem adding user: {e}")
                 msg = msg.format(e=e)
                 config.raise_exception()
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
             if x_user.name != config.token_store_user:
                 continue
@@ -3056,7 +3058,7 @@ class Site(OTPmeObject):
             except Exception as e:
                 msg = _("Problem adding user: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
     @object_lock(full_lock=True)
     def _add(
@@ -3762,7 +3764,7 @@ class Site(OTPmeObject):
             except Exception as e:
                 msg = _("Problem adding user: {e}")
                 msg = msg.format(e=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
 
         # Dicts where created before default policies so we have
         # to call add_default_policies() now.
@@ -3917,7 +3919,7 @@ class Site(OTPmeObject):
                                                         realm=self.realm,
                                                         site=self.name,
                                                         name="auth_on_action")
-        except:
+        except Exception:
             auth_on_action_policy = None
 
         if auth_on_action_policy:
@@ -4051,7 +4053,7 @@ class Site(OTPmeObject):
                 backend.delete_object(object_id, cluster=True)
 
         # Delete object using parent class.
-        return super(Site, self).delete(verbose_level=verbose_level,
+        return super().delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
     @check_acls(['delete:orphans'])

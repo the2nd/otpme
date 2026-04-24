@@ -19,7 +19,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
@@ -182,9 +182,9 @@ def create_csr(cn, key_len=2048, sign_algo="sha256",
     # Make sure we convert strings to int()
     try:
         key_len = int(key_len)
-    except:
+    except Exception:
         msg = _("'key_len' must be int")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
     if isinstance(key, str):
         key = key.encode()
@@ -274,16 +274,16 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
     # Make sure we convert strings to int()
     try:
         key_len = int(key_len)
-    except:
+    except Exception:
         msg = _("'key_len' must be int")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
     try:
         valid = int(valid)
-    except:
+    except Exception:
         msg = _("<valid> must be int: {value}")
         msg = msg.format(value=valid)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
     if self_signed and cert_req:
         if not sign_key:
@@ -425,7 +425,7 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
             x_key = _x[0]
             try:
                 x_val = _x[1]
-            except:
+            except Exception:
                 x_val = None
 
             if x_key == "CA":
@@ -434,9 +434,9 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
             if x_key == "pathlen":
                 try:
                     path_len = int(x_val)
-                except:
+                except Exception:
                     msg = _("<pathlen> must be int().")
-                    raise OTPmeException(msg)
+                    raise OTPmeException(msg) from None
 
         # Add basic constraints to our new cert.
         _basic_constraints = x509.BasicConstraints(ca=ca, path_length=path_len)
@@ -473,10 +473,10 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
         for x in ext_key_usage:
             try:
                 attr_oid = getattr(ExtendedKeyUsageOID, x)
-            except:
+            except Exception:
                 msg = _("Unknown extended key usage: {usage}")
                 msg = msg.format(usage=x)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from None
             ext_key_usage_oids.append(attr_oid)
 
         # Build extended key usage.
@@ -534,24 +534,24 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
     # Make sure we convert strings to int().
     try:
         valid = int(valid)
-    except:
+    except Exception:
         msg = _("<valid> must be int.")
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
     try:
         next_update = int(next_update)
-    except:
+    except Exception:
         t = type(next_update)
         msg = _("<next_update> must be int, got {value}.")
         msg = msg.format(value=t)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from None
 
     if sn is not None:
         try:
             sn = int(sn)
-        except:
+        except Exception:
             msg = _("<sn> must be int.")
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
     if isinstance(ca_key, str):
         ca_key = ca_key.encode()
@@ -672,9 +672,9 @@ def check_ssl_cert_key(cert, key):
     try:
         signature = cert.sign(message)
         cert.verify(message, signature)
-    except Exception:
+    except Exception as err:
         msg = _("Key does not match certificate.")
-        raise Exception(msg)
+        raise Exception(msg) from err
 
 #def get_revoked_from_crl(crl):
 #    """ Get revoked certificate serials from CRL. """

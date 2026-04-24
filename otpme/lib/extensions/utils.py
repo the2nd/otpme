@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -29,7 +29,7 @@ def get_extension(extension):
         config.raise_exception()
         msg = _("Error loading extension '{}': {}")
         msg = msg.format(extension, e)
-        raise Exception(msg)
+        raise Exception(msg) from e
     return extension
 
 def get_acls(object_type):

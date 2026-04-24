@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -152,4 +152,4 @@ class UsedOTP(UsedHash):
         # Set our type (used in parent class).
         self.type = "used_otp"
         # Call parent class init.
-        super(UsedOTP, self).__init__(**kwargs)
+        super().__init__(**kwargs)

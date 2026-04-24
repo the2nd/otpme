@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -564,7 +564,7 @@ class Script(OTPmeObject):
         self.type = "script"
 
         # Call parent class init.
-        super(Script, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -726,7 +726,7 @@ class Script(OTPmeObject):
         if self.check_base_script():
             msg = _("Cannot move base script.")
             return callback.error(msg)
-        return super(Script, self).move(callback=callback, **kwargs)
+        return super().move(callback=callback, **kwargs)
 
     @object_lock(full_lock=True)
     @backend.transaction

@@ -8,7 +8,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import re
@@ -40,7 +40,7 @@ def register_site_getter(object_type, getter):
     global site_getter
     try:
         x_getter = site_getter[object_type]
-    except:
+    except Exception:
         x_getter = None
     if x_getter:
         msg = _("Site getter already registered: {object_type}: {x_getter}")
@@ -53,7 +53,7 @@ def register_unit_getter(object_type, getter):
     global unit_getter
     try:
         x_getter = unit_getter[object_type]
-    except:
+    except Exception:
         x_getter = None
     if x_getter:
         msg = _("Unit getter already registered: {object_type}: {x_getter}")
@@ -66,7 +66,7 @@ def register_name_checker(object_type, getter):
     global name_checker
     try:
         x_checker = name_checker[object_type]
-    except:
+    except Exception:
         x_checker = None
     if  x_checker:
         msg = _("Name checker already registered: {object_type}: {x_checker}")
@@ -79,7 +79,7 @@ def register_oid_resolver(object_type, resolver):
     global oid_resolver
     try:
         x_resolver = oid_resolver[object_type]
-    except:
+    except Exception:
         x_resolver = None
     if x_resolver:
         msg = _("Resolver already registered: {object_type}: {x_resolver}")
@@ -92,7 +92,7 @@ def register_rel_path_getter(object_type, getter):
     global rel_path_getter
     try:
         x_getter = rel_path_getter[object_type]
-    except:
+    except Exception:
         x_getter = None
     if x_getter:
         msg = _("Relpath getter already registered: {object_type}: {x_getter}")
@@ -134,7 +134,7 @@ def register_oid_schema(object_type, full_schema, read_schema=None,
 
     try:
         x_schema = full_oid_schema[object_type]
-    except:
+    except Exception:
         x_schema = None
     if x_schema:
         msg = _("Full OID schema already registered: {object_type}: {x_schema}")
@@ -153,7 +153,7 @@ def register_oid_schema(object_type, full_schema, read_schema=None,
 
     try:
         x_schema = read_oid_schema[object_type]
-    except:
+    except Exception:
         x_schema = None
     if x_schema:
         msg = _("Read OID schema already registered: {object_type}: {x_schema}")
@@ -169,22 +169,22 @@ def get_object_type(object_id):
     except Exception as e:
         msg = _("Invalid OID: {object_id}: {e}")
         msg = msg.format(object_id=object_id, e=e)
-        raise InvalidOID(msg)
+        raise InvalidOID(msg) from e
     return object_type
 
 def get_object_realm(object_id):
     """ Get object realm from ID. """
     try:
         object_realm = object_id.split("|")[1].split("/")[0]
-    except:
-        raise InvalidOID()
+    except Exception:
+        raise InvalidOID() from None
     return object_realm
 
 def get_object_site(object_id):
     object_type = get_object_type(object_id)
     try:
         getter = site_getter[object_type]
-    except:
+    except Exception:
         getter = default_site_getter
     return getter(object_id)
 
@@ -202,8 +202,8 @@ def get_object_name(object_id):
         raise Exception(_("Got no object_id"))
     try:
         object_name = object_id.split("|")[1].split("/")[-1]
-    except:
-        raise InvalidOID()
+    except Exception:
+        raise InvalidOID() from None
     return object_name
 
 def get_object_unit(object_id):
@@ -211,7 +211,7 @@ def get_object_unit(object_id):
     object_type = get_object_type(object_id)
     try:
         getter = unit_getter[object_type]
-    except:
+    except Exception:
         getter = default_unit_getter
     return getter(object_id)
 
@@ -229,8 +229,8 @@ def get_object_path(object_id):
     """ Get object path from ID. """
     try:
         object_path = f"/{object_id.split('|')[1:][0]}"
-    except:
-        raise InvalidOID()
+    except Exception:
+        raise InvalidOID() from None
     return object_path
 
 def resolve_oid(object_id):
@@ -238,7 +238,7 @@ def resolve_oid(object_id):
     object_type = get_object_type(object_id)
     try:
         resolver = oid_resolver[object_type]
-    except:
+    except Exception:
         resolver = default_oid_resolver
     full_oid = resolver(object_id)
     return full_oid
@@ -248,7 +248,7 @@ def get_object_rel_path(object_id):
     object_type = get_object_type(object_id)
     try:
         getter = rel_path_getter[object_type]
-    except:
+    except Exception:
         return
     object_path = object_id.split("/")
     object_path = getter(object_id.split("/"))
@@ -402,7 +402,7 @@ def oid_to_fs_name(read_oid):
 def check_name(object_type, object_name):
     try:
         checker = name_checker[object_type]
-    except:
+    except Exception:
         checker = default_name_checker
     return checker(object_type, object_name)
 
@@ -599,14 +599,14 @@ class OTPmeOid(object):
 
         try:
             _full_oid_schema = list(full_oid_schema[self.object_type])
-        except:
+        except Exception:
             msg = _("Object type not registered: {self.object_type}")
             msg = msg.format(self=self)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from None
 
         try:
             _read_oid_schema = list(read_oid_schema[self.object_type])
-        except:
+        except Exception:
             _read_oid_schema = None
 
         object_id_parts = object_id.split("|")[1].split("/")
@@ -656,7 +656,7 @@ class OTPmeOid(object):
         _full_oid_schema = list(full_oid_schema[self.object_type])
         try:
             _read_oid_schema = list(read_oid_schema[self.object_type])
-        except:
+        except Exception:
             _read_oid_schema = None
 
         read_oid_list = []
@@ -685,7 +685,7 @@ class OTPmeOid(object):
                 try:
                     value = getattr(self, attribute)
                     attributes[attribute] = value
-                except:
+                except Exception:
                     value = None
 
             if value is None:
@@ -730,7 +730,7 @@ class OTPmeOid(object):
             for x in check_schema:
                 try:
                     x_val = attributes[x]
-                except:
+                except Exception:
                     x_val = None
                 if not x_val:
                     missing_args.append(x)

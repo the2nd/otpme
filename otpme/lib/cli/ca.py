@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.cli import register_cli
@@ -73,57 +73,59 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, ca_order, ca_data, acls,
-    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for CAs. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for ca_uuid in ca_order:
         row = []
         ca_name = ca_data[ca_uuid]['name']
         try:
             enabled = ca_data[ca_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             unit_uuid = ca_data[ca_uuid]['unit'][0]
-        except:
+        except Exception:
             unit_uuid = None
         try:
             country = ca_data[ca_uuid]['country'][0]
-        except:
+        except Exception:
             country = None
         try:
             state = ca_data[ca_uuid]['state'][0]
-        except:
+        except Exception:
             state = None
         try:
             locality = ca_data[ca_uuid]['locality'][0]
-        except:
+        except Exception:
             locality = None
         try:
             organization = ca_data[ca_uuid]['organization'][0]
-        except:
+        except Exception:
             organization = None
         try:
             ou = ca_data[ca_uuid]['ou'][0]
-        except:
+        except Exception:
             ou = None
         try:
             email = ca_data[ca_uuid]['email'][0]
-        except:
+        except Exception:
             email = None
         try:
             description = ca_data[ca_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = ca_data[ca_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             ca_acls = acls[ca_uuid]
-        except:
+        except Exception:
             ca_acls = {}
 
         # Get ACL checker.

@@ -57,7 +57,7 @@ def _decode_string(data: bytes, offset: int) -> Tuple[Optional[str], int]:
     try:
         length = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack string length: {e}")
+        raise ValueError(f"Failed to unpack string length: {e}") from e
     offset += 4
     if length == 0:
         return "", offset
@@ -79,7 +79,7 @@ def _decode_bytes(data: bytes, offset: int) -> Tuple[Optional[bytes], int]:
     try:
         length = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack bytes length: {e}")
+        raise ValueError(f"Failed to unpack bytes length: {e}") from e
     offset += 4
     if length == 0:
         return None, offset
@@ -103,7 +103,7 @@ def _decode_int(data: bytes, offset: int) -> Tuple[Optional[int], int]:
     try:
         i = struct.unpack('!i', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack int: {e}")
+        raise ValueError(f"Failed to unpack int: {e}") from e
     offset += 4
     return i if has_value else None, offset
 
@@ -122,7 +122,7 @@ def _decode_float(data: bytes, offset: int) -> Tuple[Optional[float], int]:
     try:
         f = struct.unpack('!d', data[offset:offset+8])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack float: {e}")
+        raise ValueError(f"Failed to unpack float: {e}") from e
     offset += 8
     return f if has_value else None, offset
 
@@ -145,7 +145,7 @@ def _decode_tuple_times(data: bytes, offset: int) -> Tuple[Optional[Tuple[int, i
     try:
         atime, mtime = struct.unpack('!QQ', data[offset:offset+16])
     except struct.error as e:
-        raise ValueError(f"Failed to unpack times tuple: {e}")
+        raise ValueError(f"Failed to unpack times tuple: {e}") from e
     return (int(atime), int(mtime)), offset + 16
 
 def _encode_list_strings(lst: Optional[List[str]]) -> bytes:
@@ -164,7 +164,7 @@ def _decode_list_strings(data: bytes, offset: int) -> Tuple[Optional[List[str]],
     try:
         length = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack list length: {e}")
+        raise ValueError(f"Failed to unpack list length: {e}") from e
     offset += 4
     if length == 0:
         return [], offset
@@ -379,7 +379,7 @@ def decode_read(data: bytes) -> dict:
     try:
         size, offset_val = struct.unpack('!II', data[offset:offset+8])
     except struct.error as e:
-        raise ValueError(f"Failed to unpack read: {e}")
+        raise ValueError(f"Failed to unpack read: {e}") from e
     return {'path': path, 'size': size, 'offset': offset_val}
 
 def decode_write(data: bytes) -> dict:
@@ -389,7 +389,7 @@ def decode_write(data: bytes) -> dict:
     try:
         offset_val = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack write: {e}")
+        raise ValueError(f"Failed to unpack write: {e}") from e
     return {'path': path, 'offset': offset_val}
 
 def decode_chmod(data: bytes) -> dict:
@@ -399,7 +399,7 @@ def decode_chmod(data: bytes) -> dict:
     try:
         mode = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack chmod: {e}")
+        raise ValueError(f"Failed to unpack chmod: {e}") from e
     return {'path': path, 'mode': mode}
 
 def decode_chown(data: bytes) -> dict:
@@ -410,7 +410,7 @@ def decode_chown(data: bytes) -> dict:
         # Use signed integers to allow -1 values
         uid, gid = struct.unpack('!ii', data[offset:offset+8])
     except struct.error as e:
-        raise ValueError(f"Failed to unpack chown: {e}")
+        raise ValueError(f"Failed to unpack chown: {e}") from e
     return {'path': path, 'uid': uid, 'gid': gid}
 
 def decode_create(data: bytes) -> dict:
@@ -420,7 +420,7 @@ def decode_create(data: bytes) -> dict:
     try:
         mode = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack create: {e}")
+        raise ValueError(f"Failed to unpack create: {e}") from e
     return {'path': path, 'mode': mode}
 
 def decode_destroy(data: bytes) -> dict:
@@ -448,7 +448,7 @@ def decode_mkdir(data: bytes) -> dict:
     try:
         mode = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack mkdir: {e}")
+        raise ValueError(f"Failed to unpack mkdir: {e}") from e
     return {'path': path, 'mode': mode}
 
 def decode_open(data: bytes) -> dict:
@@ -458,7 +458,7 @@ def decode_open(data: bytes) -> dict:
     try:
         flags = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack open: {e}")
+        raise ValueError(f"Failed to unpack open: {e}") from e
     return {'path': path, 'flags': flags}
 
 def decode_release(data: bytes) -> dict:
@@ -474,7 +474,7 @@ def decode_access(data: bytes) -> dict:
     try:
         amode = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack access: {e}")
+        raise ValueError(f"Failed to unpack access: {e}") from e
     return {'path': path, 'amode': amode}
 
 def decode_readdir(data: bytes) -> dict:
@@ -523,7 +523,7 @@ def decode_truncate(data: bytes) -> dict:
     try:
         length = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack truncate: {e}")
+        raise ValueError(f"Failed to unpack truncate: {e}") from e
     return {'path': path, 'length': length}
 
 def decode_unlink(data: bytes) -> dict:
@@ -565,7 +565,7 @@ def decode_getxattr(data: bytes) -> dict:
     try:
         position = struct.unpack('!I', data[offset:offset+4])[0]
     except struct.error as e:
-        raise ValueError(f"Failed to unpack getxattr: {e}")
+        raise ValueError(f"Failed to unpack getxattr: {e}") from e
     return {'path': path, 'name': name, 'position': position}
 
 def decode_setxattr(data: bytes) -> dict:
@@ -577,7 +577,7 @@ def decode_setxattr(data: bytes) -> dict:
     try:
         options, position = struct.unpack('!II', data[offset:offset+8])
     except struct.error as e:
-        raise ValueError(f"Failed to unpack setxattr: {e}")
+        raise ValueError(f"Failed to unpack setxattr: {e}") from e
     return {'path': path, 'name': name, 'value': value, 'options': options, 'position': position}
 
 def decode_listxattr(data: bytes) -> dict:

@@ -12,10 +12,10 @@ from collections import OrderedDict
 
 try:
     import simdjson as json
-except:
+except Exception:
     try:
         import ujson as json
-    except:
+    except Exception:
         import json
 
 try:
@@ -23,7 +23,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.incremental_objects import incremental_update
@@ -94,7 +94,7 @@ class AtomicFile(object):
         except Exception as e:
             msg = _("Failed to open file: {path}: {error}")
             msg = msg.format(path=self.path, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         finally:
             os.umask(old_umask)
 
@@ -116,7 +116,7 @@ class AtomicFile(object):
         """ Remove file. """
         try:
             os.remove(self.path)
-        except:
+        except Exception:
             pass
 
 class AtomicFileLock(object):
@@ -173,7 +173,7 @@ class AtomicFileLock(object):
             if not self.fd.closed:
                 msg = _("Failed to get inode: {fd}: {error}")
                 msg = msg.format(fd=self.fd, error=e)
-                raise OTPmeException(msg)
+                raise OTPmeException(msg) from e
             return False
         return st.st_nlink > 0
 
@@ -233,9 +233,9 @@ class AtomicFileLock(object):
                 lock_status = False
             except IOError:
                 lock_status = False
-            except TimeoutReached:
+            except TimeoutReached as err:
                 msg = _("Timeout waiting for lock.")
-                raise LockWaitTimeout(msg)
+                raise LockWaitTimeout(msg) from err
             # Make sure the locked FD was not removed.
             if self.check_inode():
                 break
@@ -262,7 +262,7 @@ class AtomicFileLock(object):
             # Make sure file is not used when doing unlink.
             try:
                 self.acquire_lock(exclusive=True, block=False)
-            except:
+            except Exception:
                 return False
         # Make sure we do not deleted a recreated file.
         if not ignore_inode:
@@ -283,7 +283,7 @@ def copy_file(src, dst):
     except Exception as e:
         msg = _("Failed to copy file: {src} > {dst}: {error}")
         msg = msg.format(src=src, dst=dst, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
 def list_dir(directory, sort_by="name"):
     """ List directory index and ignore if directory does not exist. """
@@ -319,8 +319,12 @@ def list_dir(directory, sort_by="name"):
     return _list
 
 def create_dir(path, user=None, group=True,
-    mode=0o770, user_acls=[], group_acls=[]):
+    mode=0o770, user_acls=None, group_acls=None):
     """ Create a directory with sub directories if it not exists """
+    if user_acls is None:
+        user_acls = []
+    if group_acls is None:
+        group_acls = []
     if not user or not group:
         from otpme.lib import config
         user = config.user
@@ -400,9 +404,13 @@ def read_file(path, read_mode="r", compression=None):
     return file_content
 
 def create_file(path, content=None, user=None, group=True, mode=0o660,
-    flags=None, user_acls=[], group_acls=[], write_mode="w",
+    flags=None, user_acls=None, group_acls=None, write_mode="w",
     compression=None, lock=True):
     """ Create file with content and sane permissions. """
+    if user_acls is None:
+        user_acls = []
+    if group_acls is None:
+        group_acls = []
     from otpme.lib import stuff
     if not user or not group:
         from otpme.lib import config
@@ -451,19 +459,43 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
     fd.release_lock()
 
 def create_temp_file(content, tmp_dir="/tmp", user=False,
-    group=True, mode=0o660, user_acls=[], group_acls=[]):
-    """ Create temp file with content 'content' and sane permissions. """
-    from otpme.lib import stuff
-    tmp_file = f"{stuff.gen_secret(len=32)}.tmp"
-    temp_file = os.path.join(tmp_dir, tmp_file)
+    group=True, mode=0o660, user_acls=None, group_acls=None):
+    """ Create temp file with content 'content' and sane permissions.
 
-    create_file(path=temp_file,
-                content=content,
-                user=user,
-                group=group,
-                mode=mode,
-                user_acls=user_acls,
-                group_acls=group_acls)
+    Uses tempfile.mkstemp() which creates the file atomically with
+    O_CREAT|O_EXCL|O_RDWR and mode 0o600 from the start. This avoids
+    the symlink-race and world-readable permission window that a
+    two-step create-then-chmod approach has in a shared /tmp.
+    """
+    if user_acls is None:
+        user_acls = []
+    if group_acls is None:
+        group_acls = []
+    import tempfile
+    if not user or not group:
+        from otpme.lib import config
+        user = config.user
+        group = config.group
+
+    fd, temp_file = tempfile.mkstemp(suffix=".tmp", dir=tmp_dir)
+    try:
+        if content is None:
+            content = ""
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        os.write(fd, content)
+    finally:
+        os.close(fd)
+
+    set_fs_ownership(path=temp_file,
+                    user=user,
+                    group=group,
+                    recursive=False)
+    set_fs_permissions(path=temp_file,
+                        mode=mode,
+                        user_acls=user_acls,
+                        group_acls=group_acls,
+                        recursive=False)
     return temp_file
 
 def symlink(src, dst):
@@ -473,11 +505,15 @@ def symlink(src, dst):
     except Exception as e:
         msg = _("Failed to create symlink: {src} > {dst}: {error}")
         msg = msg.format(src=src, dst=dst, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
 
 def touch(path, user=None, group=True, mode=0o660,
-    user_acls=[], group_acls=[]):
+    user_acls=None, group_acls=None):
     """ Create empty file """
+    if user_acls is None:
+        user_acls = []
+    if group_acls is None:
+        group_acls = []
     if not user or not group:
         from otpme.lib import config
         user = config.user
@@ -508,7 +544,7 @@ def delete(path):
         except Exception as e:
             msg = _("Failed to remove symlink: {path}: {error}")
             msg = msg.format(path=path, error=e)
-            raise OTPmeException(msg)
+            raise OTPmeException(msg) from e
         return True
     # Lock file.
     fd = AtomicFileLock(path=path, mode="w", write_lock=True)
@@ -517,7 +553,7 @@ def delete(path):
     except Exception as e:
         msg = _("Failed to delete file: {path}: {error}")
         msg = msg.format(path=path, error=e)
-        raise OTPmeException(msg)
+        raise OTPmeException(msg) from e
     finally:
         fd.close()
     return True
@@ -594,8 +630,12 @@ def set_fs_ownership(path, user, group=None, recursive=False):
         # Set ownership of file.
         os.chown(path, uid, gid)
 
-def set_fs_permissions(path, mode, user_acls=[], group_acls=[], recursive=False):
+def set_fs_permissions(path, mode, user_acls=None, group_acls=None, recursive=False):
     """ Sets filesystem permissions """
+    if user_acls is None:
+        user_acls = []
+    if group_acls is None:
+        group_acls = []
     apply_acls = False
 
     if user_acls or group_acls:
@@ -729,7 +769,7 @@ def write_lock(write=True):
             except OTPmeException as e:
                 msg = _("Failed to acquire file lock: {file_path}: {error}")
                 msg = msg.format(file_path=self.file_path, error=e)
-                raise ObjectLocked(msg)
+                raise ObjectLocked(msg) from e
             # Call given class method.
             try:
                 result = f(self, *f_args, **f_kwargs)
@@ -765,7 +805,11 @@ class JsonFile(object):
         return object_config
 
     def write_file(self, object_config, user=None,
-        group=None, mode=0o660, user_acls=[], group_acls=[]):
+        group=None, mode=0o660, user_acls=None, group_acls=None):
+        if user_acls is None:
+            user_acls = []
+        if group_acls is None:
+            group_acls = []
         from otpme.lib import config
         compression = None
         if config.object_json_compression:
@@ -793,7 +837,7 @@ class JsonFile(object):
         try:
             if os.environ['OTPME_DEBUG_FILE_READ'] == "True":
                 print(f"READ: {self.file_path}")
-        except:
+        except Exception:
             pass
 
         if not os.path.exists(self.file_path):
@@ -812,8 +856,12 @@ class JsonFile(object):
 
     @write_lock(write=True)
     def write(self, object_config, full_data_update=None,
-        user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
+        user=None, group=True, mode=0o660, user_acls=None, group_acls=None):
         """ Write dictionary to JSON config file. """
+        if user_acls is None:
+            user_acls = []
+        if group_acls is None:
+            group_acls = []
         from otpme.lib import stuff
         from otpme.lib import config
 
@@ -823,7 +871,7 @@ class JsonFile(object):
         try:
             if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
                 print(f"WRITE: {self.file_path}")
-        except:
+        except Exception:
             pass
 
         if not isinstance(object_config, dict):
@@ -984,10 +1032,10 @@ class JsonFile(object):
                 for attr in _modified_attributes:
                     try:
                         value = object_config[attr]
-                    except:
+                    except Exception:
                         msg = _("Missing modified attribute: {attr}")
                         msg = msg.format(attr=attr)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from None
                     current_oc[attr] = value
             for attr in deleted_attributes:
                 current_oc.pop(attr)
@@ -1039,8 +1087,12 @@ class SQLiteFile(object):
         return object_config
 
     def write(self, object_config, full_data_update=None,
-        user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
+        user=None, group=True, mode=0o660, user_acls=None, group_acls=None):
         """ Write dictionary to JSON config file. """
+        if user_acls is None:
+            user_acls = []
+        if group_acls is None:
+            group_acls = []
         from otpme.lib import stuff
         from otpme.lib import config
         from otpme.lib.db_dict import SQLiteDict
@@ -1051,7 +1103,7 @@ class SQLiteFile(object):
         try:
             if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
                 print(f"WRITE: {self.file_path}")
-        except:
+        except Exception:
             pass
 
         if not isinstance(object_config, dict):
@@ -1183,10 +1235,10 @@ class SQLiteFile(object):
                 for attr in _modified_attributes:
                     try:
                         value = object_config[attr]
-                    except:
+                    except Exception:
                         msg = _("Missing modified attribute: {attr}")
                         msg = msg.format(attr=attr)
-                        raise OTPmeException(msg)
+                        raise OTPmeException(msg) from None
                     current_oc[attr] = value
             for attr in deleted_attributes:
                 current_oc.pop(attr)

@@ -9,7 +9,7 @@ try:
         msg = _("Loading module: {module_name}")
         msg = msg.format(module_name=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import encryption
@@ -58,7 +58,7 @@ def encrypt(enc_key, data, encoding=None):
     except Exception as e:
         msg = _("Failed to load encryption key: {error}")
         msg = msg.format(error=e)
-        raise EncryptException(msg)
+        raise EncryptException(msg) from e
     if isinstance(data, str):
         data = data.encode()
     try:
@@ -66,7 +66,7 @@ def encrypt(enc_key, data, encoding=None):
     except Exception as e:
         msg = _("Failed encrypt data: {error}")
         msg = msg.format(error=e)
-        raise EncryptException(msg)
+        raise EncryptException(msg) from e
     encrypted_data = encrypted_data.decode()
     if encoding is None:
         return encrypted_data
@@ -82,7 +82,7 @@ def decrypt(enc_key, data, encoding=None, return_str=True):
         except Exception as e:
             msg = _("Failed to decode data: {error}")
             msg = msg.format(error=e)
-            raise DecryptException(msg)
+            raise DecryptException(msg) from e
     # Make sure data is bytes.
     if isinstance(data, str):
         data = data.encode()
@@ -93,13 +93,13 @@ def decrypt(enc_key, data, encoding=None, return_str=True):
     except Exception as e:
         msg = _("Failed to load decryption key: {error}")
         msg = msg.format(error=e)
-        raise DecryptException(msg)
+        raise DecryptException(msg) from e
     try:
         decrypted_data = cipher_suite.decrypt(data)
     except Exception as e:
         msg = _("Failed to decrypt data: {error}")
         msg = msg.format(error=e)
-        raise DecryptException(msg)
+        raise DecryptException(msg) from e
     if return_str:
         # Try to return string.
         try:

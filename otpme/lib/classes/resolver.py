@@ -11,7 +11,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import oid
@@ -573,7 +573,7 @@ class Resolver(OTPmeObject):
         self.type = "resolver"
 
         # Call parent class init.
-        super(Resolver, self).__init__(object_id=object_id,
+        super().__init__(object_id=object_id,
                                         realm=realm,
                                         site=site,
                                         unit=unit,
@@ -1035,19 +1035,19 @@ class Resolver(OTPmeObject):
             # Get UUID attribute.
             try:
                 uuid_attribute = self.attribute_mappings[object_type]['uuid']
-            except:
+            except Exception:
                 uuid_attribute = None
             try:
                 uid_number_attribute = self.attribute_mappings[object_type]['uidNumber']
-            except:
+            except Exception:
                 uid_number_attribute = None
             try:
                 gid_number_attribute = self.attribute_mappings[object_type]['gidNumber']
-            except:
+            except Exception:
                 gid_number_attribute = None
             try:
                 login_shell_attribute = self.attribute_mappings[object_type]['loginShell']
-            except:
+            except Exception:
                 login_shell_attribute = None
 
             attr_map_rev = {}
@@ -1486,7 +1486,7 @@ class Resolver(OTPmeObject):
 
                     try:
                         oa = attr_map_rev[a]
-                    except:
+                    except Exception:
                         # Skip attributes without mapping.
                         continue
 
@@ -1809,7 +1809,7 @@ class Resolver(OTPmeObject):
         """ Set resolver sync interval. """
         try:
             interval = units.time2int(sync_interval)
-        except:
+        except Exception:
             msg = _("Invalid sync interval: {sync_interval}")
             msg = msg.format(sync_interval=sync_interval)
             return callback.error(msg)
@@ -1821,7 +1821,7 @@ class Resolver(OTPmeObject):
     @audit_log()
     def get_resolver_objects(
         self,
-        object_types: List=[],
+        object_types: List=None,
         return_type: str="name",
         run_policies: bool=True,
         force: bool=False,
@@ -1830,6 +1830,8 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Get all resolver objects. """
+        if object_types is None:
+            object_types = []
         if run_policies:
             try:
                 self.run_policies("get_resolver_objects",
@@ -1865,7 +1867,7 @@ class Resolver(OTPmeObject):
     @audit_log()
     def delete_objects(
         self,
-        object_types: List=[],
+        object_types: List=None,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -1874,6 +1876,8 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Delete resolver objects. """
+        if object_types is None:
+            object_types = []
         if not object_types:
             object_types = self.object_types
 

@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -72,8 +72,10 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, site_order, site_data, acls,
-    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for sites. """
+    if output_fields is None:
+        output_fields = []
     _result = []
     for site_uuid in site_order:
         row = []
@@ -93,33 +95,33 @@ def row_getter(realm, site, site_order, site_data, acls,
         site_address = site_data[site_uuid]['address'][0]
         try:
             enabled = site_data[site_uuid]['enabled'][0]
-        except:
+        except Exception:
             enabled = False
         try:
             trusted_sites = site_data[site_uuid]['trusted_site']
-        except:
+        except Exception:
             trusted_sites = []
         try:
             sync_enabled = site_data[site_uuid]['sync_enabled'][0]
-        except:
+        except Exception:
             sync_enabled = False
         try:
             auth_enabled = site_data[site_uuid]['auth_enabled'][0]
-        except:
+        except Exception:
             auth_enabled = False
         try:
             description = site_data[site_uuid]['description'][0]
-        except:
+        except Exception:
             description = None
         try:
             acl_inheritance_enabled = site_data[site_uuid]['acl_inheritance_enabled'][0]
-        except:
+        except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
             site_acls = acls[site_uuid]
-        except:
+        except Exception:
             site_acls = {}
 
         # Get ACL checker.

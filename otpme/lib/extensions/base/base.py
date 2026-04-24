@@ -7,7 +7,7 @@ try:
         msg = _("Loading module: {}")
         msg = msg.format(__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib import config
@@ -218,10 +218,10 @@ class OTPmeExtension(OTPmeLDIFHandler):
         # Get current DN attribute.
         try:
             dn_attribute = config.dn_attributes[o.type]
-        except:
+        except Exception:
             return callback.ok()
 
-        modified_attributes = super(OTPmeExtension, self).rename(o, old_name,
+        modified_attributes = super().rename(o, old_name,
                                                                 new_name,
                                                                 callback=callback,
                                                                 **kwargs)
@@ -270,7 +270,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
         """ Handle site_move hook. """
         try:
             dn_attribute = config.dn_attributes[o.type]
-        except:
+        except Exception:
             return callback.ok()
         # Remove old DN attribute.
         current_dn = o.get_attribute("dn")[0]

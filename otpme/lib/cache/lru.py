@@ -8,14 +8,16 @@ try:
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
         print(msg)
-except:
+except Exception:
     pass
 
 from otpme.lib.exceptions import *
 
 class LRUCache(dict):
     """ Handle cache access by proc ID. """
-    def __init__(self, cache={}):
+    def __init__(self, cache=None):
+        if cache is None:
+            cache = {}
         self.cache = cache
         self.lru_data = {}
         #self.iter_list = None
