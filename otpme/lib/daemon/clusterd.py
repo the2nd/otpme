@@ -27,6 +27,7 @@ except:
 
 from otpme.lib import log
 from otpme.lib import oid
+from otpme.lib import cache
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -333,15 +334,13 @@ def entry_lock(write=True, timeout=None):
 
 class ClusterEntry(object):
     """ Cluster entry base class. """
-    def __init__(self, journal_dir, journal_id, _lock_type=None, **kwargs):
+    def __init__(self, journal_dir, journal_id, _lock_type=None, epoch=None, **kwargs):
         self._lock = None
         self._lock_type = _lock_type
         self.journal_id = str(journal_id)
         self.logger = config.logger
         self.entry_dir = os.path.join(journal_dir, self.journal_id)
-        self.nodes_dir = os.path.join(self.entry_dir, "nodes")
         self.commit_file = os.path.join(self.entry_dir, "ready")
-        self.failed_nodes_dir = os.path.join(self.entry_dir, "failed_nodes")
 
         self.actions_file = os.path.join(self.entry_dir, "action")
         self.timestamp_file = os.path.join(self.entry_dir, "timestamp")
@@ -355,6 +354,31 @@ class ClusterEntry(object):
         self.trash_id_file = os.path.join(self.entry_dir, "trash_id")
         self.deleted_by_file = os.path.join(self.entry_dir, "deleted_by")
         self.object_data_file = os.path.join(self.entry_dir, "object_data")
+
+        # Epoch pins nodes_dir/failed_nodes_dir paths to one entry generation.
+        # Why: an entry dir can be renamed (superseded by a delete) and then a
+        # new entry created at the same path. A worker still holding a
+        # reference to the old entry would otherwise write add_node markers
+        # into the new entry's nodes dir and silently mark the new delete as
+        # "already propagated" -- losing the delete.
+        if epoch is None:
+            try:
+                epoch = os.stat(self.timestamp_file).st_mtime_ns
+            except (FileNotFoundError, NotADirectoryError):
+                epoch = None
+        self._epoch = epoch
+
+    @property
+    def nodes_dir(self):
+        if self._epoch is None:
+            return os.path.join(self.entry_dir, "nodes")
+        return os.path.join(self.entry_dir, f"nodes.{self._epoch}")
+
+    @property
+    def failed_nodes_dir(self):
+        if self._epoch is None:
+            return os.path.join(self.entry_dir, "failed_nodes")
+        return os.path.join(self.entry_dir, f"failed_nodes.{self._epoch}")
 
     def lock(self, write=False):
         if self._lock:
@@ -560,20 +584,34 @@ class ClusterJournalEntry(ClusterEntry):
     def __init__(self, journal_id, journal_dir, timestamp=None, object_uuid=None):
         super(ClusterJournalEntry, self).__init__(journal_dir=journal_dir,
                                                 journal_id=journal_id,
-                                                _lock_type=JOURNAL_LOCK_TYPE)
+                                                _lock_type=JOURNAL_LOCK_TYPE,
+                                                epoch=timestamp)
         if timestamp or object_uuid:
-            try:
-                filetools.create_dir(self.entry_dir)
-            except FileExistsError:
-                pass
-            try:
-                filetools.create_dir(self.nodes_dir)
-            except FileExistsError:
-                pass
-            try:
-                filetools.create_dir(self.failed_nodes_dir)
-            except FileExistsError:
-                pass
+            # Dir creation runs before the entry lock is acquired, so a
+            # concurrent supersede (rename of entry_dir) can race us and
+            # cause FileNotFoundError mid-sequence. Retry a few times and
+            # surface ObjectDeleted so cluster_sync_object's construct/lock
+            # loop re-enters cleanly.
+            for _ in range(5):
+                try:
+                    filetools.create_dir(self.entry_dir)
+                except FileExistsError:
+                    pass
+                try:
+                    filetools.create_dir(self.nodes_dir)
+                except FileExistsError:
+                    pass
+                except FileNotFoundError:
+                    continue
+                try:
+                    filetools.create_dir(self.failed_nodes_dir)
+                except FileExistsError:
+                    pass
+                except FileNotFoundError:
+                    continue
+                break
+            else:
+                raise ObjectDeleted()
 
         if timestamp is not None:
             self.timestamp = timestamp
@@ -760,10 +798,12 @@ class ClusterJournalEntry(ClusterEntry):
             action_kwargs = action_data['kwargs']
             if node_name:
                 def action_committer():
-                    x_dir = os.path.dirname(x_node_file)
-                    if not os.path.exists(x_dir):
+                    try:
+                        filetools.touch(x_node_file)
+                    except FileNotFoundError:
+                        # Entry dir was renamed away by a concurrent
+                        # supersede (delete superseding a prior write).
                         raise ObjectDeleted()
-                    filetools.touch(x_node_file)
                 actions[action] = {
                                     'kwargs'    : action_kwargs,
                                     'committer' : action_committer,
@@ -812,10 +852,10 @@ class ClusterJournalEntry(ClusterEntry):
             commit_files.append(x_node_file)
         def journal_committer():
             for x in commit_files:
-                x_dir = os.path.dirname(x)
-                if not os.path.exists(x_dir):
+                try:
+                    filetools.touch(x)
+                except FileNotFoundError:
                     raise ObjectDeleted()
-                filetools.touch(x)
         return journal_committer, index_journal
 
     def add_index_journal(self, index_journal):
@@ -855,10 +895,10 @@ class ClusterJournalEntry(ClusterEntry):
             commit_files.append(x_node_file)
         def journal_committer():
             for x in commit_files:
-                x_dir = os.path.dirname(x)
-                if not os.path.exists(x_dir):
+                try:
+                    filetools.touch(x)
+                except FileNotFoundError:
                     raise ObjectDeleted()
-                filetools.touch(x)
         return journal_committer, acl_journal
 
     def add_acl_journal(self, acl_journal):
@@ -1051,6 +1091,25 @@ class ClusterDaemon(OTPmeDaemon):
     def member_candidate(self, value):
         multiprocessing.member_candidates[self.node_name] = value
 
+    def node_disabled_check(self):
+        if config.master_node:
+            return
+        try:
+            master_node_conn = connections.get("clusterd",
+                                            timeout=3,
+                                            auto_auth=False,
+                                            quiet_autoconnect=True,
+                                            compress_request=False)
+        except Exception:
+            pass
+        else:
+            try:
+                master_node_conn.authenticate()
+            except HostDisabled:
+                self.disable_node()
+            finally:
+                master_node_conn.close()
+
     def handle_childs(self, reload=False):
         """ Start child processes childs. """
         if self.node_disabled:
@@ -1059,26 +1118,29 @@ class ClusterDaemon(OTPmeDaemon):
                 multiprocessing.two_node_setup_event.set()
                 multiprocessing.two_node_setup_event.close()
             if self.cluster_in_journal_child:
-                if not self.cluster_in_journal_child.is_alive():
-                    self.cluster_in_journal_child.join()
-                    self.cluster_in_journal_child = None
-                    log_msg = _("Stopped cluster process: Cluster in-journal: Node disabled", log=True)[1]
-                    self.logger.warning(log_msg)
+                if self.cluster_in_journal_child.is_alive():
+                    self.cluster_in_journal_child.terminate()
+                self.cluster_in_journal_child.join()
+                self.cluster_in_journal_child = None
+                log_msg = _("Stopped cluster process: Cluster in-journal: Node disabled", log=True)[1]
+                self.logger.warning(log_msg)
             if self.cluster_comm_child:
-                if not self.cluster_comm_child.is_alive():
-                    self.cluster_comm_child.join()
-                    self.cluster_comm_child = None
-                    log_msg = _("Stopped cluster process: Cluster communication: Node disabled", log=True)[1]
-                    self.logger.warning(log_msg)
+                if self.cluster_comm_child.is_alive():
+                    self.cluster_comm_child.terminate()
+                self.cluster_comm_child.join()
+                self.cluster_comm_child = None
+                log_msg = _("Stopped cluster process: Cluster communication: Node disabled", log=True)[1]
+                self.logger.warning(log_msg)
             if self.interprocess_comm_child:
                 # Wakeup interprocess comm process.
                 multiprocessing.cluster_out_event.set()
                 multiprocessing.cluster_out_event.close()
-                if not self.interprocess_comm_child.is_alive():
-                    self.interprocess_comm_child.join()
-                    self.interprocess_comm_child = None
-                    log_msg = _("Stopped cluster process: Cluster IPC: Node disabled", log=True)[1]
-                    self.logger.warning(log_msg)
+                if self.interprocess_comm_child.is_alive():
+                    self.interprocess_comm_child.terminate()
+                self.interprocess_comm_child.join()
+                self.interprocess_comm_child = None
+                log_msg = _("Stopped cluster process: Cluster IPC: Node disabled", log=True)[1]
+                self.logger.warning(log_msg)
             if config.start_freeradius:
                 self.stop_freeradius()
             if self.node_disabled_child:
@@ -1112,18 +1174,22 @@ class ClusterDaemon(OTPmeDaemon):
             log_start_message = True
 
         if self.node_disabled_child:
-            if not self.node_disabled_child.is_alive():
-                self.node_disabled_child.join()
-                self.node_disabled_child = None
+            if self.node_disabled_child.is_alive():
+                self.node_disabled_child.terminate()
+            self.node_disabled_child.join()
+            self.node_disabled_child = None
 
         if log_start_message:
             log_msg = _("Starting cluster communication...", log=True)[1]
             self.logger.info(log_msg)
 
+        # Check if node is disabled on master node.
+        self.node_disabled_check()
+
         # Interprocess communication.
         if start_interprocess:
             self.interprocess_comm_child = multiprocessing.start_process(name=self.name,
-                                            target=self.start_interprocess_comm)
+                                                    target=self.start_interprocess_comm)
         # Start cluster communication.
         if start_cluster_comm:
             self.cluster_comm_child = multiprocessing.start_process(name=self.name,
@@ -1132,7 +1198,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Start in-journal handler.
         if start_in_journal:
             self.cluster_in_journal_child = multiprocessing.start_process(name=self.name,
-                                            target=self.start_in_journal_handler)
+                                                    target=self.start_in_journal_handler)
 
     def close_childs(self):
         """ Stop cluster communication childs. """
@@ -1187,7 +1253,7 @@ class ClusterDaemon(OTPmeDaemon):
                 self.node_disabled_child.terminate()
                 self.node_disabled_child.join()
             except Exception as e:
-                log_msg = _("Failed to stop node check child: {error}", log=True)[1]
+                log_msg = _("Failed to stop node disabled child: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
 
@@ -1232,8 +1298,9 @@ class ClusterDaemon(OTPmeDaemon):
                 self.enable_node()
                 # Wakeup main process to start childs.
                 self.comm_handler.send("clusterd", command="handle_childs")
-                clusterd_conn.close()
                 os._exit(0)
+            finally:
+                clusterd_conn.close()
 
     @property
     def host_name(self):
@@ -1254,6 +1321,7 @@ class ClusterDaemon(OTPmeDaemon):
         node.acquire_lock(lock_caller="clusterd")
         node._write(cluster=False)
         node.release_lock(lock_caller="clusterd")
+        cache.clear()
 
     def disable_node(self):
         node_uuid = config.uuid
@@ -1264,12 +1332,16 @@ class ClusterDaemon(OTPmeDaemon):
         node.acquire_lock(lock_caller="clusterd")
         node._write(cluster=False)
         node.release_lock(lock_caller="clusterd")
+        cache.clear()
 
     @property
     def node_disabled(self):
-        node_uuid = config.uuid
-        node = backend.get_object(uuid=node_uuid)
-        if node.enabled:
+        result = backend.search(object_type="node",
+                                attribute="uuid",
+                                value=config.uuid,
+                                return_attributes=['enabled'])
+        node_enabled = result[0]
+        if node_enabled:
             return False
         return True
 
@@ -1388,7 +1460,8 @@ class ClusterDaemon(OTPmeDaemon):
         except KeyError:
             pass
         if self.node_conn:
-            self.node_conn.close()
+            if self.node_conn.connected:
+                self.node_conn.close()
             self.node_conn = None
         self.calc_quorum()
         # Wakeup cluster out event handler to re-process cluster journal entries.
@@ -1625,6 +1698,9 @@ class ClusterDaemon(OTPmeDaemon):
                         continue
                     _node_votes.pop(x)
 
+        if self.node_disabled:
+            self.exit_child()
+
         x_sort = lambda x: _node_votes[x]['vote']
         node_scores_sorted = sorted(_node_votes, key=x_sort, reverse=True)
         if len(node_scores_sorted) == 0:
@@ -1774,6 +1850,9 @@ class ClusterDaemon(OTPmeDaemon):
                                     realm=config.realm,
                                     site=config.site,
                                     return_type="name")
+
+        if self.node_disabled:
+            return
 
         if len(enabled_nodes) == 1:
             if not config.one_node_setup:
@@ -1935,7 +2014,7 @@ class ClusterDaemon(OTPmeDaemon):
                 pass
         for node_name in dict(self.node_write_connections):
             try:
-                node = enabled_nodes[node_name]
+                node = all_nodes[node_name]
             except KeyError:
                 node = None
             if node and node.enabled:
@@ -1948,7 +2027,7 @@ class ClusterDaemon(OTPmeDaemon):
                 pass
         for node_name in dict(self.node_sessions_connections):
             try:
-                node = enabled_nodes[node_name]
+                node = all_nodes[node_name]
             except KeyError:
                 node = None
             if node and node.enabled:
@@ -1961,7 +2040,7 @@ class ClusterDaemon(OTPmeDaemon):
                 pass
         for node_name in dict(self.node_last_used_connections):
             try:
-                node = enabled_nodes[node_name]
+                node = all_nodes[node_name]
             except KeyError:
                 node = None
             if node and node.enabled:
@@ -2553,9 +2632,27 @@ class ClusterDaemon(OTPmeDaemon):
     def handle_cluster_in_journal(self):
         cluster_journal_files = self.get_cluster_in_journal()
         for journal_file in cluster_journal_files:
-            object_data = filetools.read_file(path=journal_file,
-                                            compression="lz4")
-            object_data = json.loads(object_data)
+            # A file may show up in the glob before the writer has finished
+            # filling it (during a rolling upgrade from the old two-step
+            # create). Treat per-file read/decode errors as transient: log,
+            # skip, and let the next iteration retry.
+            try:
+                raw_data = filetools.read_file(path=journal_file,
+                                                compression="lz4")
+                object_data = json.loads(raw_data)
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                try:
+                    size = os.path.getsize(journal_file)
+                except OSError:
+                    size = -1
+                if size == 0:
+                    continue
+                log_msg = _("Skipping unreadable cluster in-journal file: {file}: {error}", log=True)[1]
+                log_msg = log_msg.format(file=journal_file, error=e)
+                self.logger.warning(log_msg)
+                continue
 
             action = object_data['action']
             if action == "write":
@@ -2940,7 +3037,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.conn_event = multiprocessing.Event(conn_even_name)
 
         # Number of session sync workers per node.
-        session_worker_count = 4
+        session_worker_count = 8
         worker_queues = []
         worker_procs = []
 
@@ -3315,6 +3412,43 @@ class ClusterDaemon(OTPmeDaemon):
                                     self.check_online_nodes(cluster_journal_entry)
                                 continue
                             object_config = object_config.decrypt(config.master_key)
+                            # Send node disable command to node.
+                            if object_id == node_conn.peer.oid:
+                                try:
+                                    node_object = backend.get_instance_from_oid(object_id, object_config)
+                                except Exception as e:
+                                    log_msg = _("Failed to load node object: {object_id}: {e}", log=True)[1]
+                                    log_msg = log_msg.format(object_id=object_id, e=e)
+                                    self.logger.critical(log_msg)
+                                else:
+                                    if not node_object.enabled:
+                                        try:
+                                            node_conn.disable_node()
+                                        except Exception as e:
+                                            try:
+                                                node_conn.close()
+                                            except Exception:
+                                                pass
+                                            try:
+                                                node_conn = self.get_clusterd_connection(node_name)
+                                            except Exception as e:
+                                                log_msg = _("Failed to get node disable connection: {node}: {error}", log=True)[1]
+                                                log_msg = log_msg.format(node=node_name, error=e)
+                                                self.logger.warning(log_msg)
+                                            else:
+                                                self.node_conn = None
+                                                try:
+                                                    node_conn.disable_node()
+                                                except Exception as e:
+                                                    log_msg = _("Failed to disable node: {node}: {error}", log=True)[1]
+                                                    log_msg = log_msg.format(node=node_name, error=e)
+                                                    self.logger.warning(log_msg)
+                                        finally:
+                                            node_conn.close()
+                                        self.node_leave(node_name)
+                                        multiprocessing.cleanup()
+                                        os._exit(0)
+
                             object_checksum = backend.get_checksum(object_id)
                             object_last_used = backend.get_last_used(object_uuid)
                             acl_journal_committer, \
@@ -3362,25 +3496,20 @@ class ClusterDaemon(OTPmeDaemon):
                                                             object_uuid=object_uuid,
                                                             last_used=object_last_used)
                             except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                                #self.node_leave(node_name)
                                 self.node_disconnect(node_name)
                                 msg, log_msg = _("Failed to send object: {node}: {object_id}: {error}", log=True)
                                 msg = msg.format(node=node_name, object_id=object_id, error=e)
                                 log_msg = log_msg.format(node=node_name, object_id=object_id, error=e)
                                 self.logger.warning(log_msg)
                                 cluster_journal_entry.add_failed_node(node_name)
-                                #self.check_member_nodes(cluster_journal_entry)
                                 raise ProcessingFailed(msg)
                             except Exception as e:
-                                #self.node_leave(node_name)
                                 self.node_disconnect(node_name)
                                 msg, log_msg = _("Error sending object: {node}: {object_id}: {error}", log=True)
                                 msg = msg.format(node=node_name, object_id=object_id, error=e)
                                 log_msg = log_msg.format(node=node_name, object_id=object_id, error=e)
                                 self.logger.warning(log_msg)
                                 cluster_journal_entry.add_failed_node(node_name)
-                                #self.check_member_nodes(cluster_journal_entry)
-                                #config.raise_exception()
                                 raise ProcessingFailed(msg)
                             if write_status != "done":
                                 cluster_journal_entry.add_failed_node(node_name)
@@ -3416,23 +3545,18 @@ class ClusterDaemon(OTPmeDaemon):
                             rename_status = node_conn.rename(object_id=old_object_id.full_oid,
                                                             new_object_id=new_object_id.full_oid)
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to rename object: {node}: {object_id}: {error}", log=True)
                             msg = msg.format(node=node_name, object_id=object_id, error=e)
                             log_msg = log_msg.format(node=node_name, object_id=object_id, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
-                            #config.raise_exception()
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to rename object: {node}: {object_id}: {error}", log=True)
                             msg = msg.format(node=node_name, object_id=object_id, error=e)
                             log_msg = log_msg.format(node=node_name, object_id=object_id, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if rename_status != "done":
                             continue
@@ -3452,22 +3576,18 @@ class ClusterDaemon(OTPmeDaemon):
                         try:
                             del_status = node_conn.delete(object_id.full_oid, object_uuid)
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to delete object: {object_id}: ({node}) {error}", log=True)
                             msg = msg.format(object_id=object_id, node=node_name, error=e)
                             log_msg = log_msg.format(object_id=object_id, node=node_name, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Error deleting object: {object_id}: ({node}) {error}", log=True)
                             msg = msg.format(object_id=object_id, node=node_name, error=e)
                             log_msg = log_msg.format(object_id=object_id, node=node_name, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if del_status != "done":
                             continue
@@ -3502,22 +3622,18 @@ class ClusterDaemon(OTPmeDaemon):
                                                                     object_data=object_data,
                                                                     deleted_by=deleted_by)
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to send trash object: {node}: {trash_id}: {object_id}: {error}", log=True)
                             msg = msg.format(node=node_name, trash_id=trash_id, object_id=object_id, error=e)
                             log_msg = log_msg.format(node=node_name, trash_id=trash_id, object_id=object_id, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Error sending trash object: {node}: {trash_id}: {object_id}: {error}", log=True)
                             msg = msg.format(node=node_name, trash_id=trash_id, object_id=object_id, error=e)
                             log_msg = log_msg.format(node=node_name, trash_id=trash_id, object_id=object_id, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if trash_write_status != "done":
                             continue
@@ -3539,23 +3655,18 @@ class ClusterDaemon(OTPmeDaemon):
                         try:
                             trash_del_status = node_conn.trash_delete(trash_id)
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to delete trash object: {node}: {trash_id}: {error}", log=True)
                             msg = msg.format(node=node_name, trash_id=trash_id, error=e)
                             log_msg = log_msg.format(node=node_name, trash_id=trash_id, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Error deleting trash object: {node}: {trash_id}: {error}", log=True)
                             msg = msg.format(node=node_name, trash_id=trash_id, error=e)
                             log_msg = log_msg.format(node=node_name, trash_id=trash_id, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
-                            #config.raise_exception()
                             raise ProcessingFailed(msg)
                         if trash_del_status != "done":
                             continue
@@ -3575,22 +3686,18 @@ class ClusterDaemon(OTPmeDaemon):
                         try:
                             trash_empty_status = node_conn.trash_empty()
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to send trash empty request: {node}: {error}", log=True)
                             msg = msg.format(node=node_name, error=e)
                             log_msg = log_msg.format(node=node_name, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
-                            #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Error sending trash empty request: {node}: {error}", log=True)
                             msg = msg.format(node=node_name, error=e)
                             log_msg = log_msg.format(node=node_name, error=e)
                             self.logger.warning(log_msg)
-                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if trash_empty_status != "done":
                             continue
@@ -4079,8 +4186,6 @@ class ClusterDaemon(OTPmeDaemon):
         """ Close all node check connections. """
         proc = self.node_check_connections[node_name]
         proc.terminate()
-        #stuff.wait_pid(pid=proc.pid,
-        #            recursive=True)
         proc.join()
         try:
             self.node_check_connections.pop(node_name)
@@ -4096,8 +4201,6 @@ class ClusterDaemon(OTPmeDaemon):
         """ Close all node write connections. """
         proc = self.node_write_connections[node_name]
         proc.terminate()
-        #stuff.wait_pid(pid=proc.pid,
-        #            recursive=True)
         proc.join()
         try:
             self.node_write_connections.pop(node_name)
@@ -4128,8 +4231,6 @@ class ClusterDaemon(OTPmeDaemon):
         """ Close node last used connection. """
         proc = self.node_last_used_connections[node_name]
         proc.terminate()
-        #stuff.wait_pid(pid=proc.pid,
-        #            recursive=True)
         proc.join()
         try:
             self.node_last_used_connections.pop(node_name)
@@ -4250,12 +4351,17 @@ class ClusterDaemon(OTPmeDaemon):
 
         self.nsscache_sync.init()
 
+        first_run = True
+        daemon_command = None
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
 
-            # Handle child processes.
-            self.handle_childs(reload=reload)
+            if first_run:
+                self.handle_childs(reload=reload)
+                first_run = False
+            else:
+                self.node_disabled_check()
 
             try:
                 # Try to read daemon message.
@@ -4294,6 +4400,8 @@ class ClusterDaemon(OTPmeDaemon):
                     config.master_failover = False
                 if daemon_command == "ip_deconfigured":
                     config.master_failover = False
+                if daemon_command == "handle_childs":
+                    self.handle_childs(reload=reload)
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
@@ -4302,4 +4410,3 @@ class ClusterDaemon(OTPmeDaemon):
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg, exc_info=True)
                 #config.raise_exception()
-                self.daemon_startup.value = False

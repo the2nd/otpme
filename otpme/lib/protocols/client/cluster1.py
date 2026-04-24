@@ -45,6 +45,20 @@ class OTPmeClusterP1(OTPmeClient1):
         binary_data = self.connection.send(command, command_args)
         return response
 
+    def disable_node(self):
+        """ Disable node. """
+        command = "disable_node"
+        command_args = {}
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = _("Failed to send disable node command: {response}")
+            msg = msg.format(response=response)
+            raise OTPmeException(msg)
+        return response
+
     def write(self, object_id, object_config, index_journal=None,
         ldif_journal=None, acl_journal=None, full_acl_update=False,
         full_ldif_update=False, full_index_update=False,

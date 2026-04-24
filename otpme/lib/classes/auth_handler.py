@@ -471,6 +471,9 @@ class AuthHandler(object):
 
     def verify_user_sessions(self):
         """ Verify user sessions. """
+        if not self.password:
+            if not self.response:
+                return
         return_attributes = ['uuid', 'session_id', 'accessgroup']
         # Get REALM sessions for this user.
         result = backend.search(object_type="accessgroup",

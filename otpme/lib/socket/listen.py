@@ -507,6 +507,10 @@ class ListenSocket(object):
         except socket.timeout:
             return None, None
         except Exception as e:
+            # Suppress shutdown-induced errors (accept() on closed socket
+            # raises EINVAL/EBADF — that's expected, not a real error).
+            if self.shutdown:
+                return None, None
             if self.use_ssl:
                 log_msg = _("Listen: SSL error: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)

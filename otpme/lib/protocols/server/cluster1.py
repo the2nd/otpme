@@ -26,8 +26,8 @@ except:
 
 from otpme.lib import oid
 from otpme.lib import trash
+from otpme.lib import cache
 from otpme.lib import stuff
-#from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
 #from otpme.lib import locking
@@ -172,6 +172,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "sync_trash",
                             #"acquire_lock",
                             #"release_lock",
+                            "disable_node",
                             "get_checksums",
                             "get_full_checksums",
                             "get_index_checksums",
@@ -235,6 +236,19 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             log_msg = _("Received ping.", log=True)[1]
             logger.debug(log_msg)
+
+        elif command == "disable_node":
+            status = True
+            node = backend.get_object(uuid=config.uuid)
+            if node.enabled:
+                node.disable(force=True, verify_acls=False, no_audit_log=True)
+                node.acquire_lock(lock_caller="clusterd")
+                node._write(cluster=False)
+                node.release_lock(lock_caller="clusterd")
+                message = "Node disabled"
+            else:
+                message = "Node already disabled"
+            cache.clear()
 
         elif command == "get_data_revision":
             status = True
@@ -693,11 +707,16 @@ class OTPmeClusterP1(OTPmeServer1):
                                             cluster=False)
 
                 if status:
+                    # Reserve a unique name via O_EXCL on a ".part" tmp file,
+                    # write content there, then atomically rename into place.
+                    # The reader globs only names starting with a digit, so it
+                    # never picks up a partially-written ".part" file.
                     while True:
                         entry_time = str(time.time_ns())
                         cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
+                        tmp_journal_file = os.path.join(config.cluster_in_journal_dir, f".{entry_time}.part")
                         try:
-                            fd = os.open(cluster_journal_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                            fd = os.open(tmp_journal_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                             os.close(fd)
                             break
                         except FileExistsError:
@@ -708,10 +727,15 @@ class OTPmeClusterP1(OTPmeServer1):
                                 }
                     file_content = json.dumps(object_data)
                     try:
-                        filetools.create_file(path=cluster_journal_file,
+                        filetools.create_file(path=tmp_journal_file,
                                                 content=file_content,
                                                 compression="lz4")
+                        os.rename(tmp_journal_file, cluster_journal_file)
                     except Exception as e:
+                        try:
+                            os.remove(tmp_journal_file)
+                        except OSError:
+                            pass
                         message = _("Failed to write cluster journal: {id}: {file}: {error}")
                         message = message.format(id=object_id, file=cluster_journal_file, error=e)
                         status = False
@@ -805,8 +829,9 @@ class OTPmeClusterP1(OTPmeServer1):
                 while True:
                     entry_time = str(time.time_ns())
                     cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
+                    tmp_journal_file = os.path.join(config.cluster_in_journal_dir, f".{entry_time}.part")
                     try:
-                        fd = os.open(cluster_journal_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                        fd = os.open(tmp_journal_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                         os.close(fd)
                         break
                     except FileExistsError:
@@ -818,10 +843,15 @@ class OTPmeClusterP1(OTPmeServer1):
                             }
                 file_content = json.dumps(object_data)
                 try:
-                    filetools.create_file(path=cluster_journal_file,
+                    filetools.create_file(path=tmp_journal_file,
                                             content=file_content,
                                             compression="lz4")
+                    os.rename(tmp_journal_file, cluster_journal_file)
                 except Exception as e:
+                    try:
+                        os.remove(tmp_journal_file)
+                    except OSError:
+                        pass
                     message = _("Failed to write cluster journal: {id}: {file}: {error}")
                     message = message.format(id=object_id, file=cluster_journal_file, error=e)
                     status = False

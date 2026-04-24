@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import errno
 import atexit
 import socket
 
@@ -69,6 +70,11 @@ def close_connections(proc_id=None):
                     conn.close()
                 except ConnectionQuit:
                     pass
+                except OSError as e:
+                    if e.errno != errno.EBADF:
+                        log_msg = _("Failed to close connection: {conn}: {e}", log=True)[1]
+                        log_msg = log_msg.format(conn=conn, e=e)
+                        logger.warning(log_msg)
                 except Exception as e:
                     log_msg = _("Failed to close connection: {conn}: {e}", log=True)[1]
                     log_msg = log_msg.format(conn=conn, e=e)

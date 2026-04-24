@@ -30,7 +30,6 @@ filehandlers = {}
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
-PROTOCOL_VERSION = "OTPme-backup-1.0"
 
 def with_root_path(allow_symlinks=False):
     def wrapper(f):

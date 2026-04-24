@@ -813,9 +813,10 @@ class Session(OTPmeLockObject):
         **kwargs,
         ):
         """ Verify session. """
-        if not password and not password_hash and not (challenge and response):
-            msg = _("Need 'password' or 'challenge' + 'response'!")
-            raise OTPmeException(msg)
+        if not (password or password_hash) and not (challenge and response):
+            log_msg = _("Cannot verify session without password, password_hash or challenge+response.", log=True)[1]
+            logger.warning(log_msg)
+            return {'status': None}
         session_hashes = [ self.pass_hash ]
         # If we have a renegoiation hash we check it if its
         # younger than 60 seconds.
@@ -825,7 +826,7 @@ class Session(OTPmeLockObject):
                 session_hashes.append(self.reneg_hash)
 
         for session_hash in session_hashes:
-            if password:
+            if password or password_hash:
                 verify_response = self._verify(auth_type="clear-text",
                                             session_hash=session_hash,
                                             password_hash=password_hash,
@@ -835,6 +836,8 @@ class Session(OTPmeLockObject):
                                             session_hash=session_hash,
                                             challenge=challenge,
                                             response=response, **kwargs)
+            else:
+                verify_response = {'status':None}
             verify_status = verify_response['status']
             if verify_status is not None:
                 return verify_response

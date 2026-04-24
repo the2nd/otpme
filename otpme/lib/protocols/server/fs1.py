@@ -126,8 +126,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                                         backup_key=backup_key,
                                         interactive=False)
         except Exception as e:
-            msg = _("Failed to get backup connection: {host_name}: {e}")
+            msg, log_msg = _("Failed to get backup connection: {host_name}: {e}", log=True)
             msg = msg.format(host_name=host, e=e)
+            log_msg = log_msg.format(host_name=host, e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         return backupd_conn
 
@@ -139,7 +141,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.authenticated = True
 
         if not self.authenticated:
-            message = _("Please authenticate.")
+            message, log_msg = _("Please authenticate.", log=True)
+            self.logger.warning(log_msg)
             status = status_codes.NEED_USER_AUTH
             return self.build_response(status, message)
 
@@ -169,8 +172,10 @@ class OTPmeFsP1(OTPmeFsServer1):
 
         # Check if we got a valid command.
         if not command in valid_commands:
-            message = _("Unknown command: {command}")
+            message, log_msg = _("Unknown command: {command}", log=True)
             message = message.format(command=command)
+            log_msg = log_msg.format(command=command)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -178,14 +183,17 @@ class OTPmeFsP1(OTPmeFsServer1):
         if command == "mount":
             if self.mounted:
                 status = False
-                message = _("Share already mounted: {share}")
+                message, log_msg = _("Share already mounted: {share}", log=True)
                 message = message.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             try:
                 self.share = command_args['share']
             except KeyError:
                 status = status_codes.UNKNOWN_OBJECT
-                message = _("Missing share.")
+                message, log_msg = _("Missing share.", log=True)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             result = backend.search(object_type="share",
                                     attribute="name",
@@ -195,8 +203,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                                     return_type="instance")
             if not result:
                 status = status_codes.UNKNOWN_OBJECT
-                message = _("Unknown share: {share}")
+                message, log_msg = _("Unknown share: {share}", log=True)
                 message = message.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             share = result[0]
             if not share.enabled:
@@ -212,14 +222,22 @@ class OTPmeFsP1(OTPmeFsServer1):
                 restore_share = backend.get_object(uuid=share.restore_share)
                 if not restore_share:
                     status = status_codes.UNKNOWN_OBJECT
-                    message, log_msg = _("Share to restore not found: {share}", log=True)
+                    message, log_msg = _("Restore share not found: {share}", log=True)
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
                     return self.build_response(status, message)
-                if not share.is_assigned_token(token_uuid=config.auth_token.uuid):
+                if not restore_share.is_assigned_token(token_uuid=config.auth_token.uuid):
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
+                    message = message.format(share=self.share)
+                    log_msg = log_msg.format(share=self.share)
+                    self.logger.warning(log_msg)
+                    return self.build_response(status, message)
+                host = restore_share.get_config_parameter("backup_server")
+                if not host:
+                    status = status_codes.UNKNOWN_OBJECT
+                    message, log_msg = _("Unable to find backup host for share: {share}", log=True)
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
@@ -229,21 +247,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 backup_key = restore_share.get_config_parameter("backup_key")
                 if not backup_key:
                     status = status_codes.UNKNOWN_OBJECT
-                    message = _("Unable to find backup key for share: {share}")
+                    message, log_msg = _("Unable to find backup key for share: {share}", log=True)
                     message = message.format(share=self.share)
+                    log_msg = log_msg.format(share=self.share)
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 self.aes_key = bytes.fromhex(backup_key)
             # Get user groups.
             default_group = stuff.get_users_default_group(self.username)
             groups = stuff.get_users_groups(self.username)
             if self.restore_share:
-                host = restore_share.get_config_parameter("backup_server")
-                if not host:
-                    status = status_codes.UNKNOWN_OBJECT
-                    message = _("Unable to find backup host for share: {share}")
-                    message = message.format(share=self.share)
-                    return self.build_response(status, message)
-                backup_key = restore_share.get_config_parameter("backup_key")
                 repo_id = f"share/{restore_share.site}/{restore_share.name}"
                 self.backupd_conn = self.get_backupd_conn(host, backup_key=backup_key)
                 try:
@@ -253,20 +266,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                                             groups=groups)
                 except Exception as e:
                     status = False
-                    log_msg = _("Failed to mount restore share: {share_name}: {e}", log=True)[1]
+                    message, log_msg = _("Failed to mount restore share: {share_name}: {e}", log=True)
+                    message = message.format(share_name=share.name, e=e)
                     log_msg = log_msg.format(share_name=share.name, e=e)
                     self.logger.warning(log_msg)
-                    message = _("Failed to mount restore share: {share_name}")
-                    message = message.format(share_name=share.name)
                     return self.build_response(status, message)
                 if self.encrypted:
                     try:
                         file_data = self.backupd_conn.read_cryptfs_settings()[1]
                     except Exception as e:
                         status = False
-                        message = _("Failed to read cryptfs settings from backup server: {share_name}")
-                        message = message.format(share_name=share.name)
-                        log_msg = _("Failed to read cryptfs settings from backup server: {share_name}: {e}", log=True)[1]
+                        message, log_msg = _("Failed to read cryptfs settings from backup server: {share_name}: {e}", log=True)
+                        message = message.format(share_name=share.name, e=e)
                         log_msg = log_msg.format(share_name=share.name, e=e)
                         self.logger.warning(log_msg)
                         return self.build_response(status, message)
@@ -285,9 +296,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                             buf += data
                     except Exception as e:
                         status = False
-                        message = _("Failed to decrypt cryptfs settings: {share_name}")
-                        message = message.format(share_name=share.name)
-                        log_msg = _("Failed to decrypt cryptfs settings: {share_name}: {e}", log=True)[1]
+                        message, log_msg = _("Failed to decrypt cryptfs settings: {share_name}: {e}", log=True)
+                        message = message.format(share_name=share.name, e=e)
                         log_msg = log_msg.format(share_name=share.name, e=e)
                         self.logger.warning(log_msg)
                         return self.build_response(status, message)
@@ -295,16 +305,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                         fs_data = load_cryptfs_settings(buf)
                     except Exception as e:
                         status = status_codes.UNKNOWN_OBJECT
-                        message = _("Failed to load cryptfs settings.")
-                        log_msg = _("Failed to load cryptfs settings: {e}", log=True)[1]
+                        message, log_msg = _("Failed to load cryptfs settings: {e}", log=True)
+                        message = message.format(e=e)
                         log_msg = log_msg.format(e=e)
                         self.logger.warning(log_msg)
                         return self.build_response(status, message)
             else:
                 if not os.path.exists(share.root_dir):
                     status = status_codes.UNKNOWN_OBJECT
-                    message = _("Unknown share root dir: {share}: {root_dir}")
+                    message, log_msg = _("Unknown share root dir: {share}: {root_dir}", log=True)
                     message = message.format(share=self.share, root_dir=share.root_dir)
+                    log_msg = log_msg.format(share=self.share, root_dir=share.root_dir)
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
                 and not share.is_master_password_token(config.auth_token.rel_path):
@@ -339,15 +351,19 @@ class OTPmeFsP1(OTPmeFsServer1):
                     group = backend.get_object(uuid=share.force_group_uuid)
                     if not group:
                         status = status_codes.UNKNOWN_OBJECT
-                        message = _("Unknown force group: {group_uuid}")
+                        message, log_msg = _("Unknown force group: {group_uuid}", log=True)
                         message = message.format(group_uuid=share.force_group_uuid)
+                        log_msg = log_msg.format(group_uuid=share.force_group_uuid)
+                        self.logger.warning(log_msg)
                         return self.build_response(status, message)
                     try:
                         self.force_group_gid = grp.getgrnam(group.name).gr_gid
                     except:
                         status = status_codes.UNKNOWN_OBJECT
-                        message = _("Force group does not exists: {group_name}")
+                        message, log_msg = _("Force group does not exists: {group_name}", log=True)
                         message = message.format(group_name=group.name)
+                        log_msg = log_msg.format(group_name=group.name)
+                        self.logger.warning(log_msg)
                         return self.build_response(status, message)
                 # Get read-only attribute.
                 self.read_only = share.read_only
@@ -479,7 +495,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             return self.build_response(status, message)
 
         elif not self.mounted:
-            message = _("No share mounted.")
+            message, log_msg = _("No share mounted.", log=True)
+            self.logger.warning(log_msg)
             status = status_codes.UNKNOWN_OBJECT
             return self.build_response(status, message)
 
@@ -488,15 +505,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                 share_key = command_args['share_key']
             except KeyError:
                 status = status_codes.UNKNOWN_OBJECT
-                message = _("Missing share key.")
+                message, log_msg = _("Missing share key.", log=True)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             if not self.mounted:
-                message = _("No share mounted.")
+                message, log_msg = _("No share mounted.", log=True)
+                self.logger.warning(log_msg)
                 status = status_codes.UNKNOWN_OBJECT
                 return self.build_response(status, message)
             if not self.encrypted:
                 status = status_codes.UNKNOWN_OBJECT
-                message = _("Share not encrypted.")
+                message, log_msg = _("Share not encrypted.", log=True)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             result = backend.search(object_type="share",
                                     attribute="name",
@@ -506,8 +526,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                                     return_type="instance")
             if not result:
                 status = status_codes.UNKNOWN_OBJECT
-                message = _("Unknown share: {share}")
+                message, log_msg = _("Unknown share: {share}", log=True)
                 message = message.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             share = result[0]
             if not share.is_master_password_token(config.auth_token.rel_path):

@@ -9074,8 +9074,10 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 default_genner = parameter_data['default_genner']
                 value = default_genner(config_object=self, callback=callback)
-            except:
-                pass
+            except Exception as e:
+                msg = _("Failed to generate default value: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
         if value is None:
             msg = _("Cannot determine default value.")
             return callback.error(msg)

@@ -1108,7 +1108,7 @@ def register_config():
             raise OTPmeException(msg)
         backup_key = backup_key.decode()
         return backup_key
-    def backup_key_default_genner():
+    def backup_key_default_genner(**kwargs):
         key = os.urandom(32)
         key = key.hex()
         return key

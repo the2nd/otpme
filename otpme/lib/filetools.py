@@ -381,7 +381,14 @@ def read_file(path, read_mode="r", compression=None):
     if _compression:
         read_mode = "rb"
     # Get flock.
-    fd = AtomicFileLock(path=file_real_path, mode=read_mode, read_lock=True)
+    fd = AtomicFileLock(path=file_real_path,
+                        mode=read_mode,
+                        read_lock=True,
+                        auto_open=False)
+    if not os.path.exists(file_real_path):
+        msg = _("File deleted while waiting for lock: {path}")
+        msg = msg.format(path=file_real_path)
+        raise FileNotFoundError(msg)
     # Read file content.
     try:
         file_content = fd.read()

@@ -297,7 +297,7 @@ class OTPmeClient(OTPmeClientBase):
         # FIXME: do we need per caller jobs?
         #self.jobs = {}
         # Set status.
-        self.connected = False
+        self._connected = False
 
         # Connect timeout.
         self.connect_timeout = connect_timeout
@@ -381,6 +381,21 @@ class OTPmeClient(OTPmeClientBase):
                 self.close()
                 self.cleanup()
                 raise
+
+    @property
+    def connected(self):
+        """ Reflect both the lifecycle flag and the underlying socket state. """
+        if not self._connected:
+            return False
+        if config.use_api:
+            return True
+        if self.connection is None:
+            return False
+        return self.connection.connected
+
+    @connected.setter
+    def connected(self, value):
+        self._connected = value
 
     def __getattr__(self, name):
         """ Map to protocol handler attributes. """
@@ -533,7 +548,7 @@ class OTPmeClient(OTPmeClientBase):
         # In API mode we have no connection.
         if config.use_api:
             # Set status.
-            self.connected = True
+            self._connected = True
             # Set protocol version from fake API connection.
             self.protocol = self.connection.protocol
             config.client_protocol = self.protocol
@@ -796,7 +811,7 @@ class OTPmeClient(OTPmeClientBase):
                 raise
 
         # Set status.
-        self.connected = True
+        self._connected = True
 
         return True
 
@@ -1075,7 +1090,7 @@ class OTPmeClient(OTPmeClientBase):
                                 encryption=enc_mod,
                                 enc_key=enc_key)
         if status_code == status_codes.SERVER_QUIT:
-            self.connected = False
+            self._connected = False
             msg = _("Connection closed by server: {response}")
             msg = msg.format(response=response)
             raise ConnectionError(msg)
@@ -2190,7 +2205,7 @@ class OTPmeClient(OTPmeClientBase):
             if self.agent_conn:
                 self.agent_conn.close()
         # Set status.
-        self.connected = False
+        self._connected = False
 
     def build_request(self, *args, **kwargs):
         return build_request(*args, **kwargs)

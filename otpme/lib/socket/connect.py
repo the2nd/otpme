@@ -402,5 +402,8 @@ class ConnectSocket(object):
             except ValueError:
                 pass
         # Close socket.
-        self._socket.close()
+        try:
+            self._socket.close()
+        except OSError:
+            pass
         self.remove_cert_files()
