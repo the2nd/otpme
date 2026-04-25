@@ -946,7 +946,6 @@ class InterProcessQueue(object):
                     pass
             def info(own):
                 queue = self.get_queue(own.name)
-                print(queue.queue_name)
         self.get_queue(name, autoclean=False)
         comm_handler = CommunicationHandler(name)
         return comm_handler

@@ -21,7 +21,13 @@ classifiers = [
   #"Development Status :: 4 - Beta",
   #"Development Status :: 5 - Production/Stable",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
+requires-python = ">=3.9"
 #version = "0.3.0a69"
 dynamic = ["version", "dependencies"]
 
@@ -34,40 +40,41 @@ Issues = "https://github.com/the2nd/otpme/issues"
 #Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
 
 [project.scripts]
-otpme-agent = "otpme.command:otpme_commands"
-otpme-cluster = "otpme.command:otpme_commands"
-otpme-accessgroup = "otpme.command:otpme_commands"
-otpme-auth = "otpme.command:otpme_commands"
-otpme-ca = "otpme.command:otpme_commands"
-otpme-client = "otpme.command:otpme_commands"
-otpme-controld = "otpme.command:otpme_commands"
-otpme-group = "otpme.command:otpme_commands"
-otpme-host = "otpme.command:otpme_commands"
-otpme-node = "otpme.command:otpme_commands"
-otpme-realm = "otpme.command:otpme_commands"
-otpme-role = "otpme.command:otpme_commands"
-otpme-session = "otpme.command:otpme_commands"
-otpme-site = "otpme.command:otpme_commands"
-otpme-token = "otpme.command:otpme_commands"
-otpme-tool = "otpme.command:otpme_commands"
-otpme-trash = "otpme.command:otpme_commands"
-otpme-unit = "otpme.command:otpme_commands"
-otpme-user = "otpme.command:otpme_commands"
-otpme-script = "otpme.command:otpme_commands"
-otpme-policy = "otpme.command:otpme_commands"
-otpme-dictionary = "otpme.command:otpme_commands"
-otpme-resolver = "otpme.command:otpme_commands"
-otpme-share = "otpme.command:otpme_commands"
-otpme-pool = "otpme.command:otpme_commands"
-otpme-mount = "otpme.command:otpme_commands"
-otpme-job = "otpme.command:otpme_commands"
-otpme-pinentry = "otpme.command:otpme_commands"
-otpme-backup = "otpme.command:otpme_commands"
-otpme-get-authorized-keys = "otpme.command:otpme_commands"
-setreadahead = "otpme.lib.setreadahead:main"
-otpme-install-manpages = "otpme.install_manpages:main"
-local-backup = "otpme.backup_cli:main"
-otpme-yk-piv = "otpme.yk_piv:main"
+otpme-agent = "otpme.bin.command:otpme_commands"
+otpme-cluster = "otpme.bin.command:otpme_commands"
+otpme-accessgroup = "otpme.bin.command:otpme_commands"
+otpme-auth = "otpme.bin.command:otpme_commands"
+otpme-ca = "otpme.bin.command:otpme_commands"
+otpme-client = "otpme.bin.command:otpme_commands"
+otpme-controld = "otpme.bin.command:otpme_commands"
+otpme-group = "otpme.bin.command:otpme_commands"
+otpme-host = "otpme.bin.command:otpme_commands"
+otpme-node = "otpme.bin.command:otpme_commands"
+otpme-realm = "otpme.bin.command:otpme_commands"
+otpme-role = "otpme.bin.command:otpme_commands"
+otpme-session = "otpme.bin.command:otpme_commands"
+otpme-site = "otpme.bin.command:otpme_commands"
+otpme-token = "otpme.bin.command:otpme_commands"
+otpme-tool = "otpme.bin.command:otpme_commands"
+otpme-trash = "otpme.bin.command:otpme_commands"
+otpme-unit = "otpme.bin.command:otpme_commands"
+otpme-user = "otpme.bin.command:otpme_commands"
+otpme-script = "otpme.bin.command:otpme_commands"
+otpme-policy = "otpme.bin.command:otpme_commands"
+otpme-dictionary = "otpme.bin.command:otpme_commands"
+otpme-resolver = "otpme.bin.command:otpme_commands"
+otpme-share = "otpme.bin.command:otpme_commands"
+otpme-pool = "otpme.bin.command:otpme_commands"
+otpme-device = "otpme.bin.command:otpme_commands"
+otpme-mount = "otpme.bin.command:otpme_commands"
+otpme-job = "otpme.bin.command:otpme_commands"
+otpme-pinentry = "otpme.bin.command:otpme_commands"
+otpme-backup = "otpme.bin.command:otpme_commands"
+otpme-get-authorized-keys = "otpme.bin.command:otpme_commands"
+setreadahead = "otpme.bin.setreadahead:main"
+otpme-install-manpages = "otpme.bin.install_manpages:main"
+local-backup = "otpme.bin.backup_cli:main"
+otpme-yk-piv = "otpme.bin.yk_piv:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "otpme.__version__"}
@@ -84,3 +91,20 @@ otpme = [
     "man/*.5",
     "man/*.7"
 ]
+
+[tool.ruff]
+# Vendored upstream code — do not lint.
+extend-exclude = ["otpme/lib/third_party"]
+
+[tool.ruff.lint]
+# Rules that have been swept clean across the first-party tree.
+# Enabled here to prevent the patterns from creeping back in.
+#   E722  bare 'except:' (catches BaseException incl. KeyboardInterrupt/SystemExit)
+#   B006  mutable default arguments (shared state across calls)
+#   B904  raise inside except without 'from' (loses exception chain)
+#   UP008 super(ClassName, self) instead of super()
+select = ["E722", "B006", "B904", "UP008"]
+
+[tool.ruff.lint.flake8-builtins]
+# OTPme exposes gettext's _() as a global builtin.
+builtins-ignorelist = ["_"]

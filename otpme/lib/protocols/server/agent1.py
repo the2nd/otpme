@@ -659,7 +659,6 @@ class OTPmeAgentP1(object):
                 msg = msg.format(shares=umounted_shares)
                 messages.append(msg)
                 message = "\n".join(messages)
-                print(message)
 
         elif command == "debug_session":
             try:

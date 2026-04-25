@@ -215,7 +215,6 @@ class OTPmeFS(fuse.Operations):
                     node = secrets.choice(remaining_nodes)
                     log_msg = _("Trying connection to node: {node}", log=True)[1]
                     log_msg = log_msg.format(node=node)
-                    print(log_msg)
                     self.logger.info(log_msg)
                     try:
                         self.fsd_conn = self.get_fsd_connection(node)

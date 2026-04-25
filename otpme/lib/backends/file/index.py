@@ -182,7 +182,7 @@ def create_db_indices(drop=False, desc=False,
         except Exception as e:
             msg = _("Index command failed: {e}")
             msg = msg.format(e=e)
-            print(msg)
+            logger.error(msg)
             session.rollback()
     for table_name in sorted(all_tables):
         columns = list(all_tables[table_name]['columns'])
@@ -212,7 +212,6 @@ def create_db_indices(drop=False, desc=False,
             asc_index_cmd = f"CREATE INDEX {asc_index_name} ON {table_name} ({column_list} ASC);"
             asc_index_cmd = text(asc_index_cmd)
         logger.debug(log_msg)
-        #print(asc_index_cmd)
         if asc_index_name in index_names:
             msg = _("Index name already used: {asc_index_name}")
             msg = msg.format(asc_index_name=asc_index_name)
@@ -223,7 +222,6 @@ def create_db_indices(drop=False, desc=False,
         except Exception as e:
             msg = _("Index command failed: {e}")
             msg = msg.format(e=e)
-            print(msg)
             session.rollback()
             raise OTPmeException(msg) from e
         finally:
@@ -246,15 +244,12 @@ def create_db_indices(drop=False, desc=False,
                 raise OTPmeException(msg)
             index_names.append(desc_index_name)
             logger.debug(log_msg)
-            #print(desc_index_cmd)
             try:
                 session.execute(desc_index_cmd)
             except Exception as e:
                 msg = _("Index command failed: {e}")
                 msg = msg.format(e=e)
-                print(msg)
                 session.rollback()
-                print(index_names)
                 raise OTPmeException(msg) from e
             finally:
                 session.commit()
@@ -282,9 +277,7 @@ def create_db_indices(drop=False, desc=False,
             except Exception as e:
                 msg = _("Index command failed: {e}")
                 msg = msg.format(e=e)
-                print(msg)
                 session.rollback()
-                print(index_names)
                 raise OTPmeException(msg) from e
             finally:
                 session.commit()
@@ -305,15 +298,12 @@ def create_db_indices(drop=False, desc=False,
                     msg = msg.format(desc_index_name=desc_index_name)
                     raise OTPmeException(msg)
                 index_names.append(desc_index_name)
-                #print(msg)
                 try:
                     session.execute(desc_index_cmd)
                 except Exception as e:
                     msg = _("Index command failed: {e}")
                     msg = msg.format(e=e)
-                    print(msg)
                     session.rollback()
-                    print(index_names)
                     raise OTPmeException(msg) from e
                 finally:
                     session.commit()
@@ -337,7 +327,6 @@ def create_db_indices(drop=False, desc=False,
                 msg = msg.format(trgm_index_name=trgm_index_name)
                 raise OTPmeException(msg)
             index_names.append(trgm_index_name)
-            #print(msg)
             # Trigram index cannot be created within transaction.
             session.execute("COMMIT")
             try:
@@ -345,6 +334,4 @@ def create_db_indices(drop=False, desc=False,
             except Exception as e:
                 msg = _("Index command failed: {e}")
                 msg = msg.format(e=e)
-                print(msg)
-                print(index_names)
                 raise OTPmeException(msg) from e
