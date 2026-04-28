@@ -247,6 +247,14 @@ cmd_help = {
                                 },
                 },
 
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token list_acls {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show assigend ACLs of token'),
+                                },
+                },
+
     'remove_orphans'   : {
                     '_cmd_usage_help' : _('Usage: otpme-token remove_orphans {token}'),
                     'cmd'   :   '<|object|>',

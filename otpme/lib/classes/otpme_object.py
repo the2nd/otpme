@@ -5212,7 +5212,7 @@ class OTPmeObject(OTPmeBaseObject):
         if checked_roles is None:
             checked_roles = []
         if token_uuid in self.tokens:
-            return True
+            return self.uuid
         for x_uuid in self.roles:
             if (x_uuid, token_uuid) in checked_roles:
                 break
@@ -5222,7 +5222,7 @@ class OTPmeObject(OTPmeBaseObject):
             if not role.enabled:
                 continue
             if role.is_assigned_token(token_uuid, checked_roles=checked_roles):
-                return True
+                return role.uuid
             checked_roles.append((x_uuid, token_uuid))
         return False
 
@@ -5235,7 +5235,7 @@ class OTPmeObject(OTPmeBaseObject):
         if checked_roles is None:
             checked_roles = []
         if host_uuid in self.hosts:
-            return True
+            return self.uuid
         for x_uuid in self.roles:
             if (x_uuid, host_uuid) in checked_roles:
                 break
@@ -5245,7 +5245,7 @@ class OTPmeObject(OTPmeBaseObject):
             if not role.enabled:
                 continue
             if role.is_assigned_host(host_uuid, checked_roles=checked_roles):
-                return True
+                return role.uuid
             checked_roles.append((x_uuid, host_uuid))
         return False
 
@@ -5258,7 +5258,7 @@ class OTPmeObject(OTPmeBaseObject):
         if checked_roles is None:
             checked_roles = []
         if device_uuid in self.devices:
-            return True
+            return self.uuid
         for x_uuid in self.roles:
             if (x_uuid, device_uuid) in checked_roles:
                 break
@@ -5268,7 +5268,7 @@ class OTPmeObject(OTPmeBaseObject):
             if not role.enabled:
                 continue
             if role.is_assigned_device(device_uuid, checked_roles=checked_roles):
-                return True
+                return role.uuid
             checked_roles.append((x_uuid, device_uuid))
         return False
 
@@ -5281,7 +5281,7 @@ class OTPmeObject(OTPmeBaseObject):
         if checked_roles is None:
             checked_roles = []
         if role_uuid in self.roles:
-            return True
+            return self.uuid
         for x_uuid in self.roles:
             if (x_uuid, role_uuid) in checked_roles:
                 break
@@ -5291,7 +5291,7 @@ class OTPmeObject(OTPmeBaseObject):
             if not role.enabled:
                 continue
             if role.is_assigned_role(role_uuid):
-                return True
+                return role.uuid
             checked_roles.append((x_uuid, role_uuid))
         return False
 
@@ -5966,6 +5966,38 @@ class OTPmeObject(OTPmeBaseObject):
         self.update_index('enabled', False)
 
         return self._cache(callback=callback)
+
+    def list_acls(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Get assigned ACLs of object. """
+        if config.auth_token and not config.auth_token.is_admin():
+            msg = _("You must be admin for this command.")
+            return callback.error(msg)
+        acl_search_regex = f"{self.type}:{self.uuid}:*"
+        result = backend.search(attribute="acl",
+                                value=acl_search_regex,
+                                return_raw_acls=True,
+                                return_type="uuid")
+        acls = []
+        for x_uuid in result['acls']:
+            x_object = backend.get_oid(x_uuid)
+            for raw_acl in result['acls'][x_uuid]:
+                _acl = otpme_acl.decode(raw_acl)
+                if _acl.owner_uuid != self.uuid:
+                    continue
+                _acl_string = f"{x_object} {_acl.id}"
+                if _caller == "CLIENT":
+                    callback.send(_acl_string)
+                acls.append(_acl_string)
+
+        if _caller == "CLIENT":
+            return callback.ok()
+
+        return callback.ok(acls)
 
     @object_lock()
     def enable_acl_inheritance(
@@ -8618,9 +8650,10 @@ class OTPmeObject(OTPmeBaseObject):
         add_result = super().add(verbose_level=verbose_level,
                                                     callback=callback,
                                                     **kwargs)
-        if run_policies:
-            self._run_post_add_policies(callback=callback, _caller=_caller,
-                                        verbose_level=verbose_level)
+        # FIXME: post add policies are run by run_pre_post_add_policies() decorator.
+        #if run_policies:
+        #    self._run_post_add_policies(callback=callback, _caller=_caller,
+        #                                verbose_level=verbose_level)
         # Set enabled status.
         if enabled and not internal_user:
             self.enable(force=True,
@@ -8778,6 +8811,19 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    def add_to_trash(
+        self,
+        deleted_by: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        if deleted_by is None:
+            if config.auth_token:
+                deleted_by = f"token:{config.auth_token.rel_path}"
+            else:
+                deleted_by = "API"
+        trash.add(self.oid, deleted_by, callback=callback)
+
     @object_lock(full_lock=True)
     @backend.transaction
     def delete(
@@ -8801,12 +8847,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         if add_to_trash:
-            if deleted_by is None:
-                if config.auth_token:
-                    deleted_by = f"token:{config.auth_token.rel_path}"
-                else:
-                    deleted_by = "API"
-            trash.add(self.oid, deleted_by, callback=callback)
+            self.add_to_trash(deleted_by=deleted_by, callback=callback)
 
         # Make sure all signatures are revoked before deleting the object.
         if self.auto_revoke and len(self.signatures) > 0:
@@ -8854,10 +8895,11 @@ class OTPmeObject(OTPmeBaseObject):
         acl_list = []
         for x in self.acls:
             _acl = otpme_acl.decode(x)
-            acl_oid = backend.get_oid(object_types=['role', 'user'],
+            acl_oid = backend.get_oid(object_types=['role', 'token'],
                                         uuid=_acl.owner_uuid)
-            if not acl_oid:
-                acl_list.append(x)
+            if acl_oid:
+                continue
+            acl_list.append(x)
         return acl_list
 
     @check_acls(acls=['remove:orphans'])

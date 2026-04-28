@@ -3,7 +3,6 @@
 import os
 import errno
 import atexit
-import socket
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -13,7 +12,6 @@ try:
 except Exception:
     pass
 
-from otpme.lib import net
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import multiprocessing
@@ -121,6 +119,7 @@ def get_connection(**kwargs):
 
 def get(daemon, ping=True, **kwargs):
     """ Get connection to OTPme daemons. """
+    from otpme.lib import net
     global connections
 
     kwargs['daemon'] = daemon
@@ -308,7 +307,7 @@ def get(daemon, ping=True, **kwargs):
             msg = _("Unable to get port of daemon: {daemon}")
             msg = msg.format(daemon=daemon)
             raise OTPmeException(msg) from err
-        socket_uri = f"tcp://{node}:{port}"
+        socket_uri = net.format_socket_uri("tcp", node, port)
         conn_kwargs['socket_uri'] = socket_uri
 
     agent_user = None
@@ -468,11 +467,8 @@ def get(daemon, ping=True, **kwargs):
                 logger.info(log_msg)
                 connect_addresses = None
             if not connect_addresses:
-                try:
-                    addr = socket.gethostbyname(site_fqdn)
-                except Exception:
-                    pass
-                else:
+                addr = net.get_ip(site_fqdn)
+                if addr:
                     connect_addresses = [addr]
         else:
             try:
@@ -496,11 +492,8 @@ def get(daemon, ping=True, **kwargs):
                 logger.info(log_msg)
                 connect_addresses = None
             if not connect_addresses:
-                try:
-                    addr = socket.gethostbyname(site_fqdn)
-                except Exception:
-                    pass
-                else:
+                addr = net.get_ip(site_fqdn)
+                if addr:
                     connect_addresses = [addr]
         else:
             if not config.site_address:
@@ -517,7 +510,7 @@ def get(daemon, ping=True, **kwargs):
         # Set daemon port.
         daemon_port = config.default_ports[daemon]
         # Set socket URI.
-        socket_uri = f"tcp://{connect_address}:{daemon_port}"
+        socket_uri = net.format_socket_uri("tcp", connect_address, daemon_port)
         conn_kwargs['socket_uri'] = socket_uri
         log_msg = _("Trying connection to: {socket_uri}", log=True)[1]
         log_msg = log_msg.format(socket_uri=socket_uri)

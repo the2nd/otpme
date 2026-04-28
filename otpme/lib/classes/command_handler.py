@@ -2733,6 +2733,7 @@ class CommandHandler(object):
     def handle_mass_object_add(self, command, subcommand):
         """ Handle mass object add command. """
         import csv
+        from otpme.lib.register import register_modules
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
@@ -2760,6 +2761,8 @@ class CommandHandler(object):
             #header = next(reader)
             #print("Got header from csv file:", header)
             csv_data = list(reader)
+        if config.use_api:
+            register_modules()
         self.init()
         mgmt_client = self.get_mgmt_client()
         mgmt_cmd = "mass_object_add"
@@ -3977,7 +3980,8 @@ class CommandHandler(object):
     def do_sync(self, sync_type="objects", resync=False, offline=False,
         sync_older_objects=False, ignore_changed_objects=False, sync_last_used=False,
         skip_object_deletion=False, max_tries=config.hostd_sync_retry_count,
-        realm=None, site=None, sync_cache_on_failure=True, socket_uri=None):
+        realm=None, site=None, sync_cache_on_failure=True, socket_uri=None,
+        check_connected_site=True):
         """ Do a manual hostd sync. """
         from otpme.lib import nsscache
         from otpme.lib import protocols
@@ -4011,7 +4015,8 @@ class CommandHandler(object):
                                     realm=realm, site=site,
                                     socket_uri=socket_uri,
                                     timeout=None,
-                                    interactive=False)
+                                    interactive=False,
+                                    check_connected_site=check_connected_site)
             sync_proto = sync_conn.protocol
         except Exception as e:
             sync_conn = None

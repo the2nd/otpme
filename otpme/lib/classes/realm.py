@@ -1254,7 +1254,9 @@ class Realm(OTPmeObject):
             msg = msg.format(site_address=site_address)
             callback.send(msg)
             try:
-                net.configure_floating_ip(site_address, interface="eth0", gratuitous_arp=False)
+                net.configure_floating_ip(site_address,
+                                        interface=config.floating_ip_iface,
+                                        gratuitous_arp=False)
             except AddressAlreadyAssigned as e:
                 raise
             except Exception as e:
@@ -1442,9 +1444,8 @@ class Realm(OTPmeObject):
         #for parameter in config.valid_config_params:
         #    default_value = config.valid_config_params[parameter]['default']
         #    self.set_config_param(parameter, default_value)
-
-        # Write objects.
-        cache.flush()
+        ## Write objects.
+        #cache.flush()
 
         # Add realm default policies. We do not use self.add_default_policies()
         # here because only our own realm will get default policies.

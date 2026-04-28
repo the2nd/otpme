@@ -319,7 +319,7 @@ class TokenaclsPolicy(Policy):
         user_acl_method = getattr(hook_object, acl_method)
 
         # Get user ACLs from policy and token itself.
-        user_acls = self.user_acls + token.user_acls
+        user_acls = set(self.user_acls + token.user_acls)
 
         # Add user ACLs.
         for acl in user_acls:
@@ -347,7 +347,7 @@ class TokenaclsPolicy(Policy):
         token_acl_method = getattr(token, acl_method)
 
         # Get token ACLs from policy and token itself.
-        token_acls = self.token_acls + token.token_acls
+        token_acls = set(self.token_acls + token.token_acls)
 
         # Add ACL to new token to access itself.
         for acl in token_acls:
@@ -365,42 +365,30 @@ class TokenaclsPolicy(Policy):
             if not acl_status:
                 return callback.error(exception)
 
-        # Add token ACLs.
-        if hook_object.default_token:
-            x_token = backend.get_object(object_type="token",
-                                    uuid=hook_object.default_token)
-            if x_token:
-                for acl in self.token_acls:
-                    exception = _("Failed to {action} token ACL")
-                    exception = exception.format(action=action)
-                    # Add ACL to new token to be accessed by existing token.
-                    try:
-                        token_acl_method(acl=acl,
-                                        owner_uuid=x_token.uuid,
-                                        verify_acls=False,
-                                        callback=callback)
-                    except Exception as e:
-                        acl_status = False
-                        exception = f"{exception}: {e}"
+        if not hook_object.default_token:
+            return callback.ok()
 
-                    if not acl_status:
-                        return callback.error(exception)
+        # Get default token.
+        x_token = backend.get_object(object_type="token",
+                                uuid=hook_object.default_token)
+        if not x_token:
+            return callback.ok()
 
-                    # Get ACL method from token.
-                    x_token_acl_method = getattr(x_token, acl_method)
+        for acl in self.token_acls:
+            exception = _("Failed to {action} token ACL")
+            exception = exception.format(action=action)
+            # Add ACL to new token to be accessed by default token.
+            try:
+                token_acl_method(acl=acl,
+                                owner_uuid=x_token.uuid,
+                                verify_acls=False,
+                                callback=callback)
+            except Exception as e:
+                acl_status = False
+                exception = f"{exception}: {e}"
 
-                    # Add ACL to existing token to be accessed by new token.
-                    try:
-                        x_token_acl_method(acl=acl,
-                                        owner_uuid=token.uuid,
-                                        verify_acls=False,
-                                        callback=callback)
-                    except Exception as e:
-                        acl_status = False
-                        exception = f"{exception}: {e}"
-
-                    if not acl_status:
-                        return callback.error(exception)
+            if not acl_status:
+                return callback.error(exception)
 
         return callback.ok()
 

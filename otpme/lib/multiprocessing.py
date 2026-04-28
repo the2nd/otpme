@@ -648,8 +648,13 @@ def get_sync_manager(name, proc_title=None, user=None, group=None):
         proc_title = "multiprocessing manager"
         if name:
             proc_title = f"{name} ({proc_title})"
-    # Gen uniq socket path.
-    socket_id = stuff.gen_secret(len=32)
+    # Gen uniq socket path. Keep the suffix short — AF_UNIX paths
+    # are capped at 108 bytes on Linux (sockaddr_un.sun_path), so
+    # /var/run/otpme/sockets/manager/<name>-<id> can blow that limit
+    # quickly. 8 bytes / 16 hex chars is plenty to avoid collisions
+    # (FS permissions are what protects the socket, not path
+    # obscurity).
+    socket_id = stuff.gen_secret(len=8)
     socket_dir = config.sockets_dir + "/manager"
     socket_path = socket_dir + "/" + name + "-" + socket_id
     if not os.path.exists(socket_dir):
@@ -944,8 +949,6 @@ class InterProcessQueue(object):
                     queue.unlink()
                 except posix_ipc.PermissionsError:
                     pass
-            def info(own):
-                queue = self.get_queue(own.name)
         self.get_queue(name, autoclean=False)
         comm_handler = CommunicationHandler(name)
         return comm_handler

@@ -259,10 +259,15 @@ def create_freeradius_conf():
 
     # otpme virtualhost
     server otpme {
+        # IPv4 wildcard. FreeRADIUS does not have a single "any-family"
+        # listen, so we declare v4 and v6 sockets separately.
         listen {
-            # listen on localhost only by default
             ipaddr = *
-
+            port = 1812
+            type = auth
+        }
+        listen {
+            ipv6addr = ::
             port = 1812
             type = auth
         }
@@ -340,8 +345,11 @@ def create_clients_conf():
         for address in client.addresses:
             counter += 1
             client_name = f"{client.name}-{counter}"
+            # IPv6 literal/CIDR -> ipv6addr; else ipv4addr (also works for
+            # IPv4 CIDR like '10.0.0.0/8').
+            addr_directive = "ipv6addr" if ":" in str(address) else "ipv4addr"
             lines.append(f"client {address}"+"{")
-            lines.append(f"\tipv4addr\t\t= {address}")
+            lines.append(f"\t{addr_directive}\t\t= {address}")
             lines.append(f"\tsecret\t\t= {client.secret}")
             lines.append(f"\tshortname\t= {client_name}")
             lines.append("}")

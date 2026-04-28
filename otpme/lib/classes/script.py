@@ -942,7 +942,7 @@ class Script(OTPmeObject):
             return callback.error(msg)
 
         if not self.exists():
-            return callback.error(_("Script does not exist exists."))
+            return callback.error(_("Script does not exist."))
 
         # Get parent object to check ACLs.
         parent_object = self.get_parent_object()

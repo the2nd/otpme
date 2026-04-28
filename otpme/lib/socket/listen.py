@@ -18,6 +18,7 @@ except Exception:
 
 from otpme.lib import re
 from otpme.lib import log
+from otpme.lib import net
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import filetools
@@ -125,25 +126,23 @@ class ListenSocket(object):
 
         # Handle TCP sockets.
         elif self.socket_uri.startswith("tcp://"):
-            # Get protocol.
-            self.protocol = re.sub('^([^:]*):.*$', r'\1', self.socket_uri)
-            # Get listen address.
-            self.address = re.sub(f'^{self.protocol}://([^:]*):([0-9]*)$',
-                                r'\1',
-                                self.socket_uri)
-            # Get listen port.
-            self.port = int(re.sub(f'^{self.protocol}://([^:]*):([0-9]*)$',
-                                r'\2',
-                                self.socket_uri))
+            self.protocol, self.address, self.port = net.parse_socket_uri(self.socket_uri)
             # Set socket tuple.
             self.socket = (self.address, self.port)
 
-            # Create socket.
+            # Create socket. Pick AF_INET6 for IPv6 literals (incl. '::').
+            family = net.get_socket_family(self.address)
             try:
-                self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._socket = socket.socket(family, socket.SOCK_STREAM)
                 # NOTE: Prevent "socket.error: [Errno 98] Address already in use":
                 #       http://stackoverflow.com/questions/4465959/python-errno-98-address-already-in-use
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # Dual-stack on '::' so we accept both v6 and v4-mapped clients.
+                if family == socket.AF_INET6:
+                    try:
+                        self._socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                    except (OSError, AttributeError):
+                        pass
             except socket.error as e:
                 log_msg = _("Failed to create socket. Error code: {code}, Error message: {message}", log=True)[1]
                 log_msg = log_msg.format(code=e[0], message=e[1])
@@ -484,7 +483,9 @@ class ListenSocket(object):
                 except Exception as ssl_error:
                     # We have client info now, so log it with the error
                     if self.protocol == "tcp":
-                        client_address, client_port = new_client_socket
+                        # accept() returns 2-tuple for v4 and 4-tuple for v6 --
+                        # only the first two elements are (host, port).
+                        client_address, client_port = new_client_socket[:2]
                         peer_cert = new_connection.getpeercert(binary_form=True)
                         peer_cn = None
                         if peer_cert:
@@ -537,8 +538,9 @@ class ListenSocket(object):
             client_id = stuff.gen_secret(len=32)
             client = f"socket://{client_proc}:{client_pid}:{client_user}:{client_id}"
         else:
-            client_address, client_port = new_client_socket
-            client = f"{client_address}:{client_port}"
+            # v4 accept() yields a 2-tuple, v6 yields a 4-tuple.
+            client_address, client_port = new_client_socket[:2]
+            client = net.format_host_port(client_address, client_port)
 
         return new_connection, client
 

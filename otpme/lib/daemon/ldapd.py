@@ -98,8 +98,13 @@ class LdapDaemon(OTPmeDaemon):
                     raise
 
             for x in self.listen_sockets:
-                address = x.split(":")[0]
-                port = x.split(":")[1]
+                # Format: "address:port"; v6 addresses are bracketed: "[::]:389"
+                if x.startswith("["):
+                    end = x.find("]")
+                    address = x[1:end]
+                    port = x[end+2:]
+                else:
+                    address, port = x.rsplit(":", 1)
                 self.ldap_server = LDAPServer(address=address, port=port)
                 self.ldap_server.listen(use_ssl=True, cert=self.cert_file, key=self.key_file)
 

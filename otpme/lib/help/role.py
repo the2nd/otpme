@@ -218,6 +218,13 @@ cmd_help = {
                                 },
                 },
 
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_acls {role}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show assigend ACLs of role'),
+                                },
+                },
 
     'move'    : {
                     '_cmd_usage_help' : _('Usage: otpme-role move [--keep-acls] {role} {unit}'),

@@ -232,15 +232,15 @@ class OTPmeDaemon(object):
             msg = msg.format(name=self.name)
             raise OTPmeException(msg) from None
         # Get listen addresses from config.
-        if config.site_address == "127.0.0.1":
-            c_listen_sockets = f'127.0.0.1:{listen_port}'
-            c_listen_sockets = [c_listen_sockets]
+        from otpme.lib import net
+        if config.site_address in ("127.0.0.1", "::1"):
+            c_listen_sockets = [net.format_host_port(config.site_address, listen_port)]
         else:
             try:
                 c_listen_sockets = list(config.listen_sockets[self.name])
             except Exception:
-                c_listen_sockets = f'0.0.0.0:{listen_port}'
-                c_listen_sockets = [c_listen_sockets]
+                # Default: dual-stack wildcard via IPv6.
+                c_listen_sockets = [f"[::]:{listen_port}"]
 
         if self.cert:
             if self.cert != config.host_data['cert']:
@@ -273,13 +273,13 @@ class OTPmeDaemon(object):
                                     realm=config.realm,
                                     return_type="instance")
             site = result[0]
-            site_listen_socket = f"{site.address}:{listen_port}"
-            found_listen_on_any = False
-            for x in c_listen_sockets:
-                if "0.0.0.0:" not in x:
-                    continue
-                found_listen_on_any = True
-                break
+            site_listen_socket = net.format_host_port(site.address, listen_port)
+            # A wildcard listen (v4 or dual-stack v6) already covers the
+            # site/floating IP -- no need to add a separate listener.
+            wildcard_prefixes = ("0.0.0.0:", "[::]:", "[0:0:0:0:0:0:0:0]:")
+            found_listen_on_any = any(
+                x.startswith(wildcard_prefixes) for x in c_listen_sockets
+            )
             if not found_listen_on_any:
                 if site_listen_socket not in c_listen_sockets:
                     c_listen_sockets.append(site_listen_socket)
@@ -318,11 +318,18 @@ class OTPmeDaemon(object):
 
     def setup_sockets(self, use_ssl=True, ssl_verify_client=True):
         """ Setup sockets. """
+        from otpme.lib import net
         for x in self.listen_sockets:
-            address = x.split(":")[0]
-            port = x.split(":")[1]
+            # Format is "address:port"; for IPv6 the address must be
+            # bracketed: "[::1]:8080".
+            if x.startswith("["):
+                end = x.find("]")
+                address = x[1:end]
+                port = x[end+2:]
+            else:
+                address, port = x.rsplit(":", 1)
             # Set listen socket URI.
-            socket_uri = f"tcp://{address}:{port}"
+            socket_uri = net.format_socket_uri("tcp", address, port)
             # Add sync socket.
             self.add_socket(socket_uri,
                             handler=self.conn_handler,

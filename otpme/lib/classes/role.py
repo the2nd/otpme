@@ -612,6 +612,14 @@ commands = {
                     },
                 },
             },
+    'list_acls'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_acls',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     '_show_supported_acls'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -1235,7 +1243,7 @@ class Role(OTPmeObject):
         ):
         """ Delete role. """
         if not self.exists():
-            return callback.error(_("Role does not exist exists."))
+            return callback.error(_("Role does not exist."))
 
         base_roles = config.get_base_objects("role")
         if self.name in base_roles:

@@ -288,7 +288,7 @@ def load(schema_file):
         object_config = object_config[len(object_type)+1:]
         object_config = object_config.replace('\n',' ')
         object_config = object_config.replace('\t', ' ')
-        object_config = re.sub('(.*\))[^\)]*$', r'\1', object_config)
+        object_config = re.sub(r'(.*\))[^\)]*$', r'\1', object_config)
 
         if object_type == "objectclass":
             oc = ObjectClass(object_config)

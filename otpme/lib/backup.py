@@ -30,9 +30,8 @@ commands = {
     'restore_object'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'args'              : [
-                                        'object_data',
-                                        ],
+                    'args'              : ['object_data'],
+                    'oargs'             : ['force'],
                     'job_type'          : 'process',
                     },
                 },
@@ -79,13 +78,15 @@ def backup_object(object_id, decrypt=False):
     file_content = json.dumps(file_content)
     return file_content
 
-def restore_object(object_data, callback=default_callback, **kwargs):
+def restore_object(object_data, force=False, callback=default_callback, **kwargs):
     """ Restore object. """
     object_id = object_data['object_id']
     object_id = oid.get(object_id)
     msg = _("Restoring: {object_id}")
     msg = msg.format(object_id=object_id)
     callback.send(msg)
+
+    object_config = object_data['object_config']
 
     # Class getter for backup object.
     class_getter, \
@@ -95,13 +96,12 @@ def restore_object(object_data, callback=default_callback, **kwargs):
     if getter_args:
         for x in getter_args:
             try:
-                val = x_oc[x]
+                val = object_config[x]
             except KeyError:
                 continue
             para = getter_args[x]
             _getter_args[para] = val
     oc = class_getter(**_getter_args)
-    object_config = object_data['object_config']
     object_uuid = object_data['object_uuid']
 
     x_object = backend.get_object(uuid=object_uuid)
@@ -119,16 +119,19 @@ def restore_object(object_data, callback=default_callback, **kwargs):
             msg = msg.format(user_object=user_object)
             return callback.error(msg)
     x_object = backend.get_object(object_id)
-    if x_object:
-        msg = _("Object exists. Overwrite?:")
-        answer = callback.ask(msg)
-        if answer.lower() != "y":
-            return False
+    if not force:
+        if x_object:
+            msg = _("Object exists. Overwrite?:")
+            answer = callback.ask(msg)
+            if answer.lower() != "y":
+                return False
     try:
         backend.write_config(object_id=object_id,
                     object_config=object_config,
                     full_index_update=True,
                     full_data_update=True,
+                    full_ldif_update=True,
+                    full_acl_update=True,
                     encrypt=False,
                     cluster=True)
     except Exception as e:

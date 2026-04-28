@@ -98,7 +98,7 @@ class LoginHandler(object):
 
         if node:
             port = config.default_ports['authd']
-            socket_uri = f"tcp://{node}:{port}"
+            socket_uri = net.format_socket_uri("tcp", node, port)
 
         # Try to get connection to authd.
         try:

@@ -1174,26 +1174,20 @@ class Host(OTPmeHost, OTPmeDevice):
                     token_uuids.append(admin_token.uuid)
 
         return_attributes = ['default_token']
-        for user_uuid in user_uuids:
-            result = backend.search(object_type="user",
-                                    attribute="uuid",
-                                    value=user_uuid,
-                                    return_attributes=return_attributes)
-            if not result:
-                continue
-            default_token_uuid = result[0]
-            token_uuids.append(default_token_uuid)
+        result = backend.search(object_type="user",
+                                attribute="uuid",
+                                values=user_uuids,
+                                return_attributes=return_attributes)
+        if result:
+            token_uuids += result
 
         return_attributes = ['destination_token']
-        for token_uuid in list(token_uuids):
-            result = backend.search(object_type="user",
-                                    attribute="uuid",
-                                    value=user_uuid,
-                                    return_attributes=return_attributes)
-            if not result:
-                continue
-            destination_token_uuid = result[0]
-            token_uuids.append(destination_token_uuid)
+        result = backend.search(object_type="token",
+                                attribute="uuid",
+                                values=token_uuids,
+                                return_attributes=return_attributes)
+        if result:
+            token_uuids += result
 
         if user_uuids:
             include_uuids['user'] = list(set(user_uuids))

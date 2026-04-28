@@ -176,8 +176,8 @@ def run(script_type, script_path, realm=None, site=None, options=None,
             # script's environment.
             if i.startswith("[") and i.endswith("]"):
                 # Remove surrounding '[]' from variable name.
-                var_name = re.sub('^\[', '', i)
-                var_name = re.sub('\]$', '', var_name)
+                var_name = re.sub(r'^\[', '', i)
+                var_name = re.sub(r'\]$', '', var_name)
                 # Try to set bash variable (uppercase) from the dictionary.
                 try:
                     # Get var type.

@@ -1422,16 +1422,16 @@ class User(OTPmeObject):
             user_group_uuid = object_data['user_group']
         except KeyError:
             msg = _("Backup data of user does not contain users default group.")
-            callback.error(msg)
-        else:
-            user_group = backend.get_object(uuid=user_group_uuid)
-            if not user_group:
-                msg = _("Unknown group: {user_group_uuid}")
-                msg = msg.format(user_group_uuid=user_group_uuid)
-                return callback.error(msg)
-            user_group.add_default_group_user(user_uuid=object_uuid,
-                                            callback=callback,
-                                            verify_acls=False)
+            return callback.error(msg)
+
+        user_group = backend.get_object(uuid=user_group_uuid)
+        if not user_group:
+            msg = _("Unknown group: {user_group_uuid}")
+            msg = msg.format(user_group_uuid=user_group_uuid)
+            return callback.error(msg)
+        user_group.add_default_group_user(user_uuid=object_uuid,
+                                        callback=callback,
+                                        verify_acls=False)
 
     def __init__(
         self,
@@ -3528,14 +3528,18 @@ class User(OTPmeObject):
 
             # Check if token is valid.
             token_valid = False
+            match_uuid = None
             if access_group:
-                if access_group.is_assigned_token(token_uuid):
+                match_uuid = access_group.is_assigned_token(token_uuid)
+                if match_uuid:
                     token_valid = True
             elif host:
-                if host.is_assigned_token(token_uuid):
+                match_uuid = host.is_assigned_token(token_uuid)
+                if match_uuid:
                     token_valid = True
             elif client:
-                if client.is_assigned_token(token_uuid):
+                match_uuid = client.is_assigned_token(token_uuid)
+                if match_uuid:
                     token_valid = True
             else:
                 token_valid = True
@@ -3555,9 +3559,13 @@ class User(OTPmeObject):
 
             # Append token to list if not already added.
             if not quiet:
-                log_msg = _("Selecting token '{token_path}' based on accessgroup '{access_group_name}'.", log=True)[1]
-                log_msg = log_msg.format(token_path=token_rel_path, access_group_name=access_group.name)
-                logger.debug(log_msg)
+                if match_uuid:
+                    match_oid = backend.get_oid(uuid=match_uuid, instance=True)
+                    log_msg = _("Selecting token '{token_path}' based on {match_type} '{match_name}'.", log=True)[1]
+                    log_msg = log_msg.format(token_path=token_rel_path,
+                                            match_type=match_oid.object_type,
+                                            match_name=match_oid.name)
+                    logger.debug(log_msg)
             if destination_token:
                 tokens.append(uuid)
             else:
@@ -4453,6 +4461,9 @@ class User(OTPmeObject):
                 msg = msg.format(token_type=token_type, e=e)
                 return callback.error(msg)
 
+            if replace:
+                force = replace
+
             # Add the new token.
             token_add_status = new_token.add(uuid=token_uuid,
                                     owner_uuid=self.uuid,
@@ -4465,7 +4476,7 @@ class User(OTPmeObject):
                                     no_token_infos=no_token_infos,
                                     destination_token_uuid=destination_token_uuid,
                                     verbose_level=verbose_level,
-                                    force=replace,
+                                    force=force,
                                     callback=callback,
                                     _caller=_caller,
                                     **kwargs)

@@ -1789,7 +1789,7 @@ class Client(OTPmeClientObject):
         ):
         """ Delete client. """
         if not self.exists():
-            return callback.error("Client does not exist exists.")
+            return callback.error("Client does not exist.")
 
         base_clients = config.get_base_objects("client")
         if self.name in base_clients:

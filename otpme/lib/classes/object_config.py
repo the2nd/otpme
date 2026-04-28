@@ -339,13 +339,13 @@ class ObjectConfig(object):
             return status, value_type, value
 
         value_match = False
-        header1_re = re.compile("^[a-zA-Z0-9_]*[\[].*[\]]*$", re.MULTILINE)
+        header1_re = re.compile(r"^[a-zA-Z0-9_]*[\[].*[\]]*$", re.MULTILINE)
         if header1_re.match(value):
             status = False
             value_match = True
             separator_braces = "[]"
         else:
-            header2_re = re.compile("^[a-zA-Z0-9_]*[\{].*[\}]*$", re.MULTILINE)
+            header2_re = re.compile(r"^[a-zA-Z0-9_]*[\{].*[\}]*$", re.MULTILINE)
             if header2_re.match(value):
                 status = True
                 value_match = True

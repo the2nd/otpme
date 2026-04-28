@@ -152,9 +152,9 @@ class OTPmeLDIFHandler(object):
         ous = None
 
         if o.type == "realm":
-            dc = re.sub('[\.]', ',dc=', ".".join(o.name.split(".")[1:]))
+            dc = re.sub(r'[\.]', ',dc=', ".".join(o.name.split(".")[1:]))
         else:
-            dc = re.sub('[\.]', ',dc=', o.realm)
+            dc = re.sub(r'[\.]', ',dc=', o.realm)
         dc = re.sub('^', 'dc=', dc)
 
         if o.site:

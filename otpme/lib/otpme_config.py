@@ -608,6 +608,9 @@ class OTPmeConfig(object):
         self.register_config_var("use_socket", bool, False)
         self.register_config_var("socket_auth", bool, False)
 
+        self.register_config_var("floating_ip_iface", str, None,
+                                config_file_parameter="FLOATING_IP_IFACE")
+
         self.register_config_var("authd_workers", int, 16,
                                 config_file_parameter="AUTHD_WORKERS")
 
@@ -1229,7 +1232,9 @@ class OTPmeConfig(object):
 
         for x in self.default_listen_ports:
             x_port = self.default_listen_ports[x]
-            x_socket = f"0.0.0.0:{x_port}"
+            # Listen on the IPv6 wildcard with V6ONLY=0; that's a single
+            # dual-stack socket that accepts both v4 and v6 clients.
+            x_socket = f"[::]:{x_port}"
             self.listen_sockets[x] = [x_socket]
 
     def find_conf_para_by_var(self, var_name):

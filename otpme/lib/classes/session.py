@@ -130,7 +130,7 @@ def register():
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'name' ]
     read_oid_schema = [ 'realm', 'site', 'name' ]
-    session_oid_re = 'session|([a-fA-F\d]{32})'
+    session_oid_re = r'session|([a-fA-F\d]{32})'
     oid.register_oid_schema(object_type="session",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

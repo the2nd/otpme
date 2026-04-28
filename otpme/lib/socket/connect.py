@@ -15,6 +15,7 @@ except Exception:
     pass
 
 from otpme.lib import re
+from otpme.lib import net
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import filetools
@@ -74,22 +75,28 @@ class ConnectSocket(object):
 
         # Handle TCP sockets.
         elif self.socket_uri.startswith("tcp://"):
-            # Get protocol.
-            self.protocol = re.sub('^([^:]*):.*$', r'\1', self.socket_uri)
-            # Get listen address.
-            self.address = re.sub(f'^{self.protocol}://([^:]*):([0-9]*)$',
-                                    r'\1',
-                                    self.socket_uri)
-            # Get listen port.
-            self.port = int(re.sub(f'^{self.protocol}://([^:]*):([0-9]*)$',
-                                    r'\2',
-                                    self.socket_uri))
+            self.protocol, self.address, self.port = net.parse_socket_uri(self.socket_uri)
             # Set socket tuple.
             self.socket = (self.address, self.port)
 
-            # Create socket.
+            # Resolve target so we know which family to open. For literals
+            # getaddrinfo just echoes them back; for hostnames we get both
+            # v4 and v6 candidates and pick the first that works later.
             try:
-                self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                infos = socket.getaddrinfo(self.address, self.port,
+                                            0, socket.SOCK_STREAM)
+            except socket.gaierror as e:
+                msg = _("Failed to resolve {addr}: {error}")
+                msg = msg.format(addr=self.address, error=e)
+                raise OTPmeException(msg) from e
+            # Prefer v6 over v4 (RFC 6724 ordering).
+            infos.sort(key=lambda r: 0 if r[0] == socket.AF_INET6 else 1)
+            family, socktype, proto, _canon, sockaddr = infos[0]
+            self._gai_candidates = infos
+            self.socket = sockaddr[:2]
+
+            try:
+                self._socket = socket.socket(family, socktype, proto)
             except socket.error as msg:
                 msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
                 msg = msg.format(code=msg[0], message=msg[1])

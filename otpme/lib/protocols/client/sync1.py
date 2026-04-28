@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import sys
 import time
+import signal
 import setproctitle
 
 try:
@@ -102,8 +102,12 @@ class OTPmeSyncP1(OTPmeClient1):
         self.logger = config.logger
         # Get host type we run on.
         self.host_type = config.host_data['type']
-        # Mass add childs.
-        self.mass_add_procs = {}
+        # Persistent worker pool used by merge_sync_cache(). Populated
+        # for the duration of a sync; replaces the original
+        # fork-per-object pattern.
+        self.mass_add_workers = []
+        self.mass_add_work_queue = None
+        self.mass_add_result_queue = None
         # Sync progress.
         self.sync_progress = {}
         self.failed_objects = multiprocessing.get_list()
@@ -637,7 +641,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         log_msg = _("Receiving remote object ({object_counter}/{object_count}): {object_id}", log=True)[1]
                         log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, object_id=object_id)
                     if config.debug_level() > 2:
-                        self.logger.debug(log_msg)
+                        self.logger.info(log_msg)
                     else:
                         print_processed_msg = False
                         x_count = object_counter / 10
@@ -907,15 +911,15 @@ class OTPmeSyncP1(OTPmeClient1):
             add_list[object_type].append(object_id)
             object_count += 1
 
-        def log_progress(x_oid, child, object_counter, object_count):
+        def log_progress(x_oid, status, object_counter, object_count):
             if config.debug_level() > 2:
-                if child.exitcode == 0:
+                if status == "added":
                     log_msg = _("Added object ({object_counter}/{object_count}): {x_oid}", log=True)[1]
                     log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)
                 else:
                     log_msg = _("Updated object ({object_counter}/{object_count}): {x_oid}", log=True)[1]
                     log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)
-                self.logger.debug(log_msg)
+                self.logger.info(log_msg)
             else:
                 print_processed_msg = False
                 x_count = object_counter / 10
@@ -930,109 +934,205 @@ class OTPmeSyncP1(OTPmeClient1):
 
         # Merge all updates.
         object_counter = 0
-        prev_object_type = None
         update_realm_ca_data = False
         #procs = int(os.cpu_count() / 2)
         procs = os.cpu_count()
-        for object_type in add_order:
-            if prev_object_type is None:
-                prev_object_type = object_type
-            # Get object list.
-            try:
-                object_list = sorted(add_list[object_type])
-            except KeyError:
-                object_list = []
-            # Skip object types not in list.
-            if not object_list:
-                continue
-            if not object_type in valid_object_types:
-                log_msg = _("Got object type to sync that is not known for this host type. This is most likley a bug: {object_type}", log=True)[1]
-                log_msg = log_msg.format(object_type=object_type)
-                self.logger.critical(log_msg)
-                continue
-            # Add objects to progress calculation.
-            self.update_sync_progress(realm=realm,
-                                    site=site,
-                                    sync_type="objects",
-                                    object_count=len(object_list))
-            x_add_order = {}
-            for x_oid in object_list:
-                x_path_len = len(x_oid.path.split("/"))
-                x_add_order[x_oid] = {}
-                x_add_order[x_oid]['path_len'] = x_path_len
 
-            x_sort = lambda x: x_add_order[x]['path_len']
-            x_add_order_sorted = sorted(x_add_order, key=x_sort)
-            for object_id in x_add_order_sorted:
-                # Increase progress.
-                self.update_sync_progress(realm=realm,
-                                        site=site,
-                                        sync_type="objects")
-                # Get object config from sync cache.
-                object_config = self.sync_cache[object_id]
+        # Spawn worker pool exactly once. Workers loop on
+        # work_queue.recv() and exit on a {"stop": True} sentinel.
+        # Keeping a persistent pool avoids the per-object fork cost
+        # of the original implementation.
+        #
+        # We use OTPme's MessageQueue (POSIX IPC mqueue, kernel-
+        # managed). No Python feeder thread, no manager process,
+        # signal-aware recv (raises ExitOnSignal on EINTR). Switched
+        # from SyncManager().Queue() because that caused unbounded
+        # worker RSS growth — likely glibc heap fragmentation from
+        # the many small allocations per RPC roundtrip.
+        #
+        # POSIX mqueue messages are JSON, capped at 8KB and a 10-
+        # message buffer by default. To stay well below that limit
+        # we only ship the object's full_oid string; workers read
+        # the actual object_config from the on-disk sync cache (via
+        # SyncCache.read_object() which does NOT populate the
+        # in-memory _cache).
+        from otpme.lib import stuff as _stuff_mod
+        from otpme.lib.multiprocessing import MessageQueue
+        queue_id = _stuff_mod.gen_uuid()
+        self.mass_add_work_queue = MessageQueue(name="sync_work",
+                                                identifier=queue_id)
+        self.mass_add_result_queue = MessageQueue(name="sync_result",
+                                                identifier=queue_id)
+        self.mass_add_workers = []
+        for i in range(procs):
+            w = multiprocessing.start_process(
+                                name=f"sync_worker_{i}",
+                                target=self._process_object_worker_loop,
+                                target_args=(self.mass_add_work_queue,
+                                            self.mass_add_result_queue,
+                                            realm, site,
+                                            own_realm, own_site,
+                                            sync_older_objects),
+                                daemon=True,
+                                start=True)
+            self.mass_add_workers.append(w)
 
-                if not object_config:
-                    continue
+        pushed = 0
+        results_seen = 0
 
-                while True:
-                    for x_oid in list(self.mass_add_procs):
-                        child = self.mass_add_procs[x_oid]
-                        if child.is_alive():
-                            continue
-                        child.join()
-                        self.mass_add_procs.pop(x_oid)
-                        if child.exitcode == 0 or child.exitcode == 100:
-                            object_counter += 1
-                            log_progress(x_oid, child, object_counter, object_count)
-                        else:
-                            log_msg = _("Failed to process object: {x_oid}", log=True)[1]
-                            log_msg = log_msg.format(x_oid=x_oid)
-                            self.logger.warning(log_msg)
-                    time.sleep(0.01)
-                    if prev_object_type != object_type:
-                        if len(self.mass_add_procs) > 0:
-                            continue
-                        prev_object_type = object_type
-                    if len(self.mass_add_procs) < procs:
-                        break
-
-                proc_child = multiprocessing.start_process(name="process_object",
-                                        target=self.process_object,
-                                        target_args=(object_id,
-                                                    object_config,
-                                                    realm,
-                                                    site,
-                                                    own_realm,
-                                                    own_site,
-                                                    sync_older_objects,
-                                                    local_sync_list,),
-                                        start=False,
-                                        daemon=True)
-                proc_child.start()
-                self.mass_add_procs[object_id] = proc_child
-
-                if object_id.object_type == "ca":
-                    update_realm_ca_data = True
-
-
-        while True:
-            for x_oid in list(self.mass_add_procs):
-                child = self.mass_add_procs[x_oid]
-                if child.is_alive():
-                    continue
-                child.join()
-                self.mass_add_procs.pop(x_oid)
-                if child.exitcode == 0 or child.exitcode == 100:
+        def _drain_results(timeout=0):
+            """Pull as many completed results as available; update
+            progress and the shared `results_seen` counter."""
+            nonlocal object_counter, results_seen
+            drained = 0
+            while True:
+                # First call uses the requested timeout; subsequent
+                # calls use timeout=0 (non-blocking) to drain the
+                # rest of the queue without blocking.
+                t = timeout if drained == 0 else 0
+                try:
+                    msg = self.mass_add_result_queue.recv(timeout=t)
+                except TimeoutReached:
+                    break
+                except (QueueClosed, ExitOnSignal):
+                    break
+                if msg is None:
+                    break
+                drained += 1
+                results_seen += 1
+                x_oid_str = msg.get("oid")
+                status = msg.get("status")
+                try:
+                    x_oid = oid.get(object_id=x_oid_str) if x_oid_str else None
+                except Exception:
+                    x_oid = x_oid_str
+                if status in ("added", "updated"):
                     object_counter += 1
-                    log_progress(x_oid, child, object_counter, object_count)
+                    log_progress(x_oid, status, object_counter, object_count)
+                elif status == "skipped":
+                    pass
                 else:
                     log_msg = _("Failed to process object: {x_oid}", log=True)[1]
                     log_msg = log_msg.format(x_oid=x_oid)
                     self.logger.warning(log_msg)
-            time.sleep(0.01)
-            if len(self.mass_add_procs) > 0:
-                continue
-            break
+            return drained
+
+        def _wait_until_drained(target_pushed):
+            """Block until results_seen catches up to target_pushed,
+            OR all workers have exited unexpectedly (in which case
+            report the lost items and bail out)."""
+            while results_seen < target_pushed:
+                drained = _drain_results(timeout=0.5)
+                if drained == 0:
+                    alive = sum(1 for w in self.mass_add_workers
+                                if w.is_alive())
+                    if alive == 0:
+                        _drain_results(timeout=0)
+                        lost = target_pushed - results_seen
+                        if lost > 0:
+                            log_msg = _("Lost {n} sync object(s): all "
+                                        "workers exited unexpectedly.", log=True)[1]
+                            log_msg = log_msg.format(n=lost)
+                            self.logger.critical(log_msg)
+                        return False
+            return True
+
+        # Push items in add_order, holding a barrier whenever the
+        # object_type changes — same behaviour as the original code,
+        # which guaranteed e.g. all units finish before any users
+        # start so that parent-references always exist before
+        # children depend on them.
+        prev_object_type = None
+        try:
+            for object_type in add_order:
+                # Get object list.
+                try:
+                    object_list = sorted(add_list[object_type])
+                except KeyError:
+                    object_list = []
+                # Skip object types not in list.
+                if not object_list:
+                    continue
+                if not object_type in valid_object_types:
+                    log_msg = _("Got object type to sync that is not known for this host type. This is most likley a bug: {object_type}", log=True)[1]
+                    log_msg = log_msg.format(object_type=object_type)
+                    self.logger.critical(log_msg)
+                    continue
+                # Barrier: drain previous object_type completely
+                # before pushing the next type.
+                if prev_object_type is not None and object_type != prev_object_type:
+                    if not _wait_until_drained(pushed):
+                        break
+                prev_object_type = object_type
+                # Add objects to progress calculation.
+                self.update_sync_progress(realm=realm,
+                                        site=site,
+                                        sync_type="objects",
+                                        object_count=len(object_list))
+                x_add_order = {}
+                for x_oid in object_list:
+                    x_path_len = len(x_oid.path.split("/"))
+                    x_add_order[x_oid] = {}
+                    x_add_order[x_oid]['path_len'] = x_path_len
+
+                x_sort = lambda x: x_add_order[x]['path_len']
+                x_add_order_sorted = sorted(x_add_order, key=x_sort)
+                for object_id in x_add_order_sorted:
+                    # Increase progress.
+                    self.update_sync_progress(realm=realm,
+                                            site=site,
+                                            sync_type="objects")
+                    # Skip object_ids the sync_cache doesn't know
+                    # about. Use the membership check (no disk I/O,
+                    # no caching) instead of fetching the config in
+                    # the parent — workers read the actual config
+                    # from disk via SyncCache.read_object().
+                    if object_id not in self.sync_cache:
+                        continue
+
+                    self.mass_add_work_queue.send({"oid": object_id.full_oid},
+                                                timeout=60)
+                    pushed += 1
+                    # Opportunistically drain so the result queue
+                    # doesn't grow without bound.
+                    _drain_results(timeout=0)
+
+                    if object_id.object_type == "ca":
+                        update_realm_ca_data = True
+
+            # All work queued — wait for the rest to finish.
+            _wait_until_drained(pushed)
+        finally:
+            # Send stop sentinels and wait for workers to exit.
+            # NB: don't name the loop var '_' — that would shadow the
+            # gettext _() global.
+            if self.mass_add_work_queue is not None:
+                for _w in self.mass_add_workers:
+                    try:
+                        self.mass_add_work_queue.send({"stop": True},
+                                                    timeout=5)
+                    except Exception:
+                        pass
+            for w in self.mass_add_workers:
+                w.join(timeout=10)
+                if w.is_alive():
+                    w.terminate()
+                    w.join(timeout=5)
+            # Close + unlink the kernel queues.
+            for q in (self.mass_add_work_queue, self.mass_add_result_queue):
+                if q is None:
+                    continue
+                try:
+                    q.close()
+                except Exception:
+                    pass
+                try:
+                    q.unlink()
+                except Exception:
+                    pass
+            self.mass_add_workers = []
+            self.mass_add_work_queue = None
+            self.mass_add_result_queue = None
 
         # Update realm CA data if the master node  received a changed CA.
         if update_realm_ca_data:
@@ -1042,16 +1142,129 @@ class OTPmeSyncP1(OTPmeClient1):
                 realm = backend.get_object(uuid=config.realm_uuid)
                 realm.update_ca_data(verify_acls=False)
 
-    def process_object(self, object_id, object_config, realm, site,
-        own_realm, own_site, sync_older_objects, local_sync_list):
+    def _process_object_worker_loop(self, work_queue, result_queue,
+        realm, site, own_realm, own_site, sync_older_objects):
+        """ Long-lived worker: receive {"oid": oid_str} messages from
+        work_queue, look up the on-disk sync-cache config, run
+        _process_one_object, send {"oid": oid_str, "status": status}
+        back on result_queue. Exits cleanly when a {"stop": True}
+        sentinel is received.
+
+        Every iteration is wrapped in a broad try/except so any
+        failure still produces ONE result on the queue. Without
+        that, the parent's _wait_until_drained() would otherwise
+        hang waiting for a result that's never coming. """
+        import gc
+        from otpme.lib import cache as _cache_mod
+        from otpme.lib import backend as _backend_mod
+
         proctitle = setproctitle.getproctitle()
-        proctitle = f"{proctitle}: Sync object {object_id}"
+        proctitle = f"{proctitle}: Sync worker"
         setproctitle.setproctitle(proctitle)
 
+        # Per-process atfork: set up DB connections, log locks, etc.
+        # Done ONCE per worker, not per task.
         multiprocessing.atfork()
-        def exit_child(exit_code):
+
+        # The signal handler used to call os._exit(1), which could
+        # leave shared state corrupt if it fired mid-IPC. With
+        # POSIX mqueue the recv() syscall returns ExitOnSignal on
+        # EINTR, so we just need a flag-setting handler and an
+        # ExitOnSignal-aware loop.
+        stop_flag = [False]
+        def signal_handler(_signal, frame):
+            if config.active_transactions:
+                return
+            stop_flag[0] = True
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        # Periodic worker-local cleanup: long-lived workers accumulate
+        # state in unbounded module-level dicts (instance_cache_read_times)
+        # and per-process LRU caches (process_cache). Flushing these
+        # every N items keeps RSS bounded.
+        clean_every = 100
+        processed_since_clean = 0
+
+        try:
+            while True:
+                if stop_flag[0]:
+                    return
+                try:
+                    msg = work_queue.recv(timeout=1)
+                except TimeoutReached:
+                    continue
+                except (QueueClosed, ExitOnSignal):
+                    return
+                if msg is None:
+                    continue
+                if msg.get("stop"):
+                    return
+                oid_str = msg.get("oid")
+                try:
+                    object_id = oid.get(object_id=oid_str)
+                except Exception as e:
+                    log_msg = _("Sync worker received bad oid: {oid}: {e}", log=True)[1]
+                    log_msg = log_msg.format(oid=oid_str, e=e)
+                    self.logger.critical(log_msg)
+                    try:
+                        result_queue.send({"oid": oid_str, "status": "failed"},
+                                        timeout=5)
+                    except Exception:
+                        pass
+                    continue
+                # Read object_config from the on-disk sync cache.
+                # SyncCache.read_object() does NOT populate the
+                # in-memory _cache, so per-worker memory stays flat.
+                try:
+                    object_config = self.sync_cache.read_object(object_id)
+                except Exception as e:
+                    log_msg = _("Failed to read sync cache config: {object_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id, e=e)
+                    self.logger.critical(log_msg)
+                    object_config = None
+                if not object_config:
+                    try:
+                        result_queue.send({"oid": oid_str, "status": "skipped"},
+                                        timeout=5)
+                    except Exception:
+                        pass
+                    continue
+                try:
+                    status = self._process_one_object(object_id,
+                                                    object_config,
+                                                    realm, site,
+                                                    own_realm, own_site,
+                                                    sync_older_objects)
+                except Exception as e:
+                    log_msg = _("Unhandled error in sync worker: {object_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id, e=e)
+                    self.logger.critical(log_msg)
+                    status = "failed"
+                try:
+                    result_queue.send({"oid": oid_str, "status": status},
+                                    timeout=5)
+                except Exception:
+                    pass
+                processed_since_clean += 1
+                if processed_since_clean >= clean_every:
+                    try:
+                        _backend_mod.instance_cache_read_times.clear()
+                        _cache_mod.clear(cache_type=_cache_mod.PROCESS_CACHE,
+                                        keep_modified=True,
+                                        update_clear_time=False,
+                                        quiet=True)
+                    except Exception:
+                        pass
+                    gc.collect()
+                    processed_since_clean = 0
+        finally:
             multiprocessing.cleanup()
-            sys.exit(exit_code)
+
+    def _process_one_object(self, object_id, object_config, realm, site,
+        own_realm, own_site, sync_older_objects):
+        """ Process one sync object. Returns one of: "added",
+        "updated", "skipped", "failed". """
         # Make sure parent object exists on our site.
         if object_id.object_type in config.tree_object_types:
             try:
@@ -1060,13 +1273,13 @@ class OTPmeSyncP1(OTPmeClient1):
                 log_msg = _("Failed to get parent object UUID: {object_id}: {e}", log=True)[1]
                 log_msg = log_msg.format(object_id=object_id, e=e)
                 self.logger.critical(log_msg)
-                exit_child(1)
+                return "failed"
             parent_object = backend.get_object(uuid=parent_object_uuid)
             if not parent_object:
                 log_msg = _("Unable to sync object with missing parent object: {object_id}: {parent_object_uuid}", log=True)[1]
                 log_msg = log_msg.format(object_id=object_id, parent_object_uuid=parent_object_uuid)
                 self.logger.warning(log_msg)
-                exit_child(1)
+                return "failed"
 
         # Load instance.
         try:
@@ -1077,7 +1290,7 @@ class OTPmeSyncP1(OTPmeClient1):
             log_msg = _("Failed to load new object: {object_id}: {e}", log=True)[1]
             log_msg = log_msg.format(object_id=object_id, e=e)
             self.logger.critical(log_msg)
-            exit_child(1)
+            return "failed"
 
         if object_id.object_type == "user":
             user_site = object_id.site
@@ -1094,7 +1307,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         log_msg = _("User already exists on our site: {object_id}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id)
                         self.logger.warning(log_msg)
-                        exit_child(1)
+                        return "failed"
                 # Prevent sync of user with duplicate uidNumber.
                 found_duplicate = False
                 user_uidnumber = new_object.get_attribute("uidNumber")
@@ -1114,7 +1327,7 @@ class OTPmeSyncP1(OTPmeClient1):
                     break
                 if found_duplicate:
                     self.logger.warning(log_msg)
-                    exit_child(1)
+                    return "failed"
 
         if object_id.object_type == "group":
             group_site = object_id.site
@@ -1130,7 +1343,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         log_msg = _("Group already exists on our site: {object_id}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id)
                         self.logger.warning(log_msg)
-                        exit_child(1)
+                        return "failed"
                 # Prevent sync of group with duplicate gidNumber.
                 found_duplicate = False
                 group_gidnumber = new_object.get_attribute("gidNumber")
@@ -1150,13 +1363,13 @@ class OTPmeSyncP1(OTPmeClient1):
                     break
                 if found_duplicate:
                     self.logger.warning(log_msg)
-                    exit_child(1)
+                    return "failed"
 
         if object_id.object_type == "token":
             # Skip blacklisted user tokens.
             user_name = object_id.rel_path.split("/")[0]
             if user_name in self.blacklisted_users:
-                exit_child(200)
+                return "skipped"
             # Make sure we update LDIF/nsscache.
             self.update_nsscache(new_object)
 
@@ -1169,7 +1382,7 @@ class OTPmeSyncP1(OTPmeClient1):
             log_msg = _("Received invalid object: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.critical(log_msg)
-            exit_child(1)
+            return "failed"
 
         # We must prevent syncing of duplicate UUIDs between sites.
         # Within a normal sync the UUID may already exist at the same
@@ -1184,7 +1397,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 log_msg = _("Ignoring duplicate UUID: {new_object_uuid}: {current_uuid_object} <> {object_id}", log=True)[1]
                 log_msg = log_msg.format(new_object_uuid=new_object.uuid, current_uuid_object=current_uuid_object, object_id=object_id)
                 self.logger.warning(log_msg)
-                exit_child(1)
+                return "failed"
 
         # Skip new object that is older than the current one.
         if current_uuid_object is not None:
@@ -1198,16 +1411,12 @@ class OTPmeSyncP1(OTPmeClient1):
                                 log_msg = _("Ignoring older object from peer: {object_id}", log=True)[1]
                                 log_msg = log_msg.format(object_id=object_id)
                                 self.logger.warning(log_msg)
-                                exit_child(1)
+                                return "failed"
 
         # Removed old object with different OID (e.g. object was
         # moved).
         if current_uuid_object is not None:
             if new_object.oid.full_oid != current_uuid_object.oid.full_oid:
-                try:
-                    local_sync_list.pop(current_uuid_object.oid.full_oid)
-                except KeyError:
-                    pass
                 # Make sure we update LDIF/nsscache.
                 if new_object.type == "token":
                     self.update_nsscache(current_uuid_object)
@@ -1277,9 +1486,8 @@ class OTPmeSyncP1(OTPmeClient1):
                         log_msg = log_msg.format(object_id=object_id, e=e)
                         self.logger.critical(log_msg)
         if current_uuid_object is None:
-            exit_child(0)
-        else:
-            exit_child(100)
+            return "added"
+        return "updated"
 
 
     def remove_deleted_objects(self, realm, site, local_sync_list,

@@ -1628,7 +1628,7 @@ class Ca(OTPmeObject):
         ):
         """ Delete CA. """
         if not self.exists():
-            return callback.error(_("CA does not exist exists."))
+            return callback.error(_("CA does not exist."))
 
         # Make sure we do not delete a base CA
         base_cas = config.get_base_objects("ca")

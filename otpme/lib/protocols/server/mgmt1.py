@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import sys
 import time
 import signal
 import pprint
@@ -22,7 +21,6 @@ from otpme.lib import re
 from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import json
-from otpme.lib import stuff
 from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backup
@@ -102,8 +100,12 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.use_cached_objects = False
         # Max jobs per client.
         self.max_jobs = 3
-        # Mass add procs.
-        self.mass_add_procs = {}
+        # Mass add worker pool (populated for the duration of a
+        # mass_object_add call; signal handlers reach into them to
+        # drain on SIGTERM/SIGINT).
+        self.mass_add_workers = []
+        self.mass_add_work_queue = None
+        self.mass_add_result_queue = None
         # Our PID.
         self.pid = None
         # Event to handle jobs.
@@ -482,7 +484,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return job_status, job_response
 
         # FIXME: How to implement sending of stop_job command in OTPmeClient()
-        #        without responseing to keepalive (MSG) messages!?!
+        #        without responding to keepalive (MSG) messages!?!
         # We need a short keepalive interval to catch stop_job
         # commands from peer.
         keepalive_count = 0
@@ -620,23 +622,10 @@ class OTPmeMgmtP1(OTPmeServer1):
     def add_object(self, object_type, object_name,
         unit=None, callback=default_callback,
         force=False, **kwargs):
-        def signal_handler(_signal, frame):
-            """ Handle signals. """
-            if config.active_transactions:
-                return
-            multiprocessing.cleanup()
-            if _signal == 15:
-                os._exit(1)
-            if _signal == 2:
-                os._exit(1)
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
 
         proctitle = setproctitle.getproctitle()
         proctitle = f"{proctitle}: Mass object add {object_type}: {object_name}"
         setproctitle.setproctitle(proctitle)
-
-        multiprocessing.atfork()
 
         # Get logger.
         logger = config.logger
@@ -654,7 +643,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             logger.warning(log_msg)
             msg = _("Error loading object class.")
             callback.error(msg)
-            sys.exit(1)
+            return False
         try:
             o = oc(path=None,
                     name=object_name,
@@ -668,7 +657,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             logger.warning(log_msg)
             msg = _("Error loading object.")
             callback.error(msg)
-            sys.exit(1)
+            return False
         # Add object.
         try:
             add_result = o.add(force=force, callback=callback, **kwargs)
@@ -678,19 +667,19 @@ class OTPmeMgmtP1(OTPmeServer1):
             logger.warning(log_msg)
             msg = msg.format(name=object_name, error=e)
             callback.error(msg)
-            sys.exit(1)
+            return False
         finally:
             callback.only_errors = False
             multiprocessing.cleanup()
         if add_result:
             callback.write_modified_objects()
-            sys.exit(0)
+            return True
         msg, log_msg = _("Error adding object: {name} (See previous errors)", log=True)
         log_msg = log_msg.format(name=object_name)
         logger.warning(log_msg)
         msg = msg.format(name=object_name)
         callback.error(msg)
-        sys.exit(1)
+        return False
 
     def mass_object_add(self, csv_data, procs=None, verify_csv=False,
         callback=default_callback, **kwargs):
@@ -698,31 +687,16 @@ class OTPmeMgmtP1(OTPmeServer1):
         org_termin_signal_handler = signal.getsignal(signal.SIGTERM)
         org_int_signal_handler = signal.getsignal(signal.SIGINT)
         def signal_handler(_signal, frame):
-            """ Handle signals. """
-            if self.mass_add_procs:
-                msg = _("Waiting for {count} add jobs to finish.")
-                msg = msg.format(count=len(self.mass_add_procs))
-                callback.send(msg)
-            # Kill add processes.
-            stuff.kill_pid(pid=os.getpid(),
-                        recursive=True,
-                        dont_kill_start_pid=True)
-            # Wait for add processes to finish.
-            while True:
-                childs_running = False
-                for x_oid in list(self.mass_add_procs):
-                    child = self.mass_add_procs[x_oid]
-                    if child.is_alive():
-                        childs_running = True
-                        continue
-                    child.join()
-                    try:
-                        self.mass_add_procs.pop(x_oid)
-                    except KeyError:
-                        pass
-                    time.sleep(0.1)
-                if not childs_running:
-                    break
+            """ Handle signals.
+
+            Tell each worker to stop via the None sentinel, give them
+            up to 10 s to drain whatever object they're currently
+            adding, then SIGTERM stragglers and wait again. """
+            workers = list(self.mass_add_workers)
+            for w in workers:
+                while w.is_alive():
+                    w.terminate()
+                    w.join(timeout=1)
             # Update data revision.
             config.update_data_revision()
             if _signal == 15:
@@ -1062,131 +1036,303 @@ class OTPmeMgmtP1(OTPmeServer1):
         msg = _("Processing objects...")
         callback.send(msg)
 
-        prev_object_type = None
-        start_time = time.time()
-        objects_add_counter = 0
-        objects_count = len(objects_to_add)
+        # Bake the per-object idrange-derived uidNumber/gidNumber into
+        # method_kwargs in CSV order so workers don't have to share the
+        # ldif_ids pop()-state. Skipped entries (those that fail to get
+        # an ID) are reported and dropped from the work plan.
+        force = kwargs.get('force', False)
+        work_plan = []
         for x in objects_to_add:
-            object_type = x[0]
-            object_name = x[1]
-            unit = x[2]
-            method_kwargs = x[3]
-            idrange_policy = x[4]
-            if prev_object_type is None:
-                prev_object_type = object_type
-            if object_type == "user":
-                if idrange_policy:
+            object_type, object_name, unit, method_kwargs, idrange_policy = x
+            if object_type in ("user", "group") and idrange_policy:
+                attr = "uidNumber" if object_type == "user" else "gidNumber"
+                ldif_attributes = method_kwargs.get('ldif_attributes', [])
+                if not any(e.startswith(f"{attr}=") for e in ldif_attributes):
                     try:
-                        ldif_attributes = method_kwargs['ldif_attributes']
-                    except KeyError:
-                        ldif_attributes = []
-                    if not any(entry.startswith("uidNumber=") for entry in ldif_attributes):
-                        try:
-                            uidnumbers = ldif_ids[idrange_policy]['user']
-                        except KeyError:
-                            msg = _("Unable to get uidNumber for {type}: {name}")
-                            msg = msg.format(type=object_type, name=object_name)
-                            callback.error(msg)
-                            continue
-                        uidnumber = uidnumbers.pop(0)
-                        ldif_attributes.append(f'uidNumber={uidnumber}')
-                        method_kwargs['ldif_attributes'] = ldif_attributes
-            if object_type == "group":
-                if idrange_policy:
-                    try:
-                        ldif_attributes = method_kwargs['ldif_attributes']
-                    except KeyError:
-                        ldif_attributes = []
-                    if not any(entry.startswith("gidNumber=") for entry in ldif_attributes):
-                        try:
-                            gidnumbers = ldif_ids[idrange_policy]['group']
-                        except KeyError:
-                            msg = _("Unable to get uidNumber for {type}: {name}")
-                            msg = msg.format(type=object_type, name=object_name)
-                            callback.error(msg)
-                            continue
-                        gidnumber = gidnumbers.pop(0)
-                        ldif_attributes.append(f'gidNumber={gidnumber}')
-                        method_kwargs['ldif_attributes'] = ldif_attributes
+                        ids_pool = ldif_ids[idrange_policy][object_type]
+                        new_id = ids_pool.pop(0)
+                    except (KeyError, IndexError):
+                        msg = _("Unable to get {attr} for {type}: {name}")
+                        msg = msg.format(attr=attr, type=object_type, name=object_name)
+                        callback.error(msg)
+                        continue
+                    ldif_attributes = list(ldif_attributes) + [f'{attr}={new_id}']
+                    method_kwargs['ldif_attributes'] = ldif_attributes
+            work_plan.append((object_type, object_name, method_kwargs))
 
-            last_keepalive = time.time()
+        objects_count = len(work_plan)
+        objects_add_counter = 0
+        start_time = time.time()
+
+        if objects_count == 0:
+            msg = _("Added {count} objects.").format(count=0)
+            return callback.ok(msg)
+
+        # Spawn worker pool exactly once. Workers loop on
+        # work_queue.recv() and exit on a {"stop": True} sentinel.
+        # The shared callback object is fork-copied into each
+        # worker.
+        #
+        # We use OTPme's MessageQueue (POSIX IPC mqueue, kernel-
+        # managed). No Python feeder thread, no manager process,
+        # signal-aware recv (raises ExitOnSignal on EINTR). Switched
+        # from SyncManager().Queue() because that caused unbounded
+        # worker RSS growth — likely glibc heap fragmentation from
+        # the many small allocations per RPC roundtrip.
+        #
+        # POSIX mqueue messages are JSON, capped at 8KB and a 10-
+        # message buffer by default. Items here are small dicts
+        # (object_type/name + primitive method_kwargs) so they fit
+        # well within those limits.
+        from otpme.lib import stuff as _stuff_mod
+        from otpme.lib.multiprocessing import MessageQueue
+        queue_id = _stuff_mod.gen_uuid()
+        self.mass_add_work_queue = MessageQueue(name="mass_add_work",
+                                                identifier=queue_id)
+        self.mass_add_result_queue = MessageQueue(name="mass_add_result",
+                                                identifier=queue_id)
+        self.mass_add_workers = []
+        pushed = 0
+        for i in range(procs):
+            w = multiprocessing.start_process(
+                                name=f"mass_add_worker_{i}",
+                                target=self._mass_add_worker_loop,
+                                target_args=(self.mass_add_work_queue,
+                                            self.mass_add_result_queue,
+                                            force, callback),
+                                daemon=True,
+                                start=True)
+            self.mass_add_workers.append(w)
+
+        def _drain_results(timeout=0):
+            """Pull as many completed results as available; stream
+            progress messages back through the callback."""
+            nonlocal objects_add_counter
+            drained = 0
             while True:
-                for x_oid in list(self.mass_add_procs):
-                    child = self.mass_add_procs[x_oid]
-                    if child.is_alive():
-                        keepalive_age = time.time() - last_keepalive
-                        if keepalive_age >= 1:
-                            last_keepalive = time.time()
-                            callback.keepalive()
-                        continue
-                    child.join()
-                    self.mass_add_procs.pop(x_oid)
-                    if child.exitcode == 0:
-                        objects_add_counter += 1
-                        objects_remaining = objects_count - objects_add_counter
-                        add_msg = build_add_message(x_oid,
-                                                start_time,
-                                                objects_add_counter,
-                                                objects_remaining)
-                        callback.send(add_msg)
-                time.sleep(0.01)
-                if prev_object_type != object_type:
-                    if len(self.mass_add_procs) > 0:
-                        continue
-                    prev_object_type = object_type
-                if len(self.mass_add_procs) < procs:
+                # First call uses the requested timeout; subsequent
+                # calls use timeout=0 (non-blocking) to drain the
+                # rest of the queue without blocking.
+                t = timeout if drained == 0 else 0
+                try:
+                    msg_in = self.mass_add_result_queue.recv(timeout=t)
+                except TimeoutReached:
                     break
-
-            if callback.stop_job:
-                break
-            # Send keepalive message.
-            method_kwargs['gen_qrcode'] = False
-            method_kwargs['verify_acls'] = False
-            method_kwargs['callback'] = callback
-            method_kwargs['force'] = kwargs['force']
-            add_child = multiprocessing.start_process(name="add_object",
-                                    target=self.add_object,
-                                    target_args=(object_type,
-                                                object_name,),
-                                    target_kwargs=method_kwargs,
-                                    start=False,
-                                    daemon=True)
-            object_id = f"{object_type}|{config.realm}/{config.site}/{object_name}"
-            object_id = oid.get(object_id)
-            add_child.start()
-            self.mass_add_procs[object_id] = add_child
-        # Wait for childs to finish.
-        last_keepalive = time.time()
-        while True:
-            childs_running = False
-            for x_oid in list(self.mass_add_procs):
-                child = self.mass_add_procs[x_oid]
-                if child.is_alive():
-                    keepalive_age = time.time() - last_keepalive
-                    if keepalive_age >= 1:
-                        last_keepalive = time.time()
-                        callback.keepalive()
-                    childs_running = True
-                    continue
-                child.join()
-                self.mass_add_procs.pop(x_oid)
-                if child.exitcode == 0:
+                except (QueueClosed, ExitOnSignal):
+                    break
+                if msg_in is None:
+                    break
+                drained += 1
+                x_oid_str = msg_in.get("oid")
+                ok = msg_in.get("ok", False)
+                err = msg_in.get("err")
+                x_oid = oid.get(object_id=x_oid_str)
+                if ok:
                     objects_add_counter += 1
-                    objects_remaining = objects_count - objects_add_counter
-                    add_msg = build_add_message(x_oid,
-                                            start_time,
-                                            objects_add_counter,
-                                            objects_remaining)
-                    callback.send(add_msg)
-            if childs_running:
-                continue
-            break
+                    remaining = objects_count - objects_add_counter
+                    callback.send(build_add_message(x_oid, start_time,
+                                                objects_add_counter,
+                                                remaining))
+                else:
+                    if x_oid is not None:
+                        msg = _("Error adding {type} {name}: {error}")
+                        msg = msg.format(type=x_oid.object_type,
+                                        name=x_oid.name, error=err)
+                    else:
+                        msg = _("Error in mass-add worker: {error}")
+                        msg = msg.format(error=err)
+                    callback.error(msg)
+            return drained
+
+        def _wait_until_drained(target_pushed):
+            """Block until objects_add_counter has caught up to
+            target_pushed, OR every worker has exited (in which case
+            no further results will ever arrive — bail out and
+            report the lost items)."""
+            nonlocal last_keepalive
+            while objects_add_counter < target_pushed:
+                drained = _drain_results(timeout=0.5)
+                if drained == 0:
+                    # Quiet result queue — verify at least one
+                    # worker is still alive and able to produce more.
+                    alive = sum(1 for w in self.mass_add_workers
+                                if w.is_alive())
+                    if alive == 0:
+                        # One last opportunistic drain in case a
+                        # final result arrived between the check and
+                        # the worker's exit.
+                        _drain_results(timeout=0)
+                        lost = target_pushed - objects_add_counter
+                        if lost > 0:
+                            msg = _("Lost {n} mass-add item(s): all workers exited unexpectedly.")
+                            msg = msg.format(n=lost)
+                            callback.error(msg)
+                        return False
+                if time.time() - last_keepalive >= 1:
+                    last_keepalive = time.time()
+                    callback.keepalive()
+                if callback.stop_job:
+                    return False
+            return True
+
+        # Push items in CSV order, holding a barrier whenever the
+        # object_type changes — same behaviour as the original code,
+        # which guaranteed e.g. all users finish before any groups
+        # start so that group-references-from-users (or vice versa)
+        # always see the dependency in place.
+        prev_object_type = None
+        last_keepalive = time.time()
+        try:
+            for object_type, object_name, method_kwargs in work_plan:
+                if prev_object_type is not None and object_type != prev_object_type:
+                    if not _wait_until_drained(pushed):
+                        break
+                if callback.stop_job:
+                    break
+                prev_object_type = object_type
+                self.mass_add_work_queue.send({
+                                            "type": object_type,
+                                            "name": object_name,
+                                            "kwargs": method_kwargs,
+                                        }, timeout=60)
+                pushed += 1
+                # Opportunistically drain so the result queue doesn't
+                # grow without bound.
+                _drain_results(timeout=0)
+                if time.time() - last_keepalive >= 1:
+                    last_keepalive = time.time()
+                    callback.keepalive()
+
+            # All work queued — wait for the rest to finish.
+            _wait_until_drained(pushed)
+        finally:
+            # Send stop sentinels and wait for workers to exit.
+            # NB: don't name the loop var '_' — that would shadow the
+            # gettext _() global throughout mass_object_add and turn
+            # the earlier `_("Verifying CSV data...")` etc. into an
+            # UnboundLocalError.
+            if self.mass_add_work_queue is not None:
+                for _w in self.mass_add_workers:
+                    try:
+                        self.mass_add_work_queue.send({"stop": True},
+                                                    timeout=5)
+                    except Exception:
+                        pass
+            for w in self.mass_add_workers:
+                w.join(timeout=10)
+                if w.is_alive():
+                    w.terminate()
+                    w.join(timeout=5)
+            # Close + unlink the kernel queues.
+            for q in (self.mass_add_work_queue, self.mass_add_result_queue):
+                if q is None:
+                    continue
+                try:
+                    q.close()
+                except Exception:
+                    pass
+                try:
+                    q.unlink()
+                except Exception:
+                    pass
+            self.mass_add_workers = []
+            self.mass_add_work_queue = None
+            self.mass_add_result_queue = None
 
         # Update data revision.
         config.update_data_revision()
         msg = _("Added {count} objects.")
         msg = msg.format(count=objects_add_counter)
         return callback.ok(msg)
+
+    def _mass_add_worker_loop(self, work_queue, result_queue, force, callback):
+        """ Long-lived worker: receive {"type", "name", "kwargs"}
+        messages from work_queue, run self.add_object, send
+        {"oid", "ok", "err"} on result_queue. Exits cleanly when a
+        {"stop": True} sentinel is received.
+
+        Every iteration is wrapped in a broad try/except so any
+        failure (oid.get() crash, add_object exception, ...) still
+        produces ONE result on the queue. Without that, the
+        parent's _wait_until_drained() would otherwise hang
+        waiting for a result that's never coming. """
+        import gc
+        from otpme.lib import cache as _cache_mod
+        from otpme.lib import backend as _backend_mod
+
+        # The signal handler used to call os._exit(1), which could
+        # leave shared state corrupt if it fired mid-IPC. With
+        # POSIX mqueue the recv() syscall returns ExitOnSignal on
+        # EINTR, so we just need a flag-setting handler and an
+        # ExitOnSignal-aware loop.
+        stop_flag = [False]
+        def signal_handler(_signal, frame):
+            """ Handle signals. """
+            if config.active_transactions:
+                return
+            stop_flag[0] = True
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        # Periodic worker-local cleanup: long-lived workers accumulate
+        # state in unbounded module-level dicts (instance_cache_read_times)
+        # and per-process LRU caches (process_cache). Flushing these
+        # every N items keeps RSS bounded.
+        clean_every = 500
+        processed_since_clean = 0
+
+        try:
+            while True:
+                if stop_flag[0]:
+                    return
+                try:
+                    msg_in = work_queue.recv(timeout=1)
+                except TimeoutReached:
+                    continue
+                except (QueueClosed, ExitOnSignal):
+                    return
+                if msg_in is None:
+                    continue
+                if msg_in.get("stop"):
+                    return
+                object_type = msg_in.get("type")
+                object_name = msg_in.get("name")
+                method_kwargs = msg_in.get("kwargs", {}) or {}
+                x_oid_str = f"{object_type}|{config.realm}/{config.site}/{object_name}"
+                try:
+                    method_kwargs = dict(method_kwargs)
+                    method_kwargs['gen_qrcode'] = False
+                    method_kwargs['verify_acls'] = False
+                    method_kwargs['callback'] = callback
+                    method_kwargs['force'] = force
+                    self.add_object(object_type, object_name, **method_kwargs)
+                    try:
+                        result_queue.send({"oid": x_oid_str, "ok": True,
+                                        "err": None}, timeout=5)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    # Best-effort: still send an error so the parent
+                    # loop doesn't deadlock waiting for this item.
+                    try:
+                        result_queue.send({"oid": x_oid_str, "ok": False,
+                                        "err": str(e)}, timeout=5)
+                    except Exception:
+                        pass
+                processed_since_clean += 1
+                if processed_since_clean >= clean_every:
+                    try:
+                        _backend_mod.instance_cache_read_times.clear()
+                        _cache_mod.clear(cache_type=_cache_mod.PROCESS_CACHE,
+                                        keep_modified=True,
+                                        update_clear_time=False,
+                                        quiet=True)
+                    except Exception:
+                        pass
+                    gc.collect()
+                    processed_since_clean = 0
+        finally:
+            multiprocessing.cleanup()
 
     def verify_cross_site_jwt(self, src_realm, src_site, jwt):
         _src_site = backend.get_object(object_type="site",
@@ -1280,7 +1426,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Decrypt encryption key with site private key.
         try:
             site_key = RSAKey(key=_dst_site.key)
-        except Exception as e:
+        except Exception:
             message, log_msg = _("Unable to get public key of site certificate: {site}", log=True)
             message = message.format(site=_dst_site)
             log_msg = log_msg.format(site=_dst_site)
@@ -2294,416 +2440,265 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return self.build_response(status, response)
 
-    def _process(self, command, command_args, **kwargs):
-        """ Handle management commands received from connection handler. """
-        # Default response should be emtpy.
-        response = ""
-        # Indicates if the command was successful.
-        status = False
-        # Will hold callbacks.
-        callbacks = {}
+    # --- Special-command handlers ---------------------------------------
+    #
+    # _process dispatches non-tree-object commands to these via
+    # getattr(self, f"_cmd_{command}"). Each handler receives the same
+    # (subcommand, command_args) signature even if it doesn't need
+    # subcommand, and returns self.build_response(status, response).
+    # --------------------------------------------------------------------
 
-        # Check if we got a valid command
-        if command not in valid_commands:
-            status = False
-            message = _("Unknown OTPme command: {cmd}")
-            message = message.format(cmd=command)
-            from otpme.lib import debug
-            debug.trace()
-            return self.build_response(status, message)
-
-        # Try to auth socket user.
-        if not self.authenticated and self.client_user:
-            try:
-                self.handle_socket_auth()
-            except Exception as e:
-                status = False
-                message = str(e)
-                return self.build_response(status, message)
-
-        # mgmtd does require an authenticated user.
-        if not self.authenticated or not self.username or not config.auth_token:
-            if config.daemon_mode:
-                status = status_codes.NEED_USER_AUTH
-                message = _("Please auth first.")
-                return self.build_response(status, message)
-
-        # Enable localization for user.
-        if config.auth_user:
-            if config.auth_user.language is not None:
-                config.setup_locale(config.auth_user.language)
-
-        # Check if authenticated user is admin.
-        self.is_admin = False
-        if config.auth_token:
-            if config.auth_token.is_admin():
-                self.is_admin = True
-        elif config.use_api:
-            self.is_admin = True
-
-        # Try to get job UUID and callbacks.
+    def _cmd_get_share(self, subcommand, command_args):
         try:
-            job_uuid = command_args.pop('job_uuid')
+            share_id = command_args['share_id']
         except KeyError:
-            job_uuid = None
+            return self.build_response(False, "Missing <share_id>")
+        try:
+            share_site = share_id.split("/")[0]
+            share_name = share_id.split("/")[1]
+        except Exception:
+            response = _("Invalid share id: {id}").format(id=share_id)
+            return self.build_response(False, response)
+        result = backend.search(object_type="share",
+                                attribute="name",
+                                value=share_name,
+                                realm=config.realm,
+                                site=share_site,
+                                return_type="instance")
+        if not result:
+            response = _("Unknown share: {name}").format(name=share_name)
+            return self.build_response(False, response)
+        share = result[0]
+        share_nodes = share.get_nodes(include_pools=True,
+                                    return_type="instance")
+        node_fqdns = [node.fqdn for node in share_nodes]
+        share_id = f"{share.site}/{share.name}"
+        shares = {
+            share_id: {
+                'name':      share.name,
+                'site':      share.site,
+                'nodes':     node_fqdns,
+                'encrypted': share.encrypted,
+            }
+        }
+        return self.build_response(True, shares)
 
-        # If a job exists handle it.
-        if job_uuid:
-            # Get callbacks
-            for i in dict(command_args):
-                if not i.startswith("callback:"):
-                    continue
-                callbacks[i] = command_args.pop(i)
+    def _cmd_get_shares(self, subcommand, command_args):
+        search_attrs = {
+                        'token' : {'value':config.auth_token.uuid},
+                    }
+        user_shares = backend.search(object_type="share",
+                                    attributes=search_attrs,
+                                    return_type="instance")
+        token_roles = config.auth_token.get_roles(return_type="uuid", recursive=True)
+        if token_roles:
+            search_attrs = {
+                            'role' : {'values':token_roles},
+                        }
+            user_shares += backend.search(object_type="share",
+                                        attributes=search_attrs,
+                                        return_type="instance")
+        shares = {}
+        for share in user_shares:
+            share_nodes = share.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=share.realm,
+                                            site=share.site,
+                                            return_type="instance")
+            if share_nodes:
+                node_fqdns = []
+                for node in share_nodes:
+                    node_fqdns.append(node.fqdn)
+                share_id = f"{share.site}/{share.name}"
+                shares[share_id] = {}
+                shares[share_id]['name'] = share.name
+                shares[share_id]['site'] = share.site
+                shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['encrypted'] = share.encrypted
+        return self.build_response(True, shares)
 
-            if command == "stop_job":
-                stop = True
-            else:
-                stop = False
-            # Handle job callbacks
-            status, \
-            response = self.handle_job(job_uuid=job_uuid,
-                                    callbacks=callbacks,
-                                    stop=stop)
-            return self.build_response(status, response)
+    def _cmd_get_token_type(self, subcommand, command_args):
+        try:
+            token_path = command_args['token_path']
+        except KeyError:
+            return self.build_response(False, "Missing <token_path>")
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                return_attributes=['token_type'])
+        if not result:
+            response = _("Unknown token: {path}").format(path=token_path)
+            return self.build_response(False, response)
+        return self.build_response(True, result[0])
 
-        if not config.use_api:
+    def _cmd_get_policy_type(self, subcommand, command_args):
+        try:
+            policy_name = command_args['policy_name']
+        except KeyError:
+            return self.build_response(False, "Missing <policy_name>")
+        result = backend.search(object_type="policy",
+                                attribute="name",
+                                value=policy_name,
+                                return_attributes=['policy_type'])
+        if not result:
+            response = _("Unknown policy: {name}").format(name=policy_name)
+            return self.build_response(False, response)
+        return self.build_response(True, result[0])
+
+    def _cmd_reset_reauth(self, subcommand, command_args):
+        try:
+            config.last_reauth.pop(config.auth_token.uuid)
+        except KeyError:
+            pass
+        return self.build_response(True, None)
+
+    def _cmd_change_user_default_group(self, subcommand, command_args):
+        return self.change_user_default_group(command_args)
+
+    def _cmd_move_object(self, subcommand, command_args):
+        return self.move_object(command_args)
+
+    def _cmd_backend(self, subcommand, command_args):
+        return self.handle_backend_commands(subcommand, command_args)
+
+    def _cmd_job(self, subcommand, command_args):
+        return self.handle_job_commands(subcommand, command_args)
+
+    def _cmd_trash(self, subcommand, command_args):
+        return self.handle_trash_commands(subcommand, command_args)
+
+    def _cmd_check_duplicate_ids(self, subcommand, command_args):
+        if subcommand == "user":
+            id_attribute = "ldif:uidNumber"
+        elif subcommand == "group":
+            id_attribute = "ldif:gidNumber"
+        else:
+            return self.build_response(False, "Need <user> or <group>.")
+        result = backend.search(object_type=subcommand,
+                                attribute=id_attribute,
+                                greater_than=-1,
+                                return_attributes=['name', id_attribute])
+        all_uids = {}
+        duplicates = []
+        for x in result:
+            x_name = result[x]['name']
+            x_uid = result[x][id_attribute][0]
+            if x_uid in all_uids:
+                x_dup = all_uids[x_uid]
+                duplicates.append([x_uid, x_name, x_dup])
+            all_uids[x_uid] = x_name
+        response = "No duplicate IDs found."
+        if duplicates:
+            response = pprint.pformat(duplicates)
+        return self.build_response(True, response)
+
+    def _cmd_dump_object(self, subcommand, command_args):
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
+        try:
+            object_id = command_args['object_id']
+            object_id = oid.get(object_id=object_id)
+        except Exception as e:
+            return self.build_response(False, str(e) if str(e) else "Need OID.")
+        if not backend.object_exists(object_id):
+            return self.build_response(False, "Object does not exist.")
+        object_config = backend.read_config(object_id)
+        return self.build_response(True, object_config.copy())
+
+    def _cmd_delete_object(self, subcommand, command_args):
+        def _delete_object(object_id, force=False, verbose_level=0,
+            callback=default_callback, **kwargs):
+            object_id = oid.get(object_id=object_id)
+            if not backend.index_get(object_id):
+                if not backend.object_exists(object_id):
+                    return callback.error("Object does not exist.")
+            if not force:
+                ask = callback.ask("Delete object? ")
+                if str(ask).lower() != "y":
+                    return callback.abort()
             try:
-                self.check_cluster_status()
+                backend.delete_object(object_id, cluster=True)
             except Exception as e:
-                message = str(e)
-                status = status_codes.CLUSTER_NOT_READY
-                return self.build_response(status, message)
+                msg = _("Error deleting object: {error}").format(error=e)
+                return callback.error(msg)
+            config.update_data_revision()
+            return callback.ok()
 
-        # If no job exists handle commands.
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
+        status = False
+        response = ""
+        try:
+            object_id = command_args['object_id']
+        except Exception as e:
+            object_id = None
+            response = str(e)
+        if object_id:
+            try:
+                status, \
+                response = self.start_job(name="delete_object",
+                                    target_method=_delete_object,
+                                    command_args=command_args,
+                                    _args=['object_id'],
+                                    process=True,
+                                    thread=False)
+            except Exception as e:
+                config.raise_exception()
+                response = _("Error running command: delete_object: {error}")
+                response = response.format(error=e)
+                status = False
+        return self.build_response(status, response)
+
+    def _cmd_mass_object_add(self, subcommand, command_args):
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
+        if "csv_data" not in command_args:
+            return self.build_response(False, "Missing csv data.")
+        try:
+            status, \
+            response = self.start_job(name="mass_object_add",
+                                target_method=self.mass_object_add,
+                                command_args=command_args,
+                                _args=['csv_data'],
+                                _opt_args=['verify_csv', 'procs'],
+                                process=True,
+                                thread=False)
+        except Exception as e:
+            config.raise_exception()
+            response = _("Error running command: mass_object_add: {error}")
+            response = response.format(error=e)
+            status = False
+        return self.build_response(status, response)
+
+    def _cmd_dump_index(self, subcommand, command_args):
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
+        try:
+            object_id = command_args['object_id']
+            object_id = oid.get(object_id=object_id)
+        except Exception as e:
+            return self.build_response(False, str(e))
+        try:
+            response = backend.index_dump(object_id=object_id,
+                                        checksum_ready=True)
+        except Exception as e:
+            return self.build_response(False, str(e))
+        return self.build_response(True, response)
+
+    def _handle_tree_object_command(self, command, subcommand,
+        command_args, object_type):
+        """ Generic dispatch for tree-object commands (user, group,
+        token, ...). Resolves the target object, looks up the actual
+        method via command_map, and runs it directly or via start_job
+        depending on the registered job_type. """
         args = {}
         opt_args = {}
         sub_type = None
-        object_type = None
-
-        # Get subcommand.
-        try:
-            subcommand = command_args['subcommand']
-        except KeyError:
-            status = False
-            response = "Missing subcommand."
-            return self.build_response(status, response)
-
-        # Check if we got a "object command" (e.g. user, group ...)
-        if command in config.tree_object_types or command == "session":
-            object_type = command
-
-        # Handle get share command.
-        if command == "get_share":
-            try:
-                share_id = command_args['share_id']
-            except KeyError:
-                status = False
-                response = "Missing <share_id>"
-                return self.build_response(status, response)
-            try:
-                share_site = share_id.split("/")[0]
-                share_name = share_id.split("/")[1]
-            except Exception:
-                status = False
-                response = _("Invalid share id: {id}")
-                response = response.format(id=share_id)
-                return self.build_response(status, response)
-            result = backend.search(object_type="share",
-                                    attribute="name",
-                                    value=share_name,
-                                    realm=config.realm,
-                                    site=share_site,
-                                    return_type="instance")
-            if not result:
-                status = False
-                response = _("Unknown share: {name}")
-                response = response.format(name=share_name)
-                return self.build_response(status, response)
-            share = result[0]
-            shares = {}
-            share_nodes = share.get_nodes(include_pools=True,
-                                        return_type="instance")
-            node_fqdns = []
-            for node in share_nodes:
-                node_fqdns.append(node.fqdn)
-            share_id = f"{share.site}/{share.name}"
-            shares[share_id] = {}
-            shares[share_id]['name'] = share.name
-            shares[share_id]['site'] = share.site
-            shares[share_id]['nodes'] = node_fqdns
-            shares[share_id]['encrypted'] = share.encrypted
-            status = True
-            return self.build_response(status, shares)
-
-        # Handle get share command.
-        if command == "get_shares":
-            search_attrs = {
-                            'token' : {'value':config.auth_token.uuid},
-                        }
-            user_shares = backend.search(object_type="share",
-                                        attributes=search_attrs,
-                                        return_type="instance")
-            token_roles = config.auth_token.get_roles(return_type="uuid", recursive=True)
-            if token_roles:
-                search_attrs = {
-                                'role' : {'values':token_roles},
-                            }
-                user_shares += backend.search(object_type="share",
-                                            attributes=search_attrs,
-                                            return_type="instance")
-            shares = {}
-            for share in user_shares:
-                share_nodes = share.get_nodes(include_pools=True,
-                                            return_type="instance")
-                if not share_nodes:
-                    share_nodes = backend.search(object_type="node",
-                                                attribute="uuid",
-                                                value="*",
-                                                realm=share.realm,
-                                                site=share.site,
-                                                return_type="instance")
-                if share_nodes:
-                    node_fqdns = []
-                    for node in share_nodes:
-                        node_fqdns.append(node.fqdn)
-                    share_id = f"{share.site}/{share.name}"
-                    shares[share_id] = {}
-                    shares[share_id]['name'] = share.name
-                    shares[share_id]['site'] = share.site
-                    shares[share_id]['nodes'] = node_fqdns
-                    shares[share_id]['encrypted'] = share.encrypted
-            status = True
-            return self.build_response(status, shares)
-
-        # Handle get token type command.
-        if command == "get_token_type":
-            try:
-                token_path = command_args['token_path']
-            except KeyError:
-                status = False
-                response = "Missing <token_path>"
-                return self.build_response(status, response)
-            return_attrs = ['token_type']
-            result = backend.search(object_type="token",
-                                    attribute="rel_path",
-                                    value=token_path,
-                                    return_attributes=return_attrs)
-            if not result:
-                status = False
-                response = _("Unknown token: {path}")
-                response = response.format(path=token_path)
-                return self.build_response(status, response)
-            status = True
-            response = result[0]
-            return self.build_response(status, response)
-
-        # Handle get policy type command.
-        if command == "get_policy_type":
-            try:
-                policy_name = command_args['policy_name']
-            except KeyError:
-                status = False
-                response = "Missing <policy_name>"
-                return self.build_response(status, response)
-            return_attrs = ['policy_type']
-            result = backend.search(object_type="policy",
-                                    attribute="name",
-                                    value=policy_name,
-                                    return_attributes=return_attrs)
-            if not result:
-                status = False
-                response = _("Unknown policy: {name}")
-                response = response.format(name=policy_name)
-                return self.build_response(status, response)
-            status = True
-            response = result[0]
-            return self.build_response(status, response)
-
-        # Handle clear reauth command.
-        if command == "reset_reauth":
-            try:
-                config.last_reauth.pop(config.auth_token.uuid)
-            except KeyError:
-                pass
-            return self.build_response(True, None)
-
-        # Handle change user defafult group command.
-        if command == "change_user_default_group":
-            return self.change_user_default_group(command_args)
-
-        # Handle move objects command.
-        if command == "move_object":
-            return self.move_object(command_args)
-
-        # Handle backend commands.
-        if command == "backend":
-            return self.handle_backend_commands(subcommand, command_args)
-
-        # Handle job commands.
-        if command == "job":
-            return self.handle_job_commands(subcommand, command_args)
-
-        # Handle trash commands.
-        if command == "trash":
-            return self.handle_trash_commands(subcommand, command_args)
-
-        if command == "check_duplicate_ids":
-            if subcommand == "user":
-                id_attribute = "ldif:uidNumber"
-            elif subcommand == "group":
-                id_attribute = "ldif:gidNumber"
-            else:
-                status = False
-                response = "Need <user> or <group>."
-                return self.build_response(status, response)
-
-
-            result = backend.search(object_type=subcommand,
-                                    attribute=id_attribute,
-                                    greater_than=-1,
-                                    return_attributes=['name', id_attribute])
-            all_uids = {}
-            duplicates = []
-            for x in result:
-                x_name = result[x]['name']
-                x_uid = result[x][id_attribute][0]
-                if x_uid in all_uids:
-                    x_dup = all_uids[x_uid]
-                    duplicates.append([x_uid, x_name, x_dup])
-                all_uids[x_uid] = x_name
-
-            response = "No duplicate IDs found."
-            if duplicates:
-                response = pprint.pformat(duplicates)
-            status = True
-
-            return self.build_response(status, response)
-
-        # Handle dump_object command.
-        if command == "dump_object":
-            if self.is_admin:
-                try:
-                    object_id = command_args['object_id']
-                    object_id = oid.get(object_id=object_id)
-                except Exception as e:
-                    object_id = None
-                    status = False
-                    response = str(e)
-                if object_id:
-                    if backend.object_exists(object_id):
-                        object_config = backend.read_config(object_id)
-                        response = object_config.copy()
-                        status = True
-                    else:
-                        response = "Object does not exist."
-                        status = False
-                else:
-                    response = "Need OID."
-                    status = False
-            else:
-                response = _("Permission denied.")
-                status = False
-            return self.build_response(status, response)
-
-        # Handle delete_object command.
-        if command == "delete_object":
-            def delete_object(object_id, force=False, verbose_level=0,
-                callback=default_callback, **kwargs):
-                object_id = oid.get(object_id=object_id)
-                if not backend.index_get(object_id):
-                    if not backend.object_exists(object_id):
-                        return callback.error("Object does not exist.")
-                if not force:
-                    ask = callback.ask("Delete object? ")
-                    if str(ask).lower() != "y":
-                        return callback.abort()
-                try:
-                    backend.delete_object(object_id, cluster=True)
-                except Exception as e:
-                    msg = _("Error deleting object: {error}")
-                    msg = msg.format(error=e)
-                    return callback.error(msg)
-                config.update_data_revision()
-                return callback.ok()
-
-            if self.is_admin:
-                try:
-                    object_id = command_args['object_id']
-                except Exception as e:
-                    object_id = None
-                    status = False
-                    response = str(e)
-                if object_id:
-                    try:
-                        status, \
-                        response = self.start_job(name="delete_object",
-                                            target_method=delete_object,
-                                            command_args=command_args,
-                                            _args=['object_id'],
-                                            process=True,
-                                            thread=False)
-                    except Exception as e:
-                        config.raise_exception()
-                        response = _("Error running command: {cmd}: {error}")
-                        response = response.format(cmd=command, error=e)
-                        status = False
-            else:
-                response = _("Permission denied.")
-                status = False
-
-        # Handle mass object add command.
-        if command == "mass_object_add":
-            status = True
-            if not self.is_admin:
-                response = _("Permission denied.")
-                status = False
-            if status:
-                if "csv_data" not in command_args:
-                    status = False
-                    response = "Missing csv data."
-                if status:
-                    try:
-                        status, \
-                        response = self.start_job(name="mass_object_add",
-                                            target_method=self.mass_object_add,
-                                            command_args=command_args,
-                                            _args=['csv_data'],
-                                            _opt_args=['verify_csv', 'procs'],
-                                            process=True,
-                                            thread=False)
-                    except Exception as e:
-                        config.raise_exception()
-                        response = _("Error running command: {cmd}: {error}")
-                        response = response.format(cmd=command, error=e)
-                        status = False
-                    return self.build_response(status, response)
-
-        # Handle dump_index command.
-        if command == "dump_index":
-            if self.is_admin:
-                try:
-                    object_id = command_args['object_id']
-                    object_id = oid.get(object_id=object_id)
-                except Exception as e:
-                    object_id = None
-                    status = False
-                    response = str(e)
-
-                if object_id:
-                    try:
-                        response = backend.index_dump(object_id=object_id,
-                                                    checksum_ready=True)
-                        status = True
-                    except Exception as e:
-                        status = False
-                        response = str(e)
-            else:
-                response = _("Permission denied.")
-                status = False
-            return self.build_response(status, response)
-
-
-        # Handle object commands.
+        status = False
         object_status = "missing"
         response = _("MGMT_INVALID_SYNTAX: Missing {cmd} name")
         response = response.format(cmd=command)
@@ -2816,13 +2811,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                             except LockWaitTimeout as e:
                                 message = _("Object locked: {error}")
                                 message = message.format(error=e)
-                                status = False
-                                return self.build_response(status, message)
+                                return self.build_response(False, message)
                             except OTPmeException as e:
                                 message = _("Error: {error}")
                                 message = message.format(error=e)
-                                status = False
-                                return self.build_response(status, message)
+                                return self.build_response(False, message)
                         if result:
                             o = result[0]
                             if o.exists(run_policies=True):
@@ -2842,8 +2835,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                     if x_arg not in command_args:
                                         message = _("Missing argument: {arg}")
                                         message = message.format(arg=x_arg)
-                                        status = False
-                                        return self.build_response(status, message)
+                                        return self.build_response(False, message)
                                 _getter_args[x_arg] = command_args[x_arg]
                             # Get class.
                             oc = class_getter(**_getter_args)
@@ -2895,14 +2887,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                                         if not master_site:
                                             message = _("Unknown site: {site}")
                                             message = message.format(site=site_realm.master)
-                                            status = False
-                                            return self.build_response(status, message)
+                                            return self.build_response(False, message)
                                         # On site delete we must redirect to the master site.
                                         if subcommand == "del":
                                             if master_site.uuid != config.site_uuid:
                                                 message = (_("You have to delete sites on the master site."))
-                                                status = False
-                                                return self.build_response(status, message)
+                                                return self.build_response(False, message)
 
                     elif subcommand != "show":
                         response = _("MGMT_INVALID_OBJECT_NAME: {name}")
@@ -3105,6 +3095,111 @@ class OTPmeMgmtP1(OTPmeServer1):
                     config.raise_exception()
 
         return self.build_response(status, response)
+
+    def _process(self, command, command_args, **kwargs):
+        """ Handle management commands received from connection handler. """
+        # Default response should be emtpy.
+        response = ""
+        # Indicates if the command was successful.
+        status = False
+        # Will hold callbacks.
+        callbacks = {}
+
+        # Check if we got a valid command
+        if command not in valid_commands:
+            status = False
+            message = _("Unknown OTPme command: {cmd}")
+            message = message.format(cmd=command)
+            from otpme.lib import debug
+            debug.trace()
+            return self.build_response(status, message)
+
+        # Try to auth socket user.
+        if not self.authenticated and self.client_user:
+            try:
+                self.handle_socket_auth()
+            except Exception as e:
+                status = False
+                message = str(e)
+                return self.build_response(status, message)
+
+        # mgmtd does require an authenticated user.
+        if not self.authenticated or not self.username or not config.auth_token:
+            if config.daemon_mode:
+                status = status_codes.NEED_USER_AUTH
+                message = _("Please auth first.")
+                return self.build_response(status, message)
+
+        # Enable localization for user.
+        if config.auth_user:
+            if config.auth_user.language is not None:
+                config.setup_locale(config.auth_user.language)
+
+        # Check if authenticated user is admin.
+        self.is_admin = False
+        if config.auth_token:
+            if config.auth_token.is_admin():
+                self.is_admin = True
+        elif config.use_api:
+            self.is_admin = True
+
+        # Try to get job UUID and callbacks.
+        try:
+            job_uuid = command_args.pop('job_uuid')
+        except KeyError:
+            job_uuid = None
+
+        # If a job exists handle it.
+        if job_uuid:
+            # Get callbacks
+            for i in dict(command_args):
+                if not i.startswith("callback:"):
+                    continue
+                callbacks[i] = command_args.pop(i)
+
+            if command == "stop_job":
+                stop = True
+            else:
+                stop = False
+            # Handle job callbacks
+            status, \
+            response = self.handle_job(job_uuid=job_uuid,
+                                    callbacks=callbacks,
+                                    stop=stop)
+            return self.build_response(status, response)
+
+        if not config.use_api:
+            try:
+                self.check_cluster_status()
+            except Exception as e:
+                message = str(e)
+                status = status_codes.CLUSTER_NOT_READY
+                return self.build_response(status, message)
+
+        # If no job exists handle commands.
+        object_type = None
+
+        # Get subcommand.
+        try:
+            subcommand = command_args['subcommand']
+        except KeyError:
+            status = False
+            response = "Missing subcommand."
+            return self.build_response(status, response)
+
+        # Check if we got a "object command" (e.g. user, group ...)
+        if command in config.tree_object_types or command == "session":
+            object_type = command
+
+        # Special-command dispatch — see the _cmd_* methods above.
+        # Tree-object commands (user, group, token, ...) flow through
+        # to _handle_tree_object_command() below.
+        special_handler = getattr(self, f"_cmd_{command}", None)
+        if special_handler is not None:
+            return special_handler(subcommand, command_args)
+
+        return self._handle_tree_object_command(command, subcommand,
+                                                command_args, object_type)
 
     def _close(self):
         """ Stop ourselves. """

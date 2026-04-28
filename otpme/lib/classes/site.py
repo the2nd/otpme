@@ -958,25 +958,6 @@ def register_config():
                                     setter=key_len_setter,
                                     default_value=2048,
                                     object_types=object_types)
-
-    # Object types our config parameter is valid for.
-    object_types = [
-                    'site',
-                    'unit',
-                    'node',
-                    ]
-    # Floating IP interface.
-    def floating_ip_interface_setter(interface, **kwargs):
-        import netifaces
-        if interface not in netifaces.interfaces():
-            msg = _("Unknown interface: {interface}")
-            msg = msg.format(interface=interface)
-            raise OTPmeException(msg)
-        return interface
-    config.register_config_parameter(name="floating_ip_interface",
-                                    ctype=str,
-                                    setter=floating_ip_interface_setter,
-                                    object_types=object_types)
     # Object types our config parameter is valid for.
     object_types = [
                     'site',
@@ -1386,6 +1367,11 @@ def register_config():
                                     ctype=str,
                                     setter=sso_role_setter,
                                     getter=sso_role_getter,
+                                    object_types=object_types)
+    # Put SSO device tokens to trash
+    config.register_config_parameter(name="add_device_token_to_trash",
+                                    ctype=bool,
+                                    default_value=True,
                                     object_types=object_types)
 
 def register_hooks():

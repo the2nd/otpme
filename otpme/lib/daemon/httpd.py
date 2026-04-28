@@ -169,7 +169,9 @@ class HttpDaemon(OTPmeDaemon):
 
         # Gunicorn options
         options = {
-          'bind': '0.0.0.0:443',
+          # Dual-stack: '[::]' binds both IPv6 and IPv4 (V6ONLY=0 default
+          # on Linux). One socket accepts traffic from both families.
+          'bind': '[::]:443',
           'workers': 4,
           'worker_class': 'gevent',
           'worker_connections': 1000,

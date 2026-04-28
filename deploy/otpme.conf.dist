@@ -16,6 +16,9 @@ RADIUS_MAX_SERVERS="64"
 RADIUS_MIN_SPARE_SERVERS="8"
 RADIUS_MAX_SPARE_SERVERS="16"
 
+# Network interface the floating IP is assigned to.
+#FLOATING_IP_IFACE="eth0"
+
 # Enable use of mgmtd socket (--socket) by default. This makes sense on nodes only.
 USE_MGMTD_SOCKET="False"
 
@@ -359,6 +362,11 @@ LOGLEVEL="INFO"
 # This option can be True, False or a comma separated list of usernames for
 # which auth data should be logged.
 LOG_AUTH_DATA="False"
+
+# Include exception info (traceback of the exception currently being handled)
+# in warning/error/critical/fatal log records. Only takes effect inside an
+# except: block. A caller that passes exc_info explicitly overrides this.
+LOG_EXC_INFO="False"
 
 # Show job title in process name.
 SHOW_JOB_TITLE="False"

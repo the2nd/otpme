@@ -178,7 +178,8 @@ class HostDaemon(OTPmeDaemon):
         # Set daemon port.
         daemon_port = config.default_ports['syncd']
         # Set socket URI.
-        socket_uri = f"tcp://{connect_address}:{daemon_port}"
+        from otpme.lib import net
+        socket_uri = net.format_socket_uri("tcp", connect_address, daemon_port)
 
         log_msg = _("Trying to connect to syncd: {name}", log=True)[1]
         log_msg = log_msg.format(name=connect_name)
@@ -791,6 +792,9 @@ class HostDaemon(OTPmeDaemon):
     def start_sync(self, sync_type="objects", queue=True, resync=False,
         nsscache_resync=False, offline=False, realm=None, site=None, **kwargs):
         """ Start sync job as child process. """
+        if self.host_type == "node":
+            if not config.cluster_status:
+                return
         if sync_type == "sites" and queue:
             # Check for existing sync child.
             try:

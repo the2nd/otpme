@@ -590,10 +590,6 @@ class JoinHandler(object):
                 msg = _("JOTP needs to be of type str().")
                 raise OTPmeException(msg)
 
-        if not realm or not site:
-            msg = _("Missing realm/site.")
-            raise OTPmeException(msg)
-
         # Set realm join mode.
         config.realm_join = True
         config.use_backend = True
@@ -633,11 +629,11 @@ class JoinHandler(object):
 
         # Complete and set arguments.
         self.complete_args(realm=realm,
-                            site=site,
-                            host_fqdn=host_fqdn,
-                            domain=domain,
-                            username=username,
-                            socket_uri=socket_uri)
+                        site=site,
+                        host_fqdn=host_fqdn,
+                        domain=domain,
+                        username=username,
+                        socket_uri=socket_uri)
         # Args to pass to each send() call.
         conn_kwargs = {}
         conn_kwargs['realm'] = self.realm

@@ -165,7 +165,11 @@ def index():
     # Redirect to deploy page if token enrollment is required.
     sso_deploy = flask_session.get('sso_deploy')
     if sso_deploy:
-        return redirect(url_for('deploy', _external=True, _scheme='https'))
+        # Voluntary redeploy from settings: clear flag and let the user leave.
+        if flask_session.pop('sso_deploy_optional', False):
+            flask_session.pop('sso_deploy', None)
+        else:
+            return redirect(url_for('deploy', _external=True, _scheme='https'))
     return render_template("index.html", title='SSO Portal')
 
 @app.route('/settings')
@@ -211,6 +215,16 @@ def _send_ssod_command(command, extra_args, default_error):
     finally:
         ssod_conn.close()
     if not status:
+        # Invalid/expired JWT: force logout so the user re-authenticates.
+        if isinstance(response, dict) and response.get('message') == 'JWT_INVALID':
+            log_msg = _("SSO JWT invalid for user '{user_name}', logging out.", log=True)[1]
+            log_msg = log_msg.format(user_name=g.user.name)
+            logger.warning(log_msg)
+            resp = make_response(jsonify({
+                    "error": "Session expired. Please log in again.",
+                    "redirect": url_for('login', _external=True, _scheme='https'),
+                }), 401)
+            return None, _do_sso_logout(resp)
         error_msg = _ssod_error_message(response, default_error)
         return None, (jsonify({"error": error_msg}), 400)
     return response, None
@@ -285,6 +299,7 @@ def settings_redeploy():
     if not g.user.is_authenticated:
         return redirect(url_for('login', _external=True, _scheme='https'))
     flask_session['sso_deploy'] = True
+    flask_session['sso_deploy_optional'] = True
     return redirect(url_for('deploy', _external=True, _scheme='https'))
 
 @app.route('/change_password', methods=['POST'])
@@ -423,9 +438,11 @@ def deploy():
         deploy_token_types = [sso_deploy]
     else:
         deploy_token_types = ["totp", "fido2"]
+    deploy_optional = bool(flask_session.get('sso_deploy_optional'))
     return render_template("deploy.html",
                            title='Token Enrollment',
-                           deploy_token_types=deploy_token_types)
+                           deploy_token_types=deploy_token_types,
+                           deploy_optional=deploy_optional)
 
 @app.route('/deploy/begin', methods=['POST'])
 @login_required
@@ -564,6 +581,7 @@ def deploy_verify():
         flask_session['login_token_pass_type'] = new_pass_type
     # Clean up session.
     flask_session.pop('sso_deploy', None)
+    flask_session.pop('sso_deploy_optional', None)
     flask_session.pop('deploy_token_name', None)
     flask_session.pop('deploy_login_token_name', None)
     flask_session.pop('deploy_token_type', None)

@@ -1086,7 +1086,7 @@ class AccessGroup(OTPmeObject):
         ):
         """ Check if token is assigned to this acccessgroup. """
         if token_uuid in self.tokens:
-            return True
+            return self.uuid
         for role_uuid in self.roles:
             role = backend.get_object(object_type="role", uuid=role_uuid)
             if not role:
@@ -1095,7 +1095,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_token(token_uuid):
-                return True
+                return role.uuid
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1106,7 +1106,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_token(token_uuid):
-                return True
+                return group.uuid
         return False
 
     @assigned_host_cache.cache_method()
@@ -1119,7 +1119,7 @@ class AccessGroup(OTPmeObject):
         ):
         """ Check if host is assigned to this acccessgroup. """
         if host_uuid in self.hosts:
-            return True
+            return self.uuid
         for role_uuid in self.roles:
             role = backend.get_object(object_type="role", uuid=role_uuid)
             if not role:
@@ -1128,7 +1128,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_host(host_uuid):
-                return True
+                return role.uuid
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1139,7 +1139,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_host(host_uuid):
-                return True
+                return group.uuid
         return False
 
     @assigned_device_cache.cache_method()
@@ -1152,7 +1152,7 @@ class AccessGroup(OTPmeObject):
         ):
         """ Check if device is assigned to this acccessgroup. """
         if device_uuid in self.devices:
-            return True
+            return self.uuid
         for role_uuid in self.roles:
             role = backend.get_object(object_type="role", uuid=role_uuid)
             if not role:
@@ -1161,7 +1161,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_device(device_uuid):
-                return True
+                return role.uuid
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1172,7 +1172,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_device(device_uuid):
-                return True
+                return group.uuid
         return False
 
     def parents(
@@ -1891,7 +1891,7 @@ class AccessGroup(OTPmeObject):
         ):
         """ Delete accessgroup. """
         if not self.exists():
-            return callback.error("Accessgroup does not exist exists.")
+            return callback.error("Accessgroup does not exist.")
 
         base_access_groups = config.get_base_objects("accessgroup")
         if self.name in base_access_groups:

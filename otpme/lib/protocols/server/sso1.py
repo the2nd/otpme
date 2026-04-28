@@ -133,6 +133,11 @@ class OTPmeSsoP1(OTPmeServer1):
                                         existing_logger=config.logger,
                                         pid=True)
 
+    def get_callback(self):
+        callback = config.get_callback()
+        callback.job.client = self.client
+        return callback
+
     def ssod_redirect_command(self, command, user, command_args):
         try:
             ssod_conn = connections.get("ssod",
@@ -178,7 +183,10 @@ class OTPmeSsoP1(OTPmeServer1):
                                     uuid=user.site_uuid)
         site_jwt_key = user_site._cert_public_key
         # Decode JWT.
-        jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')
+        jwt_data = jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')
+        # Set auth token.
+        auth_token_uuid = jwt_data['login_token']
+        config.auth_token = backend.get_object(uuid=auth_token_uuid)
         return user
 
     def get_apps(self, username, sso_jwt, command_args):
@@ -274,12 +282,15 @@ class OTPmeSsoP1(OTPmeServer1):
         login_token_name = login_token.name
         # Remove old sso-deploy token if it exists (e.g. from a previous attempt).
         old_deploy = user.token(DEPLOY_NAME)
+        callback = self.get_callback()
         if old_deploy:
+            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
             user.del_token(token_name=DEPLOY_NAME,
                             force=True,
                             verify_acls=False,
                             run_policies=False,
-                            callback=config.get_callback())
+                            add_to_trash=add_to_trash,
+                            callback=callback)
         # Create sso-deploy token under the user.
         try:
             user.add_token(token_name=DEPLOY_NAME,
@@ -290,7 +301,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             force=True,
                             verify_acls=False,
                             run_policies=False,
-                            callback=config.get_callback())
+                            callback=callback)
         except Exception as e:
             log_msg = _("SSO deploy failed for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(user_name=user.name)
@@ -311,7 +322,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # For FIDO2 tokens, use the WebAuthn registration flow.
         if token_type == "fido2":
             return self.build_response(True, response)
-        deploy_token._write(callback=config.get_callback())
+        deploy_token._write(callback=callback)
         # Get token secret.
         secret = deploy_token.get_secret(pin=deploy_token.pin, encoding="base32")
         # For OATH tokens (TOTP/HOTP): generate QR code.
@@ -401,7 +412,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             force=True,
                             verify_acls=False,
                             run_policies=False,
-                            callback=config.get_callback())
+                            callback=self.get_callback())
         except Exception as e:
             log_msg = _("SSO deploy token move failed for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(user_name=user.name, e=e)
@@ -561,7 +572,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 self.logger.info(info_msg)
         # Store credential data on token.
         fido2_token.credential_data = encode(auth_data.credential_data, "hex")
-        fido2_token._write(callback=config.get_callback())
+        fido2_token._write(callback=self.get_callback())
         log_msg = _("FIDO2 token '{token}' registered for user '{user_name}'.")
         log_msg = log_msg.format(token=fido2_token.rel_path, user_name=user.name)
         self.logger.info(log_msg)
@@ -615,7 +626,7 @@ class OTPmeSsoP1(OTPmeServer1):
             response = {'message':'Current password is incorrect.', 'status':False}
             return self.build_response(False, response)
         # Change password.
-        callback = config.get_callback()
+        callback = self.get_callback()
         callback.raise_exception = True
         try:
             token.change_password(password=new_password,
@@ -689,7 +700,7 @@ class OTPmeSsoP1(OTPmeServer1):
             response = {'message':'Current PIN is incorrect.', 'status':False}
             return self.build_response(False, response)
         # Change PIN.
-        callback = config.get_callback()
+        callback = self.get_callback()
         callback.raise_exception = True
         try:
             token.change_pin(pin=new_pin,
@@ -889,7 +900,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'sso_token_role is not configured.', 'status':False})
         if user.token(token_name):
             return self.build_response(False, {'message':'A device with this name already exists.', 'status':False})
-        callback = config.get_callback()
+        callback = self.get_callback()
         callback.raise_exception = True
         try:
             token, new_password = self._local_create_device_token(user=user,
@@ -930,13 +941,15 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'AUTH_FAILED', 'status':False})
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
-        callback = config.get_callback()
+        callback = self.get_callback()
         callback.raise_exception = True
+        add_to_trash = user.get_config_parameter("add_device_token_to_trash")
         try:
             user.del_token(token_name=token_name,
                             force=True,
                             verify_acls=False,
                             run_policies=False,
+                            add_to_trash=add_to_trash,
                             callback=callback)
         except Exception as e:
             log_msg = _("Failed to delete device token '{token}' for user '{user_name}': {e}", log=True)[1]
@@ -995,7 +1008,7 @@ class OTPmeSsoP1(OTPmeServer1):
         if not token_name:
             response = {'message':'Invalid device name.', 'status':False}
             return self.build_response(False, response)
-        callback = config.get_callback()
+        callback = self.get_callback()
         callback.raise_exception = True
         new_password = None
         role = None
@@ -1077,10 +1090,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                             command="sso_delete_device_token",
                                             extra_args={**command_args, 'token_name': token_name})
                 else:
+                    add_to_trash = user.get_config_parameter("add_device_token_to_trash")
                     user.del_token(token_name=token_name,
                                     force=True,
                                     verify_acls=False,
                                     run_policies=False,
+                                    add_to_trash=add_to_trash,
                                     callback=callback)
             except Exception:
                 pass
@@ -1127,20 +1142,8 @@ class OTPmeSsoP1(OTPmeServer1):
         if token.uuid not in role.tokens:
             response = {'message':'Not a device token.', 'status':False}
             return self.build_response(False, response)
-        callback = config.get_callback()
+        callback = self.get_callback()
         callback.raise_exception = True
-        token_path = f"{user.name}/{token_name}"
-        try:
-            role.remove_token(token_path=token_path,
-                            force=True,
-                            verify_acls=False,
-                            run_policies=False,
-                            callback=callback)
-            role._write(callback=callback)
-        except Exception as e:
-            log_msg = _("Failed to remove device token from role: {e}", log=True)[1]
-            log_msg = log_msg.format(e=e)
-            self.logger.warning(log_msg)
         # Delete the token object on its canonical site.
         if user.site != config.site:
             remote_args = dict(command_args)
@@ -1151,11 +1154,13 @@ class OTPmeSsoP1(OTPmeServer1):
             if not status:
                 return self.build_response(False, remote_resp)
         else:
+            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
             try:
                 user.del_token(token_name=token_name,
                                 force=True,
                                 verify_acls=False,
                                 run_policies=False,
+                                add_to_trash=add_to_trash,
                                 callback=callback)
             except Exception as e:
                 log_msg = _("Failed to delete device token '{token}' for user '{user_name}': {e}", log=True)[1]

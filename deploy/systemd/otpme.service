@@ -1,3 +1,9 @@
+# Note: the hardening section of this unit was prepared with the help
+# of an AI assistant. Review the directives against your deployment
+# (in particular ProtectHome= and PrivateDevices= if you run custom
+# auth/push/share scripts or USB-attached hardware in this unit) before
+# rolling it out unchanged.
+
 [Unit]
 Description=OTPme daemon
 After=network.target
@@ -9,13 +15,73 @@ ExecStart=/usr/local/bin/otpme-controld start
 ExecStop=/usr/local/bin/otpme-controld stop
 ExecReload=/usr/local/bin/otpme-controld reload
 PIDFile=/var/run/otpme/pidfiles/otpme-controld.pid
-KillMode=none
+# ExecStop runs `otpme-controld stop`, which sends SIGTERM to each child
+# daemon, waits up to 10 s per child for a clean exit, then SIGKILLs any
+# stragglers. With ~10 daemons the worst case is around 100 s, so we
+# give the unit 180 s before systemd intervenes.
+TimeoutStopSec=180
+# KillMode=mixed means systemd's signal phase only targets the main
+# controld PID, leaving controld in charge of its own children — but
+# if something hangs past TimeoutStopSec the whole cgroup gets SIGKILL.
+# This is the modern replacement for the now-deprecated KillMode=none.
+KillMode=mixed
 # cannot set user via systemd because otpme-controld
 # is designed to restart child deamons on demand and
 # running it as non-root leads to problems when binding
 # to well known ports (<1024).
 #User=otpme
 #Group=otpme
+
+# --- Hardening (safe defaults) ----------------------------------------------
+# Block setuid/setgid escalations from any child process.
+NoNewPrivileges=yes
+# Private /tmp prevents symlink races and cross-service /tmp peeking.
+PrivateTmp=yes
+# /usr and /boot become read-only. /etc stays writable because OTPme
+# writes config and PKI material under /etc/otpme.
+ProtectSystem=true
+# /home, /root and /run/user are hidden. Server daemons under controld
+# (hostd, authd, ldapd, mgmtd, scriptd, syncd, fsd, backupd) only access
+# /var/lib/otpme, /etc/otpme, /var/cache/otpme. User home access happens
+# only in PAM (separate process) and otpme-agent (user session, not in
+# this unit). Disable this if you configure auth/push/share scripts that
+# need to read or write under /home.
+ProtectHome=yes
+# Server daemons don't touch USB/HID/PCSC hardware. Smartcard/YubiKey
+# access lives in otpme.lib.smartcard.* and is only reached from the
+# PAM module, otpme-agent, and the otpme-yk-piv / otpme-token CLIs —
+# all outside this unit. Server-side FIDO2/U2F code (auth1, sso1,
+# token/fido2) only verifies cryptographic responses and never opens
+# a device.
+PrivateDevices=yes
+# /proc/sys, /sys, sysctl: read-only.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+# cgroup tree: read-only.
+ProtectControlGroups=yes
+# clock_settime() and timer-related calls: blocked.
+ProtectClock=yes
+# No new namespaces (user/pid/net/mount/uts).
+RestrictNamespaces=yes
+# No SCHED_FIFO/RR — daemons don't need real-time scheduling.
+RestrictRealtime=yes
+# Cannot create setuid/setgid binaries on disk.
+RestrictSUIDSGID=yes
+# Lock the process personality (no x86 32-bit personality switch etc).
+LockPersonality=yes
+# Limit syscalls to the host architecture (no x86 32-bit on x86_64).
+SystemCallArchitectures=native
+# Address families OTPme actually uses: UNIX sockets (IPC), IPv4/IPv6
+# (RADIUS/LDAP/HTTPS/cluster), AF_NETLINK (netifaces), AF_PACKET
+# (arprequest/scapy for ARP probes during DHCP/RADIUS flows).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+
+# --- Hardening intentionally NOT enabled ------------------------------------
+# MemoryDenyWriteExecute=yes  # risk of breaking Cython / cffi-loaded code paths
+# CapabilityBoundingSet=...   # OTPme runs as root for <1024 ports and uses CAP_NET_RAW (arprequest)
+# SystemCallFilter=...        # too broad for a Python codebase without dedicated test coverage
+# ----------------------------------------------------------------------------
 
 [Install]
 WantedBy=multi-user.target

@@ -3,7 +3,9 @@
 <div class="login-wrapper">
   <div class="deploy-card">
     <h1>Token Enrollment</h1>
+    {% if not deploy_optional %}
     <p class="deploy-desc">Your account requires a new authentication token.</p>
+    {% endif %}
 
     <!-- Step 1: Choose token type and start -->
     <div id="step-start">

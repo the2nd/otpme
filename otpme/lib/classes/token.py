@@ -586,6 +586,14 @@ commands = {
                     },
                 },
             },
+    'list_acls'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_acls',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'temp_password'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -706,7 +714,7 @@ def register_oid():
     read_oid_schema = [ 'realm', 'user', 'name' ]
     # OID regex stuff.
     user_path_re = oid.object_regex['user']['path']
-    token_name_re = '([0-9a-z]([0-9a-z_.\-:]*[0-9a-z]){0,})'
+    token_name_re = r'([0-9a-z]([0-9a-z_.\-:]*[0-9a-z]){0,})'
     token_path_re = f'{user_path_re}[/]{token_name_re}'
     token_oid_re = f'token|{token_path_re}'
     oid.register_oid_schema(object_type="token",
@@ -954,7 +962,7 @@ class Token(OTPmeObject):
 
     @classmethod
     def restore_object_data(cls, object_id, object_uuid, object_data, callback):
-        token = backend.get_object(uuid=object_uuid)
+        token = backend.get_object(object_id)
         if token:
             owner = backend.get_object(uuid=token.owner_uuid)
             if token.uuid not in owner.tokens:
@@ -975,8 +983,8 @@ class Token(OTPmeObject):
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
                             verify_acls=False)
-        x_token_roles = object_data['token_roles']
-        for x in x_token_roles:
+        token_roles = object_data['token_roles']
+        for x in token_roles:
             x_role_uuid = x[0]
             x_token_opts = x[1]
             x_token_login_interfaces = x[2]
@@ -990,6 +998,7 @@ class Token(OTPmeObject):
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
                             verify_acls=False)
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,
@@ -3842,6 +3851,8 @@ class Token(OTPmeObject):
         self,
         force: bool=False,
         remove_default_token: bool=False,
+        add_to_trash: bool=True,
+        deleted_by: Union[str,None]=None,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -3920,6 +3931,9 @@ class Token(OTPmeObject):
         if not self.ask_delete_confirmation(force=force, exception=exception_str, callback=callback):
             return callback.abort()
 
+        if add_to_trash:
+            self.add_to_trash(deleted_by=deleted_by, callback=callback)
+
         # Our parent object is the token owner which may already be locked
         # if this is a token add/del. So we have to acquire no lock.
         user = backend.get_object(object_type="user", uuid=self.owner_uuid)
@@ -3934,6 +3948,9 @@ class Token(OTPmeObject):
                             recursive=True,
                             verify_acls=False)
 
+        # Delete used OTPs and counters of this token.
+        self.delete_used_data_objects()
+
         # Remove token from found objects.
         member_objects = token_roles + token_groups + token_accessgroups
         for x in member_objects:
@@ -3941,12 +3958,11 @@ class Token(OTPmeObject):
                 continue
             x.remove_token(self.uuid, verify_acls=False, callback=callback)
 
-        # Delete used OTPs and counters of this token.
-        self.delete_used_data_objects()
-
         # Delete object using parent class.
         return super().delete(verbose_level=verbose_level,
-                                    force=force, callback=callback)
+                                add_to_trash=False,
+                                force=force,
+                                callback=callback)
 
     def show_config(
         self,

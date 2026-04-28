@@ -1445,8 +1445,10 @@ class LDAPServer(object):
             msg = _("'use_ssl' requires 'cert' and 'key'.")
             raise OTPmeException(msg)
 
+        from otpme.lib import net
+        listen_uri = net.format_socket_uri("tcp", self.address, self.port)
         if use_ssl:
-            new_proctitle = f"{self.proctitle} ListenSSL: tcp://{self.address}:{self.port}"
+            new_proctitle = f"{self.proctitle} ListenSSL: {listen_uri}"
             ssl_context = ssl.DefaultOpenSSLContextFactory(privateKeyFileName=key,
                                                             certificateFileName=cert)
             reactor.listenSSL(port=self.port,
@@ -1454,7 +1456,7 @@ class LDAPServer(object):
                             interface=self.address,
                             contextFactory=ssl_context)
         else:
-            new_proctitle = f"{self.proctitle} Listen: tcp://{self.address}:{self.port}"
+            new_proctitle = f"{self.proctitle} Listen: {listen_uri}"
             reactor.listenTCP(port=self.port,
                             factory=self.factory,
                             interface=self.address)

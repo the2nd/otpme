@@ -33,7 +33,7 @@ valid_object_owners = {}
 
 # Some useful default regex.
 int_re = '[0-9]*'
-uuid_re = '[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z'
+uuid_re = r'[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z'
 
 def register_site_getter(object_type, getter):
     """ Register function to get site of object. """

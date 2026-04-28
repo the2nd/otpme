@@ -28,7 +28,7 @@ from otpme.lib import config
 from otpme.lib import filetools
 from otpme.lib import otpme_acl
 from otpme.lib import multiprocessing
-from otpme.lib.locking import oid_lock
+#from otpme.lib.locking import oid_lock
 from otpme.lib.cache import index_cache
 from otpme.lib.cache import index_acl_cache
 from otpme.lib.cache import object_list_cache
@@ -1066,7 +1066,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     less_than=None, greater_than=None, join_object_type=None,
     join_search_attr=None, join_search_val=None, join_attribute=None,
     return_type="uuid", return_attributes=None, case_sensitive=True,
-    object_type=None, object_types=None, verify_acls=None, return_acls=False,
+    object_type=None, object_types=None, verify_acls=None, return_acls=None,
     return_raw_acls=False, max_results=0, size_limit=0,
     template=None, return_query_count=False,
     session=None, _debug=False, **kwargs):
@@ -1224,10 +1224,21 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 if not o_result:
                     o_result = {}
                 for t in x_result:
-                    if t not in o_result:
-                        o_result[t] = {}
-                    for x in x_result[t]:
-                        o_result[t][x] = x_result[t][x]
+                    if return_raw_acls:
+                        if isinstance(x_result[t], list):
+                            if t not in o_result:
+                                o_result[t] = []
+                            o_result[t] += x_result[t]
+                        if isinstance(x_result[t], dict):
+                            if t not in o_result:
+                                o_result[t] = {}
+                            for x in x_result[t]:
+                                o_result[t][x] = x_result[t][x]
+                    else:
+                        if t not in o_result:
+                            o_result[t] = {}
+                        for x in x_result[t]:
+                            o_result[t][x] = x_result[t][x]
             # Learn uuid → object_type mapping for future fast-path lookups.
             if x_result and attribute == "uuid" and value is not None:
                 _uuid_type_cache[value] = x_object_type
@@ -1244,108 +1255,95 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if config.dogpile_caching:
         cache_region = config.get_cache_region(object_type)
 
-    # To prevent the "(sqlite3.OperationalError) too many SQL variables" error
-    # we have to split values list in chunks and start a search for each chunk.
-    max_q_values = 10240000
+    # To prevent the "(sqlite3.OperationalError) too many SQL variables"
+    # error -- and the equivalent at the wire-protocol level on Postgres
+    # and MySQL (uint16 == 65535 bind parameters) -- find any oversized
+    # values/or_values list and chunk it via recursion.
     if config.index_type == "sqlite3":
+        # Stay under the legacy SQLITE_MAX_VARIABLE_NUMBER of 999.
         max_q_values = 800
-    if or_values is not None and len(or_values) > max_q_values:
-        if order_by is not None:
-            msg = _("Cannot order results if <or_values> >= {max_q_values}")
-            msg = msg.format(max_q_values=max_q_values)
-            raise SearchException(msg)
-        v_result = None
-        v_query_count = 0
-        or_values = stuff.split_list(or_values, max_q_values)
-        for x_list in or_values:
-            x_result = index_search(realm=realm,
-                                    site=site,
-                                    attribute=attribute,
-                                    value=value,
-                                    or_values=x_list,
-                                    attributes=attributes,
-                                    less_than=less_than,
-                                    greater_than=greater_than,
-                                    order_by=order_by,
-                                    reverse_order=reverse_order,
-                                    return_type=return_type,
-                                    return_attributes=return_attributes,
-                                    join_search_val=join_search_val,
-                                    join_search_attr=join_search_attr,
-                                    join_object_type=join_object_type,
-                                    case_sensitive=case_sensitive,
-                                    object_type=object_type,
-                                    verify_acls=verify_acls,
-                                    return_acls=return_acls,
-                                    return_raw_acls=return_raw_acls,
-                                    return_query_count=return_query_count,
-                                    max_results=max_results,
-                                    size_limit=size_limit)
-            if return_query_count:
-                x_query_count, x_result = x_result
-                v_query_count += x_query_count
-            if isinstance(x_result, list):
-                if not v_result:
-                    v_result = []
-                v_result += x_result
-            if isinstance(x_result, dict):
-                if not v_result:
-                    v_result = {}
-                for x in x_result:
-                    v_result[x] = x_result[x]
-            if size_limit != 0 and len(v_result) >= size_limit:
-                raise SizeLimitExceeded("Size limit exceeded.")
-        return v_query_count, v_result
-    elif values is not None and len(values) > max_q_values:
-        if order_by is not None:
-            msg = _("Cannot order results if <values> >= {max_q_values}")
-            msg = msg.format(max_q_values=max_q_values)
-            raise SearchException(msg)
-        v_result = None
-        v_query_count = 0
-        values = stuff.split_list(values, max_q_values)
-        for x_list in values:
-            x_result = index_search(realm=realm,
-                                    site=site,
-                                    attribute=attribute,
-                                    value=value,
-                                    values=x_list,
-                                    attributes=attributes,
-                                    less_than=less_than,
-                                    greater_than=greater_than,
-                                    order_by=order_by,
-                                    reverse_order=reverse_order,
-                                    return_type=return_type,
-                                    return_attributes=return_attributes,
-                                    join_search_val=join_search_val,
-                                    join_search_attr=join_search_attr,
-                                    join_object_type=join_object_type,
-                                    case_sensitive=case_sensitive,
-                                    object_type=object_type,
-                                    verify_acls=verify_acls,
-                                    return_acls=return_acls,
-                                    return_raw_acls=return_raw_acls,
-                                    return_query_count=return_query_count,
-                                    max_results=max_results,
-                                    size_limit=size_limit)
-            if return_query_count:
-                x_query_count, x_result = x_result
-                v_query_count += x_query_count
-            if isinstance(x_result, list):
-                if not v_result:
-                    v_result = []
-                v_result += x_result
-            if isinstance(x_result, dict):
-                if not v_result:
-                    v_result = {}
-                for x in x_result:
-                    v_result[x] = x_result[x]
-            if size_limit != 0 and len(v_result) >= size_limit:
-                raise SizeLimitExceeded("Size limit exceeded.")
-        return v_query_count, v_result
+    elif config.index_type in ("postgres", "mysql"):
+        # Comfortably under the 65535 wire-protocol limit on both backends.
+        max_q_values = 60000
     else:
-        if order_by is None:
-            order_by = "full_oid"
+        # Backend without a known limit (e.g. backend-internal API) -- no
+        # chunking unless the list is utterly absurd.
+        max_q_values = 10240000
+
+    # Pick the (single) largest oversized list across both top-level kwargs
+    # and the attributes dict. Both forms get folded into search_attributes
+    # above, so scanning that catches every caller convention.
+    chunk_attr = None
+    chunk_kind = None
+    chunk_len = 0
+    for _attr_name, _attr_data in search_attributes.items():
+        for _kind in ('values', 'or_values'):
+            _v = _attr_data.get(_kind)
+            if _v is None:
+                continue
+            if len(_v) > max_q_values and len(_v) > chunk_len:
+                chunk_attr = _attr_name
+                chunk_kind = _kind
+                chunk_len = len(_v)
+
+    if chunk_attr is not None:
+        if order_by is not None:
+            msg = _("Cannot order results if <{kind}> for '{attr}' >= {max_q_values}")
+            msg = msg.format(attr=chunk_attr, kind=chunk_kind,
+                            max_q_values=max_q_values)
+            raise SearchException(msg)
+        big_list = search_attributes[chunk_attr][chunk_kind]
+        v_result = None
+        v_query_count = 0
+        for x_list in stuff.split_list(big_list, max_q_values):
+            # Build per-chunk attributes dict (shallow-copy each entry so
+            # we don't mutate the caller's dict).
+            new_attrs = {k: dict(v) for k, v in search_attributes.items()}
+            new_attrs[chunk_attr][chunk_kind] = x_list
+            # Recurse via attributes= only; clear top-level params because
+            # they were already merged into new_attrs above.
+            x_result = index_search(realm=realm,
+                                    site=site,
+                                    attribute=None,
+                                    value=None,
+                                    values=None,
+                                    or_values=None,
+                                    attributes=new_attrs,
+                                    less_than=None,
+                                    greater_than=None,
+                                    order_by=order_by,
+                                    reverse_order=reverse_order,
+                                    return_type=return_type,
+                                    return_attributes=return_attributes,
+                                    join_search_val=join_search_val,
+                                    join_search_attr=join_search_attr,
+                                    join_object_type=join_object_type,
+                                    case_sensitive=case_sensitive,
+                                    object_type=object_type,
+                                    verify_acls=verify_acls,
+                                    return_acls=return_acls,
+                                    return_raw_acls=return_raw_acls,
+                                    return_query_count=return_query_count,
+                                    max_results=max_results,
+                                    size_limit=size_limit)
+            if return_query_count:
+                x_query_count, x_result = x_result
+                v_query_count += x_query_count
+            if isinstance(x_result, list):
+                if not v_result:
+                    v_result = []
+                v_result += x_result
+            if isinstance(x_result, dict):
+                if not v_result:
+                    v_result = {}
+                for x in x_result:
+                    v_result[x] = x_result[x]
+            if size_limit != 0 and v_result and len(v_result) >= size_limit:
+                raise SizeLimitExceeded("Size limit exceeded.")
+        return v_query_count, v_result
+
+    if order_by is None:
+        order_by = "full_oid"
 
     # Get sqlalchemy class of object type.
     try:
@@ -2219,6 +2217,1177 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         result = query_count, result
     return result
 
+## FIXME: implement regex searching??? http://xion.io/post/code/sqlalchemy-regex-filters.html
+#@handle_transaction
+#@index_search_cache.cache_function()
+#def index_search(realm=None, site=None, attribute=None, value=None, values=None,
+#    or_values=None, order_by=None, reverse_order=False, attributes=None,
+#    less_than=None, greater_than=None, join_object_type=None,
+#    join_search_attr=None, join_search_val=None, join_attribute=None,
+#    return_type="uuid", return_attributes=None, case_sensitive=True,
+#    object_type=None, object_types=None, verify_acls=None, return_acls=None,
+#    return_raw_acls=False, max_results=0, size_limit=0,
+#    template=None, return_query_count=False,
+#    session=None, _debug=False, **kwargs):
+#    """ Search index. """
+#    # Import modules here to speedup import time.
+#    if attributes is None:
+#        attributes = {}
+#    from sqlalchemy import or_
+#    #from sqlalchemy import and_
+#    from sqlalchemy import cast
+#    from sqlalchemy import desc
+#    from sqlalchemy import func
+#    from sqlalchemy import Integer
+#    from sqlalchemy.orm import aliased
+#    from sqlalchemy.orm import contains_eager
+#    if size_limit is None:
+#        size_limit = 0
+#    if max_results is None:
+#        max_results = 0
+#    if size_limit > 0 and max_results > 0:
+#        if size_limit > max_results:
+#            msg = _("<max_results> must be lower than <size_limit>")
+#            raise SearchException(msg)
+#
+#    if not return_type:
+#        if not return_attributes:
+#            msg = _("Need <return_type> or <return_attributes>.")
+#            raise SearchException(msg)
+#
+#    if value is None and values is None and or_values is None \
+#    and less_than is None and greater_than is None and not attributes:
+#        msg = _("Need <value>, <values>, <or_values>, <greater_than>, <less_than> or <attributes>.")
+#        raise SearchException(msg)
+#
+#    # UUID → object_type fast-path: avoid probing every object type on
+#    # uuid lookups by remembering which type a uuid belongs to.
+#    if object_type is None and object_types is None \
+#    and attribute == "uuid" and value is not None:
+#        _uuid_fastpath_stats["enter"] += 1
+#        cached_type = _uuid_type_cache.get(value)
+#        if cached_type is not None:
+#            _uuid_fastpath_stats["hit"] += 1
+#            object_type = cached_type
+#        else:
+#            _uuid_fastpath_stats["miss"] += 1
+#
+#    # Search for object types if none was given.
+#    if object_type is None:
+#        if object_types is None:
+#            object_types = list(config.object_types)
+#
+#    # Build attributes dict.
+#    search_attributes = {}
+#    if attributes:
+#        search_attributes = dict(attributes)
+#    if attribute:
+#        try:
+#            attr_data = search_attributes[attribute]
+#        except KeyError:
+#            attr_data = {}
+#            search_attributes[attribute] = attr_data
+#        if value is not None:
+#            attr_data['value'] = value
+#        if less_than is not None:
+#            attr_data['less_than'] = less_than
+#        if greater_than is not None:
+#            attr_data['greater_than'] = greater_than
+#        if values is not None:
+#            attr_data['values'] = values
+#        if or_values is not None:
+#            attr_data['or_values'] = or_values
+#
+#    # Check if we got valid search parameters.
+#    for x_attr in search_attributes:
+#        try:
+#            x_value = search_attributes[x_attr]['value']
+#        except Exception:
+#            x_value = None
+#        try:
+#            x_values = search_attributes[x_attr]['values']
+#        except Exception:
+#            x_values = None
+#        try:
+#            x_or_values = search_attributes[x_attr]['or_values']
+#        except Exception:
+#            x_or_values = None
+#        try:
+#            x_less_than = search_attributes[x_attr]['less_than']
+#        except Exception:
+#            x_less_than = None
+#        try:
+#            x_greater_than = search_attributes[x_attr]['greater_than']
+#        except Exception:
+#            x_greater_than = None
+#        if x_attr.lower() not in map(str.lower, config.index_attributes):
+#            msg = _("Cannot search for attribute {x_attr}: Not in index")
+#            msg = msg.format(x_attr=x_attr)
+#            raise SearchException(msg)
+#        if x_value is None and x_values is None and x_or_values is None \
+#        and x_less_than is None and x_greater_than is None and values is None:
+#            msg = _("Need <value>, <values>, <or_values>, <less_than> or <greater_than>.")
+#            raise SearchException(msg)
+#
+#    # Make sure objects UUID is the at first position in query result.
+#    if return_attributes:
+#        try:
+#            return_attributes.remove("uuid")
+#            return_attributes.insert(0, "uuid")
+#        except Exception:
+#            pass
+#    # Build internal list with return attributes.
+#    _return_attributes = []
+#    if return_attributes:
+#        _return_attributes = list(return_attributes)
+#    elif return_type:
+#        if return_type not in _return_attributes:
+#            _return_attributes.append(return_type)
+#    # We always need the UUID attribute to build the result.
+#    if "uuid" not in _return_attributes:
+#        _return_attributes.insert(0, "uuid")
+#
+#    # If we got more than one object type (or none) we have to start a search
+#    # for each object type.
+#    if not object_type:
+#        o_result = None
+#        for x_object_type in object_types:
+#            x_result = index_search(realm=realm,
+#                                    site=site,
+#                                    attribute=attribute,
+#                                    value=value,
+#                                    values=values,
+#                                    or_values=or_values,
+#                                    attributes=attributes,
+#                                    less_than=less_than,
+#                                    greater_than=greater_than,
+#                                    order_by=order_by,
+#                                    reverse_order=reverse_order,
+#                                    return_type=return_type,
+#                                    return_attributes=return_attributes,
+#                                    join_search_val=join_search_val,
+#                                    join_search_attr=join_search_attr,
+#                                    join_object_type=join_object_type,
+#                                    case_sensitive=case_sensitive,
+#                                    object_type=x_object_type,
+#                                    verify_acls=verify_acls,
+#                                    return_acls=return_acls,
+#                                    return_raw_acls=return_raw_acls,
+#                                    max_results=max_results,
+#                                    size_limit=size_limit)
+#            if isinstance(x_result, list):
+#                if not o_result:
+#                    o_result = []
+#                o_result += x_result
+#            if isinstance(x_result, dict):
+#                if not o_result:
+#                    o_result = {}
+#                for t in x_result:
+#                    if return_raw_acls:
+#                        if isinstance(x_result[t], list):
+#                            if t not in o_result:
+#                                o_result[t] = []
+#                            o_result[t] += x_result[t]
+#                        if isinstance(x_result[t], dict):
+#                            if t not in o_result:
+#                                o_result[t] = {}
+#                            for x in x_result[t]:
+#                                o_result[t][x] = x_result[t][x]
+#                    else:
+#                        if t not in o_result:
+#                            o_result[t] = {}
+#                        for x in x_result[t]:
+#                            o_result[t][x] = x_result[t][x]
+#            # Learn uuid → object_type mapping for future fast-path lookups.
+#            if x_result and attribute == "uuid" and value is not None:
+#                _uuid_type_cache[value] = x_object_type
+#                _uuid_fastpath_stats["populate"] += 1
+#            if size_limit != 0 and len(o_result) >= size_limit:
+#                raise SizeLimitExceeded("Size limit exceeded.")
+#        return o_result
+#
+#    #import logging
+#    #logging.basicConfig()
+#    #logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+#
+#    # Get dogpile cache region.
+#    if config.dogpile_caching:
+#        cache_region = config.get_cache_region(object_type)
+#
+#    # To prevent the "(sqlite3.OperationalError) too many SQL variables" error
+#    # we have to split values list in chunks and start a search for each chunk.
+#    max_q_values = 10240000
+#    if config.index_type == "sqlite3":
+#        max_q_values = 800
+#    if or_values is not None and len(or_values) > max_q_values:
+#        if order_by is not None:
+#            msg = _("Cannot order results if <or_values> >= {max_q_values}")
+#            msg = msg.format(max_q_values=max_q_values)
+#            raise SearchException(msg)
+#        v_result = None
+#        v_query_count = 0
+#        or_values = stuff.split_list(or_values, max_q_values)
+#        for x_list in or_values:
+#            x_result = index_search(realm=realm,
+#                                    site=site,
+#                                    attribute=attribute,
+#                                    value=value,
+#                                    or_values=x_list,
+#                                    attributes=attributes,
+#                                    less_than=less_than,
+#                                    greater_than=greater_than,
+#                                    order_by=order_by,
+#                                    reverse_order=reverse_order,
+#                                    return_type=return_type,
+#                                    return_attributes=return_attributes,
+#                                    join_search_val=join_search_val,
+#                                    join_search_attr=join_search_attr,
+#                                    join_object_type=join_object_type,
+#                                    case_sensitive=case_sensitive,
+#                                    object_type=object_type,
+#                                    verify_acls=verify_acls,
+#                                    return_acls=return_acls,
+#                                    return_raw_acls=return_raw_acls,
+#                                    return_query_count=return_query_count,
+#                                    max_results=max_results,
+#                                    size_limit=size_limit)
+#            if return_query_count:
+#                x_query_count, x_result = x_result
+#                v_query_count += x_query_count
+#            if isinstance(x_result, list):
+#                if not v_result:
+#                    v_result = []
+#                v_result += x_result
+#            if isinstance(x_result, dict):
+#                if not v_result:
+#                    v_result = {}
+#                for x in x_result:
+#                    v_result[x] = x_result[x]
+#            if size_limit != 0 and len(v_result) >= size_limit:
+#                raise SizeLimitExceeded("Size limit exceeded.")
+#        return v_query_count, v_result
+#    elif values is not None and len(values) > max_q_values:
+#        if order_by is not None:
+#            msg = _("Cannot order results if <values> >= {max_q_values}")
+#            msg = msg.format(max_q_values=max_q_values)
+#            raise SearchException(msg)
+#        v_result = None
+#        v_query_count = 0
+#        values = stuff.split_list(values, max_q_values)
+#        for x_list in values:
+#            x_result = index_search(realm=realm,
+#                                    site=site,
+#                                    attribute=attribute,
+#                                    value=value,
+#                                    values=x_list,
+#                                    attributes=attributes,
+#                                    less_than=less_than,
+#                                    greater_than=greater_than,
+#                                    order_by=order_by,
+#                                    reverse_order=reverse_order,
+#                                    return_type=return_type,
+#                                    return_attributes=return_attributes,
+#                                    join_search_val=join_search_val,
+#                                    join_search_attr=join_search_attr,
+#                                    join_object_type=join_object_type,
+#                                    case_sensitive=case_sensitive,
+#                                    object_type=object_type,
+#                                    verify_acls=verify_acls,
+#                                    return_acls=return_acls,
+#                                    return_raw_acls=return_raw_acls,
+#                                    return_query_count=return_query_count,
+#                                    max_results=max_results,
+#                                    size_limit=size_limit)
+#            if return_query_count:
+#                x_query_count, x_result = x_result
+#                v_query_count += x_query_count
+#            if isinstance(x_result, list):
+#                if not v_result:
+#                    v_result = []
+#                v_result += x_result
+#            if isinstance(x_result, dict):
+#                if not v_result:
+#                    v_result = {}
+#                for x in x_result:
+#                    v_result[x] = x_result[x]
+#            if size_limit != 0 and len(v_result) >= size_limit:
+#                raise SizeLimitExceeded("Size limit exceeded.")
+#        return v_query_count, v_result
+#    else:
+#        if order_by is None:
+#            order_by = "full_oid"
+#
+#    # Get sqlalchemy class of object type.
+#    try:
+#        IndexObject, \
+#        IndexObjectAttribute, \
+#        IndexObjectACL = get_class(object_type)
+#    except UnknownClass as err:
+#        msg = _("Unknown object class: {object_type}")
+#        msg = msg.format(object_type=object_type)
+#        raise SearchException(msg) from err
+#
+#    # Set "order by" attribute.
+#    order_by_attribute = None
+#    if order_by == "realm":
+#        order_by = IndexObject.realm
+#    elif order_by == "site":
+#        order_by = IndexObject.site
+#    elif order_by == "full_oid":
+#        order_by = IndexObject.full_oid
+#    elif order_by == "read_oid":
+#        order_by = IndexObject.read_oid
+#    elif order_by == "name":
+#        order_by = IndexObject.name
+#    elif order_by == "path":
+#        order_by = IndexObject.path
+#    elif order_by == "rel_path":
+#        order_by = IndexObject.rel_path
+#    elif order_by == "uuid":
+#        order_by = IndexObject.uuid
+#    elif order_by == "object_type":
+#        order_by = IndexObject.object_type
+#    elif order_by == "last_used":
+#        order_by = IndexObject.last_used
+#    else:
+#        order_by_attribute = order_by
+#
+#    # Get base attributes.
+#    base_attributes = []
+#    if return_attributes:
+#        for x in return_attributes:
+#            if x not in config.otpme_base_attributes:
+#                continue
+#            base_attributes.append(x)
+#
+#    # Set default query args.
+#    query_args = {}
+#    if realm:
+#        if object_type != "realm":
+#            query_args['realm'] = realm
+#    if site:
+#        if object_type != "realm" and object_type != "site":
+#            query_args['site'] = site
+#    #if object_type:
+#    #    query_args['object_type'] = object_type
+#
+#    # Get query.
+#    if join_search_attr:
+#        if not join_object_type:
+#            msg = _("Missing <join_object_type>.")
+#            raise SearchException(msg)
+#        if not join_search_val:
+#            msg = _("Missing <join_search_val>.")
+#            raise SearchException(msg)
+#        try:
+#            JoinIndexObject, \
+#            JoinIndexObjectAttribute, \
+#            JoinIndexObjectACL = get_class(join_object_type)
+#        except UnknownClass as err:
+#            msg = _("Unknown join object class: {object_type}")
+#            msg = msg.format(object_type=object_type)
+#            raise SearchException(msg) from err
+#        # Alias tables to join (e.g. prevent "ERROR:  table name <table> specified more than once").
+#        JoinIndexObject = aliased(JoinIndexObject)
+#        JoinIndexObjectAttribute = aliased(JoinIndexObjectAttribute)
+#        # Join object attributes by foreign key and index objects by UUID.
+#        q = session.query(JoinIndexObject)
+#        q = q.join(JoinIndexObjectAttribute, JoinIndexObject.id==JoinIndexObjectAttribute.ioid)
+#        q = q.join(IndexObject, JoinIndexObjectAttribute.value==IndexObject.uuid)
+#        q = q.filter(getattr(JoinIndexObject, join_search_attr)==join_search_val)
+#        # Filter by join attribute.
+#        if join_attribute:
+#            q = q.filter(JoinIndexObjectAttribute.name==join_attribute)
+#    else:
+#        q = session.query(IndexObject)
+#
+#    # Check for template.
+#    if template:
+#        q = q.filter(IndexObject.template == template)
+#
+#    if query_args:
+#        q = q.filter_by(**query_args)
+#
+#    ## Handle search for a list of values (e.g. token UUIDs).
+#    #if or_values:
+#    #    if attribute in config.otpme_base_attributes:
+#    #        or_filter_parts = []
+#    #        plain_vals = []
+#    #        for val in or_values:
+#    #            sql_like = str(val)
+#    #            if "*" in sql_like:
+#    #                sql_like = sql_like.replace("*", "%")
+#    #                if "_" in sql_like:
+#    #                    sql_like = sql_like.replace("_", "!_")
+#    #                if case_sensitive:
+#    #                    or_filter_parts.append(getattr(IndexObject, attribute).like(sql_like, escape="!"))
+#    #                else:
+#    #                    or_filter_parts.append(getattr(IndexObject, attribute).ilike(sql_like, escape="!"))
+#    #            else:
+#    #                plain_vals.append(val)
+#    #        if plain_vals:
+#    #            or_filter_parts.append(getattr(IndexObject, attribute).in_(plain_vals))
+#    #        if or_filter_parts:
+#    #            q = q.filter(or_(*or_filter_parts))
+#    #        q = q.options(contains_eager(IndexObject.attributes))
+#    #    else:
+#    #        if "*" in or_values:
+#    #            q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attribute))
+#    #        else:
+#    #            or_filter_parts = []
+#    #            plain_vals = []
+#    #            for val in or_values:
+#    #                sql_like = str(val)
+#    #                if "*" in sql_like:
+#    #                    sql_like = sql_like.replace("*", "%")
+#    #                    if "_" in sql_like:
+#    #                        sql_like = sql_like.replace("_", "!_")
+#    #                    if case_sensitive:
+#    #                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#    #                        or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attribute))
+#    #                    else:
+#    #                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#    #                        or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attribute))
+#    #                else:
+#    #                    plain_vals.append(val)
+#    #            if plain_vals:
+#    #                or_filter_parts.append(IndexObject.attributes.any((IndexObjectAttribute.name==attribute) & (IndexObjectAttribute.value.in_(plain_vals))))
+#    #            if or_filter_parts:
+#    #                q = q.filter(or_(*or_filter_parts))
+#    #elif values:
+#    #    if attribute in config.otpme_base_attributes:
+#    #        pos_vals = []
+#    #        neg_vals = []
+#    #        for val in values:
+#    #            if str(val).startswith("!"):
+#    #                val_stripped = str(val)[1:]
+#    #                if "*" in val_stripped:
+#    #                    sql_like = val_stripped.replace("*", "%")
+#    #                    if "_" in sql_like:
+#    #                        sql_like = sql_like.replace("_", "!_")
+#    #                    if case_sensitive:
+#    #                        q = q.filter(~getattr(IndexObject, attribute).like(sql_like, escape="!"))
+#    #                    else:
+#    #                        q = q.filter(~getattr(IndexObject, attribute).ilike(sql_like, escape="!"))
+#    #                else:
+#    #                    neg_vals.append(val_stripped)
+#    #            else:
+#    #                sql_like = str(val)
+#    #                if "*" in sql_like:
+#    #                    sql_like = sql_like.replace("*", "%")
+#    #                    if "_" in sql_like:
+#    #                        sql_like = sql_like.replace("_", "!_")
+#    #                    if case_sensitive:
+#    #                        q = q.filter(getattr(IndexObject, attribute).like(sql_like, escape="!"))
+#    #                    else:
+#    #                        q = q.filter(getattr(IndexObject, attribute).ilike(sql_like, escape="!"))
+#    #                else:
+#    #                    pos_vals.append(val)
+#    #        if pos_vals:
+#    #            q = q.filter(getattr(IndexObject, attribute).in_(pos_vals))
+#    #        if neg_vals:
+#    #            q = q.filter(~getattr(IndexObject, attribute).in_(neg_vals))
+#    #        q = q.options(contains_eager(IndexObject.attributes))
+#    #    else:
+#    #        if "*" in values:
+#    #            q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attribute))
+#    #        else:
+#    #            pos_vals = []
+#    #            neg_vals = []
+#    #            for val in values:
+#    #                if str(val).startswith("!"):
+#    #                    val_stripped = str(val)[1:]
+#    #                    if "*" in val_stripped:
+#    #                        sql_like = val_stripped.replace("*", "%")
+#    #                        if "_" in sql_like:
+#    #                            sql_like = sql_like.replace("_", "!_")
+#    #                        if case_sensitive:
+#    #                            like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#    #                            q = q.filter(~IndexObject.attributes.any(like_filter, name=attribute))
+#    #                        else:
+#    #                            like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#    #                            q = q.filter(~IndexObject.attributes.any(like_filter, name=attribute))
+#    #                    else:
+#    #                        neg_vals.append(val_stripped)
+#    #                else:
+#    #                    sql_like = str(val)
+#    #                    if "*" in sql_like:
+#    #                        sql_like = sql_like.replace("*", "%")
+#    #                        if "_" in sql_like:
+#    #                            sql_like = sql_like.replace("_", "!_")
+#    #                        if case_sensitive:
+#    #                            like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#    #                            q = q.filter(IndexObject.attributes.any(like_filter, name=attribute))
+#    #                        else:
+#    #                            like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#    #                            q = q.filter(IndexObject.attributes.any(like_filter, name=attribute))
+#    #                    else:
+#    #                        pos_vals.append(val)
+#    #            if pos_vals:
+#    #                q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attribute) & (IndexObjectAttribute.value.in_(pos_vals))))
+#    #            if neg_vals:
+#    #                q = q.filter(~IndexObject.attributes.any((IndexObjectAttribute.name==attribute) & (IndexObjectAttribute.value.in_(neg_vals))))
+#
+#    # Handle "normal" search by attribute and value.
+#    or_filters = []
+#    for attr in search_attributes:
+#        try:
+#            value = search_attributes[attr]['value']
+#        except Exception:
+#            value = None
+#        try:
+#            values = search_attributes[attr]['values']
+#        except Exception:
+#            values = None
+#        try:
+#            or_values = search_attributes[attr]['or_values']
+#        except Exception:
+#            or_values = None
+#        try:
+#            less_than = search_attributes[attr]['less_than']
+#        except Exception:
+#            less_than = None
+#        try:
+#            greater_than = search_attributes[attr]['greater_than']
+#        except Exception:
+#            greater_than = None
+#
+#        if values is not None and len(values) > max_q_values:
+#            msg = _("Too many <values> for attribute '{attr}'.")
+#            msg = msg.format(attr=attr)
+#            raise SearchException(msg)
+#
+#        if or_values is not None and len(or_values) > max_q_values:
+#            msg = _("Too many <or_values> for attribute '{attr}'.")
+#            msg = msg.format(attr=attr)
+#            raise SearchException(msg)
+#
+#        # Search objects with the given ACL.
+#        if attr == "acl":
+#            q = q.join(IndexObject.acls)
+#            x_values = []
+#            if value is not None:
+#                x_values = [value]
+#            if values is not None:
+#                x_values = values
+#            x_tuple = []
+#            for x_val in x_values:
+#                sql_like = str(x_val)
+#                if "*" in sql_like:
+#                    sql_like = x_val.replace("*", "%")
+#                    if "_" in sql_like:
+#                        sql_like = sql_like.replace("_", "!_")
+#                    x_tuple.append(IndexObjectACL.value.like(sql_like, escape="!"))
+#                else:
+#                    x_tuple.append(IndexObjectACL.value.is_(x_val))
+#            q = q.filter(or_(*x_tuple))
+#
+#        # Search by base attributes (e.g. name).
+#        elif attr in config.otpme_base_attributes:
+#            if isinstance(value, bool):
+#                q = q.filter(getattr(IndexObject, attr).is_(value))
+#            elif or_values is not None or values is not None:
+#                if or_values:
+#                    if "*" in or_values:
+#                        or_filters.append(getattr(IndexObject, attr).isnot(None))
+#                    else:
+#                        neg_vals = []
+#                        plain_vals = []
+#                        or_filter_parts = []
+#                        for val in or_values:
+#                            if isinstance(val, dict):
+#                                if "less_than" in val:
+#                                    int_filter = (getattr(IndexObject, attr) < val['less_than'])
+#                                    or_filters.append(int_filter)
+#                                elif "greater_than" in val:
+#                                    int_filter = (getattr(IndexObject, attr) > val['greater_than'])
+#                                    or_filters.append(int_filter)
+#                                else:
+#                                    msg = "Unsupported or-values filter."
+#                                    raise OTPmeException(msg)
+#                                continue
+#                            if str(val).startswith("!"):
+#                                neg_vals.append(str(val)[1:])
+#                                continue
+#                            sql_like = str(val)
+#                            if "*" in sql_like:
+#                                sql_like = sql_like.replace("*", "%")
+#                                if "_" in sql_like:
+#                                    sql_like = sql_like.replace("_", "!_")
+#                                if case_sensitive:
+#                                    or_filter_parts.append(getattr(IndexObject, attr).like(sql_like, escape="!"))
+#                                else:
+#                                    or_filter_parts.append(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+#                            else:
+#                                plain_vals.append(val)
+#                        if plain_vals:
+#                            or_filter_parts.append(getattr(IndexObject, attr).in_(plain_vals))
+#                        if or_filter_parts:
+#                            or_filters.append(or_(*or_filter_parts))
+#                        if neg_vals:
+#                            or_filters.append(~getattr(IndexObject, attr).in_(neg_vals))
+#                if values is not None:
+#                    if "*" in values:
+#                        q = q.filter(getattr(IndexObject, attr).isnot(None))
+#                        q = q.options(contains_eager(IndexObject.attributes))
+#                    else:
+#                        pos_vals = []
+#                        neg_vals = []
+#                        for val in values:
+#                            if isinstance(val, dict):
+#                                if "less_than" in val:
+#                                    int_filter = (getattr(IndexObject, attr) < val['less_than'])
+#                                    q = q.filter(int_filter)
+#                                elif "greater_than" in val:
+#                                    int_filter = (getattr(IndexObject, attr) > val['greater_than'])
+#                                    q = q.filter(int_filter)
+#                                else:
+#                                    msg = "Unsupported values filter."
+#                                    raise OTPmeException(msg)
+#                                continue
+#                            if str(val).startswith("!"):
+#                                val_stripped = str(val)[1:]
+#                                if "*" in val_stripped:
+#                                    sql_like = val_stripped.replace("*", "%")
+#                                    if "_" in sql_like:
+#                                        sql_like = sql_like.replace("_", "!_")
+#                                    if case_sensitive:
+#                                        q = q.filter(~getattr(IndexObject, attr).like(sql_like, escape="!"))
+#                                    else:
+#                                        q = q.filter(~getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+#                                else:
+#                                    neg_vals.append(val_stripped)
+#                            else:
+#                                sql_like = str(val)
+#                                if "*" in sql_like:
+#                                    sql_like = sql_like.replace("*", "%")
+#                                    if "_" in sql_like:
+#                                        sql_like = sql_like.replace("_", "!_")
+#                                    if case_sensitive:
+#                                        q = q.filter(getattr(IndexObject, attr).like(sql_like, escape="!"))
+#                                    else:
+#                                        q = q.filter(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+#                                else:
+#                                    pos_vals.append(val)
+#                        if pos_vals:
+#                            q = q.filter(getattr(IndexObject, attr).in_(pos_vals))
+#                        if neg_vals:
+#                            q = q.filter(~getattr(IndexObject, attr).in_(neg_vals))
+#                        q = q.options(contains_eager(IndexObject.attributes))
+#            elif value is not None:
+#                sql_like = str(value)
+#                if "*" in sql_like:
+#                    sql_like = sql_like.replace("*", "%")
+#                    if "_" in sql_like:
+#                        sql_like = sql_like.replace("_", "!_")
+#                    if case_sensitive:
+#                        q = q.filter(getattr(IndexObject, attr).like(sql_like, escape="!"))
+#                    else:
+#                        q = q.filter(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+#                else:
+#                    if case_sensitive:
+#                        q = q.filter(getattr(IndexObject, attr)==value)
+#                    else:
+#                        if isinstance(value, str):
+#                            q = q.filter(func.lower(getattr(IndexObject, attr))==value)
+#                        else:
+#                            q = q.filter(getattr(IndexObject, attr)==value)
+#            elif less_than is not None:
+#                q = q.filter(cast(getattr(IndexObject, attr), Integer) < less_than)
+#            elif greater_than is not None:
+#                q = q.filter(cast(getattr(IndexObject, attr), Integer) > greater_than)
+#        # Search by LDIF attributes (e.g. uidNumber).
+#        else:
+#            if isinstance(value, bool):
+#                q = q.filter(IndexObject.attributes.any(name=attr, value=value))
+#            elif or_values is not None or values is not None:
+#                if or_values is not None:
+#                    if "*" in or_values:
+#                        or_filters.append(IndexObject.attributes.any(IndexObjectAttribute.name==attr))
+#                    else:
+#                        neg_vals = []
+#                        plain_vals = []
+#                        or_filter_parts = []
+#                        for val in or_values:
+#                            if isinstance(val, dict):
+#                                if "less_than" in val:
+#                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+#                                    int_filter = IndexObject.attributes.any(int_filter < val['less_than'], name=attr)
+#                                    or_filters.append(int_filter)
+#                                elif "greater_than" in val:
+#                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+#                                    int_filter = IndexObject.attributes.any(int_filter > val['greater_than'], name=attr)
+#                                    or_filters.append(int_filter)
+#                                else:
+#                                    msg = "Unsupported or-values filter."
+#                                    raise OTPmeException(msg)
+#                                continue
+#                            if str(val).startswith("!"):
+#                                neg_vals.append(str(val)[1:])
+#                                continue
+#                            sql_like = str(val)
+#                            if "*" in sql_like:
+#                                sql_like = sql_like.replace("*", "%")
+#                                if "_" in sql_like:
+#                                    sql_like = sql_like.replace("_", "!_")
+#                                if case_sensitive:
+#                                    like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#                                    or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attr))
+#                                else:
+#                                    like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#                                    or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attr))
+#                            else:
+#                                plain_vals.append(val)
+#                        if plain_vals:
+#                            or_filter_parts.append(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(plain_vals))))
+#                        if or_filter_parts:
+#                            or_filters.append(or_(*or_filter_parts))
+#                        if neg_vals:
+#                            or_filters.append(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(neg_vals))))
+#                if values is not None:
+#                    if "*" in values:
+#                        q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attr))
+#                    else:
+#                        pos_vals = []
+#                        neg_vals = []
+#                        for val in values:
+#                            if isinstance(val, dict):
+#                                if "less_than" in val:
+#                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+#                                    int_filter = IndexObject.attributes.any(int_filter < val['less_than'], name=attr)
+#                                    q = q.filter(int_filter)
+#                                elif "greater_than" in val:
+#                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+#                                    int_filter = IndexObject.attributes.any(int_filter > val['greater_than'], name=attr)
+#                                    q = q.filter(int_filter)
+#                                else:
+#                                    msg = "Unsupported values filter."
+#                                    raise OTPmeException(msg)
+#                                continue
+#                            if str(val).startswith("!"):
+#                                val_stripped = str(val)[1:]
+#                                if "*" in val_stripped:
+#                                    sql_like = val_stripped.replace("*", "%")
+#                                    if "_" in sql_like:
+#                                        sql_like = sql_like.replace("_", "!_")
+#                                    if case_sensitive:
+#                                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#                                        q = q.filter(~IndexObject.attributes.any(like_filter, name=attr))
+#                                    else:
+#                                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#                                        q = q.filter(~IndexObject.attributes.any(like_filter, name=attr))
+#                                else:
+#                                    neg_vals.append(val_stripped)
+#                            else:
+#                                sql_like = str(val)
+#                                if "*" in sql_like:
+#                                    sql_like = sql_like.replace("*", "%")
+#                                    if "_" in sql_like:
+#                                        sql_like = sql_like.replace("_", "!_")
+#                                    if case_sensitive:
+#                                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#                                        q = q.filter(IndexObject.attributes.any(like_filter, name=attr))
+#                                    else:
+#                                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#                                        q = q.filter(IndexObject.attributes.any(like_filter, name=attr))
+#                                else:
+#                                    pos_vals.append(val)
+#                        if pos_vals:
+#                            q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(pos_vals))))
+#                        if neg_vals:
+#                            q = q.filter(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(neg_vals))))
+#                        #q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(values))))
+#                    #q = q.filter(IndexObjectAttribute.name==attr, IndexObjectAttribute.value.in_(values))
+#                    #for val in values:
+#                    #    q = q.filter(IndexObject.attributes.any(name=attr, value=val))
+#            elif value is not None:
+#                negate_filter = False
+#                if str(value).startswith("!"):
+#                    negate_filter = True
+#                    value = str(value)[1:]
+#                like_query = False
+#                sql_like = str(value)
+#                if "*" in sql_like:
+#                    like_query = True
+#                    sql_like = sql_like.replace("*", "%")
+#                    if "_" in sql_like:
+#                        sql_like = sql_like.replace("_", "!_")
+#
+#                if like_query:
+#                    if case_sensitive:
+#                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+#                        like_filter = IndexObject.attributes.any(like_filter, name=attr)
+#                        if negate_filter:
+#                            q = q.filter(~like_filter)
+#                        else:
+#                            q = q.filter(like_filter)
+#                    else:
+#                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+#                        like_filter = IndexObject.attributes.any(like_filter, name=attr)
+#                        if negate_filter:
+#                            q = q.filter(~like_filter)
+#                        else:
+#                            q = q.filter(like_filter)
+#                else:
+#                    if negate_filter:
+#                        q = q.filter(~IndexObject.attributes.any(name=attr, value=value))
+#                    else:
+#                        q = q.filter(IndexObject.attributes.any(name=attr, value=value))
+#            if less_than is not None:
+#                int_filter = cast(IndexObjectAttribute.value, Integer)
+#                int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)
+#                q = q.filter(int_filter)
+#            if greater_than is not None:
+#                int_filter = cast(IndexObjectAttribute.value, Integer)
+#                int_filter = IndexObject.attributes.any(int_filter > greater_than, name=attr)
+#                q = q.filter(int_filter)
+#
+#    # Apply OR filters if any were collected.
+#    if or_filters:
+#        q = q.filter(or_(*or_filters))
+#
+#    # Make sure we query only requested attributes.
+#    x_attrs = []
+#    entities = [IndexObject.id]
+#    for x in _return_attributes:
+#        # Remember LDIF attributes to return for processing below.
+#        if x not in config.otpme_base_attributes:
+#            x_attrs.append(x)
+#            continue
+#        if x == "full_oid":
+#            entities.append(IndexObject.full_oid)
+#        elif x == "read_oid":
+#            entities.append(IndexObject.read_oid)
+#        elif x == "oid":
+#            entities.append(IndexObject.full_oid)
+#        elif x == "realm":
+#            entities.append(IndexObject.realm)
+#        elif x == "site":
+#            entities.append(IndexObject.site)
+#        elif x == "uuid":
+#            entities.append(IndexObject.uuid)
+#        elif x == "path":
+#            entities.append(IndexObject.path)
+#        elif x == "rel_path":
+#            entities.append(IndexObject.rel_path)
+#        elif x == "name":
+#            entities.append(IndexObject.name)
+#        elif x == "object_type":
+#            entities.append(IndexObject.object_type)
+#        elif x == "checksum":
+#            entities.append(IndexObject.checksum)
+#        elif x == "sync_checksum":
+#            entities.append(IndexObject.sync_checksum)
+#        elif x == "last_used":
+#            entities.append(IndexObject.last_used)
+#        elif x == "template":
+#            entities.append(IndexObject.template)
+#        elif x == "ldif":
+#            entities.append(IndexObject.ldif)
+#
+#    # Build entities tuple)
+#    if len(entities) == 1:
+#        entities.append(IndexObject.uuid)
+#    entities = tuple(entities)
+#
+#    # Handle ACL check. Return only objects that match any or all of the
+#    # given ACLs.
+#    if verify_acls:
+#        # Get ACL query.
+#        acl_q = q.join(IndexObject.acls)
+#        acl_q = acl_q.filter(IndexObjectACL.value.in_(verify_acls))
+#        q = q.intersect(acl_q)
+#
+#    # Get query result count before limiting search.
+#    if return_query_count:
+#        query_count = q.count()
+#
+#    # Handle "with ACLs" search.
+#    if return_acls or return_raw_acls:
+#        # Join with ACL table.
+#        sub_query = q.with_entities(IndexObject.id)
+#        acl_q = session.query(IndexObjectACL)
+#        acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
+#        acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
+#
+#        # Handle dogpile caching.
+#        if config.dogpile_caching:
+#            from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
+#            acl_q = acl_q.options(FromCache(cache_region))
+#
+#        # Query to return all given ACLs of selected objects.
+#        sub_query = acl_q.with_entities(IndexObject.id)
+#        acl_q = session.query(IndexObjectACL)
+#        acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
+#        acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
+#        # Select only given ACLs (verify_acls).
+#        if verify_acls:
+#            acl_q = acl_q.filter(IndexObjectACL.value.in_(verify_acls))
+#        acl_entities = tuple(list(entities) + [IndexObjectACL.value])
+#        acl_q = acl_q.with_entities(*acl_entities)
+#
+#        # Set result order (sorting).
+#        if order_by_attribute:
+#            acl_q = acl_q.join(IndexObjectAttribute, IndexObject.attributes)
+#            acl_q = acl_q.filter(IndexObjectAttribute.name == order_by_attribute)
+#            if reverse_order:
+#                acl_q = acl_q.order_by(desc(IndexObjectAttribute.value))
+#            else:
+#                acl_q = acl_q.order_by(IndexObjectAttribute.value)
+#        else:
+#            if reverse_order:
+#                acl_q = acl_q.order_by(desc(order_by))
+#            else:
+#                acl_q = acl_q.order_by(order_by)
+#
+#        # Object counter.
+#        object_count = []
+#        # Query objects.
+#        matching_acls = {}
+#        # Query result build from ACLs query.
+#        query_result = []
+#        # ACLs for each object returned by query.
+#        object_acls = {}
+#        for x in acl_q.all():
+#            x_id = x[0]
+#            if x_id not in object_count:
+#                object_count.append(x_id)
+#            if max_results > 0:
+#                if len(object_count) > max_results:
+#                    break
+#            # Get result attributes.
+#            x_uuid = x[1]
+#            x_raw_acl = x[-1]
+#            # Build query result (skip ACL).
+#            query_tuple = x[:-1]
+#            if query_tuple not in query_result:
+#                query_result.append(query_tuple)
+#            # Use raw ACL if return_raw_acls is True.
+#            acl_id = x_raw_acl
+#            if return_acls:
+#                # Decode ACL to get ACL ID.
+#                _acl = otpme_acl.decode(x_raw_acl)
+#                acl_id = _acl.apply_id
+#            # Build list with ACLs.
+#            try:
+#                x_acls = object_acls[x_uuid]
+#            except Exception:
+#                x_acls = []
+#            x_acls.append(acl_id)
+#            object_acls[x_uuid] = list(set(x_acls))
+#            if not return_acls:
+#                continue
+#            all_acl_q = session.query(IndexObject)
+#            all_acl_q = all_acl_q.filter(IndexObject.uuid == x_uuid)
+#            all_acl_q = all_acl_q.join(IndexObjectACL, IndexObjectACL.ioid == IndexObject.id)
+#            all_acl_q = all_acl_q.with_entities(IndexObjectACL.value)
+#            for x in all_acl_q.all():
+#                x_raw_acl = x[0]
+#                if x_raw_acl not in return_acls:
+#                    continue
+#                # Decode ACL to get ACL ID.
+#                _acl = otpme_acl.decode(x_raw_acl)
+#                acl_id = _acl.apply_id
+#                # Build list with ACLs.
+#                try:
+#                    x_acls = matching_acls[x_uuid]
+#                except Exception:
+#                    x_acls = []
+#                x_acls.append(acl_id)
+#                matching_acls[x_uuid] = list(set(x_acls))
+#    else:
+#        # Query only requested attributes.
+#        q = q.with_entities(*entities)
+#
+#        # Set result order (sorting).
+#        if order_by_attribute:
+#            q = q.join(IndexObjectAttribute, IndexObject.attributes)
+#            q = q.filter(IndexObjectAttribute.name == order_by_attribute)
+#            if reverse_order:
+#                #q = q.distinct(IndexObjectAttribute.value)
+#                q = q.order_by(desc(IndexObjectAttribute.value))
+#            else:
+#                #q = q.distinct(IndexObjectAttribute.value)
+#                q = q.order_by(IndexObjectAttribute.value)
+#        else:
+#            if reverse_order:
+#                #q = q.distinct(order_by)
+#                q = q.order_by(desc(order_by))
+#            else:
+#                #q = q.distinct(order_by)
+#                q = q.order_by(order_by)
+#
+#        # Apply limit to search.
+#        if max_results > 0:
+#            q = q.limit(max_results)
+#        # Handle dogpile caching.
+#        if config.dogpile_caching:
+#            from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
+#            q = q.options(FromCache(cache_region))
+#        # Get index result.
+#        query_result = q.all()
+#
+#    # Handle return type/return attributes.
+#    result = []
+#    result_db_ids = {}
+#    for r in query_result:
+#        index_id = r[0]
+#        x_uuid = r[1]
+#        # Add UUID <> Primary key mapping to search LDIF attributes below.
+#        if x_attrs:
+#            result_db_ids[index_id] = x_uuid
+#        # Handle size limit.
+#        if size_limit != 0 and len(result) >= size_limit:
+#            raise SizeLimitExceeded("Size limit exceeded.")
+#        # If the user requested return attributes we have to add all
+#        # result values.
+#        if return_attributes:
+#            return_value = r[1:]
+#        elif return_type == "uuid":
+#            return_value = x_uuid
+#        elif return_type == "name":
+#            return_value = r[2]
+#        elif return_type == "path":
+#            return_value = r[2]
+#        elif return_type == "rel_path":
+#            return_value = r[2]
+#        elif return_type == "full_oid":
+#            return_value = r[2]
+#        elif return_type == "read_oid":
+#            return_value = r[2]
+#        elif return_type == "oid":
+#            object_id = oid.get(object_id=r[2], full=True)
+#            return_value = object_id
+#        elif return_type == "checksum":
+#            return_value = r[2]
+#        elif return_type == "sync_checksum":
+#            return_value = r[2]
+#        elif return_type == "object_type":
+#            return_value = r[2]
+#        elif return_type == "last_used":
+#            return_value = r[2]
+#        elif return_type == "template":
+#            return_value = r[2]
+#        elif return_type == "ldif":
+#            return_value = r[2]
+#            return_value = json.loads(return_value)
+#        else:
+#            msg = _("Unknown return type: {return_type}")
+#            msg = msg.format(return_type=return_type)
+#            raise SearchException(msg)
+#        # Add return value to result.
+#        result.append(return_value)
+#
+#    # Without return attributes requested we are done here.
+#    if not return_attributes:
+#        if return_acls or return_raw_acls:
+#            result = {
+#                    'objects'       : result,
+#                    'acls'          : object_acls,
+#                    'matching_acls' : matching_acls,
+#                    }
+#        if return_query_count:
+#            result = query_count, result
+#        return result
+#
+#    result_list = []
+#    # For multiple return attributes we have to return the result as dict.
+#    # Use ordered dict to keep result sorted when using <order_by>.
+#    result_dict = OrderedDict()
+#    # Get objects base attributes from result.
+#    for x in result:
+#        object_uuid = x[0]
+#        result_counter = 0
+#        # Add UUID (which is always a search entity) to result.
+#        if 'uuid' in return_attributes:
+#            if not object_uuid in result_dict:
+#                result_dict[object_uuid] = {}
+#            result_dict[object_uuid]['uuid'] = object_uuid
+#            result_counter += 1
+#        for r in x[1:]:
+#            attribute_name = base_attributes[result_counter]
+#            result_counter += 1
+#            if not object_uuid in result_dict:
+#                result_dict[object_uuid] = {}
+#            if attribute_name == "oid":
+#                v = oid.get(r)
+#            elif attribute_name == "ldif":
+#                v = json.loads(r)
+#            else:
+#                v = r
+#            result_dict[object_uuid][attribute_name] = v
+#
+#    # Get LDIF attributes.
+#    if result_db_ids:
+#        # Join attributes with objects table.
+#        x_attr_q = session.query(IndexObjectAttribute)
+#        x_attr_q = x_attr_q.join(IndexObject.attributes)
+#        # Query only needed entities.
+#        x_attr_q = x_attr_q.with_entities(IndexObjectAttribute.ioid,
+#                                    IndexObjectAttribute.name,
+#                                    IndexObjectAttribute.value)
+#        # To prevent the "(sqlite3.OperationalError) too many SQL variables" error
+#        # we have to split query in chunks and start a search for each chunk.
+#        split_result_db_ids = [result_db_ids]
+#        if len(result_db_ids) > max_q_values:
+#            split_result_db_ids = stuff.split_list(result_db_ids, max_q_values)
+#        attr_result = []
+#        for x_list in split_result_db_ids:
+#            _x_attr_q = x_attr_q.filter(IndexObjectAttribute.ioid.in_(x_list))
+#            if return_attributes:
+#                _x_attr_q = _x_attr_q.filter(IndexObjectAttribute.name.in_(return_attributes))
+#            if config.dogpile_caching:
+#                from otpme.lib.third_party.dogpile_caching.caching_query import FromCache
+#                _x_attr_q = _x_attr_q.options(FromCache(cache_region))
+#            x_result = _x_attr_q.all()
+#            attr_result += x_result
+#        for r in attr_result:
+#            ioid = r[0]
+#            object_uuid = result_db_ids[ioid]
+#            attribute_name = r[1]
+#            attribute_value = r[2]
+#            if not object_uuid in result_dict:
+#                result_dict[object_uuid] = {}
+#            if attribute_name in config.otpme_base_attributes:
+#                try:
+#                    x_val = result_dict[object_uuid][attribute_name]
+#                except Exception:
+#                    x_val = None
+#                if attribute_value == x_val:
+#                    continue
+#                result_dict[object_uuid][attribute_name] = x_val
+#                continue
+#            try:
+#                x_val_list = result_dict[object_uuid][attribute_name]
+#            except Exception:
+#                x_val_list = []
+#            if attribute_value in x_val_list:
+#                continue
+#            x_val_list.append(attribute_value)
+#            result_dict[object_uuid][attribute_name] = x_val_list
+#
+#    # If only one return attribute is requested we return a list as result.
+#    if len(return_attributes) == 1:
+#        attr_name = return_attributes[0]
+#        for uuid in result_dict:
+#            x_result = result_dict[uuid][attr_name]
+#            if isinstance(x_result, list):
+#                result_list += x_result
+#            else:
+#                result_list.append(x_result)
+#        result = result_list
+#    else:
+#        result = result_dict
+#
+#    if return_acls or return_raw_acls:
+#        result = {
+#                'objects'       : result,
+#                'acls'          : object_acls,
+#                'matching_acls' : matching_acls,
+#                }
+#    if return_query_count:
+#        result = query_count, result
+#    return result
 @index_cache.cache_function()
 def get_oid(uuid, object_type=None, object_types=None,
     realm=None, site=None, full=True,
@@ -2410,7 +3579,7 @@ def index_restore(index_data, session=None, **kwargs):
     session.commit()
 
 @handle_transaction
-@oid_lock(write=True)
+#@oid_lock(write=True)
 def index_add(object_id, object_paths=None, object_config=None,
     uuid=None, checksum=None, sync_checksum=None, index_journal=None,
     use_index_journal=False, full_index_update=False, ldif_journal=None,
@@ -3249,7 +4418,7 @@ def get_sites(realm, search_regex=None):
     for s in filetools.list_dir(realm_dir):
         if not s.endswith("site"):
             continue
-        x = '^(.*)\.site'
+        x = r'^(.*)\.site'
         site_name = re.sub(x, r'\1', s)
         site_oid = oid.get(object_type="site", realm=realm, name=site_name)
         if not object_exists(site_oid):

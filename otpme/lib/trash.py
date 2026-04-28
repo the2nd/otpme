@@ -275,7 +275,7 @@ def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
         msg = msg.format(trash_id=trash_id)
         return callback.error(msg)
 
-    if config.auth_token:
+    if config.auth_token and not config.auth_token.is_admin():
         deleted_by = get_deleted_by(trash_id)
         deleted_by_token = f"token:{config.auth_token.rel_path}"
         if deleted_by != deleted_by_token:
@@ -298,7 +298,7 @@ def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
     return callback.ok()
 
 def restore(trash_id=None, objects=None, keep_trash=False,
-    callback=default_callback, **kwargs):
+    force=False, callback=default_callback, **kwargs):
     if not trash_id:
         msg = _("Need <trash_id>.")
         raise OTPmeException(msg)
@@ -369,7 +369,8 @@ def restore(trash_id=None, objects=None, keep_trash=False,
                 return callback.error(msg)
             try:
                 restore_status = backup.restore_object(object_data,
-                                                callback=callback)
+                                                    force=force,
+                                                    callback=callback)
             except Exception as e:
                 config.raise_exception()
                 msg = _("Failed to restore object from trash: {x_oid}: {e}")

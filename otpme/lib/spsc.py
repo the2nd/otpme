@@ -3,10 +3,11 @@
 import os
 import re
 import time
-import gzip
-import cchardet
 import pprint
 import datetime
+# gzip and cchardet are imported lazily in import_from_file —
+# cchardet is a C extension with non-trivial import cost, and the
+# rest of this module never needs either of them.
 #import codecs
 
 try:
@@ -251,7 +252,7 @@ def check_common_spellings(word):
 
     # If the word does not match a common spelling but is not complete
     # lowercase calc the multiplier.
-    word_without_numbers = re.sub("\d+", "", word)
+    word_without_numbers = re.sub(r"\d+", "", word)
     multiplier = 2**len(word_without_numbers)
 
     return multiplier
@@ -314,29 +315,35 @@ def check_sequences(word):
                 sequence_found = True
                 break
 
-    if not sequence_found:
-        if word_len > 4:
-            slice_len = 2
-            if word_len % 2 == 0:
-                check_len = word_len
-            else:
-                check_len = word_len + 1
-            if check_len >= word_len:
-                check_len = word_len - 1
-            while slice_len < check_len:
-                start_pos = 0
-                end_pos = start_pos + slice_len
-                while end_pos <= check_len:
-                    word_slice = word[start_pos:end_pos]
-                    x = word.replace(word_slice, "")
-                    if len(x) == 0:
-                        sequence_found = True
-                        for c in word:
-                            dict_size += count_combinations(c)
-                        dict_size = dict_size**(word_len/slice_len)
-                    start_pos += 1
-                    end_pos += 1
-                slice_len += 1
+    if not sequence_found and word_len > 4:
+        # Try to express word as repetitions of a slice (e.g.
+        # "abcabc" decomposes into two copies of "abc"). The
+        # bound check_len = word_len - 1 means we never try a
+        # slice that spans the whole word; word_len // 2 would be
+        # tighter but the original behaviour kept the looser bound
+        # so we preserve it.
+        check_len = word_len - 1
+        slice_len = 2
+        while slice_len < check_len:
+            start_pos = 0
+            end_pos = start_pos + slice_len
+            while end_pos <= check_len:
+                word_slice = word[start_pos:end_pos]
+                if word.replace(word_slice, "") == "":
+                    sequence_found = True
+                    # Reset dict_size: the common-sequences pass
+                    # above may have accumulated some count, but
+                    # for a periodic match the size is purely a
+                    # function of the per-character entropy and
+                    # the repetition factor.
+                    dict_size = sum(count_combinations(c) for c in word)
+                    dict_size = dict_size ** (word_len / slice_len)
+                    break
+                start_pos += 1
+                end_pos += 1
+            if sequence_found:
+                break
+            slice_len += 1
 
     if not sequence_found:
         return None
@@ -575,6 +582,8 @@ class SPSC(object):
     def import_from_file(self, filename, dict_name,
         dict_type="list", min_word_len=2, progressbar=None):
         """ Import dictionary from file. """
+        import gzip
+        import cchardet
         #fd = codecs.open(filename, 'r', 'utf8')
         dictionary = {}
         position = 0
@@ -587,10 +596,16 @@ class SPSC(object):
         else:
             self.dict_order.append(dict_name)
 
+        # Open binary in both branches: the loop body works on bytes
+        # (line.replace(b"\n", b""), cchardet.detect(word), then
+        #  word.decode(detected_encoding)). gzip.open(..., "r") is
+        # already binary by default; plain open(..., 'r') was text
+        # mode, which made the loop crash with a TypeError on the
+        # very first line.replace().
         if filename.endswith(".gz"):
-            fd = gzip.open(filename, "r")
+            fd = gzip.open(filename, "rb")
         else:
-            fd = open(filename, 'r')
+            fd = open(filename, "rb")
 
         for line in fd:
             if progressbar:

@@ -805,7 +805,7 @@ class Dictionary(OTPmeObject):
         ):
         """ Delete dictionary. """
         if not self.exists():
-            return callback.error("Dictionary does not exist exists.")
+            return callback.error("Dictionary does not exist.")
 
         if run_policies:
             try:

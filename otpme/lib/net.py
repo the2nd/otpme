@@ -2,7 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import socket
-import ipaddr
+import ipaddress
 import subprocess
 import netifaces
 import dns.resolver
@@ -23,26 +23,106 @@ from otpme.lib import config
 from otpme.lib.exceptions import *
 
 def is_ip(ip):
-    """ Check if given IP is valid. """
+    """ Check if given IP is valid (IPv4 or IPv6). """
     try:
-        socket.inet_aton(ip)
+        ipaddress.ip_address(ip)
         return True
-    except Exception:
+    except (ValueError, TypeError):
         return False
 
-def get_ip(fqdn):
-    """ Resolve given FQDN via gethostbyname(). """
+def is_ipv4(ip):
+    """ Check if given IP is a valid IPv4 address. """
+    try:
+        return isinstance(ipaddress.ip_address(ip), ipaddress.IPv4Address)
+    except (ValueError, TypeError):
+        return False
+
+def is_ipv6(ip):
+    """ Check if given IP is a valid IPv6 address. """
+    try:
+        return isinstance(ipaddress.ip_address(ip), ipaddress.IPv6Address)
+    except (ValueError, TypeError):
+        return False
+
+def format_socket_uri(scheme, address, port):
+    """ Build a socket URI; brackets IPv6 literals per RFC 3986. """
+    return f"{scheme}://{format_host_port(address, port)}"
+
+def format_host_port(address, port):
+    """ Build a 'host:port' string; brackets IPv6 literals. """
+    if address and ":" in str(address):
+        return f"[{address}]:{port}"
+    return f"{address}:{port}"
+
+def parse_socket_uri(socket_uri):
+    """ Parse a socket URI.
+
+    Returns (scheme, address, port) for tcp/udp URIs (port is int),
+    or (scheme, path, None) for unix-socket URIs.
+    Handles bracketed IPv6 literals: tcp://[2001:db8::1]:8080.
+    """
+    if "://" not in socket_uri:
+        msg = _("Invalid socket URI: {uri}")
+        msg = msg.format(uri=socket_uri)
+        raise ValueError(msg)
+    scheme, rest = socket_uri.split("://", 1)
+    if scheme == "socket":
+        return scheme, rest, None
+    # tcp/udp: bracketed IPv6 literal?
+    if rest.startswith("["):
+        end = rest.find("]")
+        if end == -1 or not rest[end+1:].startswith(":"):
+            msg = _("Invalid socket URI: {uri}")
+            msg = msg.format(uri=socket_uri)
+            raise ValueError(msg)
+        address = rest[1:end]
+        port = int(rest[end+2:])
+    else:
+        # No brackets: rsplit on last ":" so v4 / hostname both work.
+        if ":" not in rest:
+            msg = _("Invalid socket URI: {uri}")
+            msg = msg.format(uri=socket_uri)
+            raise ValueError(msg)
+        address, port_str = rest.rsplit(":", 1)
+        port = int(port_str)
+    return scheme, address, port
+
+def get_socket_family(address):
+    """ Pick the AF_* family from an address literal.
+
+    IPv6 literals (containing ':') get AF_INET6, everything else AF_INET.
+    The IPv6 wildcard '::' is treated as IPv6 dual-stack on the socket layer.
+    """
+    if address and ":" in str(address):
+        return socket.AF_INET6
+    return socket.AF_INET
+
+def get_ip(fqdn, family=None):
+    """ Resolve given FQDN via getaddrinfo().
+
+    Returns the first address of the requested family. If no family is
+    given, a v6 result is preferred over v4 (mirrors RFC 6724 ordering).
+    Returns False on resolution failure.
+    """
     log_msg = _("Trying to resolve: {fqdn}", log=True)[1]
     log_msg = log_msg.format(fqdn=fqdn)
     config.logger.debug(log_msg)
     try:
-        ip = socket.gethostbyname(fqdn)
+        infos = socket.getaddrinfo(fqdn, None,
+                                    family if family is not None else 0,
+                                    socket.SOCK_STREAM)
     except Exception:
         log_msg = _("Unable to resolve: {fqdn}", log=True)[1]
         log_msg = log_msg.format(fqdn=fqdn)
         config.logger.debug(log_msg)
         return False
-    log_msg = _("Got IP from gethostbyname(): {ip}", log=True)[1]
+    if not infos:
+        return False
+    # Prefer v6 unless caller pinned a family.
+    if family is None:
+        infos.sort(key=lambda r: 0 if r[0] == socket.AF_INET6 else 1)
+    ip = infos[0][4][0]
+    log_msg = _("Got IP from getaddrinfo(): {ip}", log=True)[1]
     log_msg = log_msg.format(ip=ip)
     config.logger.debug(log_msg)
     return ip
@@ -149,18 +229,18 @@ def get_daemon_uri(daemon, domain):
         text = a.to_text().strip('"')
         host = text.split()[-1].rstrip(".")
         port = text.split()[-2]
-        socket_uri = f"tcp://{host}:{port}"
+        socket_uri = format_socket_uri("tcp", host, port)
         log_msg = _("Got {daemon} socket URI from DNS: {uri}", log=True)[1]
         log_msg = log_msg.format(daemon=daemon, uri=socket_uri)
         config.logger.debug(log_msg)
         return socket_uri
-    log_msg = _("Unable to get {daemon} address via SRV record, trying A record.", log=True)[1]
+    log_msg = _("Unable to get {daemon} address via SRV record, trying A/AAAA record.", log=True)[1]
     log_msg = log_msg.format(daemon=daemon)
     config.logger.debug(log_msg)
     try:
-        socket.gethostbyname(domain)
+        socket.getaddrinfo(domain, None, 0, socket.SOCK_STREAM)
         port = config.default_ports[daemon]
-        socket_uri = f"tcp://{domain}:{port}"
+        socket_uri = format_socket_uri("tcp", domain, port)
         return socket_uri
     except Exception:
         return None
@@ -173,17 +253,37 @@ def query_dns(name, record="A"):
     return addresses
 
 def get_interfaces():
-    """ Get all interface configs. """
+    """ Get all interface configs (IPv4 + IPv6).
+
+    Each entry is a list of ``(ip, netmask)`` tuples. For IPv6 the
+    netmask is normalized to a prefix-length string (e.g. ``"64"``);
+    for IPv4 it stays in dotted-quad form (e.g. ``"255.255.255.0"``).
+    Both forms work with ``ipaddress.ip_interface(f"{ip}/{netmask}")``.
+    Zone suffixes (``%eth0``) on v6 link-local addresses are stripped.
+    """
     interfaces = {}
+    families = (netifaces.AF_INET, netifaces.AF_INET6)
     for interface in netifaces.interfaces():
         addresses = netifaces.ifaddresses(interface)
-        if 2 not in addresses:
-            continue
-        interfaces[interface] = []
-        for address in addresses[2]:
-            ip = address['addr']
-            netmask = address['netmask']
-            interfaces[interface].append((ip, netmask))
+        entries = []
+        for family in families:
+            if family not in addresses:
+                continue
+            for address in addresses[family]:
+                ip = address.get('addr')
+                netmask = address.get('netmask', '')
+                if not ip:
+                    continue
+                # netifaces returns v6 link-local with zone: 'fe80::1%eth0'
+                if "%" in ip:
+                    ip = ip.split("%", 1)[0]
+                # netifaces returns v6 netmask as 'ffff:ffff:...::/64' --
+                # keep the prefix length (everything after the last '/').
+                if "/" in netmask:
+                    netmask = netmask.rsplit("/", 1)[1]
+                entries.append((ip, netmask))
+        if entries:
+            interfaces[interface] = entries
     return interfaces
 
 def get_interface_mac(iface):
@@ -215,25 +315,33 @@ def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=Fal
     floating_ip = address
     floating_ip_network = None
     interfaces = get_interfaces()
-    floating_ip_netmask = "255.255.255.255"
-    _floating_ip_network = ipaddr.IPAddress(floating_ip)
+    _floating_ip = ipaddress.ip_address(floating_ip)
+    # Family-aware host route fallback.
+    floating_ip_netmask = "128" if _floating_ip.version == 6 else "255.255.255.255"
 
     if not interface:
         for iface in interfaces:
             for x in interfaces[iface]:
                 ip = x[0]
                 netmask = x[1]
-                if ip == floating_ip:
+                try:
+                    _interface_iface = ipaddress.ip_interface(f"{ip}/{netmask}")
+                except (ValueError, TypeError):
+                    continue
+
+                # Skip mismatched address families.
+                if _interface_iface.version != _floating_ip.version:
+                    continue
+
+                if _interface_iface.ip == _floating_ip:
                     msg = _("Floating IP '{floating_ip}' already assigned to interface '{interface}'.")
                     msg = msg.format(floating_ip=floating_ip, interface=iface)
                     raise AddressAlreadyAssigned(msg)
 
-                _interface_network = ipaddr.IPNetwork(f"{ip}/{netmask}")
-
-                if _interface_network.Contains(_floating_ip_network):
+                if _floating_ip in _interface_iface.network:
                     interface = iface
                     floating_ip_netmask = netmask
-                    floating_ip_network = str(_interface_network.network)
+                    floating_ip_network = str(_interface_iface.network.network_address)
 
     if not interface:
         msg = _("No interface is configured for network of IP: {ip}")
@@ -298,16 +406,28 @@ def deconfigure_floating_ip(address):
     """ Deconfigure floating IP. """
     floating_ip = address
     floating_interface = None
+    floating_ip_netmask = None
     interfaces = get_interfaces()
+
+    try:
+        target = ipaddress.ip_address(floating_ip)
+    except (ValueError, TypeError):
+        target = None
 
     for iface in interfaces:
         for x in interfaces[iface]:
             ip = x[0]
             netmask = x[1]
-            if ip == floating_ip:
+            try:
+                cur = ipaddress.ip_address(ip)
+            except (ValueError, TypeError):
+                continue
+            if target is not None and cur == target:
                 floating_interface = iface
                 floating_ip_netmask = netmask
                 break
+        if floating_interface:
+            break
 
     if floating_interface:
         log_msg = _("Deconfiguring floating interface '{interface}'", log=True)[1]

@@ -282,8 +282,8 @@ def get_val(argv_val):
             # Set var name
             var_name = argv_val
             # Remove surrounding '[]' from variable name
-            var_name = re.sub('^\[', '', var_name)
-            var_name = re.sub('\]$', '', var_name)
+            var_name = re.sub(r'^\[', '', var_name)
+            var_name = re.sub(r'\]$', '', var_name)
             # Get variable from environment
             var_value = os.environ[var_name]
             # Remove surrounding '"' from variable value
@@ -514,8 +514,9 @@ def get_daemon_socket(daemon, node_name):
         msg = msg.format(node_name=node_name)
         raise UnknownObject(msg)
     node = result[0]
+    from otpme.lib import net
     daemon_port = config.default_ports[daemon]
-    daemon_socket = f"tcp://{node.fqdn}:{daemon_port}"
+    daemon_socket = net.format_socket_uri("tcp", node.fqdn, daemon_port)
     return daemon_socket
 
 def order_data_by_deps(order_data):

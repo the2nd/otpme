@@ -2216,7 +2216,7 @@ class ClusterDaemon(OTPmeDaemon):
 
         return True
 
-    def do_master_node_sync(self, master_node, sync_last_used=False):
+    def do_master_node_sync(self, master_node, realm, site, sync_last_used=False):
         """ Start initial sync with master node. """
         from otpme.lib.classes.command_handler import CommandHandler
         try:
@@ -2246,13 +2246,14 @@ class ClusterDaemon(OTPmeDaemon):
             # Run initial sync.
             try:
                 sync_status = command_handler.do_sync(sync_type="objects",
-                                                    realm=config.realm,
-                                                    site=config.site,
+                                                    realm=realm,
+                                                    site=site,
                                                     max_tries=10,
                                                     sync_last_used=sync_last_used,
                                                     ignore_changed_objects=True,
                                                     skip_object_deletion=skip_deletions,
-                                                    socket_uri=socket_uri)
+                                                    socket_uri=socket_uri,
+                                                    check_connected_site=False)
             except Exception as e:
                 sync_status = False
                 log_msg = _("Initial sync of objects failed: {error}", log=True)[1]
@@ -2271,8 +2272,9 @@ class ClusterDaemon(OTPmeDaemon):
             if run_nsscache_sync:
                 try:
                     sync_status = command_handler.do_sync(sync_type="nsscache",
-                                                        realm=config.realm,
-                                                        site=config.site)
+                                                        realm=realm,
+                                                        site=site,
+                                                        check_connected_site=False)
                 except Exception as e:
                     sync_status = False
                     log_msg = _("Initial sync of nsscache failed: {error}", log=True)[1]
@@ -2412,12 +2414,25 @@ class ClusterDaemon(OTPmeDaemon):
                                 time.sleep(0.1)
                                 continue
                             break
-                        sync_status = self.do_master_node_sync(master_node,
-                                                            sync_last_used=True)
-                        if sync_status is not None:
-                            sync_status = self.do_master_node_sync(master_node,
-                                                                sync_last_used=True)
-                        if sync_status is False:
+                        sites = backend.search(object_type="site",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=config.realm,
+                                                return_type="name")
+                        sync_failed = False
+                        for site in sites:
+                            sync_status = self.do_master_node_sync(master_node=master_node,
+                                                                    realm=config.realm,
+                                                                    site=site,
+                                                                    sync_last_used=True)
+                            if sync_status is not None:
+                                sync_status = self.do_master_node_sync(master_node=master_node,
+                                                                        realm=config.realm,
+                                                                        site=site,
+                                                                        sync_last_used=True)
+                            if sync_status is False:
+                                sync_failed = True
+                        if sync_failed:
                             continue
                         if self.host_name not in multiprocessing.master_sync_done:
                             multiprocessing.master_sync_done.append(self.host_name)

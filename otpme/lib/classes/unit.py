@@ -1224,7 +1224,7 @@ class Unit(OTPmeObject):
                 return callback.error(msg, exception=PermissionDenied)
 
         if not backend.object_exists(object_id=self.oid):
-            return callback.error("Unit does not exist exists.")
+            return callback.error("Unit does not exist.")
 
         base_units = config.get_base_objects("unit")
         if not self.unit and self.rel_path in base_units:

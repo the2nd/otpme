@@ -29,8 +29,19 @@
     function addApps() {
         const url = "{{ url_for('get_apps', _external=True, _scheme='https') }}";
         fetch(url)
-          .then(response => response.json())
+          .then(async response => {
+            const data = await response.json();
+            if (!response.ok) {
+              if (data && data.redirect) {
+                window.location.href = data.redirect;
+                return null;
+              }
+              throw new Error((data && data.error) || 'Failed to load apps.');
+            }
+            return data;
+          })
           .then(data => {
+            if (!data) return;
             const kachelContainer = document.getElementById('kacheln');
 
             data.forEach(item => {
