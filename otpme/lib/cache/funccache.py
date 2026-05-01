@@ -65,6 +65,11 @@ class Cache(object):
         self.ignore_classes = ignore_classes
         self.cache_name_var = cache_name_var
         self.cache_name_func = cache_name_func
+        if not self.default_cache:
+            if not self.cache_name_var:
+                if not self.cache_name_func:
+                    msg = _("Invalid cache configuration. Need <default_cache>, <cache_name_var> or <cache_name_func>.")
+                    raise OTPmeException(msg)
         # We cannot use pickle cache as e.g. in search cache with return_type="instance"
         # this will result in an new object (new id().
         #if self.copy_cache:
@@ -101,7 +106,7 @@ class Cache(object):
         #    if len(x_cache) < 512:
         #        continue
         #    print("III", x_name, x_cname, len(x_cache))
-        if not cache_name in self._caches:
+        if cache_name not in self._caches:
             self._caches[cache_name] = {}
         self._caches[cache_name]['cache'] = new_cache
         self._stats[cache_name] = [0, 0]
@@ -130,6 +135,9 @@ class Cache(object):
                 pass
         if cache_name is None:
             cache_name = self.default_cache
+        if cache_name is None:
+            msg = _("Invalid cache configuration. Need <default_cache>, <cache_name_var> or <cache_name_func>.")
+            raise OTPmeException(msg)
         return cache_name
 
     def get_cache(self, cache_name=None):
@@ -432,6 +440,8 @@ class FuncCache(object):
         self._cache_kwargs = cache_kwargs
         self.cache_key_func = cache_key_func
         self.clear_on_object_types = clear_on_object_types
+        # Make sure cache args are valid.
+        Cache(self.name, **self._cache_kwargs)
 
     @property
     def logger(self):

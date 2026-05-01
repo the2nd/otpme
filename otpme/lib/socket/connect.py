@@ -394,7 +394,7 @@ class ConnectSocket(object):
             self._close()
             return
         self.connected = False
-        if config.debug_level() > 3:
+        if config.debug_level() > 0:
             log_msg = _("Closing connection to '{uri}'", log=True)[1]
             log_msg = log_msg.format(uri=self.socket_uri)
             self.logger.debug(log_msg)

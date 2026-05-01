@@ -6,7 +6,6 @@ import time
 import socket
 import psutil
 import setproctitle
-from multiprocessing import Event
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -89,7 +88,6 @@ class ListenSocket(object):
         self.ca_data_file = None
         self.listen_process = None
         self._shutdown = None
-        self.connection_closed_event = None
         self.worker_count = worker_count
         self.worker_procs = []
 
@@ -219,7 +217,6 @@ class ListenSocket(object):
     def close_conn_procs(self):
         """ Make sure connection procs are closed. """
         while True:
-            self.connection_closed_event.wait()
             time.sleep(0.1)
             procs_alive = False
             for client in dict(self.connections):
@@ -255,9 +252,6 @@ class ListenSocket(object):
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-        # Connection closed event.
-        #self.connection_closed_event = multiprocessing.Event()
-        self.connection_closed_event = Event()
         # Create queue to get init done info from self._listen()
         init_done = multiprocessing.MessageQueue("listensocket-initq")
         # Start listenting in new process.
@@ -459,9 +453,6 @@ class ListenSocket(object):
                                 target=self.close_conn_procs)
             self._accept_loop()
 
-        if self.connection_closed_event:
-            self.connection_closed_event.set()
-
         log_msg = _("Stopped listening on '{uri}'", log=True)[1]
         log_msg = log_msg.format(uri=self.socket_uri)
         self.logger.info(log_msg)
@@ -570,7 +561,6 @@ class ListenSocket(object):
             try:
                 self.handle_connection(new_connection, client,
                                       self.connection_handler,
-                                      self.connection_closed_event,
                                       _from_worker=True)
             except Exception as e:
                 log_msg = _("Worker {idx}: Error handling connection: {error}", log=True)[1]
@@ -629,8 +619,7 @@ class ListenSocket(object):
                                 target=self.handle_connection,
                                 target_args=(new_connection,
                                             client,
-                                            self.connection_handler,
-                                            self.connection_closed_event),
+                                            self.connection_handler),
                                 join=False)
             except Exception as e:
                 log_msg = _("Failed to start connection handler: {e}", log=True)[1]
@@ -641,7 +630,7 @@ class ListenSocket(object):
             # Close connection in parent process to avoid file descriptor leak.
             new_connection.close()
 
-    def handle_connection(self, client_conn, client, handler, close_event,
+    def handle_connection(self, client_conn, client, handler,
         _from_worker=False):
         """ Handle a connection. """
         if not _from_worker:
@@ -741,8 +730,6 @@ class ListenSocket(object):
         if not _from_worker:
             # Fork-per-connection mode: full cleanup and notify.
             multiprocessing.cleanup(keep_queues=True)
-            if close_event:
-                close_event.set()
 
         return True
 
@@ -836,11 +823,6 @@ class ListenSocket(object):
         # Close shared bool.
         if self._shutdown:
             self._shutdown.close()
-
-        ## Close/unlink event.
-        #if self.connection_closed_event:
-        #    self.connection_closed_event.close()
-        #    self.connection_closed_event.unlink()
 
 class Connection(object):
     """ Class to handle send/recv data. """

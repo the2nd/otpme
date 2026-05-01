@@ -21,8 +21,6 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.typing import match_class_typing
-#from otpme.lib.cache import assigned_role_cache
-#from otpme.lib.cache import assigned_token_cache
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies

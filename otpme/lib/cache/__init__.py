@@ -93,15 +93,22 @@ index_search_cache = FuncCache(name="index_search_cache",
                         ignore_classes=['OTPmeOid'],
                         copy_cache=True)
 # Methods to configure on init().
-ldif_cache = FuncCache(name="ldif_cache")
-config_cache = FuncCache(name="config_cache")
+ldif_cache = FuncCache(name="ldif_cache",
+                    default_cache="default")
+config_cache = FuncCache(name="config_cache",
+                        default_cache="default")
 #instance_cache = FuncCache(name="instance_cache")
-index_acl_cache = FuncCache(name="index_acl_cache")
-ldap_search_cache = FuncCache(name="ldap_search_cache")
-supported_acls_cache = FuncCache(name="supported_acls")
+index_acl_cache = FuncCache(name="index_acl_cache",
+                            default_cache="default")
+ldap_search_cache = FuncCache(name="ldap_search_cache",
+                            default_cache="default")
+supported_acls_cache = FuncCache(name="supported_acls",
+                                default_cache="default")
 unit_members_cache = FuncCache(name="unit_members",
+                            default_cache="default",
                             clear_on_object_types=config.tree_object_types)
 object_list_cache = FuncCache(name="object_list_cache",
+                            default_cache="default",
                             clear_on_object_types=config.tree_object_types)
 assigned_host_cache = FuncCache(name="assigned_host",
                             shared=True,

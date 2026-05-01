@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import string
 from typing import List
 from typing import Union
 
@@ -1424,6 +1425,38 @@ class Token(OTPmeObject):
                                                 quiet=quiet,
                                                 hash_args=hash_args)['hash']
         return password_hash
+
+    def gen_password(self):
+        """ Generate password based on assigend policy settings. """
+        pass_len = self.get_config_parameter("default_static_pass_len")
+        owner = backend.get_object(uuid=self.owner_uuid)
+        result = owner.get_policies(policy_type="password",
+                                        return_type="instance")
+        require_lowercase = True
+        require_uppercase = True
+        require_number = True
+        require_special = False
+        exclude_chars = None
+        if result:
+            pass_policy = result[0]
+            require_lowercase = bool(pass_policy.require_lowercase)
+            require_uppercase = bool(pass_policy.require_uppercase)
+            require_number = bool(pass_policy.require_number)
+            require_special = bool(pass_policy.require_special)
+        if require_special:
+            password_allowed_chars = owner.get_config_parameter("password_allowed_chars")
+            allowed = stuff.parse_allowed_chars(password_allowed_chars)
+            pwgen_symbols = set(string.punctuation)
+            disallowed = pwgen_symbols - allowed
+            if disallowed:
+                exclude_chars = ''.join(disallowed)
+        new_pass = stuff.gen_password(pass_len,
+                                    require_lowercase=require_lowercase,
+                                    require_uppercase=require_uppercase,
+                                    require_number=require_number,
+                                    require_special=require_special,
+                                    exclude_chars=exclude_chars)
+        return new_pass
 
     @check_acls(['upgrade_pass_hash'])
     @backend.transaction
@@ -2950,8 +2983,7 @@ class Token(OTPmeObject):
                 return callback.error()
 
         if auto_password:
-            pass_len = self.get_config_parameter("default_static_pass_len")
-            password = stuff.gen_password(pass_len)
+            password = self.gen_password()
 
         if verify_current_pass and self.password_hash:
             current_pass = callback.askpass(_("Current password: "))

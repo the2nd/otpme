@@ -464,7 +464,7 @@ def get(daemon, ping=True, **kwargs):
             except Exception as e:
                 log_msg = _("Unable to resolve site FQDN: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
-                logger.info(log_msg)
+                logger.debug(log_msg)
                 connect_addresses = None
             if not connect_addresses:
                 addr = net.get_ip(site_fqdn)
@@ -489,7 +489,7 @@ def get(daemon, ping=True, **kwargs):
             except Exception as e:
                 log_msg = _("Unable to resolve site FQDN: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
-                logger.info(log_msg)
+                logger.debug(log_msg)
                 connect_addresses = None
             if not connect_addresses:
                 addr = net.get_ip(site_fqdn)
@@ -499,6 +499,13 @@ def get(daemon, ping=True, **kwargs):
             if not config.site_address:
                 raise OTPmeException(_("Unable to get site address."))
             connect_addresses = [config.site_address]
+
+    if not connect_addresses:
+        mesg, log_msg = _("Unable to resolve site FQDN ({site_fqdn})", log=True)
+        log_msg = log_msg.format(site_fqdn=site_fqdn)
+        logger.info(log_msg)
+        msg = msg.format(site_fqdn=site_fqdn)
+        raise ConnectionError(msg)
 
     if len(connect_addresses) > 1:
         log_msg = _("Got multiple addresses from round-robin DNS ({site_fqdn}): {connect_addresses}", log=True)[1]

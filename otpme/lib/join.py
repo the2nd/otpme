@@ -230,6 +230,14 @@ class JoinHandler(object):
         if site is None:
             site = dns_site
 
+        if not realm:
+            msg = _("Unable to get realm.")
+            raise OTPmeException(msg)
+
+        if not site:
+            msg = _("Unable to get site.")
+            raise OTPmeException(msg)
+
         # Get username.
         if not username:
             if config.login_user:
