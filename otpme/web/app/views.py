@@ -94,6 +94,29 @@ def get_ssod_conn(username):
                                     auto_auth=False)
     return ssod_conn
 
+def check_forwarded_for():
+    """ Get X-Forwarded-For and X-Forwarded-Host for reverse proxy setups. """
+    from otpme.lib import net
+    client = net.normalize_ip(request.remote_addr)
+    hostname = request.host.split(':')[0]
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    x_forwarded_host = request.headers.get('X-Forwarded-Host')
+    if not x_forwarded_for:
+        if not x_forwarded_host:
+            return client, hostname
+    site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    reverse_proxy_ips = site.get_config_parameter("reverse_proxy_ips")
+    if not reverse_proxy_ips:
+        return client, hostname
+    if client not in reverse_proxy_ips:
+        return client, hostname
+    if x_forwarded_for:
+        client = x_forwarded_for.split(',')[0].strip()
+        client = net.normalize_ip(client)
+    if x_forwarded_host:
+        hostname = x_forwarded_host.split(',')[0].strip().split(':')[0]
+    return client, hostname
+
 def _ssod_error_message(response, default):
     """ Extract a user-friendly error message from an ssod response. """
     if isinstance(response, dict):
@@ -105,11 +128,7 @@ def _ssod_error_message(response, default):
 def _get_fido2_rp_id():
     """ Get RP ID from request host for WebAuthn browser compatibility.
         Checks X-Forwarded-Host for reverse proxy setups. """
-    forwarded_host = request.headers.get('X-Forwarded-Host')
-    if forwarded_host:
-        rp_id = forwarded_host.split(',')[0].strip().split(':')[0]
-    else:
-        rp_id = request.host.split(':')[0]
+    rp_id = check_forwarded_for()[1]
     return rp_id
 
 def _deserialize_fido2_state(data):
@@ -189,10 +208,7 @@ def _send_ssod_command(command, extra_args, default_error):
 
     Returns a Flask response on error, otherwise the response payload dict. """
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     command_args = {
                     'username'      : g.user.name,
                     'sso_jwt'       : sso_jwt,
@@ -327,10 +343,7 @@ def change_password():
         return jsonify({"error": "Token does not support password change."}), 400
     # Send request to authd.
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'          : g.user.name,
                     'sso_jwt'           : sso_jwt,
@@ -387,10 +400,7 @@ def change_pin():
     if login_token_pass_type != "otp":
         return jsonify({"error": "Token does not support PIN change."}), 400
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'      : g.user.name,
                     'sso_jwt'       : sso_jwt,
@@ -467,10 +477,7 @@ def deploy_begin():
             return jsonify({"error": "Invalid token type."}), 400
     # Send request to authd.
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'          : g.user.name,
                     'sso_jwt'           : sso_jwt,
@@ -538,10 +545,7 @@ def deploy_verify():
         return jsonify({"error": "No deployment in progress."}), 400
     # Send request to authd.
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'          : g.user.name,
                     'sso_jwt'           : sso_jwt,
@@ -604,10 +608,7 @@ def login():
                                user=None,
                                form=form)
     # Get client IP.
-    if request.headers.get('X-Forwarded-For'):
-      client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-      client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     # Get username/password.
     username = request.form['username']
     password = request.form['password']
@@ -709,10 +710,7 @@ def _do_sso_logout(response):
             log_msg = f"{log_msg}: {e}"
             logger.warning(log_msg)
         else:
-            if request.headers.get('X-Forwarded-For'):
-                client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-            else:
-                client_ip = request.remote_addr
+            client_ip = check_forwarded_for()[0]
             verify_args = {
                             'username'      : username,
                             'password'      : slp,
@@ -770,10 +768,7 @@ def get_sotp():
         return jsonify(sotp_data)
     sso_jwt = request.cookies.get('otpme_jwt')
     session_uuid = request.cookies.get('otpme_sso_session')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'      : g.user.name,
                     'sso_jwt'       : sso_jwt,
@@ -823,10 +818,7 @@ def fido2_register_begin():
     rp_id = _get_fido2_rp_id()
     sso_jwt = request.cookies.get('otpme_jwt')
     is_deploy = flask_session.get('deploy_token_name') is not None
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'      : g.user.name,
                     'sso_jwt'       : sso_jwt,
@@ -875,10 +867,7 @@ def fido2_register_complete():
         return jsonify({"error": "Missing registration data"}), 400
     rp_id = _get_fido2_rp_id()
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'          : g.user.name,
                     'sso_jwt'           : sso_jwt,
@@ -922,10 +911,7 @@ def fido2_auth_begin():
         return jsonify({"error": "Username required"}), 400
     username = str(data['username'])
     rp_id = _get_fido2_rp_id()
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'          : username,
                     'client'            : config.sso_client_name,
@@ -976,10 +962,7 @@ def fido2_auth_complete():
         return jsonify({"error": "Login failed"}), 401
     rp_id = _get_fido2_rp_id()
     sso_jwt = request.cookies.get('otpme_jwt')
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
+    client_ip = check_forwarded_for()[0]
     verify_args = {
                     'username'          : username,
                     'sso_jwt'           : sso_jwt,

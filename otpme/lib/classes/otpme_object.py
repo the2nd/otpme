@@ -1001,7 +1001,21 @@ class OTPmeBaseObject(OTPmeLockObject):
                     pass
 
         if allowed_fields:
+            allowed_config_paras = []
+            for f in allowed_fields:
+                if not f.startswith("CONFIG_PARAMS:"):
+                    continue
+                config_para = f.split(":")[1]
+                allowed_config_paras.append(config_para)
             for f in dict(sync_config):
+                if allowed_config_paras:
+                    if f == "CONFIG_PARAMS":
+                        config_paras = sync_config[f]
+                        for x in dict(config_paras):
+                            if x in allowed_config_paras:
+                                continue
+                            config_paras.pop(x)
+                        continue
                 if f in allowed_fields:
                     continue
                 sync_config.pop(f)

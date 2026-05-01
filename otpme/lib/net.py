@@ -44,6 +44,29 @@ def is_ipv6(ip):
     except (ValueError, TypeError):
         return False
 
+def normalize_ip(address):
+    """ Normalize an IP address.
+
+    Strips an optional [host]:port wrapper and unmaps IPv4-mapped IPv6
+    addresses (e.g. '::ffff:10.0.0.1' -> '10.0.0.1'). Returns the input
+    unchanged if it is not a parseable IP address.
+    """
+    if not address:
+        return address
+    s = str(address).strip()
+    # Strip [ipv6]:port (or bare [ipv6]) wrapper per RFC 3986.
+    if s.startswith("["):
+        end = s.rfind("]")
+        if end != -1:
+            s = s[1:end]
+    try:
+        ip = ipaddress.ip_address(s)
+    except (ValueError, TypeError):
+        return s
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return str(ip.ipv4_mapped)
+    return str(ip)
+
 def format_socket_uri(scheme, address, port):
     """ Build a socket URI; brackets IPv6 literals per RFC 3986. """
     return f"{scheme}://{format_host_port(address, port)}"

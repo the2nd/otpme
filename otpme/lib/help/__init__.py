@@ -133,6 +133,7 @@ register_global_opt("--enable-typing", "Enable python type checking.")
 register_global_opt("--disable-locking", "Disable locking in API mode (use with caution!).")
 register_global_opt("--debug-daemons <authd,mgmtd>", "Enable debug stuff only for the given daemons.")
 register_global_opt("--debug-profile-sort <cumtime,ncalls,tottime>", "Statistic output sorting.")
+register_global_opt("--debug-profile-print-callers <caller1,caller2>", "Print callers.")
 register_global_opt("--debug-func-caches <instance_cache,search_cache>", "Enable debug stuff only for the given function caches.")
 register_global_opt("--debug-func-names <method1,method2>", "Enable timing for given functions only.")
 register_global_opt("--debug-func-start <method1,method2>", "Start timing on method call.")
@@ -607,6 +608,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--debug-profile-sort":
             sys.argv.pop(0)
             main_opts['debug_profile_sort'] = str(sys.argv[0])
+            sys.argv.pop(0)
+        elif sys.argv[0] == "--debug-profile-print-callers":
+            sys.argv.pop(0)
+            main_opts['debug_profile_callers'] = sys.argv[0].split(",")
             sys.argv.pop(0)
         elif sys.argv[0] == "--debug-func-start":
             sys.argv.pop(0)

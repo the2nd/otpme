@@ -417,7 +417,7 @@ AGENT_KEEPALIVE_INTERVAL="5"
 # and a reload is needed.
 RELOAD_CONFIG_INTERVAL="10"
 
-# Is this a SSO server? If set to "True" ssod and httpd is started.
+# Is this a SSO server? If set to "True" and httpd is started.
 SSO_SERVER="False"
 
 # Is this a backup server? If set to "True" backupd is started.

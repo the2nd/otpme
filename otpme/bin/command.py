@@ -377,6 +377,9 @@ if __name__ == "__main__":
         #stats = pstats.Stats(profiler).sort_stats('percall')
         #stats = pstats.Stats(profiler).sort_stats('cumtime')
         stats.print_stats(10)
+        if config.debug_profile_callers:
+            for caller in config.debug_profile_callers:
+                stats.print_callers(caller)
     else:
         exit_code = otpme_commands()
 

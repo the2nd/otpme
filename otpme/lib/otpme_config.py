@@ -363,6 +363,7 @@ class OTPmeConfig(object):
         self.register_config_var("debug_daemons", list, [])
         # The sorting field for cProfile.
         self.register_config_var("debug_profile_sort", str, "tottime")
+        self.register_config_var("debug_profile_callers", list, [])
         # The functions debug timing is enabled for.
         self.register_config_var("debug_func_names", list, [])
         # The function debug timing starts at.

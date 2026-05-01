@@ -1373,6 +1373,16 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Reverse proxy IPs.
+    def reverse_proxy_ips_setter(proxy_ips, **kwargs):
+        if isinstance(proxy_ips, str):
+            proxy_ips = proxy_ips.split(",")
+        return proxy_ips
+    config.register_config_parameter(name="reverse_proxy_ips",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=reverse_proxy_ips_setter,
+                                    object_types=['site'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -1535,6 +1545,7 @@ class Site(OTPmeObject):
                                 "SSO_CERT",
                                 "SSO_SECRET",
                                 "SSO_CSRF_SECRET",
+                                "CONFIG_PARAMS:reverse_proxy_ips",
                                 ],
                         },
 

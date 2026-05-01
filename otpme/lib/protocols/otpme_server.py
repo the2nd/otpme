@@ -16,6 +16,7 @@ except Exception:
 
 from otpme.lib import re
 from otpme.lib import log
+from otpme.lib import net
 from otpme.lib import jwt
 from otpme.lib import json
 from otpme.lib import stuff
@@ -1712,10 +1713,7 @@ class OTPmeServer1(object):
         # Try to get client infos from where the users connects/logs in
         # (e.g. host, node etc.)
         if self.client:
-            login_host_ip = self.client.split(":")[:-1]
-            login_host_ip = ":".join(login_host_ip)
-            login_host_ip = login_host_ip.replace("[", "")
-            login_host_ip = login_host_ip.replace("]", "")
+            login_host_ip = net.normalize_ip(self.client)
 
         if self.client_cn:
             login_host = self.client_cn.split(".")[0]
