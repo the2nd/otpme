@@ -155,6 +155,9 @@ TLS certificate presented by the SSO portal (**httpd**).
 SSO_KEY  
 Private key matching the SSO TLS certificate.
 
+To actually start the SSO portal on the host, set **SSO_SERVER="True"**
+in */etc/otpme/otpme.conf*. See **otpme.conf**(5).
+
 **del_sso_host *site* *host_name***  
 Remove the SSO host role from a host. The SSO data will no longer be
 synchronized to this host.

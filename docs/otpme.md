@@ -113,6 +113,10 @@ Print tracebacks.
 **-dee**  
 Raise debug exceptions.
 
+**-dE**  
+Include exception info in warning/error/critical/fatal log records (sets
+LOG_EXC_INFO for this run).
+
 **-dh**  
 Debug function cache hits.
 

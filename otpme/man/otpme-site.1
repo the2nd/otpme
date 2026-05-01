@@ -138,6 +138,13 @@ Secret used by the SSO portal for CSRF token protection.
 TLS certificate presented by the SSO portal (\fBhttpd\fR).
 .IP \fBSSO_KEY\fR
 Private key matching the SSO TLS certificate.
+.PP
+To actually start the SSO portal on the host, set
+.B SSO_SERVER="True"
+in
+.IR /etc/otpme/otpme.conf .
+See
+.BR otpme.conf (5).
 .RE
 .TP
 .B del_sso_host \fIsite\fR \fIhost_name\fR

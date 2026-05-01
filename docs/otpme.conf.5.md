@@ -480,6 +480,11 @@ lead to inconsistent state but helps when objects change frequently.
 **MASTER_FAILOVER_SYNC**  
 Do a sync on master node failover.
 
+**AUTHD_WORKERS**  
+Number of preforked authentication daemon (**authd**) worker processes.
+Increase on busy nodes to handle more concurrent authentication
+requests. Default is 16.
+
 **TWO_NODE_TIMEOUT**  
 Seconds to wait for second node in two-node clusters.
 
@@ -553,11 +558,26 @@ Log level: CRITICAL, ERROR, WARNING, INFO or DEBUG.
 Log authentication data (passwords, challenge/response). Can be True,
 False or a comma separated list of usernames.
 
+**LOG_EXC_INFO**  
+Attach exception info (traceback of the exception currently being
+handled) to warning/error/critical/fatal log records. Only takes effect
+inside an except: block. Callers that pass exc_info explicitly override
+this. Default: False.
+
 **TRACEBACKS**  
 Print Python tracebacks.
 
 **SHOW_JOB_TITLE**  
 Show job title in process name.
+
+# SSO
+
+**SSO_SERVER**  
+If set to "True", **httpd** is started on this host so it can serve the
+SSO portal. The host must also be marked as SSO host via **otpme-site
+add_sso_host** so that the required SSO secrets and certificate/key
+(**SSO_SECRET**, **SSO_CSRF_SECRET**, **SSO_CERT**, **SSO_KEY**) are
+synchronized to it.
 
 # BACKUP
 

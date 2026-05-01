@@ -455,6 +455,11 @@ If True, sync objects as received even if they changed during sync. May lead to 
 .B MASTER_FAILOVER_SYNC
 Do a sync on master node failover.
 .TP
+.B AUTHD_WORKERS
+Number of preforked authentication daemon (\fBauthd\fR) worker processes.
+Increase on busy nodes to handle more concurrent authentication requests.
+Default is 16.
+.TP
 .B TWO_NODE_TIMEOUT
 Seconds to wait for second node in two-node clusters.
 .TP
@@ -525,6 +530,20 @@ Print Python tracebacks.
 .TP
 .B SHOW_JOB_TITLE
 Show job title in process name.
+.SH SSO
+.TP
+.B SSO_SERVER
+If set to "True",
+.B httpd
+is started on this host so it can serve the SSO portal. The host must
+also be marked as SSO host via
+.B otpme\-site add_sso_host
+so that the required SSO secrets and certificate/key
+.RB ( SSO_SECRET ,
+.BR SSO_CSRF_SECRET ,
+.BR SSO_CERT ,
+.BR SSO_KEY )
+are synchronized to it.
 .SH BACKUP
 .TP
 .B BACKUP_SERVER

@@ -610,15 +610,50 @@ Object types: site, unit, host, device, user, token
 ## SSO Portal
 
 **sso_token_role (str)**  
-Name of the role that device tokens created via the SSO portal are
-automatically added to. When a user registers a new device token through
-the SSO portal, the token is added to this role so that the associated
-access group memberships and permissions apply. The role's info text is
-displayed in the SSO portal settings to inform users about the purpose
-and scope of the role. The value must be the name of an existing role.
-The parameter is resolved per user, and the most specific match wins
-(user overrides unit overrides site).  
+Role to which device tokens that are created via the SSO portal are
+added. The role's info text is displayed in the SSO portal settings to
+inform users about the purpose and scope of the role. The value can be a
+plain role name (resolved within the current site) or a *site/role* path
+to reference a role on another site. The parameter is resolved per user;
+the most specific match wins (user overrides unit overrides site).  
 Object types: site, unit, user
+
+**auth_jwt_valid (time, default: 60s)**  
+Validity of JWTs issued for cross-site authentication. When a user
+authenticates against one site and then accesses another site within the
+same realm, the originating site issues a short-lived JWT that the
+remote site uses to verify the authentication. Keep this value short to
+limit the window in which a leaked JWT could be replayed. The value
+accepts time units (e.g. **60s**, **2m**).  
+Object types: site
+
+**sso_jwt_valid (time, default: 24h)**  
+Validity of the JWT that the SSO portal (**httpd**) uses to authenticate
+against **ssod** on behalf of a logged-in user (for example to register
+or delete device tokens). The JWT also defines the lifetime of the
+user's SSO browser session: when it expires, the user is logged out of
+the SSO portal. Choose a value slightly shorter than the session timeout
+of the SSO access group so the JWT, not the access group session, drives
+logout. The value accepts time units (e.g. **12h**, **1d**).  
+Object types: site
+
+**add_device_token_to_trash (bool, default: true)**  
+If true, device tokens that were registered through the SSO portal and
+are later deleted via the portal are moved to the trash instead of being
+removed permanently. They can be restored from the trash with
+**otpme-trash**(1). Set to false to delete such tokens immediately. The
+parameter is resolved per user; the most specific match wins (user
+overrides unit overrides site).  
+Object types: site, unit, user
+
+**reverse_proxy_ips (list)**  
+Comma separated list of IP addresses of trusted reverse proxies. When a
+request originates from one of these IPs, the **X-Forwarded-For** and
+**X-Forwarded-Host** headers are honored to determine the actual client
+IP and the requested host. Requests from any other source IP ignore
+these headers, so a client cannot spoof its origin by setting them
+itself.  
+Object types: site
 
 ## Backup
 
