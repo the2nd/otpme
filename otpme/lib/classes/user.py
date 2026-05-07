@@ -623,7 +623,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -633,7 +633,7 @@ commands = {
     'list_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_groups',
+                    'method'            : 'list_groups',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
@@ -643,7 +643,7 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'name'},
@@ -653,7 +653,7 @@ commands = {
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
@@ -3400,6 +3400,15 @@ class User(OTPmeObject):
                                     name=token_name)
         return token
 
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:tokens'])
+    def list_tokens(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all tokens assigned to this user. """
+        return self.get_tokens(**kwargs)
+
     def get_tokens(
         self,
         return_type: str="uuid",
@@ -3823,6 +3832,15 @@ class User(OTPmeObject):
 
     #    return callback.ok(result)
 
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:roles'])
+    def list_roles(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all roles this user is in. """
+        return self.get_roles(**kwargs)
+
     def get_roles(self, return_type="name", _caller="API",
         callback=default_callback, **kwargs):
         """ Return list with all roles this user is in. """
@@ -3844,6 +3862,15 @@ class User(OTPmeObject):
             result = "\n".join(result)
 
         return callback.ok(result)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:groups'])
+    def list_groups(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all groups this user is in. """
+        return self.get_groups(**kwargs)
 
     def get_groups(
         self,

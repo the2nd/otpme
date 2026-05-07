@@ -290,8 +290,8 @@ class AuthHandler(object):
 
         # Make sure login to child accessgroups of SSO accessgroup are not allowed
         # if the token is assigned to the SSO accessgroup.
+        master_group = self.auth_group.get_master_group()
         if not self.found_sotp and not self.auth_session:
-            master_group = self.auth_group.get_master_group()
             if master_group:
                 if master_group.name == config.sso_access_group:
                     if self.verify_token.uuid in master_group.tokens:
@@ -350,8 +350,14 @@ class AuthHandler(object):
 
         # Check if token is valid for the accessgroup.
         if not self.session_logout:
+            check_parent_groups = True
+            if master_group:
+                # For SSO accessgroup access should not be inherited from SSO accessgroup
+                # because we use access to child accessgroups to show/hide apps in SSO portal.
+                if master_group.name == config.sso_access_group:
+                    check_parent_groups = False
             if not self.auth_group.is_assigned_token(self.auth_token.uuid,
-                                                    check_parent_groups=True):
+                                                    check_parent_groups=check_parent_groups):
                 log_msg = _("Verification failed because token is not valid for accessgroup '{access_group}'.", log=True)[1]
                 log_msg = log_msg.format(access_group=self.access_group)
                 self.logger.warning(log_msg)
@@ -2007,6 +2013,37 @@ class AuthHandler(object):
             self.auth_message = "AUTH_FAILED_MAX_SESSIONS"
             self.count_fails = False
 
+    def _compute_oidc_granted_scope(self, token, client, requested_scope_str):
+        """ Compute the granted OIDC scope as the intersection of:
+            - requested scopes (from /authorize)
+            - scopes the auth token can hand out
+              (token.get_scopes(include_roles=True, skip_disabled=True))
+            - scopes the OIDC client allows
+              (client.get_scopes(include_roles=False, skip_disabled=True))
+
+        A scope is granted only if it appears in ALL three. Order is
+        preserved from the request so RPs see a stable ordering.
+        Returns a space-separated string suitable for OIDCSession.scope.
+        """
+        requested = (requested_scope_str or "").split()
+        if not requested:
+            return ""
+        try:
+            token_ids = set(token.get_scopes(return_type="scope_id",
+                                              include_roles=True,
+                                              skip_disabled=True) or [])
+        except Exception:
+            token_ids = set()
+        try:
+            client_ids = set(client.get_scopes(return_type="scope_id",
+                                                include_roles=False,
+                                                skip_disabled=True) or [])
+        except Exception:
+            client_ids = set()
+        allowed = token_ids & client_ids
+        granted = [s for s in requested if s in allowed]
+        return " ".join(granted)
+
     def create_user_sessions(self):
         """ Create sessions. """
         # If session creation is disabled we are done.
@@ -2022,54 +2059,99 @@ class AuthHandler(object):
                 return
 
         if not self.auth_failed:
-            # For SSO accessgroup we have to create a random password
-            # to prevent login with the same OTP.
-            if self.access_group == config.sso_access_group:
-                self.password = stuff.gen_password(32)
-                self.gen_pass_hash()
-            elif not self.password_hash:
-                self.gen_pass_hash()
-            if self.verify_token.pass_type == "static":
-                session_logout_pass = slp.gen(self.new_session_uuid)
-            else:
-                session_logout_pass = slp.gen(self.one_iter_hash)
             # Create parent session instance.
             client_uuid = None
             if self.auth_client:
                 client_uuid = self.auth_client.uuid
             if self.auth_host:
                 client_uuid = self.auth_host.uuid
-            session = Session(self.auth_type, self.user.name,
-                            pass_hash=self.password_hash,
-                            pass_hash_params=self.pass_hash_params,
-                            slp=session_logout_pass,
-                            token=self.auth_token.uuid,
-                            uuid=self.new_session_uuid,
-                            access_group=self.access_group,
-                            client=client_uuid,
-                            client_ip=self.client_ip)
-            # Invoke method to create child sessions which also creates
-            # parent session so we need no session.add() here. Child
-            # sessions are always created regardless if sessions are
-            # enabled for each child.
-            add_status = session.create_child_sessions(offline_data_key=self.offline_data_key)
-            if add_status:
-                # Call exists() to fill in all session variables.
-                session.exists()
-                # Set log_session_id to new created session_id with info tag
-                # that its new.
-                self.log_session_id = f"new:{session.session_id}"
-                # Add session as child of REALM session if this is a SOTP
-                # request.
-                if self.found_sotp:
-                   log_msg = _("Adding session '{session_name}' as child session of '{auth_session_name}'.", log=True)[1]
-                   log_msg = log_msg.format(session_name=session.name, auth_session_name=self.auth_session.name)
-                   self.logger.info(log_msg)
-                   self.auth_session.add_child_session(session.uuid)
-
-            # Set session created for this request.
-            self.auth_session = session
-            self.request_cacheable = True
+            if self.oidc_context:
+                # OIDC /authorize: the user authenticated via SOTP
+                # (or fresh creds), and SOTP-verify already located
+                # the parent SSO session as ``self.auth_session``.
+                # We do NOT create a new top-level session here --
+                # we just hang an OIDCSession off the existing
+                # parent. ``session`` (constructed above) is dropped.
+                if not self.auth_session:
+                    log_msg = _("OIDC /authorize without parent SSO session "
+                                "for user '{user}' -- nothing to attach to.",
+                                log=True)[1]
+                    log_msg = log_msg.format(user=self.user.name)
+                    self.logger.warning(log_msg)
+                    self._oidc_authcode = None
+                    self.auth_failed = True
+                else:
+                    granted_scope = self._compute_oidc_granted_scope(
+                                                self.auth_token,
+                                                self.auth_client,
+                                                self.oidc_scope)
+                    try:
+                        oidc_session, authcode = self.auth_session.add_oidc_child_session(
+                                    client_uuid=self.auth_client.uuid,
+                                    scope=granted_scope,
+                                    nonce=self.oidc_nonce,
+                                    redirect_uri=self.oidc_redirect_uri,
+                                    code_challenge=self.oidc_code_challenge,
+                                    code_challenge_method=self.oidc_code_challenge_method)
+                        self._oidc_authcode = authcode
+                        self.log_session_id = f"new:{oidc_session.session_id}"
+                        log_msg = _("OIDC session '{sid}' created for user '{user}' (scope='{scope}').", log=True)[1]
+                        log_msg = log_msg.format(sid=oidc_session.session_id,
+                                                user=self.user.name,
+                                                scope=granted_scope)
+                        self.logger.info(log_msg)
+                    except Exception as e:
+                        log_msg = _("Failed to create OIDCSession: {err}", log=True)[1]
+                        log_msg = log_msg.format(err=e)
+                        self.logger.warning(log_msg)
+                        self._oidc_authcode = None
+                        self.auth_failed = True
+                        return
+                    # Set session created for this request.
+                    self.auth_session = oidc_session
+            else:
+                # For SSO accessgroup we have to create a random password
+                # to prevent login with the same OTP.
+                if self.access_group == config.sso_access_group:
+                    self.password = stuff.gen_password(32)
+                    self.gen_pass_hash()
+                elif not self.password_hash:
+                    self.gen_pass_hash()
+                if self.verify_token.pass_type == "static":
+                    session_logout_pass = slp.gen(self.new_session_uuid)
+                else:
+                    session_logout_pass = slp.gen(self.one_iter_hash)
+                # Create session.
+                session = Session(self.auth_type, self.user.name,
+                                pass_hash=self.password_hash,
+                                pass_hash_params=self.pass_hash_params,
+                                slp=session_logout_pass,
+                                token=self.auth_token.uuid,
+                                uuid=self.new_session_uuid,
+                                access_group=self.access_group,
+                                client=client_uuid,
+                                client_ip=self.client_ip)
+                # Invoke method to create child sessions which also creates
+                # parent session so we need no session.add() here. Child
+                # sessions are always created regardless if sessions are
+                # enabled for each child.
+                add_status = session.create_child_sessions(offline_data_key=self.offline_data_key)
+                if add_status:
+                    # Call exists() to fill in all session variables.
+                    session.exists()
+                    # Set log_session_id to new created session_id with info tag
+                    # that its new.
+                    self.log_session_id = f"new:{session.session_id}"
+                    # Add session as child of REALM session if this is a SOTP
+                    # request.
+                    if self.found_sotp:
+                       log_msg = _("Adding session '{session_name}' as child session of '{auth_session_name}'.", log=True)[1]
+                       log_msg = log_msg.format(session_name=session.name, auth_session_name=self.auth_session.name)
+                       self.logger.info(log_msg)
+                       self.auth_session.add_child_session(session.uuid)
+                # Set session created for this request.
+                self.auth_session = session
+                self.request_cacheable = True
 
     def reset_user_fail_counter(self):
         """ Reset users failed login counter. """
@@ -2142,7 +2224,10 @@ class AuthHandler(object):
         require_pass_types=None, redirect_challenge=None, jwt_auth=False,
         allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
         jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
-        client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True):
+        client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
+        oidc_context=False, oidc_scope="",
+        oidc_nonce=None, oidc_redirect_uri=None,
+        oidc_code_challenge=None, oidc_code_challenge_method=None):
         """
         Try to authenticate user:
             auth_type can be clear-text, mschap or ssh:
@@ -2182,6 +2267,18 @@ class AuthHandler(object):
                 - specifies if we should generated a JWT on successful auth.
             jwt_challenge must be a string
                 - optional challenge that will be added to the JWT payload
+            oidc_context: when True, this auth came in via /authorize
+                of the OIDC OP. The credential check runs as usual;
+                on success an OIDCSession is created as a child of
+                the SSO session and an auth code is issued. The auth
+                response then carries `oidc_authcode` and
+                `oidc_session_uuid` for the web layer to redirect
+                the RP with. ``client`` must be set to the OIDC RP's
+                Client name -- it becomes auth_client.
+            oidc_scope, oidc_nonce, oidc_redirect_uri,
+            oidc_code_challenge, oidc_code_challenge_method:
+                values from the /authorize request. Persisted on the
+                OIDCSession for /token to validate against later.
         """
         string_vars = {
                 'password'                  : password,
@@ -2241,6 +2338,14 @@ class AuthHandler(object):
         self.jwt_challenge = jwt_challenge
         self.request_cacheable = False
         self.client_offline_enc_type = string_vars['client_offline_enc_type']
+        # OIDC /authorize context. When True the success path also
+        # builds an OIDCSession + authcode under the SSO session.
+        self.oidc_context = oidc_context
+        self.oidc_scope = oidc_scope or ""
+        self.oidc_nonce = oidc_nonce
+        self.oidc_redirect_uri = oidc_redirect_uri
+        self.oidc_code_challenge = oidc_code_challenge
+        self.oidc_code_challenge_method = oidc_code_challenge_method
         if gen_jwt is None:
             if self.jwt_challenge:
                 self.gen_jwt = True
@@ -2862,6 +2967,12 @@ class AuthHandler(object):
             if self.auth_session:
                 auth_response['session'] = self.auth_session.uuid
                 auth_response['offline_data_key'] = self.offline_data_key
+
+            # OIDC /authorize: surface the authcode so the web layer
+            # can redirect the RP. The session UUID is internal --
+            # callers locate the session via authcode_hash later.
+            if self.oidc_context and getattr(self, '_oidc_authcode', None):
+                auth_response['oidc_authcode'] = self._oidc_authcode
 
             # Reset failed login counter for this user/group.
             if self.user.type == "user":

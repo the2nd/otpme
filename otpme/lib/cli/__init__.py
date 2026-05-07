@@ -60,6 +60,7 @@ modules = [
             'otpme.lib.cli.user',
             'otpme.lib.cli.share',
             'otpme.lib.cli.pool',
+            'otpme.lib.cli.scope',
             'otpme.lib.cli.job',
             'otpme.lib.classes',
         ]
@@ -131,9 +132,9 @@ def check_rapi_opts():
                 argspec = inspect.getfullargspec(f)
                 for x_attr in ovals:
                     valid_values = ovals[x_attr]
-                    x_index = argspec.args.index(x_attr)
                     # Try to get arg by index or from kwargs.
                     try:
+                        x_index = argspec.args.index(x_attr)
                         x_val = f_args[x_index]
                     except Exception:
                         x_val = f_kwargs[x_attr]
@@ -960,7 +961,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     read_acls = [
                 "view_public",
                 "view:status",
-                "view:policy",
+                "view:policies",
                 "view:acl_inheritance",
                 "view:description",
             ]
@@ -1986,7 +1987,7 @@ def list_objects(object_type, show_all=False, reverse=False,
     read_acls = [
                 "view_public",
                 "view:status",
-                "view:policy",
+                "view:policies",
                 "view:acl_inheritance",
                 "view:description",
             ]

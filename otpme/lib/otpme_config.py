@@ -2270,9 +2270,13 @@ class OTPmeConfig(object):
                                 attribute="uuid",
                                 value=auth_token.uuid,
                                 return_attributes=['last_modified'])
+        # Without result we may be called while auth token is replaces.
+        if not result:
+            return auth_token
         last_modified = result[0]
         if auth_token.last_modified == last_modified:
             return auth_token
+
         result = backend.search(object_type="token",
                                 attribute="uuid",
                                 value=auth_token.uuid,

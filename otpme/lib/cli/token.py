@@ -35,6 +35,7 @@ table_headers = [
             "roles",
             "accessgroups",
             "groups",
+            "scopes",
             "authscript",
             "policies",
             "inherit",
@@ -122,7 +123,8 @@ def search_regex_getter(show_all=False):
     return search_regex
 
 def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
-    output_fields=None, acl_checker=None, max_roles=5, max_policies=5, **kwargs):
+    output_fields=None, acl_checker=None, max_roles=5, max_scopes=5,
+    max_policies=5, **kwargs):
     """ Build table rows for tokens. """
     if output_fields is None:
         output_fields = []
@@ -404,6 +406,53 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 row.append("\n".join(group_strings))
             else:
                 row.append("-")
+        # Scopes.
+        if "scopes" in output_fields:
+            if check_acl("view:scopes"):
+                return_attributes = ['name', 'site', 'enabled']
+                scopes_result = backend.search(object_type="scope",
+                                            attribute="token",
+                                            value=token_uuid,
+                                            return_attributes=return_attributes)
+                role_scopes_result = {}
+                if roles_result:
+                    role_scopes_result = backend.search(object_type="scope",
+                                                attribute="role",
+                                                values=list(roles_result),
+                                                return_attributes=return_attributes)
+                scope_strings = []
+                all_scopes = set(list(scopes_result) + list(role_scopes_result))
+                scopes_count = len(all_scopes)
+                for scope_uuid in all_scopes:
+                    if scope_uuid in scopes_result:
+                        scope_data = scopes_result
+                    else:
+                        scope_data = role_scopes_result
+                    scope_name = scope_data[scope_uuid]['name']
+                    scope_site = scope_data[scope_uuid]['site']
+                    scope_enabled = scope_data[scope_uuid]['enabled']
+                    if not scope_enabled:
+                        scope_status_string = " (D)"
+                    else:
+                        scope_status_string = ""
+
+                    if scope_uuid in role_scopes_result:
+                        if scope_site != config.site:
+                            scope_string = f"({scope_site}/{scope_name}) {scope_status_string}"
+                        else:
+                            scope_string = f"({scope_name}) {scope_status_string}"
+                    else:
+                        scope_string = f"{scope_name}{scope_status_string}"
+                    processed_scopes = len(scope_strings)
+                    if processed_scopes >= max_scopes:
+                        msg = _("({processed_scopes} of {scopes_count} scopes total)")
+                        msg = msg.format(processed_scopes=processed_scopes, scopes_count=scopes_count)
+                        scope_strings.append(msg)
+                        break
+                    scope_strings.append(scope_string)
+                row.append("\n".join(scope_strings))
+            else:
+                row.append("-")
         # Authscript.
         if "authscript" in output_fields:
             if check_acl("view:auth_script") \
@@ -423,7 +472,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = ""

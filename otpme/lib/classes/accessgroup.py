@@ -50,12 +50,12 @@ write_acls = [
 
 read_value_acls = {
                 "view"      : [
-                            "token",
-                            "role",
-                            "host",
-                            "device",
-                            "child_group",
-                            "child_session",
+                            "tokens",
+                            "roles",
+                            "hosts",
+                            "devices",
+                            "child_groups",
+                            "child_sessions",
                             "sessions_enabled",
                             "timeout_pass_on",
                             "max_fail",
@@ -458,7 +458,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'process',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -468,7 +468,7 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
                     'job_type'          : 'process',
@@ -478,7 +478,7 @@ commands = {
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
                     'job_type'          : 'process',
                     },
@@ -487,7 +487,7 @@ commands = {
     'list_hosts'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_hosts',
+                    'method'            : 'list_hosts',
                     'job_type'          : 'process',
                     },
                 },
@@ -495,7 +495,7 @@ commands = {
     'list_devices'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_devices',
+                    'method'            : 'list_devices',
                     'job_type'          : 'process',
                     },
                 },
@@ -2175,7 +2175,7 @@ class AccessGroup(OTPmeObject):
             msg = ("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
 
-        if self.verify_acl("view:token") \
+        if self.verify_acl("view:tokens") \
         or self.verify_acl("add:token") \
         or self.verify_acl("remove:token"):
             token_list = []
@@ -2193,7 +2193,7 @@ class AccessGroup(OTPmeObject):
         else:
             token_list = ""
 
-        if self.verify_acl("view:role") \
+        if self.verify_acl("view:roles") \
         or self.verify_acl("add:role") \
         or self.verify_acl("remove:role"):
             role_list = []
@@ -2211,7 +2211,7 @@ class AccessGroup(OTPmeObject):
         else:
             role_list = ""
 
-        if self.verify_acl("view:host") \
+        if self.verify_acl("view:hosts") \
         or self.verify_acl("add:host") \
         or self.verify_acl("remove:host"):
             host_list = []
@@ -2229,7 +2229,7 @@ class AccessGroup(OTPmeObject):
         else:
             host_list = ""
 
-        if self.verify_acl("view:device") \
+        if self.verify_acl("view:devices") \
         or self.verify_acl("add:device") \
         or self.verify_acl("remove:device"):
             devices_list = []
@@ -2293,14 +2293,14 @@ class AccessGroup(OTPmeObject):
         lines.append(f'MAX_SESSIONS="{max_sessions}"')
 
         childs = ""
-        if self.verify_acl("view:child_group") \
+        if self.verify_acl("view:child_groups") \
         or self.verify_acl("add:child_group") \
         or self.verify_acl("remove:child_group"):
             childs = str(",".join(self.childs()))
         lines.append(f'CHILD_GROUPS="{childs}"')
 
         sessions = ""
-        if self.verify_acl("view:child_session") \
+        if self.verify_acl("view:child_sessions") \
         or self.verify_acl("add:child_session") \
         or self.verify_acl("remove:child_session"):
             sessions = str(",".join(self.childs(sessions=True)))

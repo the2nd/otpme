@@ -132,7 +132,7 @@ def row_getter(realm, site, dict_order, dict_data, acls,
             row.append(dict_size)
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="dictionary",

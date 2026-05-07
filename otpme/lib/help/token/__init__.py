@@ -21,14 +21,15 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-token [--type <token_type>] {command} [token]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-token show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]'),
-                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token show [--policy-limit <limit>] [--role-limit <limit>] {--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]'),
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --scope-limit :max_scopes: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show token(s).'),
                                     '-a'                    : _('Show all tokens.'),
                                     '-z <limit>'            : _('Limit output size.'),
                                     '--fields f1,f2,f3'     : _('Output only given fields.'),
                                     '--role-limit <limit>'  : _('Output max roles.'),
+                                    '--scope-limit <limit>' : _('Output max scopes.'),
                                     '--policy-limit <limit>': _('Output max policies.'),
                                 },
                 },
@@ -423,6 +424,18 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List dynamic groups of token.'),
+                                },
+                },
+
+    'list_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token list_scopes [--return-type <return_type>] {token}'),
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('List scopes the token is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
                                 },
                 },
 

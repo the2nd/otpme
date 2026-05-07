@@ -75,6 +75,8 @@ read_value_acls = {
                                 "radius_cert",
                                 "radius_key",
                                 "radius_ca_cert",
+                                "oidc",
+                                "oidc_keys",
                                 "auth",
                                 "sync",
                                 "ca",
@@ -109,12 +111,14 @@ write_value_acls = {
                     "enable"    : [
                                 "auth",
                                 "sync",
+                                "oidc",
                                 "syslog",
                                 "audit_log",
                                 ],
                     "disable"   : [
                                 "auth",
                                 "sync",
+                                "oidc",
                                 "syslog",
                                 "audit_log",
                                 ],
@@ -136,9 +140,11 @@ write_value_acls = {
                                 ],
                     "renew"     : [
                                 "cert",
+                                "oidc_key",
                                 ],
                     "revoke"    : [
                                 "cert",
+                                "oidc_key",
                                 ],
 }
 
@@ -316,7 +322,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'process',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -726,6 +732,48 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_sync',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_oidc'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_oidc',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_oidc'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_oidc',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'renew_oidc_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'gen_oidc_key',
+                    'oargs'             : ['key_type', 'kty', 'size', 'alg'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'revoke_oidc_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'revoke_oidc_key',
+                    'args'              : ['kid'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oidc_keys'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_oidc_keys',
                     'job_type'          : 'process',
                     },
                 },
@@ -1152,11 +1200,11 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=backup_mode_setter,
                                     object_types=object_types)
+    # Backup excludes.
     def excludes_setter(excludes, **kwargs):
         if isinstance(excludes, str):
             excludes = excludes.split(",")
         return excludes
-    # Backup excludes.
     config.register_config_parameter(name="backup_excludes",
                                     ctype=list,
                                     warn_if_exists=True,
@@ -1323,8 +1371,11 @@ def register_config():
                     'user',
                     'token',
                     ]
+    def vlan_setter(vlan, **kwargs):
+        return str(vlan)
     config.register_config_parameter(name="vlan",
                                     ctype=str,
+                                    setter=vlan_setter,
                                     object_types=object_types)
     # Role devices tokens added by the SSO portal added to.
     object_types = [
@@ -1383,6 +1434,71 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=reverse_proxy_ips_setter,
                                     object_types=['site'])
+    # OIDC default scopes.
+    def scopes_setter(scopes, callback=default_callback, **kwargs):
+        if isinstance(scopes, str):
+            scopes = scopes.split(",")
+        return_attrs = ['uuid', 'name']
+        result = backend.search(object_type="scope",
+                                attribute="name",
+                                values=scopes,
+                                return_attributes=return_attrs)
+        scope_uuids = []
+        for x_uuid in result:
+            x_name = result[x_uuid]['name']
+            scope_uuids.append(x_uuid)
+            scopes.remove(x_name)
+        if scopes:
+            msg = _("Unknown scopes: {scope_list}")
+            msg = msg.format(scope_list=scopes)
+            return callback.error(msg)
+        return scope_uuids
+    def scopes_getter(scopes, **kwargs):
+        scope_names = backend.search(object_type="scope",
+                                    attribute="uuid",
+                                    values=scopes,
+                                    return_type="name")
+        return scope_names
+    config.register_config_parameter(name="oidc_default_scopes",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=scopes_setter,
+                                    getter=scopes_getter,
+                                    object_types=['site', 'unit'])
+    # LDIF attribute name to source the OIDC ``email`` claim from.
+    # Default is the standard inetOrgPerson ``mail`` attribute.
+    # Sites that virtualise mail aliases via ``mailLocalAddress``
+    # (postfix-virtual / qmail-style) can override here.
+    config.register_config_parameter(name="oidc_email_attribute",
+                                    ctype=str,
+                                    default_value="mail",
+                                    object_types=['site', 'unit'])
+    # Behavior of the OIDC /end_session endpoint:
+    #   "sso" (default): full single-sign-out -- the web layer
+    #     redirects to /logout, which terminates the SSO session
+    #     and cascades into all child OIDCSessions (firing
+    #     backchannel logout to each RP that registered one).
+    #   "rp": local logout -- only the OIDCSession of the calling
+    #     RP is terminated; SSO session and other RPs stay logged
+    #     in. Useful when high-security RPs want their own,
+    #     shorter session lifetime independent of SSO.
+    # Site/Unit set the deployment default, individual Clients can
+    # override (the per-Client value wins via the standard config-
+    # parameter parent walk).
+    config.register_config_parameter(name="oidc_logout_scope",
+                                    ctype=str,
+                                    default_value="sso",
+                                    valid_values=['sso', 'rp'],
+                                    object_types=['site', 'unit', 'client'])
+    # Whether PKCE (RFC 7636) is mandatory for the OIDC authorize
+    # flow. OAuth 2.1 makes PKCE required for all clients, so the
+    # default is True. Disable per-client only for legacy RPs that
+    # cannot generate code_verifier/code_challenge (e.g. some old
+    # libraries or test tools that don't expose PKCE controls).
+    config.register_config_parameter(name="oidc_pkce_required",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=['site', 'unit', 'client'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -1492,6 +1608,7 @@ class Site(OTPmeObject):
         self.address = None
         self.auth_enabled = True
         self.sync_enabled = True
+        self.oidc_enabled = False
         self.admin_token_uuid = None
         self._base_policies_post_methods = {}
         self.handle_cert_loading = True
@@ -1680,6 +1797,18 @@ class Site(OTPmeObject):
             'SYNC_ENABLED'              : {
                                             'var_name'  : 'sync_enabled',
                                             'type'      : bool,
+                                            'required'  : False,
+                                        },
+
+            'OIDC_ENABLED'              : {
+                                            'var_name'  : 'oidc_enabled',
+                                            'type'      : bool,
+                                            'required'  : False,
+                                        },
+
+            'OIDC_KEYS'                 : {
+                                            'var_name'  : 'oidc_keys',
+                                            'type'      : dict,
                                             'required'  : False,
                                         },
 
@@ -2512,6 +2641,252 @@ class Site(OTPmeObject):
         self.update_index("sync_enabled", self.sync_enabled)
         return self._write(callback=callback)
 
+    @check_acls(['enable:oidc'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def enable_oidc(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Enable OIDC for the site. """
+        if self.oidc_enabled:
+            msg = _("OIDC for site '{name}' is already enabled.")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_oidc",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        if not force:
+            msg = _("Enable OIDC for site '{name}'?: ")
+            msg = msg.format(name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+        self.oidc_enabled = True
+        self.update_index("oidc_enabled", self.oidc_enabled)
+
+        found_active_key = False
+        for key_id in self.oidc_keys:
+            k = self.oidc_keys[key_id]
+            if k["otpme_status"] != "active":
+                continue
+            found_active_key = True
+        if not found_active_key:
+            self.gen_oidc_key()
+
+        return self._write(callback=callback)
+
+    @check_acls(['disable:oidc'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def disable_oidc(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable OIDC for the site. """
+        if not self.oidc_enabled:
+            msg = _("OIDC for site '{name}' is already disabled.")
+            msg = msg.format(name=self.name)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_oidc",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        if not force:
+            msg = _("Disable OIDC for site '{name}'?: ")
+            msg = msg.format(name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+        self.oidc_enabled = False
+        self.update_index("oidc_enabled", self.oidc_enabled)
+
+        return self._write(callback=callback)
+
+    # High-level shortcuts for the kty/size/alg trio. Admins use one
+    # of these via --key_type; advanced users can pass --kty/--size/
+    # --alg directly.
+    OIDC_KEY_TYPE_PRESETS = {
+        "rsa":      {"kty": "RSA", "size": 2048,      "alg": "RS256"},
+        "rsa-3072": {"kty": "RSA", "size": 3072,      "alg": "RS256"},
+        "rsa-4096": {"kty": "RSA", "size": 4096,      "alg": "RS256"},
+        "ec":       {"kty": "EC",  "size": "P-256",   "alg": "ES256"},
+        "ec-p256":  {"kty": "EC",  "size": "P-256",   "alg": "ES256"},
+        "ec-p384":  {"kty": "EC",  "size": "P-384",   "alg": "ES384"},
+        "ec-p521":  {"kty": "EC",  "size": "P-521",   "alg": "ES512"},
+        "ed25519":  {"kty": "OKP", "size": "Ed25519", "alg": "EdDSA"},
+    }
+
+    @check_acls(['renew:oidc_key'])
+    @audit_log()
+    def gen_oidc_key(
+        self,
+        key_type: str=None,
+        kty: str=None,
+        size=None,
+        alg: str=None,
+        retired_max_age: int=None,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        from otpme.lib.encryption.jwk import generate_signing_key
+        msg, log_msg = _("Generating OIDC key...", log=True)
+        logger.debug(log_msg)
+        callback.send(msg)
+
+        # FIXME: make this a config paramter.
+        if retired_max_age is None:
+            retired_max_age = 7200
+
+        # Resolve key_type preset, or fall back to explicit kty/size/alg.
+        if key_type is not None:
+            if any(x is not None for x in (kty, size, alg)):
+                msg = _("--key-type cannot be combined with --kty/--size/--alg.")
+                return callback.error(msg)
+            preset = self.OIDC_KEY_TYPE_PRESETS.get(key_type)
+            if preset is None:
+                msg = _("Unknown key_type '{key_type}'. Allowed: {allowed}")
+                msg = msg.format(key_type=key_type,
+                                 allowed=", ".join(sorted(self.OIDC_KEY_TYPE_PRESETS)))
+                return callback.error(msg)
+            kty = preset["kty"]
+            size = preset["size"]
+            alg = preset["alg"]
+        else:
+            if kty is None:
+                kty = "RSA"
+            if alg is None:
+                alg = "RS256"
+            if size is None:
+                size = 2048 if kty == "RSA" else ("P-256" if kty == "EC" else "Ed25519")
+            # CLI passes everything as string; RSA needs int bits.
+            if kty == "RSA" and isinstance(size, str):
+                try:
+                    size = int(size)
+                except ValueError:
+                    msg = _("RSA size must be an integer (e.g. 2048): {size}")
+                    msg = msg.format(size=size)
+                    return callback.error(msg)
+
+        now = int(time.time())
+        try:
+            new_key = generate_signing_key(kty=kty, size=size, alg=alg)
+        except (ValueError, TypeError) as e:
+            msg = _("Key generation failed: {err}")
+            msg = msg.format(err=e)
+            return callback.error(msg)
+
+        # Remove outdated keys.
+        for key_id in dict(self.oidc_keys):
+            k = self.oidc_keys[key_id]
+            if k.get("otpme_status") != "retired":
+                continue
+            if (now - k.get("retired_at", 0)) < retired_max_age:
+                continue
+            self.oidc_keys.pop(key_id)
+
+        # Flip active key.
+        for key_id in dict(self.oidc_keys):
+            k = self.oidc_keys[key_id]
+            if k["otpme_status"] != "active":
+                continue
+            k["otpme_status"] = "retired"
+            k["retired_at"] = now
+
+        self.oidc_keys[new_key["kid"]] = new_key
+
+        return self._cache(callback=callback)
+
+    @check_acls(['revoke:oidc_key'])
+    @audit_log()
+    def revoke_oidc_key(
+        self,
+        kid: str,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Revoke an OIDC signing key (compromise scenario).
+
+        Unlike rotation, the key is removed from oidc_keys outright so
+        it disappears from JWKS and any token signed by it stops
+        verifying. If the revoked key was the active one, a fresh
+        active key is generated immediately.
+        """
+        if str(kid) not in self.oidc_keys:
+            msg = _("No such OIDC key: {kid}")
+            msg = msg.format(kid=kid)
+            return callback.error(msg)
+
+        k = self.oidc_keys[kid]
+        was_active = k.get("otpme_status") == "active"
+
+        if not force:
+            msg = _("Revoke OIDC key '{kid}'? "
+                    "All tokens signed by this key will be invalidated.: ")
+            msg = msg.format(kid=kid)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+        self.oidc_keys.pop(kid)
+
+        msg, log_msg = _("OIDC key revoked: {kid}", log=True)
+        msg = msg.format(kid=kid)
+        log_msg = log_msg.format(kid=kid)
+        logger.warning(log_msg)
+        callback.send(msg)
+
+        if was_active:
+            msg, log_msg = _("Revoked active OIDC key — generating replacement.",
+                             log=True)
+            logger.warning(log_msg)
+            callback.send(msg)
+            return self.gen_oidc_key(force=True, callback=callback, _caller=_caller)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['view:oidc_keys'])
+    @audit_log()
+    def show_oidc_keys(
+        self,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        oidc_keys = self.oidc_keys.copy()
+        return callback.ok(oidc_keys)
+
     def create_site_cert(
         self,
         valid: Union[int,None]=None,
@@ -3198,7 +3573,7 @@ class Site(OTPmeObject):
         base_dictionaries = config.get_base_objects("dictionary")
 
         for d in dictionaries_sorted:
-            if not d in base_dictionaries:
+            if d not in base_dictionaries:
                 msg = _("Unknown dictionary: {d}")
                 msg = msg.format(d=d)
                 return callback.error(msg)
@@ -3771,6 +4146,41 @@ class Site(OTPmeObject):
                                 return_type="instance")
         for dictionary in dicts:
             dictionary.add_default_policies()
+
+        # Write objects.
+        callback.write_modified_objects()
+        cache.flush()
+
+        # Create base scopes.
+        from otpme.lib.classes.scope import Scope
+        from otpme.lib.classes.scope import BASE_SCOPE_DEFAULTS
+        default_scopes = []
+        base_scopes = config.get_base_objects("scope")
+        for s in base_scopes:
+            scope = Scope(name=s,
+                        realm=self.realm,
+                        site=self.name)
+            if scope.exists():
+                scope.add_default_policies()
+                continue
+
+            if not scope.add(verify_acls=False, callback=callback):
+                msg = _("Problem adding base scope '{s}'.")
+                msg = msg.format(s=s)
+                return callback.error(msg)
+            defaults = BASE_SCOPE_DEFAULTS.get(s)
+            if not defaults:
+                continue
+            default = defaults["default"]
+            if not default:
+                continue
+            default_scopes.append(s)
+
+        # Add oidc_default_scopes paramter.
+        if default_scopes:
+            self.set_config_param(parameter="oidc_default_scopes",
+                                    value=default_scopes,
+                                    callback=callback)
 
         # Write objects.
         callback.write_modified_objects()

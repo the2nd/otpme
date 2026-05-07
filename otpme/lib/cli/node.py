@@ -130,7 +130,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
         role_access = False
         if "roles" in output_fields:
             processed_tokens = []
-            if check_acl("view:role"):
+            if check_acl("view:roles"):
                 role_access = True
                 get_roles = True
         if get_roles:
@@ -175,7 +175,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
         get_tokens = False
         token_access = False
         if "tokens" in output_fields:
-            if check_acl("view:token"):
+            if check_acl("view:tokens"):
                 token_access = True
                 get_tokens = True
         if get_tokens:
@@ -229,7 +229,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type=object_type,

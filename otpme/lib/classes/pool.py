@@ -226,7 +226,7 @@ commands = {
     'list_nodes'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_nodes',
+                    'method'            : 'list_nodes',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -236,7 +236,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'process',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -589,7 +589,7 @@ class Pool(OTPmeObject):
 
         node_list = []
         if self.nodes:
-            if self.verify_acl("view:node"):
+            if self.verify_acl("view:nodes"):
                 return_attrs = ['name']
                 node_list = backend.search(object_type="node",
                                         join_object_type="pool",
@@ -603,7 +603,7 @@ class Pool(OTPmeObject):
 
         lines = []
 
-        if self.verify_acl("view:node"):
+        if self.verify_acl("view:nodes"):
             lines.append(f'NODES="{",".join(node_list)}"')
         else:
             lines.append('NODES=""')

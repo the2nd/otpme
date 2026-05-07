@@ -152,7 +152,7 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                 row.append("-")
         # Child accessgroups.
         if "childs" in output_fields:
-            if check_acl("view:child_group") \
+            if check_acl("view:child_groups") \
             or check_acl("add:child_group") \
             or check_acl("remove:child_group"):
                 child_ags_result = backend.search(object_type="accessgroup",
@@ -273,7 +273,7 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="accessgroup",

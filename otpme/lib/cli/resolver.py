@@ -149,7 +149,7 @@ def row_getter(realm, site, resolver_order, resolver_data, acls,
                 row.append("Disabled")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="resolver",

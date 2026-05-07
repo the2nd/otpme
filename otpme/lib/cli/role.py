@@ -29,6 +29,7 @@ table_headers = [
                 "tokens",
                 "hosts",
                 "devices",
+                "scopes",
                 "sync_users",
                 "accessgroups",
                 "groups",
@@ -72,8 +73,8 @@ def register():
 
 def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
     max_tokens=5, max_hosts=5, max_devices=5, max_sync_users=5,
-    max_ags=5, max_groups=5, max_policies=5, output_fields=None,
-    acl_checker=None, **kwargs):
+    max_ags=5, max_groups=5, max_scopes=5, max_policies=5,
+    output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for roles. """
     if output_fields is None:
         output_fields = []
@@ -125,7 +126,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Roles.
         if "roles" in output_fields:
-            if check_acl("view:role") \
+            if check_acl("view:roles") \
             or check_acl("add:role") \
             or check_acl("remove:role"):
                 # Get all roles of this role.
@@ -165,7 +166,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Tokens.
         if "tokens" in output_fields:
-            if check_acl("view:token") \
+            if check_acl("view:tokens") \
             or check_acl("add:token") \
             or check_acl("remove:token"):
                 # Get all tokens of this role.
@@ -203,7 +204,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Hosts.
         if "hosts" in output_fields:
-            if check_acl("view:host") \
+            if check_acl("view:hosts") \
             or check_acl("add:host") \
             or check_acl("remove:host"):
                 # Get all hosts of this role.
@@ -241,7 +242,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Devices.
         if "devices" in output_fields:
-            if check_acl("view:device") \
+            if check_acl("view:devices") \
             or check_acl("add:device") \
             or check_acl("remove:device"):
                 # Get all devices of this role.
@@ -277,9 +278,57 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("\n".join(role_devices))
             else:
                 row.append("-")
+        # Scopes.
+        if "scopes" in output_fields:
+            processed_scopes = []
+            if check_acl("view:scopes"):
+                return_attributes = ['name', 'site', 'enabled']
+                scopes_result = backend.search(object_type="scope",
+                                            attribute="role",
+                                            value=role_uuid,
+                                            return_attributes=return_attributes)
+                role_scopes_result = {}
+                if role_roles_result:
+                    role_scopes_result = backend.search(object_type="scope",
+                                                attribute="role",
+                                                values=list(role_roles_result),
+                                                return_attributes=return_attributes)
+                scope_strings = []
+                all_scopes = set(list(scopes_result) + list(role_scopes_result))
+                scopes_count = len(all_scopes)
+                for scope_uuid in all_scopes:
+                    if scope_uuid in scopes_result:
+                        scope_data = scopes_result
+                    else:
+                        scope_data = role_scopes_result
+                    scope_name = scope_data[scope_uuid]['name']
+                    scope_site = scope_data[scope_uuid]['site']
+                    scope_enabled = scope_data[scope_uuid]['enabled']
+                    if not scope_enabled:
+                        scope_status_string = " (D)"
+                    else:
+                        scope_status_string = ""
+
+                    if scope_uuid in role_scopes_result:
+                        if scope_site != config.site:
+                            scope_string = f"({scope_site}/{scope_name}) {scope_status_string}"
+                        else:
+                            scope_string = f"({scope_name}) {scope_status_string}"
+                    else:
+                        scope_string = f"{scope_name}{scope_status_string}"
+                    processed_scopes = len(scope_strings)
+                    if processed_scopes >= max_scopes:
+                        msg = _("({processed_scopes} of {scopes_count} scopes total)")
+                        msg = msg.format(processed_scopes=processed_scopes, scopes_count=scopes_count)
+                        scope_strings.append(msg)
+                        break
+                    scope_strings.append(scope_string)
+                row.append("\n".join(scope_strings))
+            else:
+                row.append("-")
         # Sync users.
         if "sync_users" in output_fields:
-            if check_acl("view:sync_user") \
+            if check_acl("view:sync_users") \
             or check_acl("add:sync_user") \
             or check_acl("remove:sync_user"):
                 # Get all tokens of this role.
@@ -317,7 +366,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Accessgroups.
         if "accessgroups" in output_fields:
-            if check_acl("view:accessgroup") \
+            if check_acl("view:accessgroups") \
             or check_acl("add:accessgroup") \
             or check_acl("remove:accessgroup"):
                 # Get all ags this role is in.
@@ -398,7 +447,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Groups.
         if "groups" in output_fields:
-            if check_acl("view:group") \
+            if check_acl("view:groups") \
             or check_acl("add:group") \
             or check_acl("remove:group"):
                 # Get all groups this role is in.
@@ -479,7 +528,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="accessgroup",

@@ -14,6 +14,7 @@ except Exception:
     pass
 
 from otpme.lib import oid
+from otpme.lib import cache
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -1265,6 +1266,8 @@ class OTPmeSyncP1(OTPmeClient1):
         own_realm, own_site, sync_older_objects):
         """ Process one sync object. Returns one of: "added",
         "updated", "skipped", "failed". """
+        # Clear caches on add to prevent cached false negatives (e.g. parent object not found by UUID).
+        cache.clear()
         # Make sure parent object exists on our site.
         if object_id.object_type in config.tree_object_types:
             try:

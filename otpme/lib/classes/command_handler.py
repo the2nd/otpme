@@ -567,6 +567,7 @@ class CommandHandler(object):
             register_module('otpme.lib.host')
             register_module('otpme.lib.cache')
             register_module('otpme.lib.multiprocessing')
+            register_module('otpme.lib.daemon.backupd')
             register_module('otpme.lib.daemon.clusterd')
             # Enable cache.
             cache.init()
@@ -638,6 +639,9 @@ class CommandHandler(object):
             if command == "device":
                 register_module('otpme.lib.classes.device')
                 register_module('otpme.lib.cli.device')
+            if command == "scope":
+                register_module('otpme.lib.classes.scope')
+                register_module('otpme.lib.cli.scope')
 
             if subcommand == "show":
                 register_module("otpme.lib.cli")

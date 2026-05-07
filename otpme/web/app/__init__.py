@@ -17,3 +17,6 @@ lm = LoginManager()
 lm.init_app(app)
 
 from otpme.web.app import views
+
+from otpme.web.app.oidc import oidc_bp
+app.register_blueprint(oidc_bp, url_prefix='/oidc')

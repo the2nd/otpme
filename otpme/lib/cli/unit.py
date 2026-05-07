@@ -124,7 +124,7 @@ def row_getter(realm, site, unit_order, unit_data, acls,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = ""

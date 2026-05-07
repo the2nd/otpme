@@ -196,10 +196,10 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
         return (None, None)
     if action == "write":
         journal_id = object_uuid
-        if object_type == "session":
-            journal_dir = SESSIONS_JOURNAL_DIR
-        else:
+        if object_type in config.tree_object_types:
             journal_dir = OBJECTS_JOURNAL_DIR
+        else:
+            journal_dir = SESSIONS_JOURNAL_DIR
     if action == "delete":
         journal_id = object_uuid
         if object_type == "session":
@@ -1051,6 +1051,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.all_nodes = []
         self.member_nodes = []
         self.online_nodes = []
+        self.min_written_nodes = 3
         self.processed_journal_entries = {}
         self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
                                                     random_name=False,
@@ -3048,6 +3049,8 @@ class ClusterDaemon(OTPmeDaemon):
         new_proctitle = f"{self.full_name} Cluster sessions sync ({node_name})"
         setproctitle.setproctitle(new_proctitle)
 
+        self.min_written_nodes = True
+
         conn_even_name = self.get_conn_event_name(node_name, event_type="session")
         self.conn_event = multiprocessing.Event(conn_even_name)
 
@@ -3948,7 +3951,6 @@ class ClusterDaemon(OTPmeDaemon):
             entry_nodes = sorted(cluster_journal_entry.get_nodes())
             member_nodes = sorted(multiprocessing.member_nodes)
             written_nodes = 0
-            min_written_nodes = 1
             member_nodes_in_sync = True
             for node_name in member_nodes:
                 if node_name in entry_nodes:
@@ -3956,8 +3958,10 @@ class ClusterDaemon(OTPmeDaemon):
                     continue
                 member_nodes_in_sync = False
             if config.two_node_setup:
-                min_written_nodes = 0
-            if written_nodes >= min_written_nodes:
+                self.min_written_nodes = 0
+            elif self.min_written_nodes is True:
+                self.min_written_nodes = len(member_nodes)
+            if written_nodes >= self.min_written_nodes:
                 member_nodes_in_sync = True
             if not member_nodes_in_sync:
                 return False

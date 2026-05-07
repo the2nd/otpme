@@ -757,22 +757,31 @@ class OTPmeAuthP1(OTPmeServer1):
     def auth_user(self, user, auth_type, auth_mode,
         password=None, mschap_challenge=None, mschap_response=None,
         access_group=None, sso_challenge=None, host=None,
-        host_type=None, host_ip=None, client=None, client_ip=None):
+        host_type=None, host_ip=None, client=None, client_ip=None,
+        oidc_context=None, oidc_scope=None, oidc_nonce=None,
+        oidc_redirect_uri=None, oidc_code_challenge=None,
+        oidc_code_challenge_method=None):
         # Build auth request.
         kwargs = {
-                    'auth_mode'     : auth_mode,
-                    'auth_type'     : auth_type,
-                    'peer'          : self.peer,
-                    'access_group'  : access_group,
-                    'challenge'     : mschap_challenge,
-                    'response'      : mschap_response,
-                    'password'      : password,
-                    'host'          : host,
-                    'host_type'     : host_type,
-                    'host_ip'       : host_ip,
-                    'client'        : client,
-                    'client_ip'     : client_ip,
-                    'ecdh_curve'    : self.ecdh_curve,
+                    'auth_mode'                 : auth_mode,
+                    'auth_type'                 : auth_type,
+                    'peer'                      : self.peer,
+                    'access_group'              : access_group,
+                    'challenge'                 : mschap_challenge,
+                    'response'                  : mschap_response,
+                    'password'                  : password,
+                    'host'                      : host,
+                    'host_type'                 : host_type,
+                    'host_ip'                   : host_ip,
+                    'client'                    : client,
+                    'client_ip'                 : client_ip,
+                    'oidc_context'              : oidc_context,
+                    'oidc_scope'                : oidc_scope,
+                    'oidc_nonce'                : oidc_nonce,
+                    'oidc_redirect_uri'         : oidc_redirect_uri,
+                    'oidc_code_challenge'       : oidc_code_challenge,
+                    'oidc_code_challenge_method': oidc_code_challenge_method,
+                    'ecdh_curve'                : self.ecdh_curve,
                 }
         # Do authentication.
         auth_response = user.authenticate(**kwargs)
@@ -944,6 +953,36 @@ class OTPmeAuthP1(OTPmeServer1):
         except Exception:
             sso_challenge = None
 
+        try:
+            oidc_context = command_args['oidc_context']
+        except Exception:
+            oidc_context = None
+
+        try:
+            oidc_scope = command_args['oidc_scope']
+        except Exception:
+            oidc_scope = None
+
+        try:
+            oidc_nonce = command_args['oidc_nonce']
+        except Exception:
+            oidc_nonce = None
+
+        try:
+            oidc_redirect_uri = command_args['oidc_redirect_uri']
+        except Exception:
+            oidc_redirect_uri = None
+
+        try:
+            oidc_code_challenge = command_args['oidc_code_challenge']
+        except Exception:
+            oidc_code_challenge = None
+
+        try:
+            oidc_code_challenge_method = command_args['oidc_code_challenge_method']
+        except Exception:
+            oidc_code_challenge_method = None
+
         # Set host IP from source IP if requested.
         if host_ip == "auto":
             if not config.use_api:
@@ -1097,7 +1136,13 @@ class OTPmeAuthP1(OTPmeServer1):
                             host_ip=host_ip,
                             host_type=host_type,
                             client=client,
-                            client_ip=client_ip)
+                            client_ip=client_ip,
+                            oidc_context=oidc_context,
+                            oidc_scope=oidc_scope,
+                            oidc_nonce=oidc_nonce,
+                            oidc_redirect_uri=oidc_redirect_uri,
+                            oidc_code_challenge=oidc_code_challenge,
+                            oidc_code_challenge_method=oidc_code_challenge_method)
 
     def _close(self):
         pass

@@ -164,6 +164,24 @@ def set_security_headers(response):
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:;"
     )
+    # Force HTTPS for a year. includeSubDomains locks down anything
+    # under the same registered domain -- safe for a dedicated SSO
+    # FQDN. preload is intentionally NOT set (that's an opt-in to
+    # browser HSTS-preload lists, requires separate submission).
+    response.headers['Strict-Transport-Security'] = (
+        'max-age=31536000; includeSubDomains'
+    )
+    # Disallow MIME-type sniffing.
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # Disallow framing entirely. We don't enable OIDC front-channel
+    # logout (frontchannel_logout_supported=False in discovery), so
+    # DENY is correct. Relax to SAMEORIGIN per-route if a future
+    # page legitimately needs framing.
+    response.headers['X-Frame-Options'] = 'DENY'
+    # Send Referer only to same origin on cross-origin navigations.
+    # Avoids leaking auth-flow URLs (codes, state) to arbitrary
+    # referrers while keeping intra-app referrers for analytics.
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     return response
 
 @app.errorhandler(404)
@@ -597,10 +615,36 @@ def deploy_verify():
         "redirect": url_for('index', _external=True, _scheme='https'),
     })
 
+def _safe_next_url(next_url):
+    """ Validate a ``next=`` redirect target. Only same-app local
+    paths are accepted: must start with '/' and must NOT start with
+    '//' or 'http(s)://' (open-redirect defense). Returns the URL
+    if safe, else None.
+    """
+    if not next_url:
+        return None
+    if not next_url.startswith('/'):
+        return None
+    # '//foo' is an interpretable scheme-relative URL; reject.
+    if next_url.startswith('//'):
+        return None
+    return next_url
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Stash the optional ``next=`` target in the flask session so it
+    # survives the form-submission roundtrip (the POST won't carry
+    # the original GET query string).
+    next_url = _safe_next_url(request.args.get('next'))
+    if next_url:
+        flask_session['next_after_login'] = next_url
+
     if g.user and g.user.is_authenticated:
-        return redirect(url_for('index', _external=True, _scheme='https'))
+        # Already logged in -- honor next= if it's there, else /index.
+        target = (_safe_next_url(flask_session.pop('next_after_login', None))
+                  or url_for('index', _external=True, _scheme='https'))
+        return redirect(target)
     form = LoginForm()
     if not form.validate_on_submit():
         return render_template('login.html',
@@ -622,7 +666,7 @@ def login():
                     'sso_challenge'     : sso_challenge,
                 }
 
-    # Check if we have users secrets.
+    # Get authd connection.
     authd_conn = get_authd_conn(username, password)
     try:
         auth_status, \
@@ -671,9 +715,16 @@ def login():
         return redirect(url_for('login', _external=True, _scheme='https'))
     # Check if token requires SSO deploy (enrollment).
     if login_token_deploy:
+        # Forced enrollment beats the stashed next= -- complete deploy
+        # first, deploy_verify can later look at flask_session.
         redirect_target = url_for('deploy', _external=True, _scheme='https')
     else:
-        redirect_target = url_for('index', _external=True, _scheme='https')
+        # Honor next= if it survived from the GET stash.
+        next_url = _safe_next_url(flask_session.pop('next_after_login', None))
+        if next_url:
+            redirect_target = next_url
+        else:
+            redirect_target = url_for('index', _external=True, _scheme='https')
     # Store user data in Flask session for load_user.
     flask_session['otpme_username'] = username
     flask_session['login_token'] = login_token
@@ -747,7 +798,9 @@ def logout():
 def get_apps():
     if not g.user.is_authenticated:
         return jsonify([])
-    response, error = _send_ssod_command("get_apps", {},
+    login_token_uuid = flask_session.get('login_token_uuid')
+    extra_args = {'login_token_uuid':login_token_uuid}
+    response, error = _send_ssod_command("get_apps", extra_args,
                                         "Failed to get app list.")
     if error:
         return error
@@ -1024,10 +1077,21 @@ def fido2_auth_complete():
     flask_session['sso_deploy'] = login_token_deploy
     flask_session['login_token_uuid'] = login_token_uuid
     flask_session['login_token_pass_type'] = login_token_pass_type
+    # Same redirect-priority as the form-based login flow: forced
+    # enrollment beats next=, otherwise honor a stashed next= URL,
+    # otherwise default to /index.
+    if login_token_deploy:
+        redirect_target = url_for('deploy', _external=True, _scheme='https')
+    else:
+        next_after = _safe_next_url(flask_session.pop('next_after_login', None))
+        if next_after:
+            redirect_target = next_after
+        else:
+            redirect_target = url_for('index', _external=True, _scheme='https')
     web_user = WebUser(uuid=login_user_uuid, name=username)
     resp = make_response(jsonify({
         "status": "ok",
-        "redirect": url_for('index', _external=True, _scheme='https'),
+        "redirect": redirect_target,
     }))
     resp.set_cookie('otpme_slp', slp,
                     httponly=True, secure=True, samesite='Lax')

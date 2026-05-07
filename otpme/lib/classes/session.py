@@ -194,11 +194,14 @@ def register_backend():
                             full_index_update=True)
     # Register object to backend.
     session_dir_extension = "session"
-    class_getter = lambda: Session
+    from otpme.lib.session import get_class as session_get_class
+    class_getter = session_get_class
+    class_getter_args = {'SESSION_TYPE': 'session_type'}
     backend.register_object_type(object_type="session",
                                 tree_object=False,
                                 dir_name_extension=session_dir_extension,
                                 class_getter=class_getter,
+                                class_getter_args=class_getter_args,
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
 
@@ -557,8 +560,14 @@ class Session(OTPmeLockObject):
         return sync_config
 
     @object_lock()
-    def write_config(self):
-        """ Write session config to backend. """
+    def write_config(self, wait_for_cluster_writes: bool=False):
+        """ Write session config to backend.
+
+        Default does not wait for cluster sync to maximise auth pps.
+        OIDCSession overrides with wait_for_cluster_writes=True
+        because the RP may hit /token or /userinfo on a different
+        node immediately after the issuing node returns.
+        """
         # Set object config.
         self.object_config = ObjectConfig(self.oid)
 
@@ -598,13 +607,16 @@ class Session(OTPmeLockObject):
         self.object_config['RENEG_HASH'] = self.reneg_hash
         self.object_config['LAST_RENEG'] = self.last_reneg
 
+        # Subtype hook: subclasses populate any extra fields.
+        self._set_extra_object_config()
+
         # Write session config.
         try:
             backend.write_config(object_id=self.oid,
                             instance=self,
                             full_index_update=True,
                             full_data_update=True,
-                            wait_for_cluster_writes=False,
+                            wait_for_cluster_writes=wait_for_cluster_writes,
                             cluster=True)
         except Exception as e:
             log_msg = _("Failed to write session: {session_oid}: {error}", log=True)[1]
@@ -614,6 +626,17 @@ class Session(OTPmeLockObject):
             return False
 
         return True
+
+    def _set_extra_object_config(self):
+        """ Hook for subtypes to populate extra object_config fields
+        before the backend write. Default no-op. """
+        return
+
+    def _set_extra_variables(self):
+        """ Hook for subtypes to read back extra fields from
+        object_config. Called at the end of set_variables(). Default
+        no-op. """
+        return
 
     def set_variables(self):
         """ Set instance variables. """
@@ -679,6 +702,9 @@ class Session(OTPmeLockObject):
             self.index = self.object_config['INDEX']
         except Exception:
             pass
+
+        # Subtype hook: subclasses read back any extra fields.
+        self._set_extra_variables()
 
         return True
 
@@ -1111,6 +1137,48 @@ class Session(OTPmeLockObject):
         self.child_sessions.append(session_uuid)
         self.add_index("child_session", session_uuid)
         return self.write_config()
+
+    def add_oidc_child_session(
+        self,
+        client_uuid: str,
+        scope: str="",
+        nonce: Union[str,None]=None,
+        redirect_uri: Union[str,None]=None,
+        code_challenge: Union[str,None]=None,
+        code_challenge_method: Union[str,None]=None,
+        ttl: int=300,
+        ):
+        """ Attach an OIDCSession child for an /authorize request.
+
+        Used by authd at the end of the /authorize success path to
+        record the OIDC flow state under the freshly-created SSO
+        session and issue an auth code. Returns ``(oidc_session,
+        authcode)``; the plaintext authcode lives only in the
+        return value -- only its SHA-256 hash is persisted.
+        """
+        from otpme.lib.session.oidc_session import OIDCSession
+        client_obj = backend.get_object(object_type="client",
+                                        uuid=client_uuid)
+        if not client_obj:
+            msg = _("Unknown OIDC client UUID: {uuid}")
+            msg = msg.format(uuid=client_uuid)
+            raise OTPmeException(msg)
+        oidc_session = OIDCSession(username=self.username,
+                                access_group=client_obj.access_group,
+                                token=self.auth_token,
+                                client=client_uuid,
+                                client_ip=self.client_ip,
+                                scope=scope,
+                                nonce=nonce,
+                                redirect_uri=redirect_uri,
+                                code_challenge=code_challenge,
+                                code_challenge_method=code_challenge_method)
+        authcode = secrets.token_urlsafe(32)
+        oidc_session.set_authcode(authcode, expires_in=ttl)
+        # add() ends in write_config() so no separate write needed.
+        oidc_session.add()
+        self.add_child_session(oidc_session.uuid)
+        return oidc_session, authcode
 
     # FIXME: create_child_sessions() creates all child sessions regardless if
     #        the token used for the request is allowed for the child

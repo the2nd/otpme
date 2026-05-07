@@ -139,6 +139,7 @@ commands = {
                                         'output_fields',
                                         'search_regex',
                                         'max_policies',
+                                        'max_scopes',
                                         'max_roles',
                                         'sort_by',
                                         'reverse',
@@ -410,8 +411,8 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
-                    'job_type'          : 'process',
+                    'method'            : 'list_policies',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
                     },
@@ -420,8 +421,8 @@ commands = {
     'list_hosts'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_hosts',
-                    'job_type'          : 'process',
+                    'method'            : 'list_hosts',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
@@ -430,8 +431,8 @@ commands = {
     'list_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_groups',
-                    'job_type'          : 'process',
+                    'method'            : 'list_groups',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'include_roles':False},
                     },
@@ -441,7 +442,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_access_groups',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'include_roles':False},
                     },
@@ -450,8 +451,8 @@ commands = {
     'list_nodes'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_nodes',
-                    'job_type'          : 'process',
+                    'method'            : 'list_nodes',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
@@ -460,9 +461,19 @@ commands = {
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
-                    'job_type'          : 'process',
+                    'method'            : 'list_roles',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'recursive'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
+                    },
+                },
+            },
+    'list_scopes'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_scopes',
+                    'job_type'          : 'thread',
+                    'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
@@ -625,7 +636,7 @@ commands = {
     'list_dynamic_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_dynamic_groups',
+                    'method'            : 'list_dynamic_groups',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1511,6 +1522,14 @@ class Token(OTPmeObject):
         return callback.ok(return_msg)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:hosts'])
+    def list_hosts(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all hosts this token is assigned to. """
+        return self.get_hosts(**kwargs)
+
     def get_hosts(
         self,
         return_type: str="name",
@@ -1547,6 +1566,14 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:nodes'])
+    def list_nodes(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all nodes this token is assigned to. """
+        return self.get_nodes(**kwargs)
+
     def get_nodes(
         self,
         return_type: str="name",
@@ -1583,6 +1610,14 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:roles'])
+    def list_roles(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all roles this token is in. """
+        return self.get_roles(**kwargs)
+
     def get_roles(
         self,
         return_type: str="read_oid",
@@ -1729,6 +1764,14 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:groups'])
+    def list_groups(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all groups this token is in. """
+        return self.get_groups(**kwargs)
+
     def get_groups(
         self,
         include_roles: bool=True,

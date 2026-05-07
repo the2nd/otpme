@@ -425,7 +425,7 @@ commands = {
     'list_users'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_token_users',
+                    'method'            : 'list_token_users',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -435,7 +435,7 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
                     'job_type'          : 'thread',
@@ -445,7 +445,7 @@ commands = {
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
                     'job_type'          : 'process',
                     },
@@ -454,7 +454,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -464,7 +464,7 @@ commands = {
     'list_dynamic_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_dynamic_groups',
+                    'method'            : 'list_dynamic_groups',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1126,7 +1126,7 @@ class Node(OTPmeHost):
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
-        if self.verify_acl("view:token") \
+        if self.verify_acl("view:tokens") \
         or self.verify_acl("add:token") \
         or self.verify_acl("remove:token"):
             token_list = []

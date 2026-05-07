@@ -542,7 +542,6 @@ cmd_help = {
                                 },
                 },
 
-
     'enable_sync'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site enable_sync {site}'),
                     'cmd'   :   '<|object|>',
@@ -556,6 +555,50 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable synchronization with site'),
+                                },
+                },
+
+    'enable_oidc'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site enable_oidc {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable OIDC for site'),
+                                },
+                },
+
+    'disable_oidc'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site disable_oidc {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable OIDC for site'),
+                                },
+                },
+
+    'renew_oidc_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site renew_oidc_key [--key-type rsa|rsa-3072|rsa-4096|ec|ec-p256|ec-p384|ec-p521|ed25519] [--kty RSA|EC|OKP] [--size <int|curve>] [--alg RS256|ES256|EdDSA|...] {site}'),
+                    'cmd'   :   '--key-type :key_type: --kty :kty: --size :size: --alg :alg: <|object|>',
+                    '_help' :   {
+                                    'cmd'                       : _('Rotate OIDC keys for site (default: rsa-2048/RS256).'),
+                                    '--key-type <preset>'       : _('High-level preset (rsa, rsa-3072, rsa-4096, ec, ec-p256, ec-p384, ec-p521, ed25519). Mutually exclusive with --kty/--size/--alg.'),
+                                    '--kty <RSA|EC|OKP>'        : _('Key type for direct configuration.'),
+                                    '--size <bits|curve>'       : _('RSA bits (2048/3072/4096) or EC curve (P-256/P-384/P-521) or OKP curve (Ed25519).'),
+                                    '--alg <alg>'               : _('Signing algorithm (RS256/RS384/RS512/ES256/ES384/ES512/EdDSA).'),
+                                },
+                },
+
+    'revoke_oidc_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site revoke_oidc_key {site} {kid}'),
+                    'cmd'   :   '<|object|> <kid>',
+                    '_help' :   {
+                                    'cmd'                   : _('Revoke OIDC key (compromise scenario; if active a replacement is generated)'),
+                                },
+                },
+
+    'show_oidc_keys'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site show_oidc_keys {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show OIDC keys for site'),
                                 },
                 },
 

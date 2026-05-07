@@ -1308,57 +1308,67 @@ class OTPmeClient(OTPmeClientBase):
         msg = _("You can configure the key len with the config parameter <private_key_backup_key_len>.")
         self.message_method(msg)
         backup_file = os.path.join("/dev/shm", key_name + ".pem")
-        input_prefill = backup_file
-        prompt = _("Private key backup file: ")
-        while True:
-            try:
-                backup_file = cli.user_input(prompt=prompt,
-                                        prefill=input_prefill)
-            except Exception as e:
-                msg = _("Error reading user input: {error}")
-                msg = msg.format(error=e)
-                raise OTPmeException(msg) from e
-            backup_dir = os.path.dirname(backup_file)
-            if not os.path.isdir(backup_dir):
-                msg = _("No such file or directory: {backup_dir}")
-                msg = msg.format(backup_dir=backup_dir)
+        if config.force:
+            if os.path.exists(backup_file):
+                msg = _("Backup key file already exists: {file_path}")
+                msg = msg.format(file_path=backup_file)
+                raise OTPmeException(msg)
+        else:
+            input_prefill = backup_file
+            prompt = _("Private key backup file: ")
+            while True:
+                try:
+                    backup_file = cli.user_input(prompt=prompt,
+                                            prefill=input_prefill)
+                except Exception as e:
+                    msg = _("Error reading user input: {error}")
+                    msg = msg.format(error=e)
+                    raise OTPmeException(msg) from e
+                backup_dir = os.path.dirname(backup_file)
+                if not os.path.isdir(backup_dir):
+                    msg = _("No such file or directory: {backup_dir}")
+                    msg = msg.format(backup_dir=backup_dir)
+                    self.error_message_method(msg)
+                    continue
+                if not os.path.exists(backup_file):
+                    break
+                msg = _("File already exists: {backup_file}")
+                msg = msg.format(backup_file=backup_file)
                 self.error_message_method(msg)
-                continue
-            if not os.path.exists(backup_file):
+                try:
+                    answer = cli.user_input(prompt="Overwrite?: ")
+                except Exception as e:
+                    error_msg = _("Error reading user input: {error}")
+                    error_msg = error_msg.format(error=e)
+                    raise OTPmeException(error_msg) from e
+                if answer.lower() != "y":
+                    continue
+                try:
+                    os.remove(backup_file)
+                except Exception as e:
+                    msg = _("Error removing backup file: {e}")
+                    msg = msg.format(e=e)
+                    self.error_message_method(msg)
+                    continue
                 break
-            msg = _("File already exists: {backup_file}")
-            msg = msg.format(backup_file=backup_file)
-            self.error_message_method(msg)
-            try:
-                answer = cli.user_input(prompt="Overwrite?: ")
-            except Exception as e:
-                error_msg = _("Error reading user input: {error}")
-                error_msg = error_msg.format(error=e)
-                raise OTPmeException(error_msg) from e
-            if answer.lower() != "y":
-                continue
-            try:
-                os.remove(backup_file)
-            except Exception as e:
-                msg = _("Error removing backup file: {e}")
-                msg = msg.format(e=e)
-                self.error_message_method(msg)
-                continue
-            break
         try:
             backup_key = RSAKey(bits=key_len)
         except Exception as e:
             msg = _("Error generating RSA key: {e}")
             msg = msg.format(e=e)
             raise ValueError(msg) from e
-        while True:
-            password1 = self.get_password(prompt="Private key export password:")
-            password2 = self.get_password(prompt="Reenter password:")
-            if password1 == password2:
-                password = password1
-                break
-            msg = _("Sorry, passwords do not match.")
-            self.error_message_method(msg)
+        if config.force:
+            password = stuff.gen_password(length=32)
+        else:
+            while True:
+                password1 = self.get_password(prompt="Private key export password:")
+                password2 = self.get_password(prompt="Reenter password:")
+                if password1 == password2:
+                    password = password1
+                    break
+                msg = _("Sorry, passwords do not match.")
+                self.error_message_method(msg)
+
         private_key_pem = backup_key.export_private_key(encoding="PEM",
                                     key_format="openssl",
                                     password=password)
@@ -1379,6 +1389,10 @@ class OTPmeClient(OTPmeClientBase):
         msg = _("Private key written to: {backup_file}")
         msg = msg.format(backup_file=backup_file)
         self.message_method(msg)
+        if config.force:
+            msg = _("Private key password: {password}")
+            msg = msg.format(password=password)
+            self.message_method(msg)
         public_key = backup_key.public_key_base64
         return public_key
 

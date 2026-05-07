@@ -45,13 +45,13 @@ write_acls = []
 
 read_value_acls = {
                     "view"      : [
-                                    "host",
+                                    "hosts",
                                     "user",
-                                    "token",
-                                    "accessgroup",
-                                    "group",
-                                    "policy",
-                                    "role",
+                                    "tokens",
+                                    "accessgroups",
+                                    "groups",
+                                    "policies",
+                                    "roles",
                                     "dynamic_groups",
                                 ],
             }
@@ -126,6 +126,7 @@ commands = {
                                         'max_tokens',
                                         'max_ags',
                                         'max_groups',
+                                        'max_scopes',
                                         'max_policies',
                                         ],
                     'job_type'          : 'thread',
@@ -308,7 +309,7 @@ commands = {
     'list_hosts'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_hosts',
+                    'method'            : 'list_hosts',
                     'job_type'          : 'process',
                     },
                 },
@@ -316,7 +317,7 @@ commands = {
     'list_devices'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_devices',
+                    'method'            : 'list_devices',
                     'job_type'          : 'process',
                     },
                 },
@@ -360,7 +361,7 @@ commands = {
     'list_sync_users'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_sync_users',
+                    'method'            : 'list_sync_users',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -370,7 +371,7 @@ commands = {
     'list_users'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_token_users',
+                    'method'            : 'list_token_users',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -380,27 +381,27 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
-                    'job_type'          : 'process',
+                    'method'            : 'list_policies',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
                     },
@@ -409,8 +410,18 @@ commands = {
     'list_dynamic_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_dynamic_groups',
+                    'method'            : 'list_dynamic_groups',
                     'job_type'          : 'thread',
+                    },
+                },
+            },
+    'list_scopes'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_scopes',
+                    'job_type'          : 'thread',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
             },
@@ -1057,6 +1068,14 @@ class Role(OTPmeObject):
             self.name = name.lower()
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:roles'])
+    def list_roles(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all roles of this role. """
+        return self.get_roles(**kwargs)
+
     def get_roles(
         self,
         return_type: str="name",
@@ -1103,6 +1122,14 @@ class Role(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:groups'])
+    def list_groups(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all group names this role is in. """
+        return self.get_groups(**kwargs)
+
     def get_groups(
         self,
         return_type: str="uuid",
@@ -1174,7 +1201,7 @@ class Role(OTPmeObject):
                     return callback.error(msg)
                 _group = result[0]
                 if verify_acls:
-                    if not _group.verify_acl("add:role"):
+                    if not _group.verify_acl("add:groups"):
                         msg = _("Group: {group_name}: Permission denied")
                         msg = msg.format(group_name=group_name)
                         return callback.error(msg)
@@ -1457,7 +1484,7 @@ class Role(OTPmeObject):
 
         token_list = []
         if self.tokens:
-            if self.verify_acl("view:token"):
+            if self.verify_acl("view:tokens"):
                 return_attrs = ['rel_path']
                 token_list = backend.search(object_type="token",
                                             join_object_type="role",
@@ -1471,7 +1498,7 @@ class Role(OTPmeObject):
 
         role_list = []
         if self.roles:
-            if self.verify_acl("view:role"):
+            if self.verify_acl("view:roles"):
                 return_attrs = ['site', 'name']
                 roles_result = backend.search(object_type="role",
                                             join_object_type="role",
@@ -1489,9 +1516,9 @@ class Role(OTPmeObject):
                     role_list.append(role_name)
             role_list.sort()
 
-        if self.verify_acl("view:host") \
-        or self.verify_acl("add:host") \
-        or self.verify_acl("remove:host"):
+        if self.verify_acl("view:hosts") \
+        or self.verify_acl("add:hosts") \
+        or self.verify_acl("remove:hosts"):
             host_list = []
             for i in self.hosts:
                 host_oid = backend.get_oid(uuid=i,
@@ -1507,7 +1534,7 @@ class Role(OTPmeObject):
         else:
             host_list = ""
 
-        if self.verify_acl("view:device") \
+        if self.verify_acl("view:devices") \
         or self.verify_acl("add:device") \
         or self.verify_acl("remove:device"):
             devices_list = []
@@ -1527,23 +1554,23 @@ class Role(OTPmeObject):
 
         lines = []
 
-        if self.verify_acl("view:role"):
+        if self.verify_acl("view:roles"):
             lines.append(f'ROLES="{",".join(role_list)}"')
         else:
             lines.append('ROLES=""')
 
 
-        if self.verify_acl("view:accessgroup"):
+        if self.verify_acl("view:accessgroups"):
             lines.append(f'ACCESS_GROUPS="{",".join(self.get_access_groups())}"')
         else:
             lines.append('ACCESS_GROUPS=""')
 
-        if self.verify_acl("view:group"):
+        if self.verify_acl("view:groups"):
             lines.append(f'GROUPS="{",".join(self.get_groups())}"')
         else:
             lines.append('GROUPS=""')
 
-        if self.verify_acl("view:token"):
+        if self.verify_acl("view:tokens"):
             lines.append(f'TOKENS="{",".join(token_list)}"')
         else:
             lines.append('TOKENS=""')

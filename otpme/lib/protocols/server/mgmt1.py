@@ -3110,8 +3110,6 @@ class OTPmeMgmtP1(OTPmeServer1):
             status = False
             message = _("Unknown OTPme command: {cmd}")
             message = message.format(cmd=command)
-            from otpme.lib import debug
-            debug.trace()
             return self.build_response(status, message)
 
         # Try to auth socket user.

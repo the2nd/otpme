@@ -21,14 +21,15 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-client {command} [client]"),
 
     'show'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-client show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]'),
-                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-client show [--policy-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]'),
+                    'cmd'   :   '--policy-limit :max_policies: --scope-limit :max_scopes: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show client(s)'),
                                     '-a'                    : _('Show all clients.'),
                                     '-z <limit>'            : _('Limit output size'),
                                     '--fields f1,f2,f3'     : _('Output only given fields'),
                                     '--policy-limit <limit>': _('Output max policies.'),
+                                    '--scope-limit <limit>' : _('Output max scopes.'),
                                     '--reverse'             : _('Reverse the output order.'),
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
@@ -48,10 +49,14 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client add {client} [address]'),
-                    'cmd'   :   '<|object|> [address]',
+                    '_cmd_usage_help' : _('Usage: otpme-client add [--enable-oidc] [--scopes <scope1,scope2>] [--add-scopes <scope1,scope2>] [--no-default-scopes] {client} [address]'),
+                    'cmd'   :   '<|object|> --enable-oidc :enable_oidc=True: --scopes :[scopes]: --add-scopes :[add_scopes]: --no-default-scopes :no_default_scopes=True: [address]',
                     '_help' :   {
-                                    'cmd'                   : _('Add new client'),
+                                    'cmd'                           : _('Add new client'),
+                                    '--enable-oidc'                 : _('Enable OIDC for client.'),
+                                    '--scopes <scope1,scope2>'      : _('Use these scopes (replaces site default).'),
+                                    '--add-scopes <scope1,scope2>'  : _('Append these scopes on top of resolved set.'),
+                                    '--no-default-scopes'           : _('Do not bootstrap from site oidc_default_scopes.'),
                                 },
                 },
 
@@ -328,6 +333,17 @@ cmd_help = {
                                     'cmd'                   : _('List assigned roles.'),
                                 },
                 },
+    'list_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client list_scopes [--return-type <return_type>] {client}'),
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('List scopes the token is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client list_policies {client}'),
                     'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
@@ -419,6 +435,22 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable dot1x auth for this client.'),
+                                },
+                },
+
+    'enable_oidc'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client enable_oidc {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable OIDC auth for this client.'),
+                                },
+                },
+
+    'disable_oidc'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client disable_oidc {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable OIDC auth for this client.'),
                                 },
                 },
 
@@ -539,6 +571,145 @@ cmd_help = {
                     'cmd'   :   '<|object|> <address>',
                     '_help' :   {
                                     'cmd'                   : _('Delete address from client'),
+                                },
+                },
+
+    'add_oidc_redirect_uri'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client add_oidc_redirect_uri {client} {uri}'),
+                    'cmd'   :   '<|object|> <uri>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add OIDC redirect URI to client.'),
+                                },
+                },
+
+    'del_oidc_redirect_uri'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client del_oidc_redirect_uri {client} {uri}'),
+                    'cmd'   :   '<|object|> <uri>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove OIDC redirect URI from client.'),
+                                },
+                },
+
+    'show_oidc_redirect_uris'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_oidc_redirect_uris {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List OIDC redirect URIs of client.'),
+                                },
+                },
+
+    'add_oidc_logout_redirect_uri'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client add_oidc_logout_redirect_uri {client} {uri}'),
+                    'cmd'   :   '<|object|> <uri>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add OIDC post-logout redirect URI to client.'),
+                                },
+                },
+
+    'del_oidc_logout_redirect_uri'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client del_oidc_logout_redirect_uri {client} {uri}'),
+                    'cmd'   :   '<|object|> <uri>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove OIDC post-logout redirect URI from client.'),
+                                },
+                },
+
+    'show_oidc_logout_redirect_uris'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_oidc_logout_redirect_uris {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List OIDC post-logout redirect URIs of client.'),
+                                },
+                },
+
+    'oidc_auth_method'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client oidc_auth_method {client} {method}'),
+                    'cmd'   :   '<|object|> <"method">',
+                    '_help' :   {
+                                    'cmd'                   : _('Set OIDC token endpoint auth method (client_secret_basic, client_secret_post, none).'),
+                                },
+                },
+
+    'oidc_id_token_alg'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client oidc_id_token_alg {client} {alg}'),
+                    'cmd'   :   '<|object|> <alg>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set OIDC ID token signing alg (RS256, RS384, RS512, ES256, ES384, ES512, EdDSA).'),
+                                },
+                },
+
+    'oidc_subject_type'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client oidc_subject_type {client} {subject_type}'),
+                    'cmd'   :   '<|object|> <subject_type>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set OIDC subject type (public or pairwise).'),
+                                },
+                },
+
+    'oidc_sector_identifier_uri'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client oidc_sector_identifier_uri [--validate] [--clear] {client} [uri]'),
+                    'cmd'   :   '--validate :validate=True: --clear :clear=True: <|object|> [uri]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set or clear the OIDC sector identifier URI (only relevant for pairwise subjects).'),
+                                    '--validate'            : _('Fetch URI and verify all registered redirect URIs are listed (default: lazy, deferred to sign-time).'),
+                                    '--clear'               : _('Remove the sector identifier URI.'),
+                                },
+                },
+
+    'oidc_backchannel_logout_uri'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client oidc_backchannel_logout_uri [--clear] {client} [uri]'),
+                    'cmd'   :   '--clear :clear=True: <|object|> [uri]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set or clear the OIDC backchannel logout URI (server-to-server logout notification).'),
+                                    '--clear'               : _('Remove the backchannel logout URI.'),
+                                },
+                },
+
+    'add_oidc_grant_type'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client add_oidc_grant_type {client} {grant_type}'),
+                    'cmd'   :   '<|object|> <grant_type>',
+                    '_help' :   {
+                                    'cmd'                   : _('Allow OIDC grant type (authorization_code, refresh_token, client_credentials, urn:ietf:params:oauth:grant-type:device_code).'),
+                                },
+                },
+
+    'del_oidc_grant_type'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client del_oidc_grant_type {client} {grant_type}'),
+                    'cmd'   :   '<|object|> <grant_type>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable OIDC grant type for client.'),
+                                },
+                },
+
+    'show_oidc_grant_types'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_oidc_grant_types {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List allowed OIDC grant types of client.'),
+                                },
+                },
+
+    'add_oidc_response_type'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client add_oidc_response_type {client} {response_type}'),
+                    'cmd'   :   '<|object|> <response_type>',
+                    '_help' :   {
+                                    'cmd'                   : _('Allow OIDC response type (code, "code id_token").'),
+                                },
+                },
+
+    'del_oidc_response_type'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client del_oidc_response_type {client} {response_type}'),
+                    'cmd'   :   '<|object|> <response_type>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable OIDC response type for client.'),
+                                },
+                },
+
+    'show_oidc_response_types'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client show_oidc_response_types {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List allowed OIDC response types of client.'),
                                 },
                 },
 

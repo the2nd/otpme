@@ -63,8 +63,8 @@ def _deserialize_fido2_state(data):
             state[k] = v
     return state
 
-def get_apps(user):
-    """ Return SSO app metadata visible to the given user. """
+def get_apps(token):
+    """ Return SSO app metadata visible to the given token. """
     app_data = []
     result = backend.search(object_type="client",
                             attribute="sso_enabled",
@@ -74,7 +74,7 @@ def get_apps(user):
                             return_type="instance")
     if not result:
         return app_data
-    user_ags = user.get_access_groups(return_type="uuid")
+    user_ags = token.get_access_groups(return_type="uuid")
     for client in result:
         if not client.enabled:
             continue
@@ -192,15 +192,31 @@ class OTPmeSsoP1(OTPmeServer1):
     def get_apps(self, username, sso_jwt, command_args):
         # Verify SSO jwt.
         try:
-            user = self.verify_sso_jwt(username, sso_jwt)
+            self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
+        # Try to get login token UUID.
+        try:
+            login_token_uuid = command_args['login_token_uuid']
+        except Exception:
+            log_msg = _("get_apps request misses token UUID.", log=True)[1]
+            self.logger.warning(log_msg)
+            auth_response = {'message':'LOGIN_TOKEN_MISSING', 'status':False}
+            return self.build_response(False, auth_response)
+        # Get login token.
+        login_token = backend.get_object(uuid=login_token_uuid)
+        if not login_token:
+            log_msg = _("Unknown token: {token_uuid}", log=True)[1]
+            log_msg = log_msg.format(token_uuid=login_token_uuid)
+            self.logger.warning(log_msg)
+            auth_response = {'message':'UNKNOWN_LOGIN_TOKEN', 'status':False}
+            return self.build_response(False, auth_response)
         # App data is always served by the local node — no cross-site redirect.
-        app_data = get_apps(user)
+        app_data = get_apps(login_token)
         return self.build_response(True, {'app_data': app_data, 'status': True})
 
     def get_sotp(self, username, sso_jwt, command_args):
@@ -414,6 +430,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             run_policies=False,
                             callback=self.get_callback())
         except Exception as e:
+            config.raise_exception()
             log_msg = _("SSO deploy token move failed for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(user_name=user.name, e=e)
             self.logger.critical(log_msg)
@@ -1174,6 +1191,1205 @@ class OTPmeSsoP1(OTPmeServer1):
         response = {'message':'Device token deleted.', 'status':True}
         return self.build_response(True, response)
 
+    # ------------------------------------------------------------------
+    # OIDC OP commands. Server-to-server: the RP authenticates with
+    # client_id + client_secret; the user is identified via the token
+    # the RP presents. No sso_jwt involved.
+    # ------------------------------------------------------------------
+
+    def _verify_oidc_client(self, client_id, client_secret):
+        """ Look up the OIDC RP by name and constant-time-compare its
+        secret. Returns ``(client_obj, None)`` on success or
+        ``(None, internal_reason)`` on failure -- the internal_reason
+        is for server-side logging only and MUST NOT be returned to
+        the caller; the caller surfaces a generic
+        "client authentication failed". """
+        import secrets as _secrets
+        if not client_id:
+            return None, "client_id missing"
+        client = backend.get_object(object_type="client",
+                                    name=client_id,
+                                    realm=config.realm,
+                                    site=config.site)
+        if client is None:
+            return None, f"unknown client '{client_id}'"
+        if not getattr(client, 'enabled', True):
+            return None, f"client '{client_id}' disabled"
+        if not getattr(client, 'oidc_auth', False):
+            return None, f"client '{client_id}' has OIDC disabled"
+        method = getattr(client, 'oidc_token_endpoint_auth_method',
+                         'client_secret_basic')
+        if method == "none":
+            # Public client + PKCE; no secret expected.
+            return client, None
+        if not client_secret:
+            return None, "client_secret missing"
+        stored = getattr(client, 'secret', None) or ""
+        if not _secrets.compare_digest(str(stored), str(client_secret)):
+            return None, f"wrong client_secret for '{client_id}'"
+        return client, None
+
+    def _verify_pkce(self, code_verifier, code_challenge,
+                     code_challenge_method):
+        """ Per RFC 7636. Returns True/False. """
+        if not code_challenge:
+            return code_verifier is None
+        if not code_verifier:
+            return False
+        method = (code_challenge_method or "plain").upper()
+        if method == "PLAIN":
+            return code_verifier == code_challenge
+        if method == "S256":
+            import hashlib
+            import base64
+            digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+            calc = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+            return calc == code_challenge
+        return False
+
+    def _compute_oidc_sub(self, user, client, site):
+        """ Compute the ``sub`` claim per the client's subject_type.
+
+        public:   user.uuid (same value across RPs)
+        pairwise: HMAC-SHA256(site.oidc_pairwise_secret,
+                              sector_id || user.uuid)
+        Sector_id defaults to client.name if no sector_identifier_uri
+        is set. Falls back to user.uuid on missing site secret.
+        """
+        subject_type = getattr(client, 'oidc_subject_type', 'public')
+        if subject_type != "pairwise":
+            return user.uuid
+        import hmac
+        import hashlib
+        pw_secret = getattr(site, 'oidc_pairwise_secret', None) or b""
+        if isinstance(pw_secret, str):
+            pw_secret = pw_secret.encode("utf-8")
+        sector = getattr(client, 'oidc_sector_identifier_uri', None) \
+                 or client.name
+        return hmac.new(pw_secret,
+                        f"{sector}|{user.uuid}".encode("utf-8"),
+                        hashlib.sha256).hexdigest()
+
+    def _get_user_claims(self, user, scope_str):
+        """ Build the OIDC user-claims dict for /userinfo and ID Token
+        based on the granted scope string. ``sub`` is added by the
+        caller because it depends on subject_type/pairwise secret.
+
+        LDIF source attributes for individual claims are configurable
+        via Site/Unit config params (e.g. ``oidc_email_attribute``)
+        so admins can map non-standard schemas without code changes.
+        """
+        def _first(attr):
+            try:
+                vals = user.get_attribute(attr)
+            except Exception:
+                vals = []
+            return vals[0] if vals else None
+
+        scopes = set((scope_str or "").split())
+        claims = {}
+        if "profile" in scopes:
+            given = _first('givenName')
+            sn = _first('sn')
+            cn = _first('cn')
+            if given:
+                claims['given_name'] = given
+            if sn:
+                claims['family_name'] = sn
+            if cn:
+                claims['name'] = cn
+            elif given and sn:
+                claims['name'] = f"{given} {sn}"
+            claims['preferred_username'] = user.name
+        if "email" in scopes:
+            mail_attr = "mail"
+            try:
+                cfg = user.get_config_parameter("oidc_email_attribute")
+                if cfg:
+                    mail_attr = cfg
+            except Exception:
+                pass
+            mail = _first(mail_attr)
+            if mail:
+                claims['email'] = mail
+                # OTPme doesn't track email-verified state yet.
+        if "phone" in scopes:
+            phone = _first('telephoneNumber')
+            if phone:
+                claims['phone_number'] = phone
+        if "address" in scopes:
+            street = _first('postalAddress') or _first('street')
+            locality = _first('l')
+            region = _first('st')
+            postal = _first('postalCode')
+            country = _first('c')
+            address = {}
+            if street:
+                address['street_address'] = street
+            if locality:
+                address['locality'] = locality
+            if region:
+                address['region'] = region
+            if postal:
+                address['postal_code'] = postal
+            if country:
+                address['country'] = country
+            if address:
+                claims['address'] = address
+        return claims
+
+    def _build_id_token(self, oidc_session, user, client, site, ttl=3600):
+        """ Build and sign the ID Token JWT. """
+        import time as _time
+        import secrets as _secrets
+        from joserfc import jwt as joserfc_jwt
+        from joserfc.jwk import RSAKey, ECKey, OKPKey
+        from otpme.lib.encryption.jwk import find_active_key
+
+        oidc_keys = site.oidc_keys.copy()
+        oidc_keys = oidc_keys.values()
+        active = find_active_key(list(oidc_keys))
+        kty = active.get("kty")
+        if kty == "RSA":
+            signing_key = RSAKey.import_key(active)
+        elif kty == "EC":
+            signing_key = ECKey.import_key(active)
+        elif kty == "OKP":
+            signing_key = OKPKey.import_key(active)
+        else:
+            raise OTPmeException(f"Unsupported key type: {kty}")
+
+        issuer = f"https://{site.sso_fqdn}/oidc"
+        now = int(_time.time())
+
+        sub = self._compute_oidc_sub(user, client, site)
+
+        claims = {
+            "iss": issuer,
+            "aud": client.name,
+            "sub": sub,
+            "iat": now,
+            "exp": now + ttl,
+            "jti": _secrets.token_urlsafe(16),
+            # sid lets /end_session and back-channel logout correlate
+            # this token to the OIDCSession that issued it.
+            "sid": oidc_session.uuid,
+        }
+        if oidc_session.nonce:
+            claims["nonce"] = oidc_session.nonce
+        alg = getattr(client, 'oidc_id_token_signed_response_alg', None) \
+              or active.get("alg", "RS256")
+        header = {"alg": alg, "kid": active.get("kid"), "typ": "JWT"}
+        return joserfc_jwt.encode(header, claims, signing_key)
+
+    def oidc_token(self, command_args):
+        """ /token endpoint. Dispatches by grant_type. """
+        grant_type = command_args.get("grant_type")
+        if grant_type == "authorization_code":
+            return self._oidc_token_code_exchange(command_args)
+        if grant_type == "refresh_token":
+            return self._oidc_token_refresh(command_args)
+        return self.build_response(False, {
+            'error': 'unsupported_grant_type',
+            'error_description': f"grant_type '{grant_type}' not supported",
+        })
+
+    def _oidc_token_code_exchange(self, command_args):
+        """ grant_type=authorization_code:
+            - validate client credentials
+            - locate OIDCSession via SHA-256(code) index
+            - verify redirect_uri match, PKCE, expiry, single-use
+            - consume code, issue AT+RT, build ID Token
+        """
+        from otpme.lib.session.oidc_session import (
+                hash_token, STATE_PENDING_CODE_EXCHANGE)
+
+        client_id = command_args.get("client_id")
+        client_secret = command_args.get("client_secret")
+        code = command_args.get("code")
+        redirect_uri = command_args.get("redirect_uri")
+        code_verifier = command_args.get("code_verifier")
+        # Source IP of the /token request -- the RP server, not the
+        # user's browser. Logged for audit; not stored on the session
+        # so the original browser IP captured at /authorize stays
+        # intact.
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC code exchange from {ip} for client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?", cid=client_id or "?")
+        self.logger.info(log_msg)
+
+        # All security-sensitive failures collapse to one generic
+        # description; the actual reason goes to the log only.
+        GENERIC_INVALID_GRANT = "invalid or expired code"
+        GENERIC_INVALID_CLIENT = "client authentication failed"
+        GENERIC_SERVER_ERROR = "internal server error"
+
+        def _fail(error_code, generic_msg, log_reason):
+            log_msg = _("OIDC code exchange rejected ({reason}).", log=True)[1]
+            log_msg = log_msg.format(reason=log_reason)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': error_code,
+                'error_description': generic_msg,
+            })
+
+        client, err = self._verify_oidc_client(client_id, client_secret)
+        if err:
+            return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
+        if not code:
+            # Configuration / request bug -- safe to be specific.
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'code missing',
+            })
+
+        code_hash = hash_token(code)
+        result = backend.search(object_type="session",
+                                attribute="authcode_hash",
+                                value=code_hash,
+                                return_type="instance")
+        if not result:
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         "unknown or already-consumed code")
+        oidc_session = result[0]
+
+        if oidc_session.state != STATE_PENDING_CODE_EXCHANGE \
+        or not oidc_session.authcode_valid():
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         "code expired or session not pending")
+
+        # Cross-client replay defense.
+        if oidc_session.client != client.uuid:
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         f"code was issued to a different client (got '{client_id}')")
+
+        # redirect_uri mismatch is a configuration bug on the RP
+        # side -- specific is OK and helps debugging.
+        if oidc_session.redirect_uri != (redirect_uri or ""):
+            return self.build_response(False, {
+                'error': 'invalid_grant',
+                'error_description': 'redirect_uri mismatch',
+            })
+
+        if not self._verify_pkce(code_verifier,
+                                  oidc_session.code_challenge,
+                                  oidc_session.code_challenge_method):
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         "PKCE verification failed")
+
+        user = backend.get_object(object_type="user",
+                                  uuid=oidc_session.user_uuid)
+        if user is None:
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         f"user uuid {oidc_session.user_uuid} not found")
+
+        site = backend.get_object(object_type="site",
+                                realm=oidc_session.realm,
+                                name=oidc_session.site)
+        if site is None or not getattr(site, 'oidc_keys', None):
+            return _fail('server_error', GENERIC_SERVER_ERROR,
+                         "site has no signing key")
+
+        # Single-use consume + issue tokens.
+        oidc_session.consume_authcode()
+        at, rt = oidc_session.issue_tokens(ttl_access=3600)
+        try:
+            id_token = self._build_id_token(oidc_session,
+                                            user,
+                                            client,
+                                            site,
+                                            ttl=3600)
+        except Exception as e:
+            config.raise_exception()
+            log_msg = _("Failed to build ID Token: {err}", log=True)[1]
+            log_msg = log_msg.format(err=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'server_error',
+                'error_description': GENERIC_SERVER_ERROR,
+            })
+
+        # Persist + bump activity stamp.
+        oidc_session.write_config()
+        try:
+            oidc_session.update_last_used_time()
+        except Exception:
+            pass
+
+        response = {
+            'access_token': at,
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+            'refresh_token': rt,
+            'id_token': id_token,
+            'scope': oidc_session.scope or "",
+        }
+        return self.build_response(True, response)
+
+    def _oidc_token_refresh(self, command_args):
+        """ grant_type=refresh_token:
+            - validate client credentials
+            - locate OIDCSession via SHA-256(refresh_token) index
+            - check state=active, client matches (cross-client replay)
+            - rotate AT+RT, build fresh ID Token
+        """
+        from otpme.lib.session.oidc_session import hash_token, STATE_ACTIVE
+
+        client_id = command_args.get("client_id")
+        client_secret = command_args.get("client_secret")
+        refresh_token = command_args.get("refresh_token")
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC refresh from {ip} for client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?", cid=client_id or "?")
+        self.logger.info(log_msg)
+
+        GENERIC_INVALID_GRANT = "invalid or expired refresh token"
+        GENERIC_INVALID_CLIENT = "client authentication failed"
+        GENERIC_SERVER_ERROR = "internal server error"
+
+        def _fail(error_code, generic_msg, log_reason):
+            log_msg = _("OIDC refresh rejected ({reason}).", log=True)[1]
+            log_msg = log_msg.format(reason=log_reason)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': error_code,
+                'error_description': generic_msg,
+            })
+
+        client, err = self._verify_oidc_client(client_id, client_secret)
+        if err:
+            return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
+        if not refresh_token:
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'refresh_token missing',
+            })
+
+        rt_hash = hash_token(refresh_token)
+        result = backend.search(object_type="session",
+                                attribute="refresh_token_hash",
+                                value=rt_hash,
+                                return_type="instance")
+        if not result:
+            # Either fake RT, or rotated-out (replay attempt). Either
+            # way: invalid_grant.
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         "unknown refresh token (potential replay)")
+        oidc_session = result[0]
+
+        if oidc_session.state != STATE_ACTIVE:
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         "session not active")
+
+        # Cross-client replay defense: the RT must be redeemed by the
+        # same client it was issued to.
+        if oidc_session.client != client.uuid:
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         f"refresh token belongs to a different client (got '{client_id}')")
+
+        # If the parent SSO session has expired, the OIDCSession may
+        # still linger until the next cleanup pass. Refuse refresh
+        # explicitly via outdate(): returns True if session is alive,
+        # False/None if it's expired/should be removed.
+        try:
+            still_alive = oidc_session.outdate()
+            if still_alive is False:
+                return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                             "session expired")
+        except Exception:
+            pass
+
+        user = backend.get_object(object_type="user",
+                                  uuid=oidc_session.user_uuid)
+        if user is None:
+            return _fail('invalid_grant', GENERIC_INVALID_GRANT,
+                         f"user uuid {oidc_session.user_uuid} not found")
+
+        site = backend.get_object(object_type="site",
+                                realm=oidc_session.realm,
+                                name=oidc_session.site)
+        if site is None or not getattr(site, 'oidc_keys', None):
+            return _fail('server_error', GENERIC_SERVER_ERROR,
+                         "site has no signing key")
+
+        # Rotate: issue fresh AT+RT. issue_tokens drops the old hash
+        # indexes so the previous RT can't be reused.
+        at, rt = oidc_session.issue_tokens(ttl_access=3600)
+        try:
+            id_token = self._build_id_token(oidc_session, user, client, site,
+                                            ttl=3600)
+        except Exception as e:
+            log_msg = _("Failed to build ID Token (refresh): {err}", log=True)[1]
+            log_msg = log_msg.format(err=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'server_error',
+                'error_description': GENERIC_SERVER_ERROR,
+            })
+
+        oidc_session.write_config()
+        try:
+            oidc_session.update_last_used_time()
+        except Exception:
+            pass
+
+        response = {
+            'access_token': at,
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+            'refresh_token': rt,
+            'id_token': id_token,
+            'scope': oidc_session.scope or "",
+        }
+        return self.build_response(True, response)
+
+    def oidc_userinfo(self, command_args):
+        """ /userinfo endpoint.
+
+        Auth: Bearer access_token (no client_id/secret). The token is
+        self-identifying -- a single Storage-Lookup on its hash gives
+        us the OIDCSession, from there user/client/scope.
+        """
+        from otpme.lib.session.oidc_session import hash_token, STATE_ACTIVE
+
+        access_token = command_args.get("access_token")
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC userinfo from {ip}.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?")
+        self.logger.info(log_msg)
+
+        # All token-related failures collapse to one generic message;
+        # the real reason is logged.
+        GENERIC_INVALID_TOKEN = "invalid or expired token"
+        GENERIC_SERVER_ERROR = "internal server error"
+
+        def _fail(error_code, generic_msg, log_reason):
+            log_msg = _("OIDC userinfo rejected ({reason}).", log=True)[1]
+            log_msg = log_msg.format(reason=log_reason)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': error_code,
+                'error_description': generic_msg,
+            })
+
+        if not access_token:
+            return _fail('invalid_token', GENERIC_INVALID_TOKEN,
+                         "access_token missing")
+
+        at_hash = hash_token(access_token)
+        result = backend.search(object_type="session",
+                                attribute="access_token_hash",
+                                value=at_hash,
+                                return_type="instance")
+        if not result:
+            return _fail('invalid_token', GENERIC_INVALID_TOKEN,
+                         "unknown access token")
+        oidc_session = result[0]
+
+        if oidc_session.state != STATE_ACTIVE \
+        or not oidc_session.access_token_valid():
+            return _fail('invalid_token', GENERIC_INVALID_TOKEN,
+                         "access token expired or revoked")
+
+        user = backend.get_object(object_type="user",
+                                  uuid=oidc_session.user_uuid)
+        if user is None:
+            return _fail('invalid_token', GENERIC_INVALID_TOKEN,
+                         f"user uuid {oidc_session.user_uuid} not found")
+
+        client = backend.get_object(object_type="client",
+                                    uuid=oidc_session.client)
+        if client is None:
+            return _fail('invalid_token', GENERIC_INVALID_TOKEN,
+                         f"client uuid {oidc_session.client} not found")
+
+        site = backend.get_object(object_type="site",
+                                realm=oidc_session.realm,
+                                name=oidc_session.site)
+        if site is None:
+            return _fail('server_error', GENERIC_SERVER_ERROR,
+                         f"site '{oidc_session.site}' not found")
+
+        # Bump activity stamp -- /userinfo IS user-driven activity.
+        try:
+            oidc_session.update_last_used_time()
+        except Exception:
+            pass
+
+        claims = self._get_user_claims(user, oidc_session.scope)
+        # `sub` is REQUIRED in /userinfo response per OIDC Core 5.3.
+        claims['sub'] = self._compute_oidc_sub(user, client, site)
+        return self.build_response(True, claims)
+
+    def oidc_introspect(self, command_args):
+        """ /introspect endpoint per RFC 7662.
+
+        Auth: client_id + client_secret (server-to-server).
+        Request: ``token`` (REQUIRED), ``token_type_hint`` (OPTIONAL,
+        either ``access_token`` or ``refresh_token`` -- only a search
+        order hint, the spec requires us to check both).
+
+        Per RFC 7662 section 2.2, ANY situation where the token is
+        not currently valid (unknown / expired / revoked / belongs
+        to another client) is reported uniformly as
+        ``{"active": false}`` -- no info leak about which tokens
+        exist or who they belong to.
+        """
+        from otpme.lib.session.oidc_session import hash_token, STATE_ACTIVE
+
+        client_id = command_args.get("client_id")
+        client_secret = command_args.get("client_secret")
+        token = command_args.get("token")
+        hint = command_args.get("token_type_hint")
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC introspect from {ip} for client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?", cid=client_id or "?")
+        self.logger.info(log_msg)
+
+        client, err = self._verify_oidc_client(client_id, client_secret)
+        if err:
+            log_msg = _("OIDC introspect rejected ({reason}).", log=True)[1]
+            log_msg = log_msg.format(reason=err)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'invalid_client',
+                'error_description': "client authentication failed",
+            })
+        if not token:
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'token missing',
+            })
+
+        h = hash_token(token)
+        # Hint is only a search-order optimization; we MUST check both.
+        search_order = ['access_token_hash', 'refresh_token_hash']
+        if hint == 'refresh_token':
+            search_order = ['refresh_token_hash', 'access_token_hash']
+
+        oidc_session = None
+        token_kind = None
+        for attr in search_order:
+            result = backend.search(object_type="session",
+                                    attribute=attr,
+                                    value=h,
+                                    return_type="instance")
+            if result:
+                oidc_session = result[0]
+                token_kind = ('access' if attr == 'access_token_hash'
+                              else 'refresh')
+                break
+
+        if oidc_session is None:
+            return self.build_response(True, {'active': False})
+
+        # State + expiry. Any failure -> active=false (no leak).
+        if oidc_session.state != STATE_ACTIVE:
+            return self.build_response(True, {'active': False})
+        if token_kind == 'access' and not oidc_session.access_token_valid():
+            return self.build_response(True, {'active': False})
+
+        # Cross-client introspection defense: a token must be
+        # introspected by the client it was issued to.
+        if oidc_session.client != client.uuid:
+            return self.build_response(True, {'active': False})
+
+        user = backend.get_object(object_type="user",
+                                  uuid=oidc_session.user_uuid)
+        site = backend.get_object(object_type="site",
+                                realm=oidc_session.realm,
+                                name=oidc_session.site)
+        if user is None or site is None:
+            # Inconsistent backend state; treat as inactive rather
+            # than 500'ing.
+            return self.build_response(True, {'active': False})
+
+        issuer = f"https://{site.sso_fqdn}/oidc"
+        sub = self._compute_oidc_sub(user, client, site)
+
+        response = {
+            'active': True,
+            'scope': oidc_session.scope or "",
+            'client_id': client.name,
+            'username': user.name,
+            'token_type': 'Bearer',
+            'sub': sub,
+            'aud': client.name,
+            'iss': issuer,
+        }
+        if token_kind == 'access':
+            response['exp'] = oidc_session.access_token_expires_at
+        # No fixed `exp` for refresh tokens -- their lifetime is
+        # bounded by the parent SSO session, not a per-token stamp.
+
+        return self.build_response(True, response)
+
+    def oidc_revoke(self, command_args):
+        """ /revoke endpoint per RFC 7009.
+
+        Auth: client_id + client_secret (server-to-server).
+        Request: ``token`` (REQUIRED), ``token_type_hint`` (OPTIONAL,
+        ``access_token`` or ``refresh_token`` -- search-order hint
+        only; we check both indexes anyway).
+
+        Per RFC 7009 section 2.2 the OP MUST return HTTP 200 for any
+        valid client request, regardless of whether the token existed
+        or belonged to the calling client. Only ``invalid_client`` /
+        ``invalid_request`` are real errors. This prevents
+        token-existence probing.
+
+        Revoking either an AT or an RT terminates the underlying
+        OIDCSession (and triggers backchannel logout via the session's
+        delete()) -- AT and RT share a single session here.
+        """
+        from otpme.lib.session.oidc_session import hash_token
+
+        client_id = command_args.get("client_id")
+        client_secret = command_args.get("client_secret")
+        token = command_args.get("token")
+        hint = command_args.get("token_type_hint")
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC revoke from {ip} for client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?", cid=client_id or "?")
+        self.logger.info(log_msg)
+
+        client, err = self._verify_oidc_client(client_id, client_secret)
+        if err:
+            log_msg = _("OIDC revoke rejected ({reason}).", log=True)[1]
+            log_msg = log_msg.format(reason=err)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'invalid_client',
+                'error_description': "client authentication failed",
+            })
+        if not token:
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'token missing',
+            })
+
+        h = hash_token(token)
+        search_order = ['access_token_hash', 'refresh_token_hash']
+        if hint == 'refresh_token':
+            search_order = ['refresh_token_hash', 'access_token_hash']
+
+        oidc_session = None
+        for attr in search_order:
+            result = backend.search(object_type="session",
+                                    attribute=attr,
+                                    value=h,
+                                    return_type="instance")
+            if result:
+                oidc_session = result[0]
+                break
+
+        # Per RFC 7009: success regardless of whether the token was
+        # found or whether the calling client owns it.
+        if oidc_session is None:
+            return self.build_response(True, {})
+
+        # Cross-client revoke defense: silently no-op if the token
+        # belongs to a different client. Still return 200.
+        if oidc_session.client != client.uuid:
+            log_msg = _("OIDC revoke ignored: token belongs to a different client (got '{cid}').", log=True)[1]
+            log_msg = log_msg.format(cid=client_id)
+            self.logger.warning(log_msg)
+            return self.build_response(True, {})
+
+        # Delete the OIDCSession. The override fires backchannel
+        # logout if the client has a backchannel_logout_uri set.
+        try:
+            oidc_session.delete(force=True, verify_acls=False)
+        except Exception as e:
+            log_msg = _("OIDC revoke: delete failed for session '{sid}': {err}", log=True)[1]
+            log_msg = log_msg.format(sid=oidc_session.session_id, err=e)
+            self.logger.warning(log_msg)
+            # Per spec, still 200 to caller; internal failure logged.
+
+        log_msg = _("OIDC session '{sid}' revoked for client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(sid=oidc_session.session_id, cid=client_id)
+        self.logger.info(log_msg)
+        return self.build_response(True, {})
+
+    def oidc_end_session(self, command_args):
+        """ /end_session endpoint.
+
+        Browser-driven, no client_secret envelope -- trust is rooted
+        in the signed ``id_token_hint`` (sid/aud/iss verified against
+        site keys, exp not enforced).
+
+        Logout behavior is decided by the resolved client's
+        ``oidc_logout_scope`` config parameter:
+
+        - ``"sso"`` (default): respond with ``{"action": "redirect_logout"}``;
+          web layer hands off to /logout, which uses the existing
+          SLP cascade to terminate the SSO session and all child
+          OIDCSessions (each firing backchannel logout if configured).
+        - ``"rp"``: delete only this OIDCSession (firing its
+          backchannel logout side effect) and respond with
+          ``{"action": "redirect_post_logout"}``.
+
+        Open-redirect defense: the requested
+        ``post_logout_redirect_uri`` is validated against the
+        client's ``oidc_logout_redirect_uris`` allowlist here. The
+        validated URI (or absent if not allowlisted / not provided)
+        is included in the response so the web layer can decide
+        between honoring the redirect and showing a generic OP
+        logout page.
+        """
+        id_token_hint = command_args.get("id_token_hint")
+        client_id = command_args.get("client_id")
+        post_logout_redirect_uri = command_args.get("post_logout_redirect_uri")
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC end_session from {ip} for client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?", cid=client_id or "?")
+        self.logger.info(log_msg)
+
+        if not id_token_hint:
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'id_token_hint missing',
+            })
+
+        try:
+            sid, hint_aud = self._parse_id_token_hint(id_token_hint)
+        except Exception as e:
+            log_msg = _("OIDC end_session: id_token_hint invalid: {err}", log=True)[1]
+            log_msg = log_msg.format(err=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'id_token_hint invalid',
+            })
+
+        if client_id and client_id != hint_aud:
+            log_msg = _("OIDC end_session: client_id mismatch with id_token_hint aud (got '{cid}', hint='{aud}').", log=True)[1]
+            log_msg = log_msg.format(cid=client_id, aud=hint_aud)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'client_id does not match id_token_hint',
+            })
+        client_id = client_id or hint_aud
+
+        client = backend.get_object(object_type="client",
+                                    name=client_id,
+                                    realm=config.realm,
+                                    site=config.site)
+        if client is None:
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'unknown client',
+            })
+
+        # Validate post_logout_redirect_uri against the client's
+        # registered allowlist. Anything not allowlisted is dropped
+        # (web layer falls back to a generic logout page).
+        validated_post_uri = None
+        if post_logout_redirect_uri:
+            allowed = set(getattr(client, 'oidc_logout_redirect_uris', []))
+            if post_logout_redirect_uri in allowed:
+                validated_post_uri = post_logout_redirect_uri
+            else:
+                log_msg = _("OIDC end_session: post_logout_redirect_uri '{uri}' not in allowlist for client '{cid}'.", log=True)[1]
+                log_msg = log_msg.format(uri=post_logout_redirect_uri,
+                                        cid=client_id)
+                self.logger.warning(log_msg)
+
+        try:
+            scope_mode = client.get_config_parameter("oidc_logout_scope")
+        except Exception:
+            scope_mode = None
+        if scope_mode not in ("sso", "rp"):
+            scope_mode = "sso"
+
+        response = {'scope': scope_mode}
+        if validated_post_uri:
+            response['post_logout_redirect_uri'] = validated_post_uri
+
+        if scope_mode == "sso":
+            # Web layer hands off to /logout (SLP cascade).
+            log_msg = _("OIDC end_session: scope=sso, deferring to /logout (client='{cid}').", log=True)[1]
+            log_msg = log_msg.format(cid=client_id)
+            self.logger.info(log_msg)
+            response['action'] = 'redirect_logout'
+            return self.build_response(True, response)
+
+        # scope_mode == "rp": kill just this OIDCSession.
+        oidc_session = backend.get_object(object_type="session", uuid=sid)
+        if oidc_session is None:
+            log_msg = _("OIDC end_session: session '{sid}' already gone.", log=True)[1]
+            log_msg = log_msg.format(sid=sid)
+            self.logger.info(log_msg)
+            response['action'] = 'redirect_post_logout'
+            return self.build_response(True, response)
+
+        if oidc_session.client != client.uuid:
+            log_msg = _("OIDC end_session: client/session mismatch (client='{cid}').", log=True)[1]
+            log_msg = log_msg.format(cid=client_id)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error': 'invalid_request',
+                'error_description': 'session does not belong to this client',
+            })
+
+        try:
+            oidc_session.delete(force=True, verify_acls=False)
+        except Exception as e:
+            log_msg = _("OIDC end_session: delete failed for session '{sid}': {err}", log=True)[1]
+            log_msg = log_msg.format(sid=oidc_session.session_id, err=e)
+            self.logger.warning(log_msg)
+            response['action'] = 'redirect_post_logout'
+            return self.build_response(True, response)
+
+        log_msg = _("OIDC session '{sid}' ended for client '{cid}' (rp scope).", log=True)[1]
+        log_msg = log_msg.format(sid=oidc_session.session_id, cid=client_id)
+        self.logger.info(log_msg)
+        response['action'] = 'redirect_post_logout'
+        return self.build_response(True, response)
+
+    def oidc_authorize_validate(self, username, sso_jwt, command_args):
+        """ Pre-validate an /authorize request and (on success) issue
+        a SOTP scoped to the OIDC client's access group, all in one
+        roundtrip.
+
+        Web layer flow:
+            1. ssod oidc_authorize_validate -> (sotp, client_ag)  [this]
+            2. authd verify(password=sotp, oidc_context=True, ...)
+            3. 302 redirect to RP
+
+        Two-tier error reporting per OIDC Core 3.1.2.6:
+          - ``client_id`` / ``redirect_uri`` invalid  -> ``can_redirect=False``,
+            web layer renders an error page (no redirect: would be an
+            open-redirect vector).
+          - All other errors -> ``can_redirect=True``, web layer
+            redirects back to the validated redirect_uri with
+            ``?error=...&state=...``.
+        """
+        # Authenticate the calling user via the SSO JWT, the same way
+        # get_sotp does it. We need a verified user identity to issue
+        # a SOTP off their session.
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'JWT_INVALID',
+                'status':  False,
+            })
+
+        session_uuid = command_args.get('session_uuid')
+        if not session_uuid:
+            return self.build_response(False, 'AUTHD_INCOMPLETE_COMMAND')
+        session = backend.get_object(uuid=session_uuid)
+        if not session:
+            return self.build_response(False, {
+                'message': 'UNKNOWN_SESSION', 'status': False,
+            })
+        if session.user_uuid != user.uuid:
+            return self.build_response(False, {
+                'message': 'AUTH_FAILED', 'status': False,
+            })
+
+        client_id = command_args.get("client_id")
+        redirect_uri = command_args.get("redirect_uri")
+        response_type = command_args.get("response_type")
+        scope = command_args.get("scope") or ""
+        code_challenge = command_args.get("code_challenge")
+        code_challenge_method = command_args.get("code_challenge_method") or "plain"
+        client_ip = command_args.get("client_ip")
+
+        log_msg = _("OIDC authorize-validate from {ip} for user '{user}', client '{cid}'.", log=True)[1]
+        log_msg = log_msg.format(ip=client_ip or "?",
+                                 user=user.name,
+                                 cid=client_id or "?")
+        self.logger.info(log_msg)
+
+        def _err(error, description, can_redirect):
+            log_msg = _("OIDC authorize rejected ({reason}).", log=True)[1]
+            log_msg = log_msg.format(reason=description)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'error':             error,
+                'error_description': description,
+                'can_redirect':      can_redirect,
+            })
+
+        # Tier 1: client_id + redirect_uri -- failure here = no redirect.
+        if not client_id:
+            return _err('invalid_request', 'client_id missing',
+                        can_redirect=False)
+        if not redirect_uri:
+            return _err('invalid_request', 'redirect_uri missing',
+                        can_redirect=False)
+
+        client = backend.get_object(object_type="client",
+                                     name=client_id,
+                                     realm=config.realm,
+                                     site=config.site)
+        if client is None:
+            return _err('invalid_request', f"unknown client '{client_id}'",
+                        can_redirect=False)
+        if not getattr(client, 'enabled', True):
+            return _err('invalid_request', f"client '{client_id}' disabled",
+                        can_redirect=False)
+        if not getattr(client, 'oidc_auth', False):
+            return _err('invalid_request',
+                        f"client '{client_id}' has OIDC disabled",
+                        can_redirect=False)
+
+        allowed_uris = getattr(client, 'oidc_redirect_uris', []) or []
+        if redirect_uri not in allowed_uris:
+            return _err('invalid_request',
+                        f"redirect_uri '{redirect_uri}' not registered",
+                        can_redirect=False)
+
+        client_ag = getattr(client, 'access_group', None)
+        if not client_ag:
+            return _err('server_error',
+                        f"client '{client_id}' has no access_group",
+                        can_redirect=False)
+
+        # Tier 2: from here on, redirect_uri is trusted -- errors go
+        # back to the RP via redirect with state echo.
+        if response_type != "code":
+            return _err('unsupported_response_type',
+                        f"response_type '{response_type}' not supported",
+                        can_redirect=True)
+        allowed_response_types = getattr(client, 'oidc_response_types', []) or []
+        if response_type not in allowed_response_types:
+            return _err('unsupported_response_type',
+                        f"response_type '{response_type}' not allowed for this client",
+                        can_redirect=True)
+
+        scope_set = set(scope.split())
+        if 'openid' not in scope_set:
+            return _err('invalid_scope',
+                        "scope must include 'openid'",
+                        can_redirect=True)
+
+        # PKCE is required by default (OAuth 2.1). Per-client / unit
+        # / site override walks up via the standard config-param
+        # parent hierarchy. Disable only for legacy RPs that can't
+        # generate code_verifier/code_challenge.
+        try:
+            pkce_required = client.get_config_parameter("oidc_pkce_required")
+        except Exception:
+            pkce_required = True
+        if pkce_required is None:
+            pkce_required = True
+
+        if pkce_required and not code_challenge:
+            return _err('invalid_request',
+                        "PKCE is required: code_challenge missing",
+                        can_redirect=True)
+        # Method only validated when a challenge was provided -- with
+        # PKCE off and no challenge, method is moot.
+        if code_challenge and code_challenge_method not in ("plain", "S256"):
+            return _err('invalid_request',
+                        f"code_challenge_method '{code_challenge_method}' not supported",
+                        can_redirect=True)
+
+        # Resolve client AG -> UUID, generate SOTP from session.
+        ag_search = backend.search(object_type="accessgroup",
+                                    attribute="name",
+                                    value=client_ag,
+                                    return_type="uuid")
+        if not ag_search:
+            return _err('server_error', f"unknown access_group '{client_ag}'",
+                        can_redirect=False)
+        ag_uuid = ag_search[0]
+        sotp_data = sotp.gen(password_hash=session.pass_hash,
+                             access_group=ag_uuid)
+
+        return self.build_response(True, {
+            'ok':        True,
+            'client_ag': client_ag,
+            'sotp':      sotp_data,
+        })
+
+    def oidc_discovery(self, command_args):
+        """ /.well-known/openid-configuration metadata.
+
+        Field set is per OIDC Discovery 1.0; values come from the
+        running site + configured capabilities so admins don't drift
+        from reality.
+
+        Issuer + endpoint URLs are derived from ``site.sso_fqdn``;
+        web layer doesn't need to pass anything.
+
+        ``scopes_supported`` lists only ``auto_member=True`` scopes
+        -- the standard OIDC claim scopes that every RP gets out of
+        the box. Per-RP custom scopes (payments.execute etc.) stay
+        private to the RP contract and are not leaked in discovery.
+        """
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is None:
+            return self.build_response(False, {
+                'error': 'server_error',
+                'error_description': 'site not found',
+            })
+
+        issuer = f"https://{site.sso_fqdn}/oidc"
+
+        # Algorithms = whatever currently lives on the site (active
+        # + retired). Falls back to RS256 if oidc_keys is empty.
+        algs = set()
+        oidc_keys = site.oidc_keys.copy()
+        for jwk in (oidc_keys or {}).values():
+            alg = jwk.get("alg")
+            if alg:
+                algs.add(alg)
+        if not algs:
+            algs = {"RS256"}
+
+        # auto_member=True + enabled=True. scope_id may repeat across
+        # multiple Scope objects (per-RP namespacing) so we dedupe
+        # with a set.
+        scope_ids = backend.search(
+                            object_type="scope",
+                            attributes={
+                                'auto_member': {'value': True},
+                                'enabled':     {'value': True},
+                            },
+                            return_attributes=['scope_id'])
+        doc = {
+            "issuer": issuer,
+            "authorization_endpoint": f"{issuer}/authorize",
+            "token_endpoint": f"{issuer}/token",
+            "userinfo_endpoint": f"{issuer}/userinfo",
+            "jwks_uri": f"{issuer}/jwks",
+            "introspection_endpoint": f"{issuer}/introspect",
+            "revocation_endpoint": f"{issuer}/revoke",
+            "end_session_endpoint": f"{issuer}/end_session",
+            "response_types_supported": ["code"],
+            "subject_types_supported": ["public", "pairwise"],
+            "id_token_signing_alg_values_supported": sorted(algs),
+            "scopes_supported": sorted(scope_ids),
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_basic",
+                "client_secret_post",
+                "none",
+            ],
+            "grant_types_supported": [
+                "authorization_code",
+                "refresh_token",
+            ],
+            "code_challenge_methods_supported": ["S256", "plain"],
+            "claims_supported": [
+                "sub", "iss", "aud", "iat", "exp", "jti", "sid",
+                "name", "given_name", "family_name", "preferred_username",
+                "email", "phone_number",
+                "address",
+            ],
+            "frontchannel_logout_supported": False,
+            "backchannel_logout_supported": True,
+            "backchannel_logout_session_supported": True,
+        }
+        return self.build_response(True, doc)
+
+    def oidc_jwks(self, command_args):
+        """ /jwks endpoint -- public keys only.
+
+        Returns active + retired keys (so RPs can verify tokens
+        signed before the most recent rotation). Revoked keys are
+        removed from oidc_keys entirely and never appear here.
+        """
+        from otpme.lib.encryption.jwk import render_jwks
+
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is None:
+            return self.build_response(False, {
+                'error': 'server_error',
+                'error_description': 'site not found',
+            })
+
+        if not site.oidc_keys:
+            return self.build_response(False, {
+                'error': 'server_error',
+                'error_description': 'site has not OIDC keys',
+            })
+
+        oidc_keys = site.oidc_keys.copy()
+        keys = list((oidc_keys).values())
+
+        return self.build_response(True, render_jwks(keys))
+
+    def _parse_id_token_hint(self, id_token_hint: str):
+        """ Decode + verify a JWT ID Token issued by us.
+
+        Returns ``(sid, aud)``. Raises ``OTPmeException`` on
+        signature/issuer/audience problems.
+
+        Does NOT enforce ``exp``: a user logging out an hour after
+        the AT expired is still a legit logout request. The claims
+        registry would normally enforce exp/iat -- we override its
+        ``now`` to a far-future value so validate_exp/validate_iat
+        pass for any real timestamp.
+        """
+        from joserfc import jwt as joserfc_jwt
+        from joserfc.jwt import JWTClaimsRegistry
+        from joserfc.jwk import RSAKey, ECKey, OKPKey, KeySet
+        from otpme.lib.encryption.jwk import public_jwk
+
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is None or not getattr(site, 'oidc_keys', None):
+            raise OTPmeException("site has no signing keys")
+
+        # Build a KeySet of all keys (active + retired) so old
+        # tokens still verify during/after rotation.
+        keys = []
+        oidc_keys = site.oidc_keys.copy()
+        oidc_keys = oidc_keys.values()
+        for jwk in oidc_keys:
+            try:
+                pub = public_jwk(jwk)
+                kty = pub.get("kty")
+                if kty == "RSA":
+                    keys.append(RSAKey.import_key(pub))
+                elif kty == "EC":
+                    keys.append(ECKey.import_key(pub))
+                elif kty == "OKP":
+                    keys.append(OKPKey.import_key(pub))
+            except Exception:
+                continue
+        if not keys:
+            raise OTPmeException("no usable signing keys on site")
+        keyset = KeySet(keys=keys)
+
+        decoded = joserfc_jwt.decode(id_token_hint, keyset)
+        claims = decoded.claims
+
+        issuer = f"https://{site.sso_fqdn}/oidc"
+        registry = JWTClaimsRegistry(
+            now=lambda: 9999999999,   # disable exp/iat time checks
+            iss={"essential": True, "value": issuer},
+            aud={"essential": True},
+            sid={"essential": True},
+        )
+        try:
+            registry.validate(claims)
+        except Exception as e:
+            raise OTPmeException(f"id_token_hint claim validation failed: {e}")
+
+        # RFC 7519: ``aud`` may be a JSON string or array of strings.
+        aud_claim = claims["aud"]
+        if isinstance(aud_claim, list):
+            if not aud_claim:
+                raise OTPmeException("aud empty")
+            aud = aud_claim[0]
+        else:
+            aud = aud_claim
+        return claims["sid"], aud
+
     def _process(self, command, command_args, **kwargs):
         """ Handle SSO commands received from client. """
         # All valid commands.
@@ -1192,7 +2408,23 @@ class OTPmeSsoP1(OTPmeServer1):
                             "sso_create_device_token",
                             "sso_delete_device_token",
                             "sso_get_device_token_role_uuid",
+                            "oidc_token",
+                            "oidc_userinfo",
+                            "oidc_introspect",
+                            "oidc_revoke",
+                            "oidc_end_session",
+                            "oidc_discovery",
+                            "oidc_jwks",
+                            "oidc_authorize_validate",
                         ]
+
+        # OIDC commands are server-to-server (or browser-to-server
+        # for end_session); the user-facing username/sso_jwt
+        # envelope is bypassed for them.
+        oidc_commands = ("oidc_token", "oidc_userinfo",
+                         "oidc_introspect", "oidc_revoke",
+                         "oidc_end_session",
+                         "oidc_discovery", "oidc_jwks")
 
         # Check if we got a valid command.
         if not command in valid_commands:
@@ -1208,6 +2440,25 @@ class OTPmeSsoP1(OTPmeServer1):
                 message = str(e)
                 status = status_codes.CLUSTER_NOT_READY
                 return self.build_response(status, message)
+
+        if command in oidc_commands:
+            log_msg = _("Processing OIDC command {command}.", log=True)[1]
+            log_msg = log_msg.format(command=command)
+            self.logger.info(log_msg)
+            if command == "oidc_token":
+                return self.oidc_token(command_args)
+            if command == "oidc_userinfo":
+                return self.oidc_userinfo(command_args)
+            if command == "oidc_introspect":
+                return self.oidc_introspect(command_args)
+            if command == "oidc_revoke":
+                return self.oidc_revoke(command_args)
+            if command == "oidc_end_session":
+                return self.oidc_end_session(command_args)
+            if command == "oidc_discovery":
+                return self.oidc_discovery(command_args)
+            if command == "oidc_jwks":
+                return self.oidc_jwks(command_args)
 
         # Try to get username.
         try:
@@ -1296,6 +2547,11 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command sso_get_device_token_role_uuid.", log=True)[1]
             self.logger.info(log_msg)
             return self.sso_get_device_token_role_uuid(username, sso_jwt, command_args)
+
+        if command == "oidc_authorize_validate":
+            log_msg = _("Processing command oidc_authorize_validate.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.oidc_authorize_validate(username, sso_jwt, command_args)
 
         return self.build_response(status, message)
 

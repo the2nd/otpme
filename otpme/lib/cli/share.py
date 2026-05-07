@@ -218,7 +218,7 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         role_access = False
         if "roles" in output_fields:
             processed_tokens = []
-            if check_acl("view:role"):
+            if check_acl("view:roles"):
                 role_access = True
                 get_roles = True
         share_tokens_count = 0
@@ -267,7 +267,7 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         get_tokens = False
         token_access = False
         if "tokens" in output_fields:
-            if check_acl("view:token"):
+            if check_acl("view:tokens"):
                 token_access = True
                 get_tokens = True
         if get_tokens:
@@ -313,7 +313,7 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         node_access = False
         processed_nodes = []
         if "nodes" in output_fields:
-            if check_acl("view:node"):
+            if check_acl("view:nodes"):
                 node_access = True
                 get_nodes = True
         if get_nodes:
@@ -359,7 +359,7 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         pool_access = False
         processed_pools = []
         if "pools" in output_fields:
-            if check_acl("view:pool"):
+            if check_acl("view:pools"):
                 pool_access = True
                 get_pools = True
         if get_pools:
@@ -402,7 +402,7 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="share",

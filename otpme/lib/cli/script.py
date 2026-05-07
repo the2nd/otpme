@@ -123,7 +123,7 @@ def row_getter(realm, site, script_order, script_data, acls,
                 row.append("-")
         # Signatures.
         if "signatures" in output_fields:
-            if check_acl("view:signature") \
+            if check_acl("view:signatures") \
             or check_acl("add:signature") \
             or check_acl("delete:signature"):
                 callback.disable()
@@ -166,7 +166,7 @@ def row_getter(realm, site, script_order, script_data, acls,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="script",

@@ -933,7 +933,8 @@ class OTPmeBaseObject(OTPmeLockObject):
                                 value=self.unit,
                                 return_type="oid")
         if not result:
-            msg = (f"Unknown unit: {self.unit}")
+            msg = _("Unknown unit: {unit}")
+            msg = msg.format(unit=self.unit)
             raise OTPmeException(msg)
 
         unit_oid = result[0]
@@ -1327,7 +1328,10 @@ class OTPmeBaseObject(OTPmeLockObject):
             try:
                 val = self.object_config.get(attribute, no_headers=True)
             except KeyError:
-                val = None
+                try:
+                    val = conf['default']
+                except KeyError:
+                    val = None
             except Exception as e:
                 log_msg = _("Failed to read attribute from object config: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
@@ -2330,13 +2334,12 @@ class OTPmeObject(OTPmeBaseObject):
     def get_config_parameter(self, parameter: str, recursive: bool=True):
         """ Get config parameter. """
         # Try to get config parameter.
-        parameter_data = config.get_config_parameter(parameter)
+        para_data = config.get_config_parameter(parameter)
         # Try to get getter.
         try:
-            para_getter = parameter_data['getter']
+            para_getter = para_data['getter']
         except Exception:
             para_getter = None
-
         # If we have an authenticated user we have to check users token first
         # because user/token settings are preferred over object settings.
         if config.auth_token:
@@ -3457,10 +3460,13 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @cli.check_rapi_opts()
+    @check_acls(['add:role'])
+    @audit_log()
     def add_role(
         self,
         role_name: str=None,
         role_uuid: str=None,
+        return_uuid: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -3547,14 +3553,23 @@ class OTPmeObject(OTPmeBaseObject):
             # Trigger ACL cache clearing.
             cache.clear_acl_cache()
 
+        msg = _("Adding role to {obj_type} '{obj_name}'.")
+        msg = msg.format(obj_type=self.type, obj_name=self.name)
+        callback.send(msg)
+
         # Add role to object.
         self.roles.append(role_uuid)
         # Update index.
         self.add_index('role', role_uuid)
 
-        return self._cache(callback=callback)
+        self._cache(callback=callback)
+        if return_uuid:
+            return role_uuid
+        return callback.ok()
 
     @object_lock()
+    @check_acls(['remove:role'])
+    @audit_log()
     def remove_role(
         self,
         role_name: str,
@@ -3619,6 +3634,10 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
 
+        msg = _("Removing role from {obj_type} '{obj_name}'.")
+        msg = msg.format(obj_type=self.type, obj_name=self.name)
+        callback.send(msg)
+
         # Remove role from object.
         self.roles.remove(role_uuid)
         # Update index.
@@ -3628,11 +3647,13 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(['add:token'])
     @object_lock()
+    @audit_log()
     def add_token(
         self,
         token_path: str,
         token_options: Union[dict,None]=None,
         login_interfaces: List=None,
+        return_uuid: bool=False,
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
@@ -3908,9 +3929,15 @@ class OTPmeObject(OTPmeBaseObject):
         if login_interfaces:
             self.token_login_interfaces[token.uuid] = login_interfaces
 
-        return self._cache(callback=callback)
+        self._cache(callback=callback)
+
+        if return_uuid:
+            return token.uuid
+        return callback.ok()
 
     @object_lock()
+    @check_acls(['remove:token'])
+    @audit_log()
     def remove_token(
         self,
         token_path: str,
@@ -3997,6 +4024,10 @@ class OTPmeObject(OTPmeBaseObject):
                                     _caller=_caller,
                                     callback=callback)
 
+        msg = _("Removing token {token_path} from {obj_type} {obj_name}.")
+        msg = msg.format(token_path=token.rel_path, obj_type=self.type, obj_name=self.name)
+        callback.send(msg)
+
         # Remove token from object.
         self.tokens.remove(token.uuid)
         try:
@@ -4074,7 +4105,7 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Removes a host from this group. """
+        """ Removes a host from this object. """
         if self.hosts is None:
             msg = _("Object does not support hosts.")
             raise OTPmeException(msg)
@@ -4089,7 +4120,8 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         if host.uuid not in self.hosts:
-            msg = _("Host not in acccessgroup.")
+            msg = _("Host not in {object_type}.")
+            msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
         if run_policies:
@@ -4103,13 +4135,21 @@ class OTPmeObject(OTPmeBaseObject):
             except Exception as e:
                 return callback.error()
 
-        # Remove host UUID from group.
+        # Remove host UUID from object.
         self.hosts.remove(host.uuid)
         # Update index.
         self.del_index("host", host.uuid)
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:hosts'])
+    def list_hosts(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all hosts assigned to this object. """
+        return self.get_hosts(**kwargs)
+
     def get_hosts(
         self,
         return_type: str="name",
@@ -4169,7 +4209,7 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Adds a device to this group. """
+        """ Adds a device to this object. """
         if self.devices is None:
             msg = _("Object does not support devices.")
             raise OTPmeException(msg)
@@ -4186,7 +4226,8 @@ class OTPmeObject(OTPmeBaseObject):
             device_uuid = device.uuid
 
         if device_uuid in self.devices:
-            msg = _("Host already added to acccessgroup.")
+            msg = _("Host already added to {object_type}.")
+            msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
         if run_policies:
@@ -4218,7 +4259,7 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Removes a device from this group. """
+        """ Removes a device from this object. """
         if self.devices is None:
             msg = _("Object does not support devices.")
             raise OTPmeException(msg)
@@ -4233,7 +4274,8 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         if device.uuid not in self.devices:
-            msg = _("Host not in acccessgroup.")
+            msg = _("Host not in {object_type}.")
+            msg = msg.format(object_type=self.type)
             return callback.error(msg)
 
         if run_policies:
@@ -4247,13 +4289,21 @@ class OTPmeObject(OTPmeBaseObject):
             except Exception as e:
                 return callback.error()
 
-        # Remove device UUID from group.
+        # Remove device UUID from object.
         self.devices.remove(device.uuid)
         # Update index.
         self.del_index("device", device.uuid)
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:devices'])
+    def list_devices(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all devices assigned to this object. """
+        return self.get_devices(**kwargs)
+
     def get_devices(
         self,
         return_type: str="name",
@@ -4416,6 +4466,13 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:nodes'])
+    def list_nodes(
+        self,
+        **kwargs,
+        ):
+        return self.get_nodes(**kwargs)
+
     def get_nodes(
         self,
         return_type: str="name",
@@ -4721,6 +4778,14 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:policies'])
+    def list_policies(
+        self,
+        **kwargs,
+        ):
+        return self.get_policies(**kwargs)
+
     def get_policies(
         self,
         policy_type: Union[str,None]=None,
@@ -4936,6 +5001,14 @@ class OTPmeObject(OTPmeBaseObject):
         return success_policy_types
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:sync_users'])
+    def list_sync_users(
+        self,
+        **kwargs,
+        ):
+        """ Get all users assigned to this object. """
+        return self.get_sync_users(**kwargs)
+
     def get_sync_users(
         self,
         return_type: str="name",
@@ -5006,6 +5079,14 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:token_users'])
+    def list_token_users(
+        self,
+        **kwargs,
+        ):
+        """ Get all users that have a token assigned to this object. """
+        return self.get_token_users(**kwargs)
+
     def get_token_users(
         self,
         return_type: str="name",
@@ -5067,6 +5148,77 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:scopes'])
+    def list_scopes(
+        self,
+        **kwargs,
+        ):
+        """ Get all scopes this object is assigned to. """
+        return self.get_scopes(**kwargs)
+
+    def get_scopes(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=True,
+        include_roles: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Get all scopes this object is assigned to. """
+        return_attributes = ['name', 'site', 'enabled']
+        if return_type not in return_attributes:
+            return_attributes.append(return_type)
+        scopes_result = backend.search(object_type="scope",
+                                    attribute=self.type,
+                                    value=self.uuid,
+                                    return_attributes=return_attributes)
+        role_scopes_result = {}
+        if include_roles:
+            roles_result = self.get_roles(return_type="uuid",
+                                        skip_disabled=skip_disabled,
+                                        recursive=True)
+            role_scopes_result = backend.search(object_type="scope",
+                                        attribute="role",
+                                        values=list(roles_result),
+                                        return_attributes=return_attributes)
+        result = []
+        scope_data = {**scopes_result, **role_scopes_result}
+        all_scopes = set(list(scopes_result) + list(role_scopes_result))
+        for scope_uuid in all_scopes:
+            scope_name = scope_data[scope_uuid]['name']
+            scope_site = scope_data[scope_uuid]['site']
+            scope_enabled = scope_data[scope_uuid]['enabled']
+            if skip_disabled:
+                if not scope_enabled:
+                    continue
+            if return_type == "name":
+                if scope_site != config.site:
+                    scope_id = f"{scope_site}/{scope_name}"
+                else:
+                    scope_id = f"{scope_name}"
+            elif return_type == "uuid":
+                scope_id = scope_uuid
+            else:
+                scope_id = scope_data[scope_uuid][return_type][0]
+            result.append(scope_id)
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+
+        return callback.ok(result)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:tokens'])
+    def list_tokens(
+        self,
+        **kwargs,
+        ):
+        """ Get all tokens tokens assigned to this object. """
+        return self.get_tokens(**kwargs)
+
     def get_tokens(
         self,
         return_type: str="rel_path",
@@ -5177,6 +5329,14 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:roles'])
+    def list_roles(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all roles assigned to this object. """
+        return self.get_roles(**kwargs)
+
     def get_roles(
         self,
         return_type: str="read_oid",
@@ -5310,6 +5470,13 @@ class OTPmeObject(OTPmeBaseObject):
         return False
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:dynamic_groups'])
+    def list_dynamic_groups(
+        self,
+        **kwargs,
+        ):
+        return self.get_dynamic_groups(**kwargs)
+
     def get_dynamic_groups(
         self,
         include_roles: bool=True,
@@ -6915,7 +7082,7 @@ class OTPmeObject(OTPmeBaseObject):
             else:
                 # FIXME: We need to investigate all "exception" stuff.
                 #        Enabling the if-statement below hides a "Unknown ACL value:"
-                #        when calling e.g.  otpme-unit -vv del_acl -r hosts token user1/pass "view:host"
+                #        when calling e.g.  otpme-unit -vv del_acl -r hosts token user1/pass "view:hosts"
                 #if verbose_level <= 1 or exception is True:
                 if exception is True:
                     exception = _("Command failed. Please try (-vv) to see all errors.")
@@ -9084,13 +9251,14 @@ class OTPmeObject(OTPmeBaseObject):
         value: Union[str,int,float,None]=None,
         delete: bool=False,
         append: bool=False,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Set config parameter. """
         # Try to get config parameter.
         try:
-            parameter_data = config.get_config_parameter(parameter)
+            para_data = config.get_config_parameter(parameter)
         except NotRegistered:
             msg = _("Invalid parameter: {obj}: {param}")
             msg = msg.format(obj=self, param=parameter)
@@ -9098,9 +9266,28 @@ class OTPmeObject(OTPmeBaseObject):
         if not self.verify_acl(f'edit:config:{parameter}'):
             msg = _("Permission denied.")
             return callback.error(msg)
+        # Get value type.
+        value_type = para_data['type']
+        try:
+            para_getter = para_data['getter']
+        except Exception:
+            para_getter = None
+        try:
+            para_setter = para_data['setter']
+        except Exception:
+            para_setter = None
         # Delete config parameter.
         if delete:
             if value:
+                try:
+                    if para_setter:
+                        value = para_setter(value)
+                        # If the parameter value type is list we get list and
+                        # need to use the first value.
+                        if value_type == list:
+                            value = value[0]
+                except Exception:
+                    pass
                 try:
                     self.config_params[parameter].remove(value)
                 except KeyError:
@@ -9114,7 +9301,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return self._cache(callback=callback)
             else:
                 try:
-                    deller = parameter_data['deller']
+                    deller = para_data['deller']
                 except KeyError:
                     deller = None
                 if deller:
@@ -9131,7 +9318,7 @@ class OTPmeObject(OTPmeBaseObject):
                 config_cache.invalidate()
                 return self._cache(callback=callback)
         try:
-            object_types = parameter_data['object_types']
+            object_types = para_data['object_types']
         except Exception:
             object_types = []
         if self.type not in object_types:
@@ -9139,10 +9326,10 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
         try:
-            warn_if_exists = parameter_data['warn_if_exists']
+            warn_if_exists = para_data['warn_if_exists']
         except KeyError:
             warn_if_exists = False
-        if warn_if_exists and not append:
+        if warn_if_exists and not append and not force:
             if parameter in self.config_params:
                 msg = _("Warning, parameter already set. Override?: ")
                 if not self.ask_change_confirmation(msg, force=False, callback=callback):
@@ -9150,15 +9337,21 @@ class OTPmeObject(OTPmeBaseObject):
         if value is None:
             # Try to get the default value.
             try:
-                value = parameter_data['default']
-                if para_getter:
-                    value = para_getter(value)
-            except Exception:
+                value = para_data['default']
+            except KeyError:
                 pass
+            else:
+                if para_getter and value:
+                    try:
+                        value = para_getter(value)
+                    except Exception as e:
+                        msg = _("Failed to run para getter for default value: {parameter}: {value}: {e}")
+                        msg = msg.format(parameter=parameter, value=value, e=e)
+                        return callback.error(msg)
         if value is None:
             # Try to get the default value genner.
             try:
-                default_genner = parameter_data['default_genner']
+                default_genner = para_data['default_genner']
                 value = default_genner(config_object=self, callback=callback)
             except Exception as e:
                 msg = _("Failed to generate default value: {e}")
@@ -9167,25 +9360,17 @@ class OTPmeObject(OTPmeBaseObject):
         if value is None:
             msg = _("Cannot determine default value.")
             return callback.error(msg)
-        # Get value type.
-        value_type = parameter_data['type']
-        # Try to get getter.
-        try:
-            para_setter = parameter_data['setter']
-        except Exception:
-            para_setter = None
-
         # Resolve value.
         if para_setter:
             try:
                 value = para_setter(value, config_object=self, callback=callback)
             except Exception as e:
-                msg = _("Failed to set config parameter: {e}")
-                msg = msg.format(e=e)
+                msg = _("Failed to set config parameter: {parameter}: {e}")
+                msg = msg.format(parameter=parameter, e=e)
                 return callback.error(msg)
 
         try:
-            valid_values = parameter_data['valid_values']
+            valid_values = para_data['valid_values']
         except Exception:
             valid_values = []
 
@@ -9204,7 +9389,15 @@ class OTPmeObject(OTPmeBaseObject):
             append = False
 
         if append:
-            self.config_params[parameter] += value
+            # Remove values we already have and warn.
+            for x in list(value):
+                if x not in self.config_params[parameter]:
+                    continue
+                msg = _("Value already exists.")
+                callback.error(msg)
+                value.remove(x)
+            if value:
+                self.config_params[parameter] += value
         else:
             # We need to pop out paramter which may be a list
             # to prevent problems with IncrementalList().
@@ -9370,7 +9563,7 @@ class OTPmeObject(OTPmeBaseObject):
                 pol_list.append(x)
 
         policies = ",".join(pol_list)
-        if self.verify_acl("view:policy") \
+        if self.verify_acl("view:policies") \
         or self.verify_acl("add:policy") \
         or self.verify_acl("remove:policy"):
             lines.append(f'POLICIES="{policies}"')

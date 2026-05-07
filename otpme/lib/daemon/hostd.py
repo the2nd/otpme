@@ -1423,7 +1423,9 @@ class HostDaemon(OTPmeDaemon):
                             'enabled'       : {'value':True},
                             'auto_disable'  : {'value':True},
                         }
-        result = backend.search(attributes=search_attributes)
+        result = backend.search(attributes=search_attributes,
+                                realm=config.realm,
+                                site=config.site)
         for x_uuid in result:
             if not config.master_node:
                break

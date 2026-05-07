@@ -288,6 +288,9 @@ def check_access(check_admin_user=True, check_admin_role=True, auth_token=None):
         log_msg = _("Access denied: User not authenticated", log=True)[1]
         logger.warning(log_msg)
         need_acls = False
+        # fuck
+        from otpme.lib import debug
+        debug.trace()
     else:
         if check_admin_user:
             if auth_token.uuid == config.admin_token_uuid:

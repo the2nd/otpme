@@ -118,7 +118,7 @@ def row_getter(realm, site, pool_order, pool_data, acls, max_roles=5,
         node_access = False
         processed_nodes = []
         if "nodes" in output_fields:
-            if check_acl("view:node"):
+            if check_acl("view:nodes"):
                 node_access = True
                 get_nodes = True
         if get_nodes:
@@ -168,7 +168,7 @@ def row_getter(realm, site, pool_order, pool_data, acls, max_roles=5,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="pool",

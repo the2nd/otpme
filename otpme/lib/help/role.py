@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-role show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [role]'),
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --token-limit :max_tokens: --role-limit :max_roles: --accessgroup-limit :max_ags: --group-limit :max_groups: --policy-limit :max_policies: [|object|]',
+                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --token-limit :max_tokens: --role-limit :max_roles: --accessgroup-limit :max_ags: --group-limit :max_groups: --policy-limit :max_policies: --scope-limit :max_scopes: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show role(s)'),
                                     '-a'                            : _('Show all roles.'),
@@ -37,6 +37,7 @@ cmd_help = {
                                     '--role-limit <limit>'          : _('Output <limit> member roles.'),
                                     '--accessgroup-limit <limit>'   : _('Output <limit> member accessgroups.'),
                                     '--group-limit <limit>'         : _('Output <limit> member groups.'),
+                                    '--scope-limit <limit>'         : _('Output <limit> scopes.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
                                 },
                 },
@@ -492,4 +493,17 @@ cmd_help = {
                                     'cmd'                   : _('List dynamic groups of role.'),
                                 },
                 },
+
+    'list_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_scopes [--return-type <return_type>] {role}'),
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('List scopes the token is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+
     }

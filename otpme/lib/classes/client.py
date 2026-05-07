@@ -51,8 +51,9 @@ write_acls =  [
 
 read_value_acls =    {
                     "view"      : [
-                                "token",
-                                "accessgroup",
+                                "roles",
+                                "tokens",
+                                "accessgroups",
                                 "secret",
                                 "login_url",
                                 "auth_cache",
@@ -63,6 +64,16 @@ read_value_acls =    {
                                 "helper_url",
                                 "address",
                                 "dot1x_auth",
+                                "oidc_auth",
+                                "oidc_redirect_uris",
+                                "oidc_logout_redirect_uris",
+                                "oidc_auth_method",
+                                "oidc_id_token_alg",
+                                "oidc_subject_type",
+                                "oidc_sector_identifier_uri",
+                                "oidc_backchannel_logout_uri",
+                                "oidc_grant_types",
+                                "oidc_response_types",
                                 ],
                     "dump"      : [
                                 "sso_logo",
@@ -71,24 +82,40 @@ read_value_acls =    {
 
 write_value_acls = {
                     "add"       : [
+                                "role",
+                                "token",
                                 "address",
                                 "sso_logo",
+                                "oidc_redirect_uri",
+                                "oidc_logout_redirect_uri",
+                                "oidc_grant_type",
+                                "oidc_response_type",
+                                ],
+                    "remove"    : [
+                                "role",
+                                "token",
                                 ],
                     "delete"    : [
                                 "address",
                                 "sso_logo",
+                                "oidc_redirect_uri",
+                                "oidc_logout_redirect_uri",
+                                "oidc_grant_type",
+                                "oidc_response_type",
                                 ],
                     "enable"    : [
                                 "sso",
                                 "sso_popup",
                                 "auth_cache",
                                 "dot1x_auth",
+                                "oidc_auth",
                                 ],
                     "disable"   : [
                                 "sso",
                                 "sso_popup",
                                 "auth_cache",
                                 "dot1x_auth",
+                                "oidc_auth",
                                 ],
                     "edit"      : [
                                 "config",
@@ -98,6 +125,11 @@ write_value_acls = {
                                 "helper_url",
                                 "sso_name",
                                 "auth_cache_timeout",
+                                "oidc_auth_method",
+                                "oidc_id_token_alg",
+                                "oidc_subject_type",
+                                "oidc_sector_identifier_uri",
+                                "oidc_backchannel_logout_uri",
                                 ],
                 }
 
@@ -110,7 +142,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['address', 'unit'],
+                    'oargs'             : ['address', 'unit', 'enable_oidc', 'scopes', 'add_scopes', 'no_default_scopes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -137,6 +169,7 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'max_scopes',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -194,6 +227,22 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_oidc'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_oidc',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_oidc'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_oidc',
                     'job_type'          : 'thread',
                     },
                 },
@@ -418,6 +467,155 @@ commands = {
                     },
                 },
             },
+    'add_oidc_redirect_uri'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_oidc_redirect_uri',
+                    'args'              : ['uri'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_oidc_redirect_uri'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_oidc_redirect_uri',
+                    'args'              : ['uri'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oidc_redirect_uris'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_oidc_redirect_uris',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_oidc_logout_redirect_uri'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_oidc_logout_redirect_uri',
+                    'args'              : ['uri'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_oidc_logout_redirect_uri'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_oidc_logout_redirect_uri',
+                    'args'              : ['uri'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oidc_logout_redirect_uris'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_oidc_logout_redirect_uris',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'oidc_auth_method'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_auth_method',
+                    'args'              : ['method'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'oidc_id_token_alg'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_id_token_alg',
+                    'args'              : ['alg'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'oidc_subject_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_subject_type',
+                    'args'              : ['subject_type'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'oidc_sector_identifier_uri'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_sector_identifier_uri',
+                    'oargs'             : ['uri', 'validate', 'clear'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'oidc_backchannel_logout_uri'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_backchannel_logout_uri',
+                    'oargs'             : ['uri', 'clear'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_oidc_grant_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_oidc_grant_type',
+                    'args'              : ['grant_type'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_oidc_grant_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_oidc_grant_type',
+                    'args'              : ['grant_type'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oidc_grant_types'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_oidc_grant_types',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_oidc_response_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_oidc_response_type',
+                    'args'              : ['response_type'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_oidc_response_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_oidc_response_type',
+                    'args'              : ['response_type'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'show_oidc_response_types'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_oidc_response_types',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_role'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -475,8 +673,8 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
-                    'job_type'          : 'process',
+                    'method'            : 'list_policies',
+                    'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
                     },
@@ -485,19 +683,29 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'list_scopes'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_scopes',
+                    'job_type'          : 'thread',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name', 'include_roles':False, 'skip_disabled':False},
                     },
                 },
             },
@@ -778,13 +986,30 @@ def register():
     config.register_recursive_default_acl("unit", "+client")
 
 def register_hooks():
+    config.register_auth_on_action_hook("client", "add_role")
+    config.register_auth_on_action_hook("client", "remove_role")
     config.register_auth_on_action_hook("client", "add_token")
     config.register_auth_on_action_hook("client", "remove_token")
     config.register_auth_on_action_hook("client", "add_address")
     config.register_auth_on_action_hook("client", "del_address")
+    config.register_auth_on_action_hook("client", "add_oidc_redirect_uri")
+    config.register_auth_on_action_hook("client", "del_oidc_redirect_uri")
+    config.register_auth_on_action_hook("client", "add_oidc_logout_redirect_uri")
+    config.register_auth_on_action_hook("client", "del_oidc_logout_redirect_uri")
+    config.register_auth_on_action_hook("client", "change_oidc_auth_method")
+    config.register_auth_on_action_hook("client", "change_oidc_id_token_alg")
+    config.register_auth_on_action_hook("client", "change_oidc_subject_type")
+    config.register_auth_on_action_hook("client", "change_oidc_sector_identifier_uri")
+    config.register_auth_on_action_hook("client", "change_oidc_backchannel_logout_uri")
+    config.register_auth_on_action_hook("client", "add_oidc_grant_type")
+    config.register_auth_on_action_hook("client", "del_oidc_grant_type")
+    config.register_auth_on_action_hook("client", "add_oidc_response_type")
+    config.register_auth_on_action_hook("client", "del_oidc_response_type")
     config.register_auth_on_action_hook("client", "change_secret")
     config.register_auth_on_action_hook("client", "enable_dot1x")
     config.register_auth_on_action_hook("client", "disable_dot1x")
+    config.register_auth_on_action_hook("client", "enable_oidc")
+    config.register_auth_on_action_hook("client", "disable_oidc")
     config.register_auth_on_action_hook("client", "enable_auth_cache")
     config.register_auth_on_action_hook("client", "disable_auth_cache")
     config.register_auth_on_action_hook("client", "change_auth_cache_timeout")
@@ -887,12 +1112,12 @@ class Client(OTPmeClientObject):
 
         # Call parent class init.
         super().__init__(object_id=object_id,
-                                        realm=realm,
-                                        site=site,
-                                        unit=unit,
-                                        name=name,
-                                        path=path,
-                                        **kwargs)
+                            realm=realm,
+                            site=site,
+                            unit=unit,
+                            name=name,
+                            path=path,
+                            **kwargs)
         self._acls = get_acls()
         self._value_acls = get_value_acls()
         self._default_acls = get_default_acls()
@@ -918,6 +1143,12 @@ class Client(OTPmeClientObject):
         self.auth_cache_timeout = 60
         self.auth_cache_enabled = False
         self.dot1x_auth = False
+        self.oidc_auth = False
+        self.oidc_token_endpoint_auth_method = "client_secret_basic"
+        self.oidc_id_token_signed_response_alg = "RS256"
+        self.oidc_subject_type = "public"
+        self.oidc_sector_identifier_uri = None
+        self.oidc_backchannel_logout_uri = None
 
         self._sync_fields = {
                     'node'  : {
@@ -926,6 +1157,7 @@ class Client(OTPmeClientObject):
                             "OBJECT_CLASSES",
                             "EXTENSION_ATTRIBUTES",
                             "TOKENS",
+                            "ROLES",
                             ]
                         },
                     }
@@ -974,9 +1206,61 @@ class Client(OTPmeClientObject):
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
                                                     },
-                        'DOT1X_AUTH'        : {
+                        'DOT1X_AUTH'                : {
                                                         'var_name'  : 'dot1x_auth',
                                                         'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_AUTH'                : {
+                                                        'var_name'  : 'oidc_auth',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_REDIRECT_URIS'       : {
+                                                        'var_name'  : 'oidc_redirect_uris',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_LOGOUT_REDIRECT_URIS': {
+                                                        'var_name'  : 'oidc_logout_redirect_uris',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_TOKEN_ENDPOINT_AUTH_METHOD' : {
+                                                        'var_name'  : 'oidc_token_endpoint_auth_method',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_ID_TOKEN_SIGNED_RESPONSE_ALG' : {
+                                                        'var_name'  : 'oidc_id_token_signed_response_alg',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_SUBJECT_TYPE'        : {
+                                                        'var_name'  : 'oidc_subject_type',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_SECTOR_IDENTIFIER_URI' : {
+                                                        'var_name'  : 'oidc_sector_identifier_uri',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_BACKCHANNEL_LOGOUT_URI' : {
+                                                        'var_name'  : 'oidc_backchannel_logout_uri',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_GRANT_TYPES'         : {
+                                                        'var_name'  : 'oidc_grant_types',
+                                                        'type'      : list,
+                                                        'default'   : ["authorization_code", "refresh_token"],
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_RESPONSE_TYPES'      : {
+                                                        'var_name'  : 'oidc_response_types',
+                                                        'type'      : list,
+                                                        'default'   : ["code"],
                                                         'required'  : False,
                                                     },
                         'AUTH_CACHE_ENABLED'        : {
@@ -1122,6 +1406,629 @@ class Client(OTPmeClientObject):
         self.radius_reload = True
         return self._cache(callback=callback)
 
+    @staticmethod
+    def _validate_oidc_redirect_uri(uri: str):
+        """ Validate an OIDC redirect URI per RFC 6749 + 8252.
+
+        Reject anything that isn't http/https, has a fragment, or
+        uses http with a non-loopback host. Returns nothing on
+        success, raises OTPmeException on failure.
+        """
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(uri)
+        except Exception:
+            msg = _("Invalid redirect URI: {uri}")
+            msg = msg.format(uri=uri)
+            raise OTPmeException(msg) from None
+        if parsed.scheme not in ("http", "https"):
+            msg = _("Redirect URI must use http or https: {uri}")
+            msg = msg.format(uri=uri)
+            raise OTPmeException(msg)
+        if not parsed.hostname:
+            msg = _("Redirect URI must include a host: {uri}")
+            msg = msg.format(uri=uri)
+            raise OTPmeException(msg)
+        if parsed.fragment:
+            msg = _("Redirect URI must not contain a fragment: {uri}")
+            msg = msg.format(uri=uri)
+            raise OTPmeException(msg)
+        loopback_hosts = ("localhost", "127.0.0.1", "::1")
+        if parsed.scheme == "http" and parsed.hostname not in loopback_hosts:
+            msg = _("http redirect URI only allowed for loopback hosts: {uri}")
+            msg = msg.format(uri=uri)
+            raise OTPmeException(msg)
+
+    @object_lock()
+    @check_acls(['add:oidc_redirect_uri'])
+    @audit_log()
+    def add_oidc_redirect_uri(
+        self,
+        uri: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Add an OIDC redirect URI to this client. """
+        try:
+            self._validate_oidc_redirect_uri(uri)
+        except OTPmeException as e:
+            return callback.error(str(e))
+        if uri in self.oidc_redirect_uris:
+            msg = _("Redirect URI '{uri}' already added to this client.")
+            msg = msg.format(uri=uri)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_oidc_redirect_uri",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_redirect_uris.append(uri)
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['delete:oidc_redirect_uri'])
+    @audit_log()
+    def del_oidc_redirect_uri(
+        self,
+        uri: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Remove an OIDC redirect URI from this client. """
+        if uri not in self.oidc_redirect_uris:
+            msg = _("Redirect URI '{uri}' is not registered for this client.")
+            msg = msg.format(uri=uri)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_oidc_redirect_uri",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_redirect_uris.remove(uri)
+        return self._cache(callback=callback)
+
+    @check_acls(['view:oidc_redirect_uris'])
+    @audit_log()
+    def show_oidc_redirect_uris(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Return the list of registered OIDC redirect URIs. """
+        return callback.ok(list(self.oidc_redirect_uris))
+
+    @object_lock()
+    @check_acls(['add:oidc_logout_redirect_uri'])
+    @audit_log()
+    def add_oidc_logout_redirect_uri(
+        self,
+        uri: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Add an OIDC post-logout redirect URI to this client. """
+        try:
+            self._validate_oidc_redirect_uri(uri)
+        except OTPmeException as e:
+            return callback.error(str(e))
+        if uri in self.oidc_logout_redirect_uris:
+            msg = _("Logout redirect URI '{uri}' already added to this client.")
+            msg = msg.format(uri=uri)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_oidc_logout_redirect_uri",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_logout_redirect_uris.append(uri)
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['delete:oidc_logout_redirect_uri'])
+    @audit_log()
+    def del_oidc_logout_redirect_uri(
+        self,
+        uri: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Remove an OIDC post-logout redirect URI from this client. """
+        if uri not in self.oidc_logout_redirect_uris:
+            msg = _("Logout redirect URI '{uri}' is not registered for this client.")
+            msg = msg.format(uri=uri)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_oidc_logout_redirect_uri",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_logout_redirect_uris.remove(uri)
+        return self._cache(callback=callback)
+
+    @check_acls(['view:oidc_logout_redirect_uris'])
+    @audit_log()
+    def show_oidc_logout_redirect_uris(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Return the list of registered OIDC post-logout redirect URIs. """
+        return callback.ok(list(self.oidc_logout_redirect_uris))
+
+    @object_lock()
+    @check_acls(['edit:oidc_auth_method'])
+    @audit_log()
+    def change_oidc_auth_method(
+        self,
+        method: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set the OIDC token endpoint authentication method.
+
+        Allowed values:
+            client_secret_basic  -- HTTP Basic auth with secret (default)
+            client_secret_post   -- secret in form body
+            none                 -- public client; PKCE always required
+        """
+        allowed = ("client_secret_basic", "client_secret_post", "none")
+        if method not in allowed:
+            msg = _("Invalid OIDC auth method '{method}'. Allowed: {allowed}")
+            msg = msg.format(method=method, allowed=", ".join(allowed))
+            return callback.error(msg)
+        if method == self.oidc_token_endpoint_auth_method:
+            msg = _("OIDC auth method already set to '{method}'.")
+            msg = msg.format(method=method)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_oidc_auth_method",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_token_endpoint_auth_method = method
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['edit:oidc_id_token_alg'])
+    @audit_log()
+    def change_oidc_id_token_alg(
+        self,
+        alg: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set the JWT signing algorithm for ID tokens issued to this
+        client.
+
+        Allowed values:
+            RS256 (default), RS384, RS512  -- RSA + SHA
+            ES256, ES384, ES512            -- ECDSA + SHA
+            EdDSA                          -- Ed25519
+
+        The site MUST have an active signing key with a matching alg
+        for issuance to succeed; this is checked at sign-time, not
+        here, so that an admin can configure alg before adding the
+        matching key to the site.
+        """
+        allowed = ("RS256", "RS384", "RS512",
+                   "ES256", "ES384", "ES512",
+                   "EdDSA")
+        if alg not in allowed:
+            msg = _("Invalid OIDC ID token alg '{alg}'. Allowed: {allowed}")
+            msg = msg.format(alg=alg, allowed=", ".join(allowed))
+            return callback.error(msg)
+        if alg == self.oidc_id_token_signed_response_alg:
+            msg = _("OIDC ID token alg already set to '{alg}'.")
+            msg = msg.format(alg=alg)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_oidc_id_token_alg",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_id_token_signed_response_alg = alg
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['edit:oidc_subject_type'])
+    @audit_log()
+    def change_oidc_subject_type(
+        self,
+        subject_type: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set the OIDC subject type used for the ``sub`` claim.
+
+        Allowed values:
+            public    -- stable user identifier; same sub across RPs
+            pairwise  -- per-sector HMAC-derived sub; different per RP
+
+        For pairwise the site needs an oidc_pairwise_secret; this is
+        checked at sign-time, not here.
+        """
+        allowed = ("public", "pairwise")
+        if subject_type not in allowed:
+            msg = _("Invalid OIDC subject type '{subject_type}'. Allowed: {allowed}")
+            msg = msg.format(subject_type=subject_type, allowed=", ".join(allowed))
+            return callback.error(msg)
+        if subject_type == self.oidc_subject_type:
+            msg = _("OIDC subject type already set to '{subject_type}'.")
+            msg = msg.format(subject_type=subject_type)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_oidc_subject_type",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_subject_type = subject_type
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['edit:oidc_sector_identifier_uri'])
+    @audit_log()
+    def change_oidc_sector_identifier_uri(
+        self,
+        uri: str=None,
+        validate: bool=False,
+        clear: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set or clear the OIDC sector identifier URI.
+
+        Required only for ``subject_type=pairwise`` when the RP spans
+        multiple hosts and wants the same ``sub`` across them.
+
+        With ``validate=True`` the URI is fetched immediately and
+        every registered redirect URI must appear in the JSON array
+        it returns (per OIDC Core 8.1). Default is lazy: stored
+        without round-trip, validation deferred to sign-time.
+        """
+        from urllib.parse import urlparse
+        if clear:
+            new_value = None
+        else:
+            if not uri:
+                msg = _("Either provide a URI or use --clear.")
+                return callback.error(msg)
+            try:
+                parsed = urlparse(uri)
+            except Exception:
+                msg = _("Invalid URI: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            if parsed.scheme != "https":
+                msg = _("Sector identifier URI must use https: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            if not parsed.hostname:
+                msg = _("Sector identifier URI must include a host: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            if validate:
+                err = self._validate_sector_identifier_uri(uri)
+                if err:
+                    return callback.error(err)
+            new_value = uri
+
+        if new_value == self.oidc_sector_identifier_uri:
+            msg = _("Sector identifier URI already set to '{uri}'.")
+            msg = msg.format(uri=new_value)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_oidc_sector_identifier_uri",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_sector_identifier_uri = new_value
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['edit:oidc_backchannel_logout_uri'])
+    @audit_log()
+    def change_oidc_backchannel_logout_uri(
+        self,
+        uri: str=None,
+        clear: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set or clear the OIDC backchannel logout URI.
+
+        The OP POSTs a signed Logout Token to this URL when the user
+        logs out, so the RP can terminate its local session
+        server-to-server (independent of any browser).
+        """
+        from urllib.parse import urlparse
+        if clear:
+            new_value = None
+        else:
+            if not uri:
+                msg = _("Either provide a URI or use --clear.")
+                return callback.error(msg)
+            try:
+                parsed = urlparse(uri)
+            except Exception:
+                msg = _("Invalid URI: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            if parsed.scheme != "https":
+                msg = _("Backchannel logout URI must use https: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            if not parsed.hostname:
+                msg = _("Backchannel logout URI must include a host: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            if parsed.fragment:
+                msg = _("Backchannel logout URI must not contain a fragment: {uri}")
+                msg = msg.format(uri=uri)
+                return callback.error(msg)
+            new_value = uri
+
+        if new_value == self.oidc_backchannel_logout_uri:
+            msg = _("Backchannel logout URI already set to '{uri}'.")
+            msg = msg.format(uri=new_value)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_oidc_backchannel_logout_uri",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_backchannel_logout_uri = new_value
+        return self._cache(callback=callback)
+
+    OIDC_GRANT_TYPES_WHITELIST = (
+        "authorization_code",
+        "refresh_token",
+        "client_credentials",
+        "urn:ietf:params:oauth:grant-type:device_code",
+    )
+
+    OIDC_RESPONSE_TYPES_WHITELIST = (
+        "code",
+        "code id_token",
+    )
+
+    @object_lock()
+    @check_acls(['add:oidc_grant_type'])
+    @audit_log()
+    def add_oidc_grant_type(
+        self,
+        grant_type: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Allow an OIDC grant type for this client. """
+        if grant_type not in self.OIDC_GRANT_TYPES_WHITELIST:
+            msg = _("Invalid OIDC grant type '{grant_type}'. Allowed: {allowed}")
+            msg = msg.format(grant_type=grant_type,
+                             allowed=", ".join(self.OIDC_GRANT_TYPES_WHITELIST))
+            return callback.error(msg)
+        if grant_type in self.oidc_grant_types:
+            msg = _("Grant type '{grant_type}' already enabled for this client.")
+            msg = msg.format(grant_type=grant_type)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_oidc_grant_type",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_grant_types.append(grant_type)
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['delete:oidc_grant_type'])
+    @audit_log()
+    def del_oidc_grant_type(
+        self,
+        grant_type: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable an OIDC grant type for this client. """
+        if grant_type not in self.oidc_grant_types:
+            msg = _("Grant type '{grant_type}' is not enabled for this client.")
+            msg = msg.format(grant_type=grant_type)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_oidc_grant_type",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_grant_types.remove(grant_type)
+        return self._cache(callback=callback)
+
+    @check_acls(['view:oidc_grant_types'])
+    @audit_log()
+    def show_oidc_grant_types(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Return the list of allowed OIDC grant types. """
+        return callback.ok(list(self.oidc_grant_types))
+
+    @object_lock()
+    @check_acls(['add:oidc_response_type'])
+    @audit_log()
+    def add_oidc_response_type(
+        self,
+        response_type: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Allow an OIDC response type for this client. """
+        if response_type not in self.OIDC_RESPONSE_TYPES_WHITELIST:
+            msg = _("Invalid OIDC response type '{response_type}'. Allowed: {allowed}")
+            msg = msg.format(response_type=response_type,
+                             allowed=", ".join(self.OIDC_RESPONSE_TYPES_WHITELIST))
+            return callback.error(msg)
+        if response_type in self.oidc_response_types:
+            msg = _("Response type '{response_type}' already enabled for this client.")
+            msg = msg.format(response_type=response_type)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_oidc_response_type",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_response_types.append(response_type)
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['delete:oidc_response_type'])
+    @audit_log()
+    def del_oidc_response_type(
+        self,
+        response_type: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable an OIDC response type for this client. """
+        if response_type not in self.oidc_response_types:
+            msg = _("Response type '{response_type}' is not enabled for this client.")
+            msg = msg.format(response_type=response_type)
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_oidc_response_type",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_response_types.remove(response_type)
+        return self._cache(callback=callback)
+
+    @check_acls(['view:oidc_response_types'])
+    @audit_log()
+    def show_oidc_response_types(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Return the list of allowed OIDC response types. """
+        return callback.ok(list(self.oidc_response_types))
+
+    def _validate_sector_identifier_uri(self, uri: str):
+        """ Fetch the sector identifier URI and check inclusion of all
+        registered redirect URIs. Returns None on success or an error
+        message string on failure. """
+        import json
+        from urllib.request import Request, urlopen
+        try:
+            req = Request(uri, headers={"Accept": "application/json"})
+            with urlopen(req, timeout=10) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            return _("Could not fetch sector identifier URI: {err}").format(err=e)
+        try:
+            published = json.loads(body)
+        except Exception as e:
+            return _("Sector identifier URI did not return valid JSON: {err}").format(err=e)
+        if not isinstance(published, list):
+            return _("Sector identifier URI must return a JSON array of redirect URIs.")
+        published_set = {str(x) for x in published}
+        missing = [u for u in self.oidc_redirect_uris if u not in published_set]
+        if missing:
+            return _("Sector identifier URI is missing these registered redirect URIs: {missing}").format(
+                missing=", ".join(missing))
+        return None
+
     @object_lock()
     @check_acls(['edit:accessgroup'])
     @audit_log()
@@ -1240,7 +2147,7 @@ class Client(OTPmeClientObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Disable auth cache. """
+        """ Disable dot1x auth. """
         if not self.dot1x_auth:
             msg = (_("Dot1x auth already disabled."))
             return callback.error(msg)
@@ -1258,6 +2165,68 @@ class Client(OTPmeClientObject):
 
         self.dot1x_auth = False
         self.update_index("dot1x_auth", self.dot1x_auth)
+
+        return self._write(callback=callback)
+
+    @check_acls(['enable:oidc_auth'])
+    @object_lock()
+    @audit_log()
+    def enable_oidc(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Enable OIDC auth. """
+        if self.oidc_auth:
+            msg = (_("OIDC auth already enabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_oidc",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.oidc_auth = True
+        self.update_index("oidc_auth", self.oidc_auth)
+
+        return self._write(callback=callback)
+
+    @check_acls(['disable:oidc_auth'])
+    @object_lock()
+    @audit_log()
+    def disable_oidc(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable OIDC auth. """
+        if not self.oidc_auth:
+            msg = (_("OIDC auth already disabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_oidc",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.oidc_auth = False
+        self.update_index("oidc_auth", self.oidc_auth)
 
         return self._write(callback=callback)
 
@@ -1667,6 +2636,13 @@ class Client(OTPmeClientObject):
             if not token_oid:
                 token_list.append(i)
 
+        role_list = []
+        for i in self.roles:
+            role_oid = backend.get_oid(object_type="role", uuid=i)
+            if role_oid:
+                continue
+            role_list.append(i)
+
         if not force:
             msg = ""
             if acl_list:
@@ -1682,6 +2658,10 @@ class Client(OTPmeClientObject):
             if token_list:
                 msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n")
                 msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, token_list=','.join(token_list))
+
+            if role_list:
+                msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
+                msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
 
         object_changed = False
         if acl_list:
@@ -1704,6 +2684,18 @@ class Client(OTPmeClientObject):
                 self.tokens.remove(i)
             if i in self.token_options:
                 self.token_options.pop(i)
+            # Update index.
+            self.del_index('token', i)
+
+        for i in role_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan role UUID: {role_uuid}")
+                msg = msg.format(role_uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.roles.remove(i)
+            # Update index.
+            self.del_index('role', i)
 
         if not object_changed:
             msg = _("No orphan objects found for {object_type}: {object_name}")
@@ -1741,6 +2733,10 @@ class Client(OTPmeClientObject):
     def add(
         self,
         address: Union[str,None]=None,
+        enable_oidc: bool=False,
+        scopes: Union[list,None]=None,
+        add_scopes: Union[list,None]=None,
+        no_default_scopes: bool=False,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1772,8 +2768,124 @@ class Client(OTPmeClientObject):
             self.add_address(address)
             msg = f"Radius secret: {self.secret}"
             callback.send(msg)
+        if enable_oidc:
+            self.enable_oidc()
+            # Resolve scopes:
+            #   --scopes <list>      -> replaces defaults entirely
+            #   --no-default-scopes  -> drops defaults
+            #   --add-scopes <list>  -> appended on top of whatever's left
+            if scopes is None:
+                if no_default_scopes:
+                    scopes = []
+                else:
+                    scopes = self.get_config_parameter("oidc_default_scopes") or []
+            scopes = set(scopes) | set(add_scopes or [])
+            # Pre-validate all named scopes exist before mutating any.
+            scope_objs = []
+            for x in scopes:
+                scope = backend.get_object(object_type="scope",
+                                        name=x,
+                                        realm=config.realm,
+                                        site=config.site)
+                if scope is None:
+                    msg = _("Scope '{name}' does not exist.")
+                    msg = msg.format(name=x)
+                    return callback.error(msg)
+                scope_objs.append(scope)
+            for scope in scope_objs:
+                scope.add_client(client_name=self.name,
+                                callback=callback)
+        elif scopes or add_scopes:
+            msg = _("Warning: --scopes/--add-scopes ignored because --enable-oidc was not set.")
+            callback.send(msg)
         # Make sure radius gets reloaded
         self.radius_reload = True
+        return callback.ok()
+
+    @object_lock()
+    @check_acls(['add:role'])
+    def add_role(
+        self,
+        role_name: str=None,
+        role_uuid: str=None,
+        return_uuid: bool=False,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a role to objects member roles list and add role to default scopes. """
+        add_status = super().add_role(role_name=role_name,
+                                        role_uuid=role_uuid,
+                                        return_uuid=True,
+                                        verbose_level=verbose_level,
+                                        _caller=_caller,
+                                        callback=callback,
+                                        **kwargs)
+        if not add_status:
+            return callback.error()
+
+        role_uuid = add_status
+        role_oid = backend.get_oid(uuid=role_uuid, instance=True)
+
+        scopes = self.get_scopes(include_roles=False,
+                                skip_disabled=True,
+                                return_type="uuid")
+
+        for scope_uuid in scopes:
+            scope = backend.get_object(uuid=scope_uuid)
+            if not scope:
+                continue
+            if not scope.auto_member:
+                continue
+            scope.add_role(role_name=role_oid.name,
+                            verify_acls=False,
+                            callback=callback)
+        if return_uuid:
+            return role_uuid
+        return callback.ok()
+
+    @check_acls(['add:token'])
+    @object_lock()
+    def add_token(
+        self,
+        token_path: str,
+        return_uuid: bool=False,
+        force: bool=False,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a token to objects member tokens list and add token to default scopes. """
+        add_status = super().add_token(token_path=token_path,
+                                        return_uuid=True,
+                                        force=force,
+                                        _caller=_caller,
+                                        verbose_level=verbose_level,
+                                        callback=callback,
+                                        **kwargs)
+        if not add_status:
+            return callback.error()
+
+        token_uuid = add_status
+        token_oid = backend.get_oid(uuid=token_uuid, instance=True)
+
+        scopes = self.get_scopes(include_roles=False,
+                                skip_disabled=True,
+                                return_type="uuid")
+
+        for scope_uuid in scopes:
+            scope = backend.get_object(uuid=scope_uuid)
+            if not scope:
+                continue
+            if not scope.auto_member:
+                continue
+            scope.add_token(token_path=token_oid.rel_path,
+                            verify_acls=False,
+                            callback=callback)
+        if return_uuid:
+            return token_uuid
         return callback.ok()
 
     @object_lock(full_lock=True)
@@ -1816,7 +2928,7 @@ class Client(OTPmeClientObject):
 
         # Delete object using parent class.
         result = super().delete(verbose_level=verbose_level,
-                                        force=force, callback=callback)
+                                force=force, callback=callback)
         # Make sure radius gets reloaded.
         cluster_radius_reload()
         return result
@@ -1833,7 +2945,7 @@ class Client(OTPmeClientObject):
 
         lines = []
 
-        if self.verify_acl("view:token") \
+        if self.verify_acl("view:tokens") \
         or self.verify_acl("add:token") \
         or self.verify_acl("remove:token"):
             token_list = []
@@ -1852,8 +2964,27 @@ class Client(OTPmeClientObject):
         else:
             token_list = [""]
 
+        if self.verify_acl("view:roles") \
+        or self.verify_acl("add:role") \
+        or self.verify_acl("remove:role"):
+            role_list = []
+            for i in self.roles:
+                role_oid = backend.get_oid(i, instance=True)
+                # Add UUIDs of orphan roles.
+                if not role_oid:
+                    role_list.append(i)
+                    continue
+                if not otpme_acl.access_granted(object_id=role_oid,
+                                                acl="view_public:object"):
+                    continue
+                role_path = role_oid.rel_path
+                role_list.append(role_path)
+            role_list.sort()
+        else:
+            role_list = [""]
+
         access_group = ""
-        if self.verify_acl("view:accessgroup") \
+        if self.verify_acl("view:accessgroups") \
         or self.verify_acl("edit:accessgroup"):
             access_group = str(self.access_group)
         lines.append(f'ACCESS_GROUP="{access_group}"')
@@ -1871,6 +3002,7 @@ class Client(OTPmeClientObject):
         lines.append(f'SECRET="{secret}"')
 
         lines.append(f'TOKENS="{token_list}"')
+        lines.append(f'ROLES="{role_list}"')
 
         auth_cache_enabled = ""
         if self.verify_acl("view:auth_cache") \
@@ -1880,11 +3012,76 @@ class Client(OTPmeClientObject):
         lines.append(f'AUTH_CACHE_ENABLED="{auth_cache_enabled}"')
 
         dot1x_auth = ""
-        if self.verify_acl("view:auth_cache") \
-        or self.verify_acl("enable:auth_cache") \
-        or self.verify_acl("disable:auth_cache"):
+        if self.verify_acl("view:dot1x_auth") \
+        or self.verify_acl("enable:dot1x_auth") \
+        or self.verify_acl("disable:dot1x_auth"):
             dot1x_auth = self.dot1x_auth
         lines.append(f'DOT1X_AUTH="{dot1x_auth}"')
+
+        oidc_auth = ""
+        if self.verify_acl("view:oidc_auth") \
+        or self.verify_acl("enable:oidc_auth") \
+        or self.verify_acl("disable:oidc_auth"):
+            oidc_auth = self.oidc_auth
+        lines.append(f'OIDC_AUTH="{oidc_auth}"')
+
+        oidc_redirect_uris = ""
+        if self.verify_acl("view:oidc_redirect_uris") \
+        or self.verify_acl("add:oidc_redirect_uri") \
+        or self.verify_acl("delete:oidc_redirect_uri"):
+            oidc_redirect_uris = ",".join(self.oidc_redirect_uris)
+        lines.append(f'OIDC_REDIRECT_URIS="{oidc_redirect_uris}"')
+
+        oidc_logout_redirect_uris = ""
+        if self.verify_acl("view:oidc_logout_redirect_uris") \
+        or self.verify_acl("add:oidc_logout_redirect_uri") \
+        or self.verify_acl("delete:oidc_logout_redirect_uri"):
+            oidc_logout_redirect_uris = ",".join(self.oidc_logout_redirect_uris)
+        lines.append(f'OIDC_LOGOUT_REDIRECT_URIS="{oidc_logout_redirect_uris}"')
+
+        oidc_auth_method = ""
+        if self.verify_acl("view:oidc_auth_method") \
+        or self.verify_acl("edit:oidc_auth_method"):
+            oidc_auth_method = self.oidc_token_endpoint_auth_method
+        lines.append(f'OIDC_TOKEN_ENDPOINT_AUTH_METHOD="{oidc_auth_method}"')
+
+        oidc_id_token_alg = ""
+        if self.verify_acl("view:oidc_id_token_alg") \
+        or self.verify_acl("edit:oidc_id_token_alg"):
+            oidc_id_token_alg = self.oidc_id_token_signed_response_alg
+        lines.append(f'OIDC_ID_TOKEN_SIGNED_RESPONSE_ALG="{oidc_id_token_alg}"')
+
+        oidc_subject_type = ""
+        if self.verify_acl("view:oidc_subject_type") \
+        or self.verify_acl("edit:oidc_subject_type"):
+            oidc_subject_type = self.oidc_subject_type
+        lines.append(f'OIDC_SUBJECT_TYPE="{oidc_subject_type}"')
+
+        oidc_sector_identifier_uri = ""
+        if self.verify_acl("view:oidc_sector_identifier_uri") \
+        or self.verify_acl("edit:oidc_sector_identifier_uri"):
+            oidc_sector_identifier_uri = self.oidc_sector_identifier_uri or ""
+        lines.append(f'OIDC_SECTOR_IDENTIFIER_URI="{oidc_sector_identifier_uri}"')
+
+        oidc_backchannel_logout_uri = ""
+        if self.verify_acl("view:oidc_backchannel_logout_uri") \
+        or self.verify_acl("edit:oidc_backchannel_logout_uri"):
+            oidc_backchannel_logout_uri = self.oidc_backchannel_logout_uri or ""
+        lines.append(f'OIDC_BACKCHANNEL_LOGOUT_URI="{oidc_backchannel_logout_uri}"')
+
+        oidc_grant_types = ""
+        if self.verify_acl("view:oidc_grant_types") \
+        or self.verify_acl("add:oidc_grant_type") \
+        or self.verify_acl("delete:oidc_grant_type"):
+            oidc_grant_types = ",".join(self.oidc_grant_types)
+        lines.append(f'OIDC_GRANT_TYPES="{oidc_grant_types}"')
+
+        oidc_response_types = ""
+        if self.verify_acl("view:oidc_response_types") \
+        or self.verify_acl("add:oidc_response_type") \
+        or self.verify_acl("delete:oidc_response_type"):
+            oidc_response_types = ",".join(self.oidc_response_types)
+        lines.append(f'OIDC_RESPONSE_TYPES="{oidc_response_types}"')
 
         sso_name = ""
         if self.verify_acl("view:sso_name"):

@@ -27,12 +27,15 @@ table_headers = [
                 "accessgroup",
                 "roles",
                 "tokens",
+                "scopes",
+                "dot1x",
+                "oidc",
                 "logins",
                 "addresses",
                 "auth_cache",
                 "auth_cache_timeout",
                 "policies",
-                "inherit",
+                #"inherit",
                 "description",
                 ]
 
@@ -50,7 +53,9 @@ def register():
                         'logins_limited',
                         'auth_cache_enabled',
                         'auth_cache_timeout',
-                        'acl_inheritance_enabled',
+                        'dot1x_auth',
+                        'oidc_auth',
+                        #'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
     read_value_acls, write_value_acls = get_value_acls(split=True)
@@ -74,7 +79,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
-    max_roles=5, max_policies=5, output_fields=None, acl_checker=None, **kwargs):
+    max_roles=5, max_policies=5, max_scopes=5, output_fields=None,
+    acl_checker=None, **kwargs):
     """ Build table rows for clients. """
     if output_fields is None:
         output_fields = []
@@ -111,13 +117,21 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
         except Exception:
             access_group = None
         try:
+            dot1x_auth = client_data[client_uuid]['dot1x_auth'][0]
+        except Exception:
+            dot1x_auth = False
+        try:
+            oidc_auth = client_data[client_uuid]['oidc_auth'][0]
+        except Exception:
+            oidc_auth = False
+        try:
             description = client_data[client_uuid]['description'][0]
         except Exception:
             description = None
-        try:
-            acl_inheritance_enabled = client_data[client_uuid]['acl_inheritance_enabled'][0]
-        except Exception:
-            acl_inheritance_enabled = False
+        #try:
+        #    acl_inheritance_enabled = client_data[client_uuid]['acl_inheritance_enabled'][0]
+        #except Exception:
+        #    acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
@@ -149,7 +163,7 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
                 row.append("-")
         # Accessgroup.
         if "accessgroup" in output_fields:
-            if check_acl("view:accessgroup") \
+            if check_acl("view:accessgroups") \
             or check_acl("edit:accessgroup"):
                 if access_group:
                     ag_oid = backend.get_oid(access_group)
@@ -162,9 +176,9 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
         # Roles/Tokens.
         get_roles = False
         role_access = False
+        processed_roles = []
         if "roles" in output_fields:
-            processed_tokens = []
-            if check_acl("view:role"):
+            if check_acl("view:roles"):
                 role_access = True
                 get_roles = True
         group_tokens_count = 0
@@ -209,8 +223,9 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
         # Tokens.
         get_tokens = False
         token_access = False
+        processed_tokens = []
         if "tokens" in output_fields:
-            if check_acl("view:token"):
+            if check_acl("view:tokens"):
                 token_access = True
                 get_tokens = True
         if get_tokens:
@@ -251,6 +266,71 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
         else:
             if token_access:
                 row.append("")
+            else:
+                row.append("-")
+        # Scopes.
+        get_scopes = False
+        scope_access = False
+        if "scopes" in output_fields:
+            if check_acl("view:scopes"):
+                scope_access = True
+                get_scopes = True
+        group_tokens_count = 0
+        if get_scopes:
+            member_scopes = []
+            return_attrs = ['name', 'enabled', 'site']
+            scopes_count, scopes_result = backend.search(object_type="scope",
+                                                    attribute="client",
+                                                    value=client_uuid,
+                                                    order_by="name",
+                                                    max_results=max_scopes,
+                                                    return_query_count=True,
+                                                    return_attributes=return_attrs)
+            for scope_uuid in scopes_result:
+                scope_name = scopes_result[scope_uuid]['name']
+                scope_enabled = scopes_result[scope_uuid]['enabled'][0]
+                scope_status_string = ""
+                if not scope_enabled:
+                    scope_status_string = " (D)"
+                scope_string = f"{scope_name} {scope_status_string}"
+                member_scopes.append(scope_string)
+
+                processed_scopes = len(member_scopes)
+                if processed_scopes == max_scopes:
+                    if scopes_count > max_scopes:
+                        msg = _("({processed_scopes} of {scopes_count} scopes total)")
+                        msg = msg.format(processed_scopes=processed_scopes, scopes_count=scopes_count)
+                        x = msg
+                        member_scopes.append(x)
+                    break
+            row.append("\n".join(member_scopes))
+        else:
+            if scope_access:
+                row.append("")
+            else:
+                row.append("-")
+        # Dot1x auth.
+        if "dot1x" in output_fields:
+            if check_acl("view:dot1x_auth") \
+            or check_acl("enable:dot1x_auth") \
+            or check_acl("disable:dot1x_auth"):
+                if dot1x_auth:
+                    dot1x_string = _("Enabled")
+                else:
+                    dot1x_string = _("Disabled")
+                row.append(dot1x_string)
+            else:
+                row.append("-")
+        # OIDC auth.
+        if "oidc" in output_fields:
+            if check_acl("view:oidc_auth") \
+            or check_acl("enable:oidc_auth") \
+            or check_acl("disable:oidc_auth"):
+                if oidc_auth:
+                    oidc_string = _("Enabled")
+                else:
+                    oidc_string = _("Disabled")
+                row.append(oidc_string)
             else:
                 row.append("-")
         # Logins limited.
@@ -296,7 +376,7 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
                 row.append("-")
         # Policies.
         if "policies" in output_fields:
-            if check_acl("view:policy") \
+            if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="client",
@@ -305,18 +385,18 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
                 row.append(policies_string)
             else:
                 row.append("-")
-        # Inherit.
-        if "inherit" in output_fields:
-            if check_acl("view:acl_inheritance") \
-            or check_acl("enable:acl_inheritance") \
-            or check_acl("disable:acl_inheritance"):
-                if acl_inheritance_enabled:
-                    acl_inheritance_string = _("Enabled")
-                else:
-                    acl_inheritance_string = _("Disabled")
-                row.append(acl_inheritance_string)
-            else:
-                row.append("-")
+        ## Inherit.
+        #if "inherit" in output_fields:
+        #    if check_acl("view:acl_inheritance") \
+        #    or check_acl("enable:acl_inheritance") \
+        #    or check_acl("disable:acl_inheritance"):
+        #        if acl_inheritance_enabled:
+        #            acl_inheritance_string = _("Enabled")
+        #        else:
+        #            acl_inheritance_string = _("Disabled")
+        #        row.append(acl_inheritance_string)
+        #    else:
+        #        row.append("-")
         # Description.
         if "description" in output_fields:
             if check_acl("view:description") \

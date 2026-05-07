@@ -23,6 +23,7 @@ modules = [
 	'otpme.lib.classes',
     'otpme.lib.index',
 	'otpme.lib.token',
+	'otpme.lib.session',
 	'otpme.lib.policy',
 	'otpme.lib.resolver',
 	'otpme.lib.encoding',

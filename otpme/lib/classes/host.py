@@ -493,7 +493,7 @@ commands = {
     'list_sync_users'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_sync_users',
+                    'method'            : 'list_sync_users',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -503,7 +503,7 @@ commands = {
     'list_sync_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_sync_groups',
+                    'method'            : 'list_sync_groups',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -513,7 +513,7 @@ commands = {
     'list_users'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_token_users',
+                    'method'            : 'list_token_users',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -523,7 +523,7 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
                     'job_type'          : 'process',
@@ -533,7 +533,7 @@ commands = {
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
                     'job_type'          : 'process',
                     },
@@ -542,7 +542,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -552,7 +552,7 @@ commands = {
     'list_dynamic_groups'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_dynamic_groups',
+                    'method'            : 'list_dynamic_groups',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1397,6 +1397,14 @@ class Host(OTPmeHost, OTPmeDevice):
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:sync_groups'])
+    def list_sync_groups(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all sync groups assigned to this object. """
+        return self.get_sync_groups(**kwargs)
+
     def get_sync_groups(
         self,
         return_type: str="name",

@@ -431,7 +431,7 @@ commands = {
     'list_nodes'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_nodes',
+                    'method'            : 'list_nodes',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -441,7 +441,7 @@ commands = {
     'list_users'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_token_users',
+                    'method'            : 'list_token_users',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -451,7 +451,7 @@ commands = {
     'list_tokens'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_tokens',
+                    'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
                     'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
                     'job_type'          : 'process',
@@ -461,7 +461,7 @@ commands = {
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_roles',
+                    'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
                     'job_type'          : 'process',
                     },
@@ -470,7 +470,7 @@ commands = {
     'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_policies',
+                    'method'            : 'list_policies',
                     'job_type'          : 'process',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
@@ -480,7 +480,7 @@ commands = {
     'list_pools'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_pools',
+                    'method'            : 'list_pools',
                     'oargs'             : ['return_type', 'skip_disabled'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     'job_type'          : 'process',
@@ -1959,6 +1959,14 @@ class Share(OTPmeObject):
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:nodes'])
+    def list_nodes(
+        self,
+        **kwargs,
+        ):
+        """ Return list with nodes valid for this share. """
+        return self.get_nodes(**kwargs)
+
     def get_nodes(
         self,
         return_type: str="name",
@@ -1992,6 +2000,14 @@ class Share(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    @check_acls(acls=['view:pools'])
+    def list_pools(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all pools assigned to this share. """
+        return self.get_pools(**kwargs)
+
     def get_pools(
         self,
         return_type: str="name",
@@ -2235,7 +2251,7 @@ class Share(OTPmeObject):
 
         token_list = []
         if self.tokens:
-            if self.verify_acl("view:token"):
+            if self.verify_acl("view:tokens"):
                 return_attrs = ['rel_path']
                 token_list = backend.search(object_type="token",
                                             join_object_type="share",
@@ -2249,7 +2265,7 @@ class Share(OTPmeObject):
 
         role_list = []
         if self.roles:
-            if self.verify_acl("view:role"):
+            if self.verify_acl("view:roles"):
                 return_attrs = ['site', 'name']
                 roles_result = backend.search(object_type="role",
                                             join_object_type="share",
@@ -2269,7 +2285,7 @@ class Share(OTPmeObject):
 
         node_list = []
         if self.nodes:
-            if self.verify_acl("view:node"):
+            if self.verify_acl("view:nodes"):
                 return_attrs = ['name']
                 node_list = backend.search(object_type="node",
                                         join_object_type="share",
@@ -2283,7 +2299,7 @@ class Share(OTPmeObject):
 
         pool_list = []
         if self.pools:
-            if self.verify_acl("view:pool"):
+            if self.verify_acl("view:pools"):
                 pool_list = backend.search(object_type="pool",
                                         attribute="uuid",
                                         values=self.pools,
@@ -2301,22 +2317,22 @@ class Share(OTPmeObject):
 
         lines = []
 
-        if self.verify_acl("view:role"):
+        if self.verify_acl("view:roles"):
             lines.append(f'ROLES="{",".join(role_list)}"')
         else:
             lines.append('ROLES=""')
 
-        if self.verify_acl("view:token"):
+        if self.verify_acl("view:tokens"):
             lines.append(f'TOKENS="{",".join(token_list)}"')
         else:
             lines.append('TOKENS=""')
 
-        if self.verify_acl("view:node"):
+        if self.verify_acl("view:nodes"):
             lines.append(f'NODES="{",".join(node_list)}"')
         else:
             lines.append('NODES=""')
 
-        if self.verify_acl("view:pool"):
+        if self.verify_acl("view:pools"):
             lines.append(f'POOLS="{",".join(pool_list)}"')
         else:
             lines.append('POOLS=""')

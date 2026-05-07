@@ -3,6 +3,7 @@
 import os
 import ssl
 import time
+import select
 import socket
 import psutil
 import setproctitle
@@ -461,6 +462,15 @@ class ListenSocket(object):
 
     def _accept_connection(self):
         """ Accept a single connection. Returns (new_connection, client) or (None, None). """
+        # Wait for the listener to become readable with a short timeout so the
+        # accept loop can periodically check self.shutdown even when the
+        # listener socket itself is blocking.
+        try:
+            ready, _w, _x = select.select([self._socket], [], [], 1.0)
+        except (OSError, ValueError):
+            return None, None
+        if not ready:
+            return None, None
         new_client_socket = None
         try:
             new_connection, new_client_socket = self._socket.accept()

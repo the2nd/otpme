@@ -65,7 +65,7 @@ read_value_acls = {
                                 "jotp",
                                 "lotp",
                                 "jotp_rejoin",
-                                "policy",
+                                "policies",
                                 "groups",
                                 ],
             }
@@ -950,7 +950,8 @@ class OTPmeHost(OTPmeClientObject):
     def gen_challenge(self):
         """ Generate host authentication challenge. """
         if config.debug_level() > 3:
-            log_msg = _("Generating {self.type} auth challenge.", log=True)[1]
+            log_msg = _("Generating {type} auth challenge.", log=True)[1]
+            log_msg = log_msg.format(type=self.type)
             logger.debug(log_msg)
         epoch_time = str(int(time.time()))
         nonce = stuff.gen_secret(len=32)
@@ -961,7 +962,8 @@ class OTPmeHost(OTPmeClientObject):
         """ Sign authentication challenge. """
         auth_key = self.load_auth_key(private=True)
         if config.debug_level() > 3:
-            log_msg = _("Signing {self.type} auth challenge.", log=True)[1]
+            log_msg = _("Signing {type} auth challenge.", log=True)[1]
+            log_msg = log_msg.format(type=self.type)
             logger.debug(log_msg)
         response = auth_key.sign(challenge)
         response = encode(response, "hex")
@@ -972,7 +974,8 @@ class OTPmeHost(OTPmeClientObject):
         auth_key = self.load_auth_key()
         response = decode(response, "hex")
         if config.debug_level() > 3:
-            log_msg = _("Verifying {self.type} auth challenge.", log=True)[1]
+            log_msg = _("Verifying {type} auth challenge.", log=True)[1]
+            log_msg = log_msg.format(type=self.type)
             logger.debug(log_msg)
         # Verify challenge/response.
         if auth_key.verify(response, challenge):
