@@ -561,14 +561,19 @@ class CommandHandler(object):
                 msg = "Cache not started."
                 raise OTPmeException(msg)
 
-            #from otpme.lib.register import register_modules
-            ## Register modules.
-            #register_modules()
-            register_module('otpme.lib.host')
-            register_module('otpme.lib.cache')
-            register_module('otpme.lib.multiprocessing')
-            register_module('otpme.lib.daemon.backupd')
-            register_module('otpme.lib.daemon.clusterd')
+            from otpme.lib.register import register_modules
+            # Register modules.
+            register_modules()
+            #register_module('otpme.lib.host')
+            #register_module('otpme.lib.cache')
+            #register_module('otpme.lib.multiprocessing')
+            #register_module('otpme.lib.classes.user')
+            #register_module('otpme.lib.classes.token')
+            #register_module('otpme.lib.token.u2f.u2f')
+            #register_module('otpme.lib.token.otp_push.otp_push')
+            #register_module('otpme.lib.token.password.password')
+            #register_module('otpme.lib.daemon.backupd')
+            #register_module('otpme.lib.daemon.clusterd')
             # Enable cache.
             cache.init()
             cache.enable()

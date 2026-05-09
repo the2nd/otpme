@@ -23,6 +23,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import connections
 from otpme.lib import multiprocessing
+from otpme.lib.audit import emit_audit
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 
@@ -74,12 +75,12 @@ def get_apps(token):
                             return_type="instance")
     if not result:
         return app_data
-    user_ags = token.get_access_groups(return_type="uuid")
+    token_ags = token.get_access_groups(return_type="uuid")
     for client in result:
         if not client.enabled:
             continue
         client_ag = backend.get_object(uuid=client.access_group_uuid)
-        if client_ag.uuid not in user_ags:
+        if client_ag.uuid not in token_ags:
             continue
         client_data = {
                     'app_ag'    : client_ag.name,
@@ -138,9 +139,17 @@ class OTPmeSsoP1(OTPmeServer1):
         callback.job.client = self.client
         return callback
 
-    def ssod_redirect_command(self, command, user, command_args):
+    def _log_audit(self, event, level='info', **fields):
+        """ Emit a structured OIDC audit event. Same audit stream that
+        auth_handler writes to, so OIDC issuance lines up
+        chronologically with the parent SSO authentication.
+        """
+        emit_audit("OIDC", event, level=level, **fields)
+
+    def ssod_redirect_command(self, command, user, command_args, mgmt=False):
         try:
             ssod_conn = connections.get("ssod",
+                                        mgmt=mgmt,
                                         realm=config.realm,
                                         site=user.site,
                                         auto_preauth=True,
@@ -199,39 +208,31 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        # Try to get login token UUID.
-        try:
-            login_token_uuid = command_args['login_token_uuid']
-        except Exception:
-            log_msg = _("get_apps request misses token UUID.", log=True)[1]
-            self.logger.warning(log_msg)
-            auth_response = {'message':'LOGIN_TOKEN_MISSING', 'status':False}
-            return self.build_response(False, auth_response)
         # Get login token.
-        login_token = backend.get_object(uuid=login_token_uuid)
-        if not login_token:
-            log_msg = _("Unknown token: {token_uuid}", log=True)[1]
-            log_msg = log_msg.format(token_uuid=login_token_uuid)
-            self.logger.warning(log_msg)
-            auth_response = {'message':'UNKNOWN_LOGIN_TOKEN', 'status':False}
-            return self.build_response(False, auth_response)
+        login_token = config.auth_token
         # App data is always served by the local node — no cross-site redirect.
         app_data = get_apps(login_token)
         return self.build_response(True, {'app_data': app_data, 'status': True})
 
     def get_sotp(self, username, sso_jwt, command_args):
-        try:
-            access_group = command_args['access_group']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
-        try:
-            session_uuid = command_args['session_uuid']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
+        client_ip = command_args.get('client_ip')
+        access_group = command_args.get('access_group')
+        if not access_group:
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=username,
+                       reason='access_group missing',
+                       ip=client_ip)
+            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+        session_uuid = command_args.get('session_uuid')
+        if not session_uuid:
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=username,
+                       ag=access_group,
+                       reason='session_uuid missing',
+                       ip=client_ip)
+            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
         # Verify SSO jwt.
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
@@ -239,41 +240,70 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            status = False
-            auth_response = {'message':'JWT_INVALID', 'status':False}
-            return self.build_response(status, auth_response)
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=username,
+                       ag=access_group,
+                       reason='jwt_invalid',
+                       ip=client_ip)
+            return self.build_response(False, {
+                'message': 'JWT_INVALID', 'status': False,
+            })
         # Get session.
         session = backend.get_object(uuid=session_uuid)
         if not session:
-            status = False
-            auth_response = {'message':'UNKNOWN_SESSION', 'status':False}
-            return self.build_response(status, auth_response)
-        # Verify session belongs to the authenticated user.
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=user.name,
+                       ag=access_group,
+                       session=session_uuid,
+                       reason='unknown_session',
+                       ip=client_ip)
+            return self.build_response(False, {
+                'message': 'UNKNOWN_SESSION', 'status': False,
+            })
+        # Verify session belongs to the authenticated user. A mismatch
+        # here means someone presented a valid JWT but a session UUID
+        # belonging to a different user -- worth investigating.
         if session.user_uuid != user.uuid:
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
-            return self.build_response(status, auth_response)
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=user.name,
+                       ag=access_group,
+                       session=session_uuid,
+                       reason='session_user_mismatch',
+                       ip=client_ip)
+            return self.build_response(False, {
+                'message': 'AUTH_FAILED', 'status': False,
+            })
         # Gen SOTP.
         result = backend.search(object_type="accessgroup",
                              attribute="name",
                              value=access_group,
                              return_type="uuid")
         if not result:
-            auth_response = {'message':'UNKNOWN_AG', 'status':False}
-            return self.build_response(status, auth_response)
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=user.name,
+                       ag=access_group,
+                       reason='unknown_ag',
+                       ip=client_ip)
+            return self.build_response(False, {
+                'message': 'UNKNOWN_AG', 'status': False,
+            })
         ag_uuid = result[0]
         sotp_data = sotp.gen(password_hash=session.pass_hash,
                          access_group=ag_uuid)
+        emit_audit("SSO", "sotp_issued",
+                   user=user.name,
+                   ag=access_group,
+                   session=session.session_id,
+                   ip=client_ip)
         return self.build_response(True, sotp_data)
 
     def deploy_begin(self, username, sso_jwt, command_args):
         try:
             token_type = command_args['token_type']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
-        try:
-            login_token_uuid = command_args['login_token_uuid']
         except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
@@ -292,9 +322,10 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.ssod_redirect_command(command="deploy_begin",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=command_args,
+                                            mgmt=True)
         # Prepare deploy.
-        login_token = backend.get_object(uuid=login_token_uuid)
+        login_token = config.auth_token
         login_token_name = login_token.name
         # Remove old sso-deploy token if it exists (e.g. from a previous attempt).
         old_deploy = user.token(DEPLOY_NAME)
@@ -391,7 +422,8 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.ssod_redirect_command(command="deploy_verify",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=command_args,
+                                            mgmt=True)
         # Load the sso-deploy token.
         deploy_token = user.token(DEPLOY_NAME)
         if not deploy_token:
@@ -466,7 +498,8 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.ssod_redirect_command(command="fido2_register_begin",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=command_args,
+                                            mgmt=True)
         # Find user's undeployed FIDO2 tokens (credential_data not set).
         user_tokens = backend.search(object_type="token",
                                     attribute="owner_uuid",
@@ -546,7 +579,8 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.ssod_redirect_command(command="fido2_register_complete",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=command_args,
+                                            mgmt=True)
         # Deserialize reg state.
         reg_state = _deserialize_fido2_state(reg_state)
         # Get fido2 token
@@ -598,12 +632,6 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def change_password(self, username, sso_jwt, command_args):
         try:
-            token_path = command_args['token_path']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
-        try:
             current_password = command_args['current_password']
         except Exception:
             status = False
@@ -629,13 +657,11 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.ssod_redirect_command(command="change_password",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=command_args,
+                                            mgmt=True)
         # Get token.
-        token_name = token_path.split("/")[1]
-        token = backend.get_object(object_type="token",
-                                    user=user.name,
-                                    name=token_name,
-                                    realm=config.realm)
+        token = config.auth_token
+        token_path = token.rel_path
         # Verify current password against the token.
         verify_result = token.verify_static(password=current_password,
                                             ignore_2f_token=True)
@@ -664,12 +690,6 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def change_pin(self, username, sso_jwt, command_args):
         try:
-            token_path = command_args['token_path']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
-        try:
             current_pin = command_args['current_pin']
         except Exception:
             status = False
@@ -695,13 +715,11 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.ssod_redirect_command(command="change_pin",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=command_args,
+                                            mgmt=True)
         # Get token.
-        token_name = token_path.split("/")[1]
-        token = backend.get_object(object_type="token",
-                                    user=user.name,
-                                    name=token_name,
-                                    realm=config.realm)
+        token = config.auth_token
+        token_path = token.rel_path
         if not token:
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
@@ -822,6 +840,11 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'AUTH_FAILED', 'status':False}
             return self.build_response(False, auth_response)
+        # Check for command redirection.
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="list_device_tokens",
+                                            user=user,
+                                            command_args=command_args)
         # The role UUID must come from the user's home site (config walks
         # up the user hierarchy), but the role object itself is
         # cluster-synced and loaded locally.
@@ -933,6 +956,28 @@ class OTPmeSsoP1(OTPmeServer1):
         oc_obj = backend.read_config(token.oid)
         if not oc_obj:
             return self.build_response(False, {'message':'Failed to read token object config.', 'status':False})
+        # Add token to local role to get it on list_device_tokens even if sync of remote
+        # role was not done yet.
+        try:
+            role.add_token(token_path=token.rel_path,
+                            verify_acls=False,
+                            run_policies=False,
+                            callback=callback)
+            role._write(callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to add device token to role '{role}': {e}", log=True)[1]
+            log_msg = log_msg.format(role=role.name, e=e)
+            self.logger.warning(log_msg)
+            try:
+                add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+                user.del_token(token_name=token.name,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                add_to_trash=add_to_trash,
+                                callback=callback)
+            except Exception:
+                pass
         response = {
                     'status'        : True,
                     'password'      : new_password,
@@ -975,10 +1020,11 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':f'Failed to delete device token: {e}', 'status':False})
         return self.build_response(True, {'status': True})
 
-    def _remote_ssod_call(self, user, command, extra_args):
+    def _remote_ssod_call(self, user, command, extra_args, mgmt=False):
         """ Run an ssod command on the user's home site. """
         try:
             ssod_conn = connections.get("ssod",
+                                        mgmt=mgmt,
                                         realm=config.realm,
                                         site=user.site,
                                         auto_preauth=True,
@@ -1039,7 +1085,8 @@ class OTPmeSsoP1(OTPmeServer1):
             remote_args['device_name'] = device_name
             status, remote_resp = self._remote_ssod_call(user=user,
                                                     command="sso_create_device_token",
-                                                    extra_args=remote_args)
+                                                    extra_args=remote_args,
+                                                    mgmt=True)
             if not status or not isinstance(remote_resp, dict):
                 return self.build_response(False, remote_resp)
             new_password = remote_resp.get('password')
@@ -1057,12 +1104,22 @@ class OTPmeSsoP1(OTPmeServer1):
                                     object_config=token_oc,
                                     full_index_update=True,
                                     full_data_update=True,
-                                    cluster=False)
+                                    cluster=True)
             except Exception as e:
                 log_msg = _("Failed to mirror remote device token object: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
                 return self.build_response(False, {'message':f'Failed to write remote object locally: {e}', 'status':False})
+            # Get token from backend add add it to local user to make auth possible
+            # even if sync was not done yet.
+            token = backend.get_object(token_oid)
+            user.add_token(new_token=token,
+                        no_token_infos=True,
+                        force=True,
+                        verify_acls=False,
+                        run_policies=False,
+                        callback=callback)
+            user._write(callback=callback)
             # Load the role (by UUID returned from remote) for the local
             # add-to-role step.
             role = backend.get_object(object_type="role", uuid=role_uuid)
@@ -1105,7 +1162,8 @@ class OTPmeSsoP1(OTPmeServer1):
                 if user.site != config.site:
                     self._remote_ssod_call(user=user,
                                             command="sso_delete_device_token",
-                                            extra_args={**command_args, 'token_name': token_name})
+                                            extra_args={**command_args, 'token_name': token_name},
+                                            mgmt=True)
                 else:
                     add_to_trash = user.get_config_parameter("add_device_token_to_trash")
                     user.del_token(token_name=token_name,
@@ -1167,7 +1225,8 @@ class OTPmeSsoP1(OTPmeServer1):
             remote_args['token_name'] = token_name
             status, remote_resp = self._remote_ssod_call(user=user,
                                                     command="sso_delete_device_token",
-                                                    extra_args=remote_args)
+                                                    extra_args=remote_args,
+                                                    mgmt=True)
             if not status:
                 return self.build_response(False, remote_resp)
         else:
@@ -1270,7 +1329,7 @@ class OTPmeSsoP1(OTPmeServer1):
                         f"{sector}|{user.uuid}".encode("utf-8"),
                         hashlib.sha256).hexdigest()
 
-    def _get_user_claims(self, user, scope_str):
+    def _get_user_claims(self, user, scope_str, client=None):
         """ Build the OIDC user-claims dict for /userinfo and ID Token
         based on the granted scope string. ``sub`` is added by the
         caller because it depends on subject_type/pairwise secret.
@@ -1336,6 +1395,47 @@ class OTPmeSsoP1(OTPmeServer1):
                 address['country'] = country
             if address:
                 claims['address'] = address
+        if "groups" in scopes:
+            # OTPme groups (POSIX-/LDAP-style memberships) -- the
+            # natural fit for NextCloud's user_oidc and similar
+            # group-aware RPs.
+            #
+            # Per-RP filtering: the ``groups`` claim is the
+            # intersection of:
+            #   * the user's group memberships (aggregated across
+            #     the user's tokens), and
+            #   * the group whitelist of the Scope object whose
+            #     ``scope_id="groups"`` is granted to THIS client.
+            #
+            # Multiple Scope objects may share scope_id="groups"
+            # but each holds its own whitelist; the right one for
+            # this RP is the one that has this client as a member.
+            try:
+                user_groups = set(user.get_groups(return_type="name") or [])
+            except Exception:
+                user_groups = set()
+            allowed_groups = set()
+            if client is not None:
+                try:
+                    groups_scopes = backend.search(
+                        object_type="scope",
+                        attributes={
+                            'scope_id': {'value': 'groups'},
+                            'client':   {'value': client.uuid},
+                            'enabled':  {'value': True},
+                        },
+                        return_type="instance")
+                    for scope_obj in groups_scopes or []:
+                        try:
+                            scope_groups = scope_obj.get_groups(return_type="name") or []
+                        except Exception:
+                            scope_groups = []
+                        allowed_groups.update(scope_groups)
+                except Exception:
+                    pass
+            visible = sorted(user_groups & allowed_groups)
+            if visible:
+                claims['groups'] = visible
         return claims
 
     def _build_id_token(self, oidc_session, user, client, site, ttl=3600):
@@ -1429,6 +1529,12 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC code exchange rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=log_reason)
             self.logger.warning(log_msg)
+            self._log_audit('token_code_exchange_failed',
+                            level='warning',
+                            client=client_id,
+                            error=error_code,
+                            reason=log_reason,
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': error_code,
                 'error_description': generic_msg,
@@ -1439,6 +1545,12 @@ class OTPmeSsoP1(OTPmeServer1):
             return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
         if not code:
             # Configuration / request bug -- safe to be specific.
+            self._log_audit('token_code_exchange_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason='code missing',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'code missing',
@@ -1467,6 +1579,12 @@ class OTPmeSsoP1(OTPmeServer1):
         # redirect_uri mismatch is a configuration bug on the RP
         # side -- specific is OK and helps debugging.
         if oidc_session.redirect_uri != (redirect_uri or ""):
+            self._log_audit('token_code_exchange_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_grant',
+                            reason='redirect_uri mismatch',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_grant',
                 'error_description': 'redirect_uri mismatch',
@@ -1517,6 +1635,12 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             pass
 
+        self._log_audit('token_code_exchange_success',
+                        client=client_id,
+                        user=user.name,
+                        session=oidc_session.session_id,
+                        scope=oidc_session.scope or "",
+                        ip=client_ip)
         response = {
             'access_token': at,
             'token_type': 'Bearer',
@@ -1553,6 +1677,12 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC refresh rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=log_reason)
             self.logger.warning(log_msg)
+            self._log_audit('token_refresh_failed',
+                            level='warning',
+                            client=client_id,
+                            error=error_code,
+                            reason=log_reason,
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': error_code,
                 'error_description': generic_msg,
@@ -1562,6 +1692,12 @@ class OTPmeSsoP1(OTPmeServer1):
         if err:
             return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
         if not refresh_token:
+            self._log_audit('token_refresh_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason='refresh_token missing',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'refresh_token missing',
@@ -1635,6 +1771,12 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             pass
 
+        self._log_audit('token_refresh_success',
+                        client=client_id,
+                        user=user.name,
+                        session=oidc_session.session_id,
+                        scope=oidc_session.scope or "",
+                        ip=client_ip)
         response = {
             'access_token': at,
             'token_type': 'Bearer',
@@ -1719,7 +1861,7 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             pass
 
-        claims = self._get_user_claims(user, oidc_session.scope)
+        claims = self._get_user_claims(user, oidc_session.scope, client=client)
         # `sub` is REQUIRED in /userinfo response per OIDC Core 5.3.
         claims['sub'] = self._compute_oidc_sub(user, client, site)
         return self.build_response(True, claims)
@@ -1755,11 +1897,23 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC introspect rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=err)
             self.logger.warning(log_msg)
+            self._log_audit('introspect_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_client',
+                            reason=err,
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_client',
                 'error_description': "client authentication failed",
             })
         if not token:
+            self._log_audit('introspect_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason='token missing',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'token missing',
@@ -1796,6 +1950,12 @@ class OTPmeSsoP1(OTPmeServer1):
         # Cross-client introspection defense: a token must be
         # introspected by the client it was issued to.
         if oidc_session.client != client.uuid:
+            self._log_audit('introspect_cross_client',
+                            level='warning',
+                            client=client_id,
+                            session=oidc_session.session_id,
+                            token_kind=token_kind,
+                            ip=client_ip)
             return self.build_response(True, {'active': False})
 
         user = backend.get_object(object_type="user",
@@ -1863,11 +2023,23 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC revoke rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=err)
             self.logger.warning(log_msg)
+            self._log_audit('revoke_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_client',
+                            reason=err,
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_client',
                 'error_description': "client authentication failed",
             })
         if not token:
+            self._log_audit('revoke_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason='token missing',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'token missing',
@@ -1899,18 +2071,37 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC revoke ignored: token belongs to a different client (got '{cid}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id)
             self.logger.warning(log_msg)
+            self._log_audit('revoke_cross_client',
+                            level='warning',
+                            client=client_id,
+                            session=oidc_session.session_id,
+                            ip=client_ip)
             return self.build_response(True, {})
 
         # Delete the OIDCSession. The override fires backchannel
         # logout if the client has a backchannel_logout_uri set.
+        delete_failed = None
         try:
             oidc_session.delete(force=True, verify_acls=False)
         except Exception as e:
             log_msg = _("OIDC revoke: delete failed for session '{sid}': {err}", log=True)[1]
             log_msg = log_msg.format(sid=oidc_session.session_id, err=e)
             self.logger.warning(log_msg)
+            delete_failed = str(e)
             # Per spec, still 200 to caller; internal failure logged.
 
+        if delete_failed:
+            self._log_audit('revoke_delete_failed',
+                            level='warning',
+                            client=client_id,
+                            session=oidc_session.session_id,
+                            reason=delete_failed,
+                            ip=client_ip)
+        else:
+            self._log_audit('revoke_success',
+                            client=client_id,
+                            session=oidc_session.session_id,
+                            ip=client_ip)
         log_msg = _("OIDC session '{sid}' revoked for client '{cid}'.", log=True)[1]
         log_msg = log_msg.format(sid=oidc_session.session_id, cid=client_id)
         self.logger.info(log_msg)
@@ -1952,6 +2143,12 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
 
         if not id_token_hint:
+            self._log_audit('end_session_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason='id_token_hint missing',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'id_token_hint missing',
@@ -1963,6 +2160,12 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: id_token_hint invalid: {err}", log=True)[1]
             log_msg = log_msg.format(err=e)
             self.logger.warning(log_msg)
+            self._log_audit('end_session_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason=f'id_token_hint invalid: {e}',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'id_token_hint invalid',
@@ -1972,6 +2175,13 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: client_id mismatch with id_token_hint aud (got '{cid}', hint='{aud}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id, aud=hint_aud)
             self.logger.warning(log_msg)
+            self._log_audit('end_session_failed',
+                            level='warning',
+                            client=client_id,
+                            hint_aud=hint_aud,
+                            error='invalid_request',
+                            reason='client_id does not match id_token_hint aud',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'client_id does not match id_token_hint',
@@ -1983,6 +2193,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                     realm=config.realm,
                                     site=config.site)
         if client is None:
+            self._log_audit('end_session_failed',
+                            level='warning',
+                            client=client_id,
+                            error='invalid_request',
+                            reason='unknown client',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'unknown client',
@@ -2001,6 +2217,11 @@ class OTPmeSsoP1(OTPmeServer1):
                 log_msg = log_msg.format(uri=post_logout_redirect_uri,
                                         cid=client_id)
                 self.logger.warning(log_msg)
+                self._log_audit('end_session_post_uri_rejected',
+                                level='warning',
+                                client=client_id,
+                                requested_uri=post_logout_redirect_uri,
+                                ip=client_ip)
 
         try:
             scope_mode = client.get_config_parameter("oidc_logout_scope")
@@ -2018,6 +2239,11 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: scope=sso, deferring to /logout (client='{cid}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id)
             self.logger.info(log_msg)
+            self._log_audit('end_session_sso_deferred',
+                            client=client_id,
+                            session=sid,
+                            post_logout_redirect_uri=validated_post_uri,
+                            ip=client_ip)
             response['action'] = 'redirect_logout'
             return self.build_response(True, response)
 
@@ -2027,6 +2253,10 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: session '{sid}' already gone.", log=True)[1]
             log_msg = log_msg.format(sid=sid)
             self.logger.info(log_msg)
+            self._log_audit('end_session_session_missing',
+                            client=client_id,
+                            session=sid,
+                            ip=client_ip)
             response['action'] = 'redirect_post_logout'
             return self.build_response(True, response)
 
@@ -2034,23 +2264,42 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: client/session mismatch (client='{cid}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id)
             self.logger.warning(log_msg)
+            self._log_audit('end_session_failed',
+                            level='warning',
+                            client=client_id,
+                            session=oidc_session.session_id,
+                            error='invalid_request',
+                            reason='session does not belong to client',
+                            ip=client_ip)
             return self.build_response(False, {
                 'error': 'invalid_request',
                 'error_description': 'session does not belong to this client',
             })
 
+        session_id_for_audit = oidc_session.session_id
         try:
             oidc_session.delete(force=True, verify_acls=False)
         except Exception as e:
             log_msg = _("OIDC end_session: delete failed for session '{sid}': {err}", log=True)[1]
             log_msg = log_msg.format(sid=oidc_session.session_id, err=e)
             self.logger.warning(log_msg)
+            self._log_audit('end_session_delete_failed',
+                            level='warning',
+                            client=client_id,
+                            session=session_id_for_audit,
+                            reason=str(e),
+                            ip=client_ip)
             response['action'] = 'redirect_post_logout'
             return self.build_response(True, response)
 
         log_msg = _("OIDC session '{sid}' ended for client '{cid}' (rp scope).", log=True)[1]
         log_msg = log_msg.format(sid=oidc_session.session_id, cid=client_id)
         self.logger.info(log_msg)
+        self._log_audit('end_session_rp_ended',
+                        client=client_id,
+                        session=session_id_for_audit,
+                        post_logout_redirect_uri=validated_post_uri,
+                        ip=client_ip)
         response['action'] = 'redirect_post_logout'
         return self.build_response(True, response)
 
@@ -2117,6 +2366,14 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC authorize rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=description)
             self.logger.warning(log_msg)
+            self._log_audit('authorize_rejected',
+                            level='warning',
+                            user=user.name,
+                            client=client_id,
+                            redirect_uri=redirect_uri,
+                            error=error,
+                            reason=description,
+                            ip=client_ip)
             return self.build_response(False, {
                 'error':             error,
                 'error_description': description,
@@ -2210,6 +2467,20 @@ class OTPmeSsoP1(OTPmeServer1):
         sotp_data = sotp.gen(password_hash=session.pass_hash,
                              access_group=ag_uuid)
 
+        emit_audit("SSO", "sotp_issued",
+                   user=user.name,
+                   ag=client_ag,
+                   session=session.session_id,
+                   client=client_id,
+                   via='oidc_authorize',
+                   ip=client_ip)
+        self._log_audit('authorize_success',
+                        user=user.name,
+                        client=client_id,
+                        redirect_uri=redirect_uri,
+                        scope=scope,
+                        access_group=client_ag,
+                        ip=client_ip)
         return self.build_response(True, {
             'ok':        True,
             'client_ag': client_ag,
@@ -2289,6 +2560,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 "name", "given_name", "family_name", "preferred_username",
                 "email", "phone_number",
                 "address",
+                "groups",
             ],
             "frontchannel_logout_supported": False,
             "backchannel_logout_supported": True,

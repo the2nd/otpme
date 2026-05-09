@@ -46,6 +46,7 @@ read_value_acls =    {
                     "view"      : [
                                 "roles",
                                 "tokens",
+                                "groups",
                                 "scope_id",
                                 "auto_member",
                                 ],
@@ -55,10 +56,12 @@ write_value_acls = {
                     "add"       : [
                                 "role",
                                 "token",
+                                "group",
                                 ],
                     "remove"    : [
                                 "role",
                                 "token",
+                                "group",
                                 ],
                     "edit"      : [
                                 "name",
@@ -335,6 +338,34 @@ commands = {
                     },
                 },
             },
+    'list_groups'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_groups',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'add_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     #'add_extension'   : {
     #        'OTPme-mgmt-1.0'    : {
     #            'exists'    : {
@@ -589,12 +620,15 @@ def get_recursive_default_acls(**kwargs):
     return acls
 
 BASE_SCOPE_DEFAULTS = {
-    "openid":         {"auto_member": True, 'default': True},
-    "profile":        {"auto_member": True, 'default': True},
-    "email":          {"auto_member": True, 'default': True},
-    "address":        {"auto_member": True, 'default': False},
-    "phone":          {"auto_member": True, 'default': False},
-    "offline_access": {"auto_member": True, 'default': False},
+    # default: add scope to config paramter "oidc_default_scopes"
+    # auto_member: add token/role to this scope on client.add_token/role().
+    "openid":         {"auto_member": True,  'default': True},
+    "profile":        {"auto_member": True,  'default': True},
+    "email":          {"auto_member": True,  'default': True},
+    "address":        {"auto_member": True,  'default': False},
+    "phone":          {"auto_member": True,  'default': False},
+    "offline_access": {"auto_member": True,  'default': False},
+    "groups":         {"auto_member": False, 'default': False},
 }
 
 DEFAULT_UNIT = "scopes"
@@ -625,6 +659,8 @@ def register_hooks():
     config.register_auth_on_action_hook("scope", "remove_token")
     config.register_auth_on_action_hook("scope", "add_client")
     config.register_auth_on_action_hook("scope", "remove_client")
+    config.register_auth_on_action_hook("scope", "add_group")
+    config.register_auth_on_action_hook("scope", "remove_group")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -734,6 +770,7 @@ class Scope(OTPmeObject):
                             "CLIENTS",
                             "TOKENS",
                             "ROLES",
+                            "GROUPS",
                             ]
                         },
                     }
@@ -779,6 +816,12 @@ class Scope(OTPmeObject):
 
                         'CLIENTS'                   : {
                                                         'var_name'  : 'clients',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'GROUPS'                    : {
+                                                        'var_name'  : 'groups',
                                                         'type'      : list,
                                                         'required'  : False,
                                                     },
@@ -865,6 +908,11 @@ class Scope(OTPmeObject):
             if client_list:
                 msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan client UUIDs: {client_list}\n")
                 msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, client_list=','.join(client_list))
+
+            if msg:
+                msg = _("{msg}Remove?: ").format(msg=msg)
+                if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                    return callback.abort()
 
         object_changed = False
         if acl_list:
@@ -1200,6 +1248,166 @@ class Scope(OTPmeObject):
 
     @check_acls(['view:clients'])
     @cli.check_rapi_opts()
+    def list_clients(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all clients assigned to this object. """
+        return self.get_clients(**kwargs)
+
+    @check_acls(['add:group'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_group(
+        self,
+        group_name: str=None,
+        group_uuid: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add a group to this scope's group whitelist.
+
+        OIDC ``groups`` claim is computed as the intersection of the
+        user's group memberships and this whitelist (per-client by
+        having multiple Scope objects sharing the same ``scope_id``).
+        """
+        if not group_uuid:
+            grp = backend.get_object(object_type="group",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=group_name)
+            if not grp:
+                msg = _("Group does not exist: {group_name}")
+                msg = msg.format(group_name=group_name)
+                return callback.error(msg)
+            group_uuid = grp.uuid
+
+        if group_uuid in self.groups:
+            msg = _("Group already added to scope.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_group",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        msg = _("Adding group to scope: {name}")
+        msg = msg.format(name=self.name)
+        callback.send(msg)
+
+        self.groups.append(group_uuid)
+        self.add_index("group", group_uuid)
+        return self._cache(callback=callback)
+
+    @check_acls(['remove:group'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def remove_group(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove a group from this scope's group whitelist. """
+        grp = backend.get_object(object_type="group",
+                                realm=config.realm,
+                                site=self.site,
+                                name=group_name)
+        if not grp:
+            msg = _("Group does not exist: {group_name}")
+            msg = msg.format(group_name=group_name)
+            return callback.error(msg)
+
+        if grp.uuid not in self.groups:
+            msg = _("Group not in scope.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_group",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.groups.remove(grp.uuid)
+        self.del_index("group", grp.uuid)
+        return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:groups'])
+    def list_groups(self, **kwargs):
+        """ CLI-facing wrapper. Returns the scope's group whitelist
+        as names. ACL-gated (view:groups). """
+        return self.get_groups(**kwargs)
+
+    def get_groups(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return the groups whitelisted on this scope.
+
+        NOTE: opposite semantics from ``user.get_groups()`` /
+        ``token.get_groups()`` -- those return the object's group
+        memberships. On a Scope this returns the group members of
+        the scope (consistent with ``Scope.get_clients()``).
+
+        Worker method, no ACL decorator -- internal callers
+        (e.g. _get_user_claims at /userinfo) must be able to read
+        the whitelist regardless of the requesting principal.
+        """
+        result = []
+        if not self.groups:
+            return callback.ok(result)
+
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        return_attributes = ['site', return_type]
+        search_result = backend.search(object_type="group",
+                                    attribute="uuid",
+                                    values=self.groups,
+                                    attributes=search_attr,
+                                    return_attributes=return_attributes)
+        for uuid in search_result:
+            try:
+                x_result = search_result[uuid][return_type]
+            except Exception:
+                continue
+            if return_type == "name":
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
     def get_clients(
         self,
         return_type: str="name",
@@ -1315,9 +1523,28 @@ class Scope(OTPmeObject):
         else:
             client_list = [""]
 
+        if self.verify_acl("view:groups") \
+        or self.verify_acl("add:group") \
+        or self.verify_acl("remove:group"):
+            group_list = []
+            for i in self.groups:
+                group_oid = backend.get_oid(i, instance=True)
+                # Add UUIDs of orphan groups.
+                if not group_oid:
+                    group_list.append(i)
+                    continue
+                if not otpme_acl.access_granted(object_id=group_oid,
+                                                acl="view_public:object"):
+                    continue
+                group_list.append(group_oid.name)
+            group_list.sort()
+        else:
+            group_list = [""]
+
         lines.append(f'ROLES="{",".join(role_list)}"')
         lines.append(f'TOKENS="{",".join(token_list)}"')
         lines.append(f'CLIENTS="{",".join(client_list)}"')
+        lines.append(f'GROUPS="{",".join(group_list)}"')
 
         return super().show_config(config_lines=lines, callback=callback, **kwargs)
 

@@ -24,6 +24,7 @@ from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.audit import audit_log
+from otpme.lib.audit import emit_audit
 from otpme.lib.classes.node import Node
 from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
@@ -967,9 +968,8 @@ def register_config():
                     ]
     def private_key_genner(config_object=None, callback=JobCallback, **kwargs):
         from otpme.lib.encoding.base import encode
-        try:
-            key_len = config_object.get_config_parameter("private_key_backup_key_len")
-        except Exception:
+        key_len = config_object.get_config_parameter("private_key_backup_key_len")
+        if key_len is None:
             key_len = 2048
         key_name = f"{config_object.type}-{config_object.name}-{config_object.uuid}"
         public_key = callback.gen_backup_rsa_key(key_name=key_name,
@@ -2806,6 +2806,7 @@ class Site(OTPmeObject):
             return callback.error(msg)
 
         # Remove outdated keys.
+        purged_kids = []
         for key_id in dict(self.oidc_keys):
             k = self.oidc_keys[key_id]
             if k.get("otpme_status") != "retired":
@@ -2813,16 +2814,35 @@ class Site(OTPmeObject):
             if (now - k.get("retired_at", 0)) < retired_max_age:
                 continue
             self.oidc_keys.pop(key_id)
+            purged_kids.append(key_id)
 
         # Flip active key.
+        retired_kid = None
         for key_id in dict(self.oidc_keys):
             k = self.oidc_keys[key_id]
             if k["otpme_status"] != "active":
                 continue
             k["otpme_status"] = "retired"
             k["retired_at"] = now
+            retired_kid = key_id
 
         self.oidc_keys[new_key["kid"]] = new_key
+
+        actor = None
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Crypto", "oidc_key_rotated",
+                   actor=actor,
+                   site=self.name,
+                   new_kid=new_key["kid"],
+                   alg=new_key.get("alg"),
+                   kty=new_key.get("kty"),
+                   retired_kid=retired_kid,
+                   purged_kids=','.join(purged_kids) if purged_kids else None,
+                   force=force)
 
         return self._cache(callback=callback)
 
@@ -2865,6 +2885,20 @@ class Site(OTPmeObject):
         log_msg = log_msg.format(kid=kid)
         logger.warning(log_msg)
         callback.send(msg)
+
+        actor = None
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Crypto", "oidc_key_revoked",
+                   level='warning',
+                   actor=actor,
+                   site=self.name,
+                   kid=kid,
+                   was_active=was_active,
+                   force=force)
 
         if was_active:
             msg, log_msg = _("Revoked active OIDC key — generating replacement.",

@@ -2515,32 +2515,6 @@ class OTPmeConfig(object):
                 msg = (f"No such file or directory: {x}")
                 raise OTPmeException(msg)
 
-    def ensure_logfile(self, logfile):
-        """ Make sure we have a logfile we can write to. """
-        from otpme.lib import filetools
-        # Check if path to logfile exists and is writable
-        logfile_parent_dir = os.path.dirname(logfile)
-        if not os.path.exists(logfile):
-            if not os.path.exists(logfile_parent_dir):
-                msg = _("No such file or directory: {logfile_parent_dir}")
-                msg = msg.format(logfile_parent_dir=logfile_parent_dir)
-                raise Exception(msg)
-            if not os.access(logfile_parent_dir, os.W_OK):
-                msg = _("Permission denied: {logfile_parent_dir}")
-                msg = msg.format(logfile_parent_dir=logfile_parent_dir)
-                raise Exception(msg)
-            # Make sure logfile exists
-            filetools.create_file(path=logfile,
-                                    content="",
-                                    user=self.user,
-                                    group=self.group,
-                                    mode=0o660)
-
-        if not os.access(logfile, os.W_OK):
-            msg = _("Permission denied: {logfile}")
-            msg = msg.format(logfile=logfile)
-            raise Exception(msg)
-
     def gen_master_key(self, master_pass_salt=None, master_pass=None,
         skip_if_exists=False, force=False):
         """ Generate AES master key from passphrase. """
@@ -3019,10 +2993,6 @@ class OTPmeConfig(object):
                 # If we are not in debug mode and logging is not enabled throw away
                 # log messages.
                 logger_logfile = "/dev/null"
-
-        # Make sure logfile exists and has proper permissions.
-        if logger_logfile:
-            self.ensure_logfile(logger_logfile)
 
         self._logger = log.get_logger(log_name=self.log_name, pid=pid, banner=banner,
                                 logfile=logger_logfile, syslog=logger_syslog,

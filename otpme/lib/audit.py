@@ -24,15 +24,57 @@ from otpme.lib.exceptions import *
 
 audit_loggers = {}
 
+def emit_audit(prefix, event, level='info', **fields):
+    """ Emit a structured audit event.
+
+    Format: ``<daemon>: [<prefix> ]<event> k=v k="v with spaces" ...``.
+    Used for protocol/session lifecycle events that don't go through
+    the @audit_log decorator (which only covers backend object writes).
+    """
+    audit_logger = config.audit_logger
+    if not audit_logger:
+        return
+    if prefix:
+        head = f"{prefix} {event}"
+    else:
+        head = str(event)
+    parts = [head]
+    for k, v in fields.items():
+        if v is None or v == "":
+            continue
+        s = str(v)
+        if any(c in s for c in (' ', '"', '\\', '=')):
+            s = '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+        parts.append(f"{k}={s}")
+    msg = f"{config.daemon_name}: {' '.join(parts)}"
+    if level == 'critical':
+        audit_logger.critical(msg)
+    elif level == 'warning':
+        audit_logger.warning(msg)
+    else:
+        audit_logger.info(msg)
+
 def atfork_cleanup():
+    from otpme.lib import log
     global audit_loggers
     audit_loggers.clear()
     try:
-        config.audit_logger = get_audit_logger()
+        audit_logger = get_audit_logger()
     except Exception as e:
         log_msg = _("Failed to get audit logger: {e}", log=True)[1]
         log_msg = log_msg.format(e=e)
         config.logger.warning(log_msg)
+        audit_logger = None
+    # If no audit logger is configured, use file logging.
+    if not audit_logger:
+        audit_logger = log.get_logger(log_name="audit",
+                                    pid=os.getpid(),
+                                    banner=True,
+                                    logfile="/var/log/otpme/audit.log",
+                                    level="DEBUG",
+                                    color_logs=False,
+                                    timestamps=True)
+    config.audit_logger = audit_logger
 register_atfork_method(atfork_cleanup)
 
 def audit_log(ignore_args=None, ignore_api_calls=False):

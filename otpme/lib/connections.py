@@ -117,7 +117,7 @@ def get_connection(**kwargs):
         raise ConnectionError(msg)
     return daemon_conn
 
-def get(daemon, ping=True, **kwargs):
+def get(daemon, mgmt=False, ping=True, **kwargs):
     """ Get connection to OTPme daemons. """
     from otpme.lib import net
     global connections
@@ -293,6 +293,9 @@ def get(daemon, ping=True, **kwargs):
     # Connections to fsd work independently of the agent
     if daemon == "fsd":
         use_agent = False
+    # Connections to ssod work independently of the agent
+    if daemon == "ssod":
+        use_agent = False
     # Connections to clusterd work independently of the agent
     if daemon == "clusterd":
         use_agent = False
@@ -339,10 +342,13 @@ def get(daemon, ping=True, **kwargs):
         need_user = False
     if daemon == "syncd":
         need_user = False
+    if daemon == "ssod":
+        need_user = False
     if daemon == "clusterd":
         need_user = False
     if daemon == "backupd":
         need_user = False
+
     if config.use_socket:
         username = config.system_user()
 
@@ -446,7 +452,6 @@ def get(daemon, ping=True, **kwargs):
         msg = msg.format(daemon=daemon)
         raise OTPmeException(msg)
 
-    mgmt = False
     if daemon == "mgmtd":
         mgmt = True
     if daemon == "syncd":

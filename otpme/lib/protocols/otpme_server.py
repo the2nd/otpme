@@ -152,6 +152,8 @@ class OTPmeServer1(object):
             self.encrypt_session = False
             self.require_client_cert = False
             self.peer = backend.get_object(uuid=config.uuid)
+        else:
+            self.client = net.normalize_ip(self.client)
 
         self.peer_cert = peer_cert
         self.client_cn = None
@@ -1713,7 +1715,7 @@ class OTPmeServer1(object):
         # Try to get client infos from where the users connects/logs in
         # (e.g. host, node etc.)
         if self.client:
-            login_host_ip = net.normalize_ip(self.client)
+            login_host_ip = self.client
 
         if self.client_cn:
             login_host = self.client_cn.split(".")[0]

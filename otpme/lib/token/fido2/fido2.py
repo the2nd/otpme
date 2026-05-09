@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import json
+import hashlib
 from datetime import datetime
 from cryptography import x509
 from fido2.server import Fido2Server
@@ -24,6 +25,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.audit import emit_audit
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.encoding.base import encode
@@ -459,6 +461,25 @@ class Fido2Token(Token):
         self.reg_state = {}
         # Write object.
         self._cache(callback=callback)
+        # Strong forensic signal: a new authenticator was bound to this
+        # token. Hash the credential bytes -- the raw credential ID is
+        # also a unique identifier per authenticator and should not be
+        # logged in plaintext.
+        cred_hash = hashlib.sha256(auth_data.credential_data).hexdigest()[:16]
+        actor = None
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Crypto", "fido2_credential_added",
+                   actor=actor,
+                   token=self.rel_path,
+                   user=getattr(self, 'owner_name', None),
+                   credential_fingerprint=cred_hash,
+                   uv=self.uv,
+                   hmac_supported=self.hmac_supported,
+                   attestation_checked=bool(check_attestation_cert))
         msg = _("Fido2 token deployed successful.")
         return callback.ok(msg)
 

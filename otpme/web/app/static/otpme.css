@@ -168,14 +168,14 @@ a:hover { text-decoration: underline; }
   margin-bottom: 20px;
 }
 
-/* ---- App tiles (Kacheln) ---- */
+/* ---- App tiles ---- */
 .app-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 16px;
   margin-bottom: 40px;
 }
-.kachel {
+.app-tile {
   background: #fff;
   border-radius: 12px;
   border: 1px solid #e4e6ea;
@@ -187,25 +187,25 @@ a:hover { text-decoration: underline; }
   transition: box-shadow .15s, transform .15s;
   cursor: pointer;
 }
-.kachel:hover {
+.app-tile:hover {
   box-shadow: 0 4px 16px rgba(0,0,0,.1);
   transform: translateY(-2px);
 }
-.kachel img {
+.app-tile img {
   width: 64px;
   height: 64px;
   object-fit: contain;
   margin-bottom: 12px;
   border-radius: 8px;
 }
-.kachel .app-name {
+.app-tile .app-name {
   font-size: 14px;
   font-weight: 600;
   color: #333;
   margin-bottom: 12px;
   word-break: break-word;
 }
-.kachel .btn {
+.app-tile .btn {
   margin-top: auto;
   width: 100%;
 }

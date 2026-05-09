@@ -69,7 +69,7 @@ def get_authd_conn(username,  password=None):
                                     auto_auth=False)
     return authd_conn
 
-def get_ssod_conn(username):
+def get_ssod_conn(username, mgmt=False):
     if config.host_data['type'] == "node":
         ssod_conn = connections.get("ssod",
                                     realm=config.realm,
@@ -85,6 +85,7 @@ def get_ssod_conn(username):
                                     encrypt_session=False)
     else:
         ssod_conn = connections.get("ssod",
+                                    mgmt=mgmt,
                                     realm=config.realm,
                                     site=config.site,
                                     username=username,
@@ -160,7 +161,7 @@ def before_request():
 def set_security_headers(response):
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:;"
     )
@@ -221,10 +222,12 @@ def settings():
                            show_password_change=show_password_change,
                            show_pin_change=show_pin_change)
 
-def _send_ssod_command(command, extra_args, default_error):
+def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False):
     """ Send a command to ssod using the current user's JWT.
 
     Returns a Flask response on error, otherwise the response payload dict. """
+    if extra_args is None:
+        extra_args = {}
     sso_jwt = request.cookies.get('otpme_jwt')
     client_ip = check_forwarded_for()[0]
     command_args = {
@@ -234,7 +237,7 @@ def _send_ssod_command(command, extra_args, default_error):
                     'client_ip'     : client_ip,
                 }
     command_args.update(extra_args)
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=mgmt)
     try:
         status, \
         status_code, \
@@ -269,8 +272,8 @@ def list_device_tokens():
     if not g.user.is_authenticated:
         return jsonify({"error": "Not authenticated"}), 401
     try:
-        response, error = _send_ssod_command("list_device_tokens", {},
-                                            "Failed to list device tokens.")
+        response, error = _send_ssod_command(command="list_device_tokens",
+                                        default_error="Failed to list device tokens.")
     except Exception as e:
         logger.critical(f"list_device_tokens failed: {e}")
         return jsonify({"error": "Failed to list device tokens."}), 500
@@ -298,9 +301,10 @@ def add_device_token():
     device_name = data.get('device_name', '').strip()
     if not device_name:
         return jsonify({"error": "Device name is required."}), 400
-    response, error = _send_ssod_command("add_device_token",
-                                        {'device_name': device_name},
-                                        "Failed to add device token.")
+    response, error = _send_ssod_command(command="add_device_token",
+                                        extra_args={'device_name': device_name},
+                                        default_error="Failed to add device token.",
+                                        mgmt=True)
     if error:
         return error
     return jsonify({
@@ -319,9 +323,10 @@ def del_device_token():
     token_name = data.get('name', '').strip()
     if not token_name:
         return jsonify({"error": "Token name is required."}), 400
-    response, error = _send_ssod_command("del_device_token",
-                                        {'token_name': token_name},
-                                        "Failed to delete device token.")
+    response, error = _send_ssod_command(command="del_device_token",
+                                        extra_args={'token_name': token_name},
+                                        default_error="Failed to delete device token.",
+                                        mgmt=True)
     if error:
         return error
     return jsonify({"status": "ok", "message": "Device token deleted."})
@@ -353,9 +358,6 @@ def change_password():
         return jsonify({"error": "New passwords do not match."}), 400
     if len(new_password) < 1:
         return jsonify({"error": "Password must not be empty."}), 400
-    login_token = flask_session.get("login_token")
-    if not login_token:
-        return jsonify({"error": "No login token."}), 400
     login_token_pass_type = flask_session.get("login_token_pass_type")
     if login_token_pass_type != "static":
         return jsonify({"error": "Token does not support password change."}), 400
@@ -367,11 +369,10 @@ def change_password():
                     'sso_jwt'           : sso_jwt,
                     'client'            : config.sso_client_name,
                     'client_ip'         : client_ip,
-                    'token_path'        : login_token,
                     'current_password'  : current_password,
                     'new_password'      : new_password,
                 }
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
         status_code, \
@@ -411,9 +412,6 @@ def change_pin():
         return jsonify({"error": "New PINs do not match."}), 400
     if len(new_pin) < 1:
         return jsonify({"error": "PIN must not be empty."}), 400
-    login_token = flask_session.get("login_token")
-    if not login_token:
-        return jsonify({"error": "No login token."}), 400
     login_token_pass_type = flask_session.get("login_token_pass_type")
     if login_token_pass_type != "otp":
         return jsonify({"error": "Token does not support PIN change."}), 400
@@ -424,11 +422,10 @@ def change_pin():
                     'sso_jwt'       : sso_jwt,
                     'client'        : config.sso_client_name,
                     'client_ip'     : client_ip,
-                    'token_path'    : login_token,
                     'current_pin'   : current_pin,
                     'new_pin'       : new_pin,
                 }
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
         status_code, \
@@ -480,9 +477,6 @@ def deploy_begin():
     sso_deploy = flask_session.get('sso_deploy')
     if not sso_deploy:
         return jsonify({"error": "Deployment not required"}), 400
-    login_token_uuid = flask_session.get('login_token_uuid')
-    if not login_token_uuid:
-        return jsonify({"error": "Deployment failed: No login token UUID"}), 400
     # Get token type from request (user choice) or sso_deploy setting.
     data = request.json or {}
     if isinstance(sso_deploy, str) and sso_deploy is not True:
@@ -502,9 +496,8 @@ def deploy_begin():
                     'client'            : config.sso_client_name,
                     'client_ip'         : client_ip,
                     'token_type'        : token_type,
-                    'login_token_uuid'  : login_token_uuid,
                 }
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
         status_code, \
@@ -572,7 +565,7 @@ def deploy_verify():
                     'token_data'        : token_data,
                     'login_token_name'  : login_token_name,
                 }
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
         status_code, \
@@ -687,8 +680,6 @@ def login():
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
     try:
-        login_token = auth_response['login_token']
-        login_token_uuid = auth_response['login_token_uuid']
         login_token_pass_type = auth_response['login_token_pass_type']
         login_token_deploy = auth_response['login_token_sso_deploy']
         session_uuid = auth_response['session']
@@ -727,9 +718,7 @@ def login():
             redirect_target = url_for('index', _external=True, _scheme='https')
     # Store user data in Flask session for load_user.
     flask_session['otpme_username'] = username
-    flask_session['login_token'] = login_token
     flask_session['sso_deploy'] = login_token_deploy
-    flask_session['login_token_uuid'] = login_token_uuid
     flask_session['login_token_pass_type'] = login_token_pass_type
     web_user = WebUser(uuid=login_user_uuid, name=username)
     resp = make_response(redirect(redirect_target))
@@ -798,10 +787,8 @@ def logout():
 def get_apps():
     if not g.user.is_authenticated:
         return jsonify([])
-    login_token_uuid = flask_session.get('login_token_uuid')
-    extra_args = {'login_token_uuid':login_token_uuid}
-    response, error = _send_ssod_command("get_apps", extra_args,
-                                        "Failed to get app list.")
+    response, error = _send_ssod_command(command="get_apps",
+                        default_error="Failed to get app list.")
     if error:
         return error
     app_data = []
@@ -880,7 +867,7 @@ def fido2_register_begin():
                     'rp_id'         : rp_id,
                     'is_deploy'     : is_deploy,
                 }
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
         status_code, \
@@ -931,7 +918,7 @@ def fido2_register_complete():
                     'token_uuid'        : token_uuid,
                     'registration_data' : registration_data,
                 }
-    ssod_conn = get_ssod_conn(g.user.name)
+    ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
         status_code, \
@@ -1045,8 +1032,6 @@ def fido2_auth_complete():
         error_msg = _ssod_error_message(auth_response, "Failed to complete fido2 authentication.")
         return jsonify({"error": error_msg}), 400
     try:
-        login_token = auth_response['login_token']
-        login_token_uuid = auth_response['login_token_uuid']
         login_token_pass_type = auth_response['login_token_pass_type']
         login_token_deploy = auth_response['login_token_sso_deploy']
         session_uuid = auth_response['session']
@@ -1073,9 +1058,7 @@ def fido2_auth_complete():
         return redirect(url_for('login', _external=True, _scheme='https'))
     # Store user data in Flask session for load_user.
     flask_session['otpme_username'] = username
-    flask_session['login_token'] = login_token
     flask_session['sso_deploy'] = login_token_deploy
-    flask_session['login_token_uuid'] = login_token_uuid
     flask_session['login_token_pass_type'] = login_token_pass_type
     # Same redirect-priority as the form-based login flow: forced
     # enrollment beats next=, otherwise honor a stashed next= URL,

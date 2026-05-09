@@ -419,4 +419,28 @@ cmd_help = {
                                     'cmd'                   : _('Remove client from scope.'),
                                 },
                 },
+
+    'list_groups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope list_groups {scope}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List groups whitelisted on this scope.'),
+                                },
+                },
+
+    'add_group'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope add_group {scope} {group}'),
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add group to scope (whitelist for OIDC groups claim).'),
+                                },
+                },
+
+    'remove_group'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope remove_group {scope} {group}'),
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove group from scope.'),
+                                },
+                },
     }

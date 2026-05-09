@@ -26,6 +26,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib.audit import emit_audit
 from otpme.lib.classes.session import Session
 
 
@@ -235,6 +236,17 @@ class OIDCSession(Session):
                 logger.warning(log_msg)
             except Exception:
                 pass
+            emit_audit("OIDC", "backchannel_logout_failed",
+                       level='warning',
+                       client=client.name,
+                       session=self.session_id,
+                       uri=uri,
+                       reason=str(e))
+            return
+        emit_audit("OIDC", "backchannel_logout_sent",
+                   client=client.name,
+                   session=self.session_id,
+                   uri=uri)
 
     def _post_logout_token(self, client, uri: str):
         """ Build, sign, and POST the Logout Token. Per OIDC

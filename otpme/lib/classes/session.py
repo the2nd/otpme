@@ -35,6 +35,7 @@ from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib import otpme_pass
 from otpme.lib import mschap_util
+from otpme.lib.audit import emit_audit
 from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
@@ -252,7 +253,6 @@ class Session(OTPmeLockObject):
         object_id: Union[oid.OTPmeOid,None]=None,
         object_config: Union[ObjectConfig,None]=None,
         uuid: Union[str,None]=None,
-        cache: bool=False,
         pass_hash: Union[str,None]=None,
         pass_hash_params: Union[List,None]=None,
         session_id: Union[str,None]=None,
@@ -312,9 +312,6 @@ class Session(OTPmeLockObject):
         self.username = username
         # Set token that was used to authenticate the user.
         self.auth_token = token
-        # Indicates if this is a cache session to speedup static password
-        # requests.
-        self.cache = cache
         # Set accessgroup for this session.
         self.access_group = access_group
 
@@ -496,6 +493,13 @@ class Session(OTPmeLockObject):
             log_msg = _("Session '{session_name}' is expired by session timeout. Removing...", log=True)[1]
             log_msg = log_msg.format(session_name=self.name)
             logger.debug(log_msg)
+            emit_audit("Session", "expired",
+                       reason="session_timeout",
+                       type=self.session_type,
+                       session=self.session_id,
+                       user=self.username,
+                       ag=self.access_group,
+                       client=self.client)
             self.delete(force=True, recursive=True, verify_acls=False)
             return False
         # If session is expired remove it and all childs that exist.
@@ -505,6 +509,13 @@ class Session(OTPmeLockObject):
                 log_msg = _("Session '{session_name}' is expired by unused session timeout. Removing...", log=True)[1]
                 log_msg = log_msg.format(session_name=self.name)
                 logger.debug(log_msg)
+                emit_audit("Session", "expired",
+                           reason="unused_timeout",
+                           type=self.session_type,
+                           session=self.session_id,
+                           user=self.username,
+                           ag=self.access_group,
+                           client=self.client)
                 self.delete(force=True, recursive=True, verify_acls=False)
                 return False
         return True
@@ -1178,6 +1189,16 @@ class Session(OTPmeLockObject):
         # add() ends in write_config() so no separate write needed.
         oidc_session.add()
         self.add_child_session(oidc_session.uuid)
+        emit_audit("OIDC", "session_attached",
+                   parent_session=self.session_id,
+                   child_session=oidc_session.session_id,
+                   user=self.username,
+                   client=client_obj.name,
+                   client_uuid=client_uuid,
+                   scope=scope,
+                   redirect_uri=redirect_uri,
+                   code_challenge_method=code_challenge_method,
+                   ttl=ttl)
         return oidc_session, authcode
 
     # FIXME: create_child_sessions() creates all child sessions regardless if
@@ -1302,27 +1323,21 @@ class Session(OTPmeLockObject):
         self.creation_time = time.time()
         self.offline_data_key = offline_data_key
 
-        # Check which timeout values we must use for this session.
-        if self.cache:
-            # For cache sessions get timeout values from config.
-            self.timeout = config.static_pass_timeout
-            self.unused_timeout = config.static_pass_unused_timeout
-        else:
-            # Get accessgroup instance to get timeout values from.
-            ag = backend.get_object(object_type="accessgroup",
-                                name=self.access_group,
-                                realm=self.realm,
-                                site=self.site)
-            # FIXME: search accessgroup via backend.search!?
-            #        what to do if accessgroup does not exist?
-            # Get time values from accessgroup.
-            if not ag:
-                msg = _("Unknown accessgroup: {access_group}")
-                msg = msg.format(access_group=self.access_group)
-                raise OTPmeException(msg)
-            # Set timeouts from accessgroup
-            self.timeout = ag.session_timeout
-            self.unused_timeout = ag.unused_session_timeout
+        # Get accessgroup instance to get timeout values from.
+        ag = backend.get_object(object_type="accessgroup",
+                            name=self.access_group,
+                            realm=self.realm,
+                            site=self.site)
+        # FIXME: search accessgroup via backend.search!?
+        #        what to do if accessgroup does not exist?
+        # Get time values from accessgroup.
+        if not ag:
+            msg = _("Unknown accessgroup: {access_group}")
+            msg = msg.format(access_group=self.access_group)
+            raise OTPmeException(msg)
+        # Set timeouts from accessgroup
+        self.timeout = ag.session_timeout
+        self.unused_timeout = ag.unused_session_timeout
 
         self.add_index('creation_time', self.creation_time)
         self.add_index("session_id", self.session_id)
@@ -1342,6 +1357,16 @@ class Session(OTPmeLockObject):
         result = self.write_config()
         # Set session last used time.
         self.last_used = time.time()
+        # Audit logging.
+        emit_audit("Session", "create",
+                   type=self.session_type,
+                   session=self.session_id,
+                   user=self.username,
+                   ag=self.access_group,
+                   client=self.client,
+                   ip=self.client_ip,
+                   timeout=self.timeout,
+                   unused_timeout=self.unused_timeout)
         return result
 
     @object_lock()
@@ -1356,20 +1381,47 @@ class Session(OTPmeLockObject):
         """ Delete session. """
         if verify_acls and config.auth_token:
             if config.auth_token.uuid != config.admin_token_uuid:
+                actor = None
+                try:
+                    actor = config.auth_token.rel_path
+                except Exception:
+                    pass
                 # Try to get auth token of session.
                 t = backend.get_object(object_type="token",
                                     uuid=self.auth_token)
                 if not t:
+                    emit_audit("AuthZ", "denied",
+                               level='warning',
+                               actor=actor,
+                               object_type='session',
+                               object=self.session_id,
+                               method='delete',
+                               reason='session_token_missing')
                     msg = _("Permission denied: Session token missing")
                     return callback.error(msg, exception=PermissionDenied)
                 # Try to get session user.
                 u = backend.get_object(object_type="user", uuid=t.owner_uuid)
                 if not u:
+                    emit_audit("AuthZ", "denied",
+                               level='warning',
+                               actor=actor,
+                               object_type='session',
+                               object=self.session_id,
+                               method='delete',
+                               reason='session_user_missing')
                     msg = _("Permission denied: Session user missing")
                     return callback.error(msg, exception=PermissionDenied)
                 # Check if the current user is allowed to delete sessions of
                 # the user.
                 if not u.verify_acl("delete:session"):
+                    emit_audit("AuthZ", "denied",
+                               level='warning',
+                               actor=actor,
+                               object_type='session',
+                               object=self.session_id,
+                               session_user=u.name,
+                               method='delete',
+                               required_acls='delete:session')
                     msg = _("Permission denied.")
                     return callback.error(msg, exception=PermissionDenied)
 
@@ -1424,4 +1476,20 @@ class Session(OTPmeLockObject):
             msg = msg.format(session_name=self.name, error=e)
             return callback.error(msg)
 
+        # Audit logging.
+        actor = None
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Session", "delete",
+                   type=self.session_type,
+                   session=self.session_id,
+                   user=self.username,
+                   ag=self.access_group,
+                   client=self.client,
+                   recursive=recursive,
+                   force=force,
+                   actor=actor)
         return callback.ok()

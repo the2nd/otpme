@@ -57,6 +57,32 @@ class ContextFilter(logging.Filter):
                     break
         return valid_log
 
+def ensure_logfile(logfile):
+    """ Make sure we have a logfile we can write to. """
+    from otpme.lib import config
+    from otpme.lib import filetools
+    # Check if path to logfile exists and is writable
+    logfile_parent_dir = os.path.dirname(logfile)
+    if not os.path.exists(logfile):
+        if not os.path.exists(logfile_parent_dir):
+            msg = _("No such file or directory: {logfile_parent_dir}")
+            msg = msg.format(logfile_parent_dir=logfile_parent_dir)
+            raise Exception(msg)
+        if not os.access(logfile_parent_dir, os.W_OK):
+            msg = _("Permission denied: {logfile_parent_dir}")
+            msg = msg.format(logfile_parent_dir=logfile_parent_dir)
+            raise Exception(msg)
+        # Make sure logfile exists
+        filetools.create_file(path=logfile,
+                                content="",
+                                user=config.user,
+                                group=config.group,
+                                mode=0o660)
+    if not os.access(logfile, os.W_OK):
+        msg = _("Permission denied: {logfile}")
+        msg = msg.format(logfile=logfile)
+        raise Exception(msg)
+
 def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
     syslog_ssl=False, syslog_ca_cert=None, syslog_cert=None, syslog_key=None,
     syslog_relp=False, logger=None, pid=None, banner=None, logfile=None,
@@ -162,6 +188,8 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
         logger.addHandler(syslog_handler)
     # Check if we should log to file.
     elif logfile:
+        # Make sure logfile exists and has proper permissions.
+        ensure_logfile(logfile)
         # Default log format should be with date.
         if not log_format:
             log_format = log_format_date

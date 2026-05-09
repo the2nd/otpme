@@ -22,6 +22,7 @@ from otpme.lib import jwt
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.audit import emit_audit
 from otpme.lib import connections
 from otpme.lib.humanize import units
 from otpme.lib.encoding.base import decode
@@ -131,6 +132,13 @@ class OTPmeAuthP1(OTPmeServer1):
                 ag_site = access_group.split("/")[0]
                 ag_name = access_group.split("/")[1]
             except IndexError as err:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=token.rel_path,
+                           user=username,
+                           method='gen_jwt',
+                           reason='invalid_access_group_name',
+                           ag=access_group)
                 msg = _("Invalid accessgroup name: {access_group}")
                 msg = msg.format(access_group=access_group)
                 raise AccessDenied(msg) from err
@@ -140,11 +148,25 @@ class OTPmeAuthP1(OTPmeServer1):
                                     realm=config.realm,
                                     site=ag_site)
             if not result:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=token.rel_path,
+                           user=username,
+                           method='gen_jwt',
+                           reason='unknown_access_group',
+                           ag=access_group)
                 msg = _("Unknown accessgroup: {access_group}")
                 msg = msg.format(access_group=access_group)
                 raise AccessDenied(msg)
             ag_uuid = result[0]
             if ag_uuid not in token_accessgroups:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=token.rel_path,
+                           user=username,
+                           method='gen_jwt',
+                           reason='token_not_in_access_group',
+                           ag=access_group)
                 msg = _("Token not in accessgroup: {token_path}: {access_group}")
                 msg = msg.format(token_path=token.rel_path, access_group=access_group)
                 raise AccessDenied(msg)
@@ -153,6 +175,13 @@ class OTPmeAuthP1(OTPmeServer1):
         user_site = backend.get_object(uuid=token.site_uuid)
         sign_key = user_site._key
         if not sign_key:
+            emit_audit("AuthZ", "denied",
+                       level='warning',
+                       actor=token.rel_path,
+                       user=username,
+                       method='gen_jwt',
+                       reason='site_signing_key_missing',
+                       site=getattr(user_site, 'name', None))
             msg = _("Access denied")
             raise AccessDenied(msg)
 
@@ -225,9 +254,9 @@ class OTPmeAuthP1(OTPmeServer1):
 
         return self.build_response(True, _jwt)
 
-    def get_apps(self, user):
+    def get_apps(self, token):
         from otpme.lib.protocols.server.sso1 import get_apps
-        return get_apps(user)
+        return get_apps(token)
 
     def build_log_msg(self, command_error):
             log_msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type}", log=True)[1]
@@ -324,11 +353,11 @@ class OTPmeAuthP1(OTPmeServer1):
             return self.build_response(status, message)
         # We will not send auth token instance to peer.
         try:
-            auth_response.pop('token')
+            auth_token = auth_response.pop('token')
         except KeyError:
             pass
         # Get user apps.
-        app_data = self.get_apps(user)
+        app_data = self.get_apps(auth_token)
         auth_response['app_data'] = app_data
         # Get SSO jwt from remote auth response.
         auth_response['sso_jwt'] = response['sso_jwt']
@@ -488,7 +517,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(status, message)
             auth_result['sso_jwt'] = sso_jwt
             # Get user apps.
-            app_data = self.get_apps(user)
+            app_data = self.get_apps(auth_token)
             auth_result['app_data'] = app_data
         return self.build_response(True, auth_result)
 
@@ -748,7 +777,7 @@ class OTPmeAuthP1(OTPmeServer1):
 
         if auth_token and client == config.sso_client_name:
             # Get user apps.
-            app_data = self.get_apps(user)
+            app_data = self.get_apps(auth_token)
             auth_response['app_data'] = app_data
             # Get SSO jwt from remote auth response.
             auth_response['sso_jwt'] = redirect_auth_response['sso_jwt']
@@ -813,7 +842,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(status, message)
             auth_response['sso_jwt'] = sso_jwt
             # Get user apps.
-            app_data = self.get_apps(user)
+            app_data = self.get_apps(auth_token)
             auth_response['app_data'] = app_data
 
         # Build response message.

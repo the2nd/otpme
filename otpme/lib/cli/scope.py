@@ -28,6 +28,7 @@ table_headers = [
                 "roles",
                 "tokens",
                 "clients",
+                "groups",
                 "scope_id",
                 "policies",
                 #"inherit",
@@ -70,7 +71,7 @@ def register():
                 max_len=10)
 
 def row_getter(realm, site, scope_order, scope_data, acls, max_scopes=5,
-    max_tokens=5, max_roles=5, max_policies=5, max_clients=5,
+    max_tokens=5, max_roles=5, max_policies=5, max_clients=5, max_groups=5,
     output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for scopes. """
     if output_fields is None:
@@ -255,6 +256,43 @@ def row_getter(realm, site, scope_order, scope_data, acls, max_scopes=5,
                             role_clients.append(x)
                         break
                 row.append("\n".join(role_clients))
+            else:
+                row.append("-")
+        # Groups (scope's group whitelist).
+        if "groups" in output_fields:
+            if check_acl("view:groups") \
+            or check_acl("add:group") \
+            or check_acl("remove:group"):
+                return_attrs = ['name', 'enabled']
+                groups_count, \
+                groups_result = backend.search(object_type="group",
+                                            join_object_type="scope",
+                                            join_search_attr="uuid",
+                                            join_search_val=scope_uuid,
+                                            join_attribute="group",
+                                            attribute="uuid",
+                                            value="*",
+                                            max_results=max_groups,
+                                            return_query_count=True,
+                                            return_attributes=return_attrs)
+                scope_groups = []
+                for x in groups_result:
+                    group_status_string = ""
+                    x_group_name = groups_result[x]['name']
+                    x_group_enabled = groups_result[x]['enabled'][0]
+                    if not x_group_enabled:
+                        group_status_string = " (D)"
+                    group_string = f"{x_group_name}{group_status_string}"
+                    scope_groups.append(group_string)
+                    processed_groups = len(scope_groups)
+                    if processed_groups == max_groups:
+                        if groups_count > max_groups:
+                            msg = _("({processed_groups} of {groups_count} groups total)")
+                            msg = msg.format(processed_groups=processed_groups, groups_count=groups_count)
+                            x = msg
+                            scope_groups.append(x)
+                        break
+                row.append("\n".join(scope_groups))
             else:
                 row.append("-")
         # Scope ID.

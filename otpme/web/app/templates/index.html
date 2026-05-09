@@ -1,110 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
+<div id="page-data"
+     data-url-apps="{{ url_for('get_apps', _external=True, _scheme='https') }}"
+     data-url-sotp="{{ url_for('get_sotp', _external=True, _scheme='https') }}"
+     data-username="{{ g.user.name }}"></div>
 <div class="portal-wrapper">
     <h2>Applications</h2>
-    <div class="app-grid" id="kacheln"></div>
-
+    <div class="app-grid" id="app-tiles"></div>
 </div>
 
-<script>
-    function openTabAndSendPost(sso_url, data) {
-      const newTab = window.open('', '_blank');
-      if (newTab) {
-        const form = newTab.document.createElement('form');
-        form.method = 'POST';
-        form.action = sso_url;
-        form.target = '_top';
-        for (const key in data) {
-          const input = newTab.document.createElement('input');
-          input.type = 'hidden';
-          input.name = key;
-          input.value = data[key];
-          form.appendChild(input);
-        }
-        newTab.document.body.appendChild(form);
-        form.submit();
-      }
-    }
-
-    function addApps() {
-        const url = "{{ url_for('get_apps', _external=True, _scheme='https') }}";
-        fetch(url)
-          .then(async response => {
-            const data = await response.json();
-            if (!response.ok) {
-              if (data && data.redirect) {
-                window.location.href = data.redirect;
-                return null;
-              }
-              throw new Error((data && data.error) || 'Failed to load apps.');
-            }
-            return data;
-          })
-          .then(data => {
-            if (!data) return;
-            const kachelContainer = document.getElementById('kacheln');
-
-            data.forEach(item => {
-                const kachel = document.createElement('div');
-                kachel.classList.add('kachel');
-
-                if (item.logo_type) {
-                    const picElement = document.createElement('img');
-                    picElement.src = "data:" + item.logo_type + ";base64," + item.logo_data;
-                    picElement.alt = item.app_name || "App";
-                    kachel.appendChild(picElement);
-                }
-
-                if (item.app_name) {
-                    const appNameElement = document.createElement('div');
-                    appNameElement.classList.add('app-name');
-                    appNameElement.textContent = item.app_name;
-                    kachel.appendChild(appNameElement);
-                }
-
-                const openButton = document.createElement('button');
-                openButton.textContent = 'Open';
-                openButton.classList.add('btn', 'btn-primary', 'btn-small');
-                openButton.addEventListener('click', () => {
-                    const sotp_url = "{{ url_for('get_sotp', _external=True, _scheme='https') }}" + "?access_group=" + item.app_ag;
-                    fetch(sotp_url)
-                      .then(async response => {
-                        const data = await response.json();
-                        if (!response.ok) {
-                          if (data && data.redirect) {
-                            window.location.href = data.redirect;
-                            return null;
-                          }
-                          throw new Error((data && data.error) || 'Failed to get SOTP.');
-                        }
-                        return data;
-                      })
-                      .then(sotp => {
-                        if (!sotp) return;
-                        const login_data = {
-                          username: {{ g.user.name|tojson }},
-                          password: sotp,
-                          redirect_url: item.login_url,
-                          sso_popup: item.sso_popup,
-                          app_name: item.app_name,
-                        }
-                        openTabAndSendPost(item.helper_url, login_data);
-                      })
-                      .catch(error => {
-                        console.error('Error fetching SOTP:', error);
-                      });
-                });
-                kachel.appendChild(openButton);
-
-                kachelContainer.appendChild(kachel);
-            });
-          })
-          .catch(error => {
-            console.error('Error fetching apps:', error);
-          });
-    }
-
-    addApps();
-
-</script>
+<script src="{{ url_for('static', filename='index.js') }}"></script>
 {% endblock %}

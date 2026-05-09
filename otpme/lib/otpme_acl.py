@@ -16,6 +16,7 @@ from otpme.lib import stuff
 from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.audit import emit_audit
 
 from otpme.lib.exceptions import *
 
@@ -56,6 +57,23 @@ def check_acls(acls):
                     access_granted = True
                     break
                 if not access_granted:
+                    actor = None
+                    try:
+                        if config.auth_token:
+                            actor = config.auth_token.rel_path
+                    except Exception:
+                        pass
+                    obj_type = getattr(self, 'type', None) \
+                            or self.__class__.__name__
+                    obj_name = getattr(self, 'rel_path', None) \
+                            or getattr(self, 'name', None)
+                    emit_audit("AuthZ", "denied",
+                               level='warning',
+                               actor=actor,
+                               object_type=obj_type,
+                               object=obj_name,
+                               method=f.__name__,
+                               required_acls=','.join(acls))
                     msg = _("Permission denied.")
                     return callback.error(msg, exception=PermissionDenied)
 
@@ -288,9 +306,6 @@ def check_access(check_admin_user=True, check_admin_role=True, auth_token=None):
         log_msg = _("Access denied: User not authenticated", log=True)[1]
         logger.warning(log_msg)
         need_acls = False
-        # fuck
-        from otpme.lib import debug
-        debug.trace()
     else:
         if check_admin_user:
             if auth_token.uuid == config.admin_token_uuid:
