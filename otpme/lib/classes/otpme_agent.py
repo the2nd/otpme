@@ -82,6 +82,9 @@ class OTPmeAgent(UnixDaemon):
             pidfile = config.get_agent_pidfile(user)
         # Set our name.
         self.name = "agent"
+        # Set daemon mode.
+        config.daemon_mode = True
+        config.daemon_name = self.name
         # Set user we run as.
         self.user = user
         self.pid = None
@@ -1828,11 +1831,6 @@ class OTPmeAgent(UnixDaemon):
         connections.close_connections()
         # Handle multiprocessing stuff.
         multiprocessing.atfork()
-        # Set our name.
-        #self.name = "agent"
-        # Set daemon mode.
-        config.daemon_mode = True
-        config.daemon_name = self.name
         # Set tool name in case we where not called from otpme-agent executable.
         config.tool_name = "otpme-agent"
         # Reload config.

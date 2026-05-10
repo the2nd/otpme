@@ -58,6 +58,8 @@ def atfork_cleanup():
     from otpme.lib import log
     global audit_loggers
     audit_loggers.clear()
+    if config.daemon_name == "agent":
+        return
     try:
         audit_logger = get_audit_logger()
     except Exception as e:
