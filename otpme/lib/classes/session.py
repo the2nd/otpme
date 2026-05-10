@@ -189,10 +189,15 @@ def register_backend():
             log_msg = _("Processing session ({counter}/{files_count}): {x_path}", log=True)[1]
             log_msg = log_msg.format(counter=counter, files_count=files_count, x_path=x_path)
             logger.debug(log_msg)
-            x_oid = oid_getter(session_file)
-            backend.index_add(object_id=x_oid,
-                            object_config="auto",
-                            full_index_update=True)
+            try:
+                x_oid = oid_getter(session_file)
+                backend.index_add(object_id=x_oid,
+                                object_config="auto",
+                                full_index_update=True)
+            except Exception as e:
+                log_msg = _("Failed to rebuild object index: {oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(oid=x_oid, e=e)
+                logger.warning(log_msg)
     # Register object to backend.
     session_dir_extension = "session"
     from otpme.lib.session import get_class as session_get_class

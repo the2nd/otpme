@@ -287,6 +287,8 @@ def register_token_type():
 @match_class_typing
 class YubikeypivToken(Token):
     """ Class for OTPme authentication with RSA tokens (e.g. yubikey-piv) """
+    oidc_amr_values = ['hwk', 'sc', 'pin']
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

@@ -3058,6 +3058,15 @@ class ClusterDaemon(OTPmeDaemon):
         session_worker_count = 8
         worker_queues = []
         worker_procs = []
+        # Memo of recently dispatched entries -> push timestamp. Prevents
+        # the same entry being shoveled to multiple workers while one is
+        # still processing it. TTL-based so a crashed/stuck worker doesn't
+        # block the entry forever -- after PUSHED_TTL seconds we forget
+        # and the dispatcher re-pushes (the next get_journal_entries_to_
+        # process() call will re-surface it as long as no node has acked).
+        # Memory is naturally bounded by push-rate * TTL.
+        worker_pushed = {}
+        PUSHED_TTL = 60.0
 
         def signal_handler(_signal, frame):
             if _signal != 15:
@@ -3152,7 +3161,18 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.critical(log_msg)
                 continue
 
+            now = time.time()
+            # Drop expired memos so size stays bounded by push-rate * TTL.
+            worker_pushed = {
+                k: v for k, v in worker_pushed.items()
+                if now - v < PUSHED_TTL
+            }
             for entry in entries:
+                entry_id = f"{entry.journal_id}.{entry.timestamp}"
+                # Skip if we pushed this entry recently -- worker probably
+                # still has it in flight.
+                if entry_id in worker_pushed:
+                    continue
                 q = worker_queues[worker_idx % session_worker_count]
                 try:
                     q.send(entry.journal_id)
@@ -3160,6 +3180,8 @@ class ClusterDaemon(OTPmeDaemon):
                     log_msg = _("Failed to send journal entry to worker: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
                     self.logger.warning(log_msg)
+                else:
+                    worker_pushed[entry_id] = now
                 worker_idx += 1
 
         # Cleanup workers.

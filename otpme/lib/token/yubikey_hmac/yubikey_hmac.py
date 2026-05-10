@@ -275,6 +275,8 @@ def register_config_params():
 @match_class_typing
 class YubikeyhmacToken(Token):
     """ Class for OTPme authentication with HMAC tokens (e.g. yubikey) """
+    oidc_amr_values = ['hwk', 'otp']
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

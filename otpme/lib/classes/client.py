@@ -1853,7 +1853,12 @@ class Client(OTPmeClientObject):
 
     OIDC_RESPONSE_TYPES_WHITELIST = (
         "code",
-        "code id_token",
+        # Future: ``code id_token`` (Hybrid Flow) and ``id_token``
+        # (Implicit Flow). Only ``code`` is implemented today (sso1.py
+        # /authorize_validate hardcodes the check, discovery
+        # advertises only this); adding values here without the
+        # corresponding handler logic and discovery update would be a
+        # configuration footgun.
     )
 
     @object_lock()

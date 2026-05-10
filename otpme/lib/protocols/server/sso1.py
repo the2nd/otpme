@@ -24,6 +24,8 @@ from otpme.lib import backend
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.audit import emit_audit
+from otpme.lib.protocols.oidc_helpers import verify_pkce as _verify_pkce_helper
+from otpme.lib.protocols.oidc_helpers import compute_acr as _compute_acr_helper
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 
@@ -138,13 +140,6 @@ class OTPmeSsoP1(OTPmeServer1):
         callback = config.get_callback()
         callback.job.client = self.client
         return callback
-
-    def _log_audit(self, event, level='info', **fields):
-        """ Emit a structured OIDC audit event. Same audit stream that
-        auth_handler writes to, so OIDC issuance lines up
-        chronologically with the parent SSO authentication.
-        """
-        emit_audit("OIDC", event, level=level, **fields)
 
     def ssod_redirect_command(self, command, user, command_args, mgmt=False):
         try:
@@ -1256,6 +1251,92 @@ class OTPmeSsoP1(OTPmeServer1):
     # the RP presents. No sso_jwt involved.
     # ------------------------------------------------------------------
 
+    def _compute_oidc_amr(self, auth_token):
+        """ Read the RFC 8176 amr values declared on the token's
+        class. Returns a fresh list (defensive copy). Empty list if
+        the token disappeared or doesn't declare amr values.
+        """
+        if auth_token is None:
+            return []
+        values = getattr(auth_token, 'oidc_amr_values', None)
+        if not values:
+            return []
+        return list(values)
+
+    def _compute_oidc_acr(self, amr, scheme):
+        """ Map an amr list to an acr string per scheme. Implementation
+        lives in otpme.lib.protocols.oidc_helpers so it's
+        unit-testable without the full handler import chain.
+        """
+        return _compute_acr_helper(amr, scheme)
+
+    def _resolve_acr_scheme(self, client):
+        """ Resolve the ACR scheme via Site/Unit/Client config-param
+        hierarchy. Falls back to "numeric" on any read failure.
+        """
+        try:
+            scheme = client.get_config_parameter("oidc_acr_scheme")
+        except Exception:
+            scheme = None
+        if scheme not in ("numeric", "none"):
+            return "numeric"
+        return scheme
+
+    def _resolve_auth_time(self, oidc_session):
+        """ Resolve the OIDC ``auth_time`` claim -- the unix timestamp
+        of the original user authentication, NOT of the OIDC flow.
+
+        Returns an int (unix timestamp) when known, ``None`` when not.
+        Caller MUST omit the ``auth_time`` claim when this returns
+        ``None``: per OIDC Core 3.1.2.1, an RP that asked for
+        ``max_age`` will then treat the response as failing the
+        freshness check and force re-auth -- which is the conservative
+        and correct outcome. Faking ``now`` here would silently bypass
+        max_age policies on banking / step-up RPs.
+
+        Resolution order:
+          1. Parent SSO session's ``creation_time`` -- the actual user
+             login moment (best truth).
+          2. OIDCSession's own ``creation_time`` -- the OIDC flow
+             happened then, so user auth must be at-or-before this.
+             Acceptable lower bound; still a real freshness indicator.
+          3. ``None`` -- truly unknown, nothing to claim.
+        """
+        try:
+            parents = backend.search(object_type="session",
+                                     attribute="child_session",
+                                     value=oidc_session.uuid,
+                                     return_type="instance")
+            if parents:
+                ct = getattr(parents[0], 'creation_time', None)
+                if ct:
+                    return int(ct)
+        except Exception:
+            pass
+        ct = getattr(oidc_session, 'creation_time', None)
+        if ct:
+            return int(ct)
+        return None
+
+    def _resolve_access_token_ttl(self, client):
+        """ Resolve the access-token lifetime (seconds) for the given
+        client by walking the Site/Unit/Client config-parameter
+        hierarchy. Falls back to 3600s on any read/parse failure to
+        keep the issuance path robust. Same TTL is used for the ID
+        Token's exp.
+        """
+        from otpme.lib.humanize import units
+        try:
+            human = client.get_config_parameter("oidc_access_token_ttl")
+        except Exception:
+            human = None
+        if human is None:
+            return 3600
+        try:
+            return units.time2int(human, time_unit="s")
+        except Exception:
+            return 3600
+
     def _verify_oidc_client(self, client_id, client_secret):
         """ Look up the OIDC RP by name and constant-time-compare its
         secret. Returns ``(client_obj, None)`` on success or
@@ -1290,21 +1371,12 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _verify_pkce(self, code_verifier, code_challenge,
                      code_challenge_method):
-        """ Per RFC 7636. Returns True/False. """
-        if not code_challenge:
-            return code_verifier is None
-        if not code_verifier:
-            return False
-        method = (code_challenge_method or "plain").upper()
-        if method == "PLAIN":
-            return code_verifier == code_challenge
-        if method == "S256":
-            import hashlib
-            import base64
-            digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-            calc = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-            return calc == code_challenge
-        return False
+        """ Per RFC 7636. Returns True/False. Implementation lives in
+        otpme.lib.protocols.oidc_helpers so it's unit-testable
+        without the full handler import chain.
+        """
+        return _verify_pkce_helper(code_verifier, code_challenge,
+                                    code_challenge_method)
 
     def _compute_oidc_sub(self, user, client, site):
         """ Compute the ``sub`` claim per the client's subject_type.
@@ -1312,15 +1384,27 @@ class OTPmeSsoP1(OTPmeServer1):
         public:   user.uuid (same value across RPs)
         pairwise: HMAC-SHA256(site.oidc_pairwise_secret,
                               sector_id || user.uuid)
+
         Sector_id defaults to client.name if no sector_identifier_uri
-        is set. Falls back to user.uuid on missing site secret.
+        is set. The site MUST have a pairwise secret -- a missing or
+        empty secret would HMAC every (sector, user) pair to the same
+        value across all sites that share a sector_id, defeating the
+        privacy guarantee. enable_oidc() autogenerates one; if a Site
+        was upgraded from a pre-fix build the operator has to run
+        ``otpme-site change_oidc_pairwise_secret`` once.
         """
         subject_type = getattr(client, 'oidc_subject_type', 'public')
         if subject_type != "pairwise":
             return user.uuid
         import hmac
         import hashlib
-        pw_secret = getattr(site, 'oidc_pairwise_secret', None) or b""
+        pw_secret = getattr(site, 'oidc_pairwise_secret', None)
+        if not pw_secret:
+            msg = _("Site '{site}' has no oidc_pairwise_secret. "
+                    "Run 'otpme-site change_oidc_pairwise_secret' "
+                    "or re-run enable_oidc.")
+            msg = msg.format(site=getattr(site, 'name', '?'))
+            raise OTPmeException(msg)
         if isinstance(pw_secret, str):
             pw_secret = pw_secret.encode("utf-8")
         sector = getattr(client, 'oidc_sector_identifier_uri', None) \
@@ -1438,49 +1522,41 @@ class OTPmeSsoP1(OTPmeServer1):
                 claims['groups'] = visible
         return claims
 
-    def _build_id_token(self, oidc_session, user, client, site, ttl=3600):
-        """ Build and sign the ID Token JWT. """
-        import time as _time
-        import secrets as _secrets
-        from joserfc import jwt as joserfc_jwt
-        from joserfc.jwk import RSAKey, ECKey, OKPKey
-        from otpme.lib.encryption.jwk import find_active_key
-
-        oidc_keys = site.oidc_keys.copy()
-        oidc_keys = oidc_keys.values()
-        active = find_active_key(list(oidc_keys))
-        kty = active.get("kty")
-        if kty == "RSA":
-            signing_key = RSAKey.import_key(active)
-        elif kty == "EC":
-            signing_key = ECKey.import_key(active)
-        elif kty == "OKP":
-            signing_key = OKPKey.import_key(active)
-        else:
-            raise OTPmeException(f"Unsupported key type: {kty}")
-
-        issuer = f"https://{site.sso_fqdn}/oidc"
-        now = int(_time.time())
-
-        sub = self._compute_oidc_sub(user, client, site)
-
+    def _build_id_token_claims(self, oidc_session, user, client, site):
+        """ Resolve the OIDC-domain claim values that the handler is
+        responsible for (sub, user-attribute claims, auth_time, amr,
+        acr). Infrastructure claims (iss/aud/iat/exp/jti/sid/nonce)
+        and at_hash live on OIDCSession.build_id_token. """
         claims = {
-            "iss": issuer,
-            "aud": client.name,
-            "sub": sub,
-            "iat": now,
-            "exp": now + ttl,
-            "jti": _secrets.token_urlsafe(16),
-            # sid lets /end_session and back-channel logout correlate
-            # this token to the OIDCSession that issued it.
-            "sid": oidc_session.uuid,
+            "sub": self._compute_oidc_sub(user, client, site),
         }
-        if oidc_session.nonce:
-            claims["nonce"] = oidc_session.nonce
-        alg = getattr(client, 'oidc_id_token_signed_response_alg', None) \
-              or active.get("alg", "RS256")
-        header = {"alg": alg, "kid": active.get("kid"), "typ": "JWT"}
-        return joserfc_jwt.encode(header, claims, signing_key)
+        # User-attribute claims gated by granted scope.
+        user_claims = self._get_user_claims(user, oidc_session.scope,
+                                            client=client)
+        # Avoid clobbering "sub": _get_user_claims caller-contract is
+        # to NOT include sub, but be defensive.
+        for k, v in (user_claims or {}).items():
+            if k == "sub":
+                continue
+            claims[k] = v
+
+        auth_time = self._resolve_auth_time(oidc_session)
+        if auth_time is not None:
+            claims["auth_time"] = auth_time
+
+        auth_token = None
+        if getattr(oidc_session, 'auth_token', None):
+            auth_token = backend.get_object(object_type="token",
+                                            uuid=oidc_session.auth_token)
+        amr = self._compute_oidc_amr(auth_token)
+        if amr:
+            claims["amr"] = amr
+        scheme = self._resolve_acr_scheme(client)
+        acr = self._compute_oidc_acr(amr, scheme)
+        if acr is not None:
+            claims["acr"] = acr
+
+        return claims
 
     def oidc_token(self, command_args):
         """ /token endpoint. Dispatches by grant_type. """
@@ -1529,7 +1605,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC code exchange rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=log_reason)
             self.logger.warning(log_msg)
-            self._log_audit('token_code_exchange_failed',
+            emit_audit("OIDC", 'token_code_exchange_failed',
                             level='warning',
                             client=client_id,
                             error=error_code,
@@ -1545,7 +1621,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
         if not code:
             # Configuration / request bug -- safe to be specific.
-            self._log_audit('token_code_exchange_failed',
+            emit_audit("OIDC", 'token_code_exchange_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -1579,7 +1655,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # redirect_uri mismatch is a configuration bug on the RP
         # side -- specific is OK and helps debugging.
         if oidc_session.redirect_uri != (redirect_uri or ""):
-            self._log_audit('token_code_exchange_failed',
+            emit_audit("OIDC", 'token_code_exchange_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_grant',
@@ -1609,18 +1685,26 @@ class OTPmeSsoP1(OTPmeServer1):
             return _fail('server_error', GENERIC_SERVER_ERROR,
                          "site has no signing key")
 
-        # Single-use consume + issue tokens.
+        # Single-use consume + combined token issuance. TTL is
+        # resolved per-client (Site/Unit/Client hierarchy). The
+        # combined call binds at_hash to the freshly-rotated AT
+        # before the plaintext leaves the session. id_token_jti is
+        # surfaced for cross-system audit correlation.
+        at_ttl = self._resolve_access_token_ttl(client)
         oidc_session.consume_authcode()
-        at, rt = oidc_session.issue_tokens(ttl_access=3600)
         try:
-            id_token = self._build_id_token(oidc_session,
-                                            user,
-                                            client,
-                                            site,
-                                            ttl=3600)
+            id_claims = self._build_id_token_claims(oidc_session,
+                                                     user, client, site)
+            at, rt, id_token, id_token_jti = \
+                    oidc_session.issue_tokens_with_id_token(
+                            ttl_access=at_ttl,
+                            client=client,
+                            site=site,
+                            claims=id_claims)
         except Exception as e:
             config.raise_exception()
-            log_msg = _("Failed to build ID Token: {err}", log=True)[1]
+            log_msg = _("Failed to issue tokens / build ID Token: {err}",
+                        log=True)[1]
             log_msg = log_msg.format(err=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {
@@ -1635,16 +1719,18 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             pass
 
-        self._log_audit('token_code_exchange_success',
+        emit_audit("OIDC", 'token_code_exchange_success',
                         client=client_id,
                         user=user.name,
                         session=oidc_session.session_id,
                         scope=oidc_session.scope or "",
+                        ttl=at_ttl,
+                        id_token_jti=id_token_jti,
                         ip=client_ip)
         response = {
             'access_token': at,
             'token_type': 'Bearer',
-            'expires_in': 3600,
+            'expires_in': at_ttl,
             'refresh_token': rt,
             'id_token': id_token,
             'scope': oidc_session.scope or "",
@@ -1677,7 +1763,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC refresh rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=log_reason)
             self.logger.warning(log_msg)
-            self._log_audit('token_refresh_failed',
+            emit_audit("OIDC", 'token_refresh_failed',
                             level='warning',
                             client=client_id,
                             error=error_code,
@@ -1692,7 +1778,7 @@ class OTPmeSsoP1(OTPmeServer1):
         if err:
             return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
         if not refresh_token:
-            self._log_audit('token_refresh_failed',
+            emit_audit("OIDC", 'token_refresh_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -1709,8 +1795,45 @@ class OTPmeSsoP1(OTPmeServer1):
                                 value=rt_hash,
                                 return_type="instance")
         if not result:
-            # Either fake RT, or rotated-out (replay attempt). Either
-            # way: invalid_grant.
+            # Active index missed -- check the burn index. A hit there
+            # means this RT was already rotated out, so the legitimate
+            # RP can't be presenting it: it's a replay (token theft).
+            # OAuth 2.1 §6.1 says invalidate the whole token chain.
+            burned = backend.search(object_type="session",
+                                    attribute="burned_refresh_token_hash",
+                                    value=rt_hash,
+                                    return_type="instance")
+            if burned:
+                replayed_session = burned[0]
+                # Cross-client check: only act if the calling client
+                # actually owns the session. Otherwise a malicious
+                # client could weaponize this to nuke another client's
+                # session by replaying the victim's burned RT.
+                if replayed_session.client == client.uuid:
+                    sid = replayed_session.session_id
+                    try:
+                        replayed_session.delete(force=True,
+                                                 verify_acls=False)
+                    except Exception as e:
+                        log_msg = _("Failed to invalidate replayed OIDC "
+                                    "session '{sid}': {err}", log=True)[1]
+                        log_msg = log_msg.format(sid=sid, err=e)
+                        self.logger.warning(log_msg)
+                    emit_audit("OIDC", 'token_refresh_replay_detected',
+                                    level='warning',
+                                    client=client_id,
+                                    session=sid,
+                                    reason='burned refresh token replay',
+                                    ip=client_ip)
+                else:
+                    # Suspicious but not actionable -- log without
+                    # killing someone else's session.
+                    emit_audit("OIDC", 'token_refresh_replay_cross_client',
+                                    level='warning',
+                                    client=client_id,
+                                    session=replayed_session.session_id,
+                                    reason='burned RT presented by foreign client',
+                                    ip=client_ip)
             return _fail('invalid_grant', GENERIC_INVALID_GRANT,
                          "unknown refresh token (potential replay)")
         oidc_session = result[0]
@@ -1750,14 +1873,24 @@ class OTPmeSsoP1(OTPmeServer1):
             return _fail('server_error', GENERIC_SERVER_ERROR,
                          "site has no signing key")
 
-        # Rotate: issue fresh AT+RT. issue_tokens drops the old hash
-        # indexes so the previous RT can't be reused.
-        at, rt = oidc_session.issue_tokens(ttl_access=3600)
+        # Rotate: combined AT/RT/ID-Token mint. The session burns the
+        # rotated-out RT so a later replay is detectable. TTL is
+        # resolved per-client at issuance time, so a config change
+        # picks up on the next refresh without invalidating live
+        # tokens. at_hash is bound to the freshly-rotated AT.
+        at_ttl = self._resolve_access_token_ttl(client)
         try:
-            id_token = self._build_id_token(oidc_session, user, client, site,
-                                            ttl=3600)
+            id_claims = self._build_id_token_claims(oidc_session,
+                                                     user, client, site)
+            at, rt, id_token, id_token_jti = \
+                    oidc_session.issue_tokens_with_id_token(
+                            ttl_access=at_ttl,
+                            client=client,
+                            site=site,
+                            claims=id_claims)
         except Exception as e:
-            log_msg = _("Failed to build ID Token (refresh): {err}", log=True)[1]
+            log_msg = _("Failed to issue tokens / build ID Token (refresh): "
+                        "{err}", log=True)[1]
             log_msg = log_msg.format(err=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {
@@ -1771,16 +1904,18 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             pass
 
-        self._log_audit('token_refresh_success',
+        emit_audit("OIDC", 'token_refresh_success',
                         client=client_id,
                         user=user.name,
                         session=oidc_session.session_id,
                         scope=oidc_session.scope or "",
+                        ttl=at_ttl,
+                        id_token_jti=id_token_jti,
                         ip=client_ip)
         response = {
             'access_token': at,
             'token_type': 'Bearer',
-            'expires_in': 3600,
+            'expires_in': at_ttl,
             'refresh_token': rt,
             'id_token': id_token,
             'scope': oidc_session.scope or "",
@@ -1897,7 +2032,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC introspect rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=err)
             self.logger.warning(log_msg)
-            self._log_audit('introspect_failed',
+            emit_audit("OIDC", 'introspect_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_client',
@@ -1908,7 +2043,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 'error_description': "client authentication failed",
             })
         if not token:
-            self._log_audit('introspect_failed',
+            emit_audit("OIDC", 'introspect_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -1950,7 +2085,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # Cross-client introspection defense: a token must be
         # introspected by the client it was issued to.
         if oidc_session.client != client.uuid:
-            self._log_audit('introspect_cross_client',
+            emit_audit("OIDC", 'introspect_cross_client',
                             level='warning',
                             client=client_id,
                             session=oidc_session.session_id,
@@ -2023,7 +2158,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC revoke rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=err)
             self.logger.warning(log_msg)
-            self._log_audit('revoke_failed',
+            emit_audit("OIDC", 'revoke_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_client',
@@ -2034,7 +2169,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 'error_description': "client authentication failed",
             })
         if not token:
-            self._log_audit('revoke_failed',
+            emit_audit("OIDC", 'revoke_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -2071,7 +2206,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC revoke ignored: token belongs to a different client (got '{cid}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id)
             self.logger.warning(log_msg)
-            self._log_audit('revoke_cross_client',
+            emit_audit("OIDC", 'revoke_cross_client',
                             level='warning',
                             client=client_id,
                             session=oidc_session.session_id,
@@ -2091,14 +2226,14 @@ class OTPmeSsoP1(OTPmeServer1):
             # Per spec, still 200 to caller; internal failure logged.
 
         if delete_failed:
-            self._log_audit('revoke_delete_failed',
+            emit_audit("OIDC", 'revoke_delete_failed',
                             level='warning',
                             client=client_id,
                             session=oidc_session.session_id,
                             reason=delete_failed,
                             ip=client_ip)
         else:
-            self._log_audit('revoke_success',
+            emit_audit("OIDC", 'revoke_success',
                             client=client_id,
                             session=oidc_session.session_id,
                             ip=client_ip)
@@ -2143,7 +2278,7 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
 
         if not id_token_hint:
-            self._log_audit('end_session_failed',
+            emit_audit("OIDC", 'end_session_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -2160,7 +2295,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: id_token_hint invalid: {err}", log=True)[1]
             log_msg = log_msg.format(err=e)
             self.logger.warning(log_msg)
-            self._log_audit('end_session_failed',
+            emit_audit("OIDC", 'end_session_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -2175,7 +2310,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: client_id mismatch with id_token_hint aud (got '{cid}', hint='{aud}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id, aud=hint_aud)
             self.logger.warning(log_msg)
-            self._log_audit('end_session_failed',
+            emit_audit("OIDC", 'end_session_failed',
                             level='warning',
                             client=client_id,
                             hint_aud=hint_aud,
@@ -2193,7 +2328,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                     realm=config.realm,
                                     site=config.site)
         if client is None:
-            self._log_audit('end_session_failed',
+            emit_audit("OIDC", 'end_session_failed',
                             level='warning',
                             client=client_id,
                             error='invalid_request',
@@ -2217,7 +2352,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 log_msg = log_msg.format(uri=post_logout_redirect_uri,
                                         cid=client_id)
                 self.logger.warning(log_msg)
-                self._log_audit('end_session_post_uri_rejected',
+                emit_audit("OIDC", 'end_session_post_uri_rejected',
                                 level='warning',
                                 client=client_id,
                                 requested_uri=post_logout_redirect_uri,
@@ -2239,7 +2374,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: scope=sso, deferring to /logout (client='{cid}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id)
             self.logger.info(log_msg)
-            self._log_audit('end_session_sso_deferred',
+            emit_audit("OIDC", 'end_session_sso_deferred',
                             client=client_id,
                             session=sid,
                             post_logout_redirect_uri=validated_post_uri,
@@ -2253,7 +2388,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: session '{sid}' already gone.", log=True)[1]
             log_msg = log_msg.format(sid=sid)
             self.logger.info(log_msg)
-            self._log_audit('end_session_session_missing',
+            emit_audit("OIDC", 'end_session_session_missing',
                             client=client_id,
                             session=sid,
                             ip=client_ip)
@@ -2264,7 +2399,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: client/session mismatch (client='{cid}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id)
             self.logger.warning(log_msg)
-            self._log_audit('end_session_failed',
+            emit_audit("OIDC", 'end_session_failed',
                             level='warning',
                             client=client_id,
                             session=oidc_session.session_id,
@@ -2283,7 +2418,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC end_session: delete failed for session '{sid}': {err}", log=True)[1]
             log_msg = log_msg.format(sid=oidc_session.session_id, err=e)
             self.logger.warning(log_msg)
-            self._log_audit('end_session_delete_failed',
+            emit_audit("OIDC", 'end_session_delete_failed',
                             level='warning',
                             client=client_id,
                             session=session_id_for_audit,
@@ -2295,7 +2430,7 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = _("OIDC session '{sid}' ended for client '{cid}' (rp scope).", log=True)[1]
         log_msg = log_msg.format(sid=oidc_session.session_id, cid=client_id)
         self.logger.info(log_msg)
-        self._log_audit('end_session_rp_ended',
+        emit_audit("OIDC", 'end_session_rp_ended',
                         client=client_id,
                         session=session_id_for_audit,
                         post_logout_redirect_uri=validated_post_uri,
@@ -2366,7 +2501,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("OIDC authorize rejected ({reason}).", log=True)[1]
             log_msg = log_msg.format(reason=description)
             self.logger.warning(log_msg)
-            self._log_audit('authorize_rejected',
+            emit_audit("OIDC", 'authorize_rejected',
                             level='warning',
                             user=user.name,
                             client=client_id,
@@ -2450,10 +2585,25 @@ class OTPmeSsoP1(OTPmeServer1):
                         can_redirect=True)
         # Method only validated when a challenge was provided -- with
         # PKCE off and no challenge, method is moot.
-        if code_challenge and code_challenge_method not in ("plain", "S256"):
-            return _err('invalid_request',
-                        f"code_challenge_method '{code_challenge_method}' not supported",
-                        can_redirect=True)
+        if code_challenge:
+            if code_challenge_method not in ("plain", "S256"):
+                return _err('invalid_request',
+                            f"code_challenge_method '{code_challenge_method}' not supported",
+                            can_redirect=True)
+            # OAuth 2.1 §7.5.2 forbids 'plain'. Allowed only when the
+            # client (or its site/unit) explicitly opted in via
+            # oidc_allow_plain_pkce -- never the default.
+            if code_challenge_method == "plain":
+                try:
+                    allow_plain = client.get_config_parameter(
+                            "oidc_allow_plain_pkce")
+                except Exception:
+                    allow_plain = False
+                if not allow_plain:
+                    return _err('invalid_request',
+                                "code_challenge_method 'plain' is forbidden "
+                                "(OAuth 2.1); use 'S256'",
+                                can_redirect=True)
 
         # Resolve client AG -> UUID, generate SOTP from session.
         ag_search = backend.search(object_type="accessgroup",
@@ -2474,7 +2624,7 @@ class OTPmeSsoP1(OTPmeServer1):
                    client=client_id,
                    via='oidc_authorize',
                    ip=client_ip)
-        self._log_audit('authorize_success',
+        emit_audit("OIDC", 'authorize_success',
                         user=user.name,
                         client=client_id,
                         redirect_uri=redirect_uri,
@@ -2497,10 +2647,14 @@ class OTPmeSsoP1(OTPmeServer1):
         Issuer + endpoint URLs are derived from ``site.sso_fqdn``;
         web layer doesn't need to pass anything.
 
-        ``scopes_supported`` lists only ``auto_member=True`` scopes
-        -- the standard OIDC claim scopes that every RP gets out of
-        the box. Per-RP custom scopes (payments.execute etc.) stay
-        private to the RP contract and are not leaked in discovery.
+        ``scopes_supported`` lists every enabled Scope object in the
+        realm. Per OIDC Discovery 1.0 §3, this field is meant as the
+        full set of scopes the OP accepts -- some RP libraries
+        (mod_auth_openidc, oidc-client-ts, ...) refuse to complete
+        auto-setup if a configured scope is missing here. Custom
+        scopes (e.g. ``payments.execute``) are still gated by their
+        per-Scope client allowlist; advertisement is independent of
+        grant.
         """
         site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if site is None:
@@ -2514,23 +2668,32 @@ class OTPmeSsoP1(OTPmeServer1):
         # Algorithms = whatever currently lives on the site (active
         # + retired). Falls back to RS256 if oidc_keys is empty.
         algs = set()
-        oidc_keys = site.oidc_keys.copy()
-        for jwk in (oidc_keys or {}).values():
+        oidc_keys = site.get_oidc_keys()
+        for jwk in oidc_keys.values():
             alg = jwk.get("alg")
             if alg:
                 algs.add(alg)
         if not algs:
             algs = {"RS256"}
 
-        # auto_member=True + enabled=True. scope_id may repeat across
-        # multiple Scope objects (per-RP namespacing) so we dedupe
-        # with a set.
+        # All enabled scopes on this site. Per OIDC Discovery 1.0 §3,
+        # ``scopes_supported`` should advertise the full set the OP
+        # accepts -- some RP libraries (mod_auth_openidc, oidc-client-ts)
+        # refuse to complete auto-setup if a configured scope is
+        # missing here. Scoping to the issuing site keeps the
+        # advertisement consistent with the site-local OP semantics
+        # (issuer/jwks/clients all live on this site). Privacy-wise
+        # not a leak: scope names aren't secrets, and per-Scope
+        # client allowlists still gate actual grants in
+        # _compute_oidc_granted_scope. scope_id may repeat across
+        # Scope objects (per-RP namespacing); dedup via sorted().
         scope_ids = backend.search(
                             object_type="scope",
                             attributes={
-                                'auto_member': {'value': True},
                                 'enabled':     {'value': True},
                             },
+                            realm=config.realm,
+                            site=config.site,
                             return_attributes=['scope_id'])
         doc = {
             "issuer": issuer,
@@ -2554,7 +2717,11 @@ class OTPmeSsoP1(OTPmeServer1):
                 "authorization_code",
                 "refresh_token",
             ],
-            "code_challenge_methods_supported": ["S256", "plain"],
+            # OAuth 2.1 §7.5.2: only S256 in discovery. ``plain`` is
+            # still accepted on the wire when an individual client has
+            # ``oidc_allow_plain_pkce=True`` (legacy interop), but
+            # we don't advertise it.
+            "code_challenge_methods_supported": ["S256"],
             "claims_supported": [
                 "sub", "iss", "aud", "iat", "exp", "jti", "sid",
                 "name", "given_name", "family_name", "preferred_username",
@@ -2590,8 +2757,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 'error_description': 'site has not OIDC keys',
             })
 
-        oidc_keys = site.oidc_keys.copy()
-        keys = list((oidc_keys).values())
+        keys = list(site.get_oidc_keys().values())
 
         return self.build_response(True, render_jwks(keys))
 
@@ -2606,7 +2772,12 @@ class OTPmeSsoP1(OTPmeServer1):
         registry would normally enforce exp/iat -- we override its
         ``now`` to a far-future value so validate_exp/validate_iat
         pass for any real timestamp.
+
+        DOES enforce a separate ``iat``-age cap (config parameter
+        ``oidc_id_token_hint_max_age``, default 90 days) so a years-
+        old ID Token from a leaked backup can't still drive a logout.
         """
+        import time as _time
         from joserfc import jwt as joserfc_jwt
         from joserfc.jwt import JWTClaimsRegistry
         from joserfc.jwk import RSAKey, ECKey, OKPKey, KeySet
@@ -2619,9 +2790,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # Build a KeySet of all keys (active + retired) so old
         # tokens still verify during/after rotation.
         keys = []
-        oidc_keys = site.oidc_keys.copy()
-        oidc_keys = oidc_keys.values()
-        for jwk in oidc_keys:
+        for jwk in site.get_oidc_keys().values():
             try:
                 pub = public_jwk(jwk)
                 kty = pub.get("kty")
@@ -2651,6 +2820,38 @@ class OTPmeSsoP1(OTPmeServer1):
             registry.validate(claims)
         except Exception as e:
             raise OTPmeException(f"id_token_hint claim validation failed: {e}")
+
+        # iat-age cap. Hardened against replay of a years-old leaked
+        # ID Token. exp is intentionally NOT enforced (post-AT-expiry
+        # logout is legitimate), but a hint older than the cap is
+        # treated as stale.
+        from otpme.lib.humanize import units
+        try:
+            max_age_human = site.get_config_parameter(
+                    "oidc_id_token_hint_max_age")
+        except Exception:
+            max_age_human = None
+        try:
+            max_age = units.time2int(max_age_human, time_unit="s") \
+                    if max_age_human is not None else 90 * 86400
+        except Exception:
+            max_age = 90 * 86400
+        iat_claim = claims.get("iat")
+        if iat_claim is not None:
+            try:
+                iat = int(iat_claim)
+            except (TypeError, ValueError):
+                raise OTPmeException("id_token_hint iat is not an integer")
+            now = int(_time.time())
+            # Reject iat from the far future (clock-skew threshold:
+            # 5 minutes). Catches malformed/forged hints whose iat
+            # would otherwise sit forever within the max_age window.
+            if iat > now + 300:
+                raise OTPmeException("id_token_hint iat is in the future")
+            if (now - iat) > max_age:
+                raise OTPmeException(
+                        f"id_token_hint is older than the configured "
+                        f"max age ({max_age}s)")
 
         # RFC 7519: ``aud`` may be a JSON string or array of strings.
         aud_claim = claims["aud"]

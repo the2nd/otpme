@@ -359,6 +359,7 @@ def rename_object(
 def delete_object(
     object_id: oid.OTPmeOid,
     no_transaction: bool=False,
+    no_exists_check: bool=False,
     cluster: bool=False,
     wait_for_cluster_writes: bool=False,
     update_nsscache: bool=True,
@@ -372,14 +373,10 @@ def delete_object(
         raise Exception(_("Cannot delete own realm."))
     if object_uuid == config.site_uuid:
         raise Exception(_("Cannot delete own site."))
-    if not index_get(object_id):
-        if not object_exists(object_id):
-            msg = _("Unknown object: {object_id}")
-            msg = msg.format(object_id=object_id)
-            raise UnknownObject(msg)
     # Remove object from backend.
     delete(object_id=object_id,
         no_transaction=no_transaction,
+        no_exists_check=no_exists_check,
         update_nsscache=update_nsscache,
         wait_for_cluster_writes=wait_for_cluster_writes,
         cluster=cluster)

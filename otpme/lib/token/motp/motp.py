@@ -290,6 +290,8 @@ def register_config_params():
 @match_class_typing
 class MotpToken(Token):
     """ Class for MOTP tokens. """
+    oidc_amr_values = ['otp']
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

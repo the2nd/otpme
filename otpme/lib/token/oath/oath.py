@@ -34,6 +34,8 @@ default_callback = config.get_callback()
 @match_class_typing
 class OathToken(Token):
     """ Base class for OATH tokens. """
+    oidc_amr_values = ['otp']
+
     def __init__(self, *args, **kwargs):
         self.pin = None
         self.pin_len = None

@@ -179,6 +179,7 @@ def register_config_parameters():
 class U2fToken(Token):
     """ Class for U2F tokens. """
     commands = commands
+    oidc_amr_values = ['hwk', 'fido', 'user']
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

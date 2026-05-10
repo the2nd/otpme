@@ -326,6 +326,8 @@ def register_token_type():
 @match_class_typing
 class SshToken(Token):
     """ Class for SSH tokens. """
+    oidc_amr_values = ['swk']
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

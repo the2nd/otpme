@@ -138,6 +138,10 @@ Secret used by the SSO portal for CSRF token protection.
 TLS certificate presented by the SSO portal (\fBhttpd\fR).
 .IP \fBSSO_KEY\fR
 Private key matching the SSO TLS certificate.
+.IP \fBOIDC_PAIRWISE_SECRET\fR
+HMAC key used to derive pairwise OIDC \fIsub\fR claims. Replicated to
+all SSO hosts of a site so every host computes the same \fIsub\fR for
+the same (RP, user) pair.
 .PP
 To actually start the SSO portal on the host, set
 .B SSO_SERVER="True"
@@ -150,6 +154,88 @@ See
 .B del_sso_host \fIsite\fR \fIhost_name\fR
 Remove the SSO host role from a host. The SSO data will no longer be
 synchronized to this host.
+.SS OIDC OpenID Connect Provider
+OTPme can act as an OpenID Connect Provider (OP) per site. The OP is
+\fBsite-local\fR: each site exposes its own discovery document at
+\fIhttps://{site.sso_fqdn}/oidc/.well-known/openid-configuration\fR
+with \fIissuer = https://{site.sso_fqdn}/oidc\fR. Each OIDC client
+object lives on exactly one site, and a Relying Party must address
+the issuer of that site to authenticate against it.
+.PP
+Sites in the same realm do not share OIDC clients, signing keys, or
+pairwise secrets -- each site is its own OP. For high availability
+within one site, use multiple SSO hosts (see \fBadd_sso_host\fR)
+behind a load balancer or DNS round-robin; they all serve the same
+issuer and share the necessary site data via SSO-host sync. For
+genuinely separate OPs, run OIDC on each site individually with its
+own clients.
+.PP
+Supported flow: only the OAuth 2.1 \fBAuthorization Code Flow with
+PKCE\fR is implemented (response_type=code, grant_type=authorization_code
++ refresh_token). The legacy \fBImplicit Flow\fR (response_type=id_token)
+is intentionally not supported -- OAuth 2.1 §1.4 deprecates it because
+tokens delivered via the URL fragment leak through browser history,
+referrers, XSS and extensions; modern SPAs should use Code+PKCE
+instead. The \fBHybrid Flow\fR (response_type="code id_token") is
+likewise not supported; its only marginal benefit (immediate identity
+rendering before the /token call) does not justify the additional
+fragment-based delivery surface. PKCE is mandatory by default
+(\fBoidc_pkce_required=True\fR) and only \fBS256\fR is advertised in
+discovery; \fBplain\fR can be enabled per client for legacy interop
+but is never advertised (see \fBoidc_allow_plain_pkce\fR).
+.TP
+.B enable_oidc \fIsite\fR
+Enable the OIDC OP on this site. On first activation, an active
+signing key (\fBgen_oidc_key\fR) and a pairwise secret are
+auto-generated.
+.TP
+.B disable_oidc \fIsite\fR
+Disable the OIDC OP. Existing keys and secrets are kept on disk so
+\fBenable_oidc\fR resumes without re-issuing tokens.
+.TP
+.B gen_oidc_key \fR[\fB\-\-key-type\fR \fIpreset\fR] [\fB\-\-kty\fR \fIRSA|EC|OKP\fR] [\fB\-\-size\fR \fIN\fR] [\fB\-\-alg\fR \fIalg\fR] [\fB\-\-retired-max-age\fR \fIseconds\fR] \fIsite\fR
+Rotate the active OIDC signing key. The previous active key is
+demoted to \fBretired\fR and removed from JWKS once
+\fIretired_max_age\fR (default 7200s) has elapsed, so RPs that
+fetched ID Tokens just before rotation can still verify them.
+Presets: \fBrsa-2048\fR, \fBrsa-3072\fR, \fBrsa-4096\fR,
+\fBec-p256\fR, \fBec-p384\fR, \fBec-p521\fR, \fBed25519\fR.
+.TP
+.B revoke_oidc_key \fIsite\fR \fIkid\fR
+Permanently remove a signing key from JWKS. Tokens signed by it stop
+verifying immediately. If the revoked key was the active one, a
+replacement is generated automatically.
+.TP
+.B show_oidc_keys \fIsite\fR
+List the OIDC signing keys currently on the site (active, retired,
+and their algorithms / kid).
+.TP
+.B oidc_pairwise_secret \fR[\fB\-\-force\fR] \fIsite\fR [\fIsecret\fR]
+Rotate (or set) the pairwise sub HMAC secret for this site. Without
+\fIsecret\fR a fresh 64-hex-char key is auto-generated. \fBWARNING:\fR
+rotating invalidates every existing pairwise \fIsub\fR on every RP --
+RPs that key their account model on \fIsub\fR will see a "fresh" user
+on next login. Coordinate with each RP before rotating.
+.PP
+Site / Unit / Client config parameters relevant to OIDC:
+.RS
+.IP \fBoidc_pkce_required\fR 4
+Whether PKCE is mandatory for the authorize flow. Default \fBTrue\fR
+(OAuth 2.1).
+.IP \fBoidc_allow_plain_pkce\fR 4
+Whether the deprecated \fBplain\fR PKCE method is accepted. Default
+\fBFalse\fR. Override per client only for legacy RPs that hardcode
+\fBplain\fR; the discovery document never advertises it regardless.
+.IP \fBoidc_logout_scope\fR 4
+Scope of \fI/end_session\fR: \fBsso\fR (default) terminates the whole
+SSO session via the regular logout cascade; \fBrp\fR terminates only
+the OIDCSession for this RP.
+.IP \fBoidc_default_scopes\fR 4
+Comma-separated list of scopes auto-granted to RPs without an
+explicit Scope-object grant.
+.IP \fBoidc_email_attribute\fR 4
+LDIF attribute used as the source for the \fIemail\fR claim.
+.RE
 .SS Cluster
 .TP
 .B cluster_key \fIsite\fR \fIcluster_key\fR

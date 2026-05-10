@@ -930,6 +930,15 @@ class Token(OTPmeObject):
     """ Generic OTPme token object. """
     commands = commands
 
+    # RFC 8176 Authentication Methods References (amr) values that
+    # describe how this token type authenticates the user. Read by the
+    # OIDC ID Token builder to populate the ``amr`` claim. Subclasses
+    # override per token type; e.g. fido2 emits ``["hwk", "fido",
+    # "user"]``. Default is single-factor password-equivalent so an
+    # un-overridden token (a fresh / minimal subclass) still produces
+    # a valid claim instead of silently emitting nothing.
+    oidc_amr_values = ['pwd']
+
     @classmethod
     def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
         # Get token roles.

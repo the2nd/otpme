@@ -78,6 +78,7 @@ read_value_acls = {
                                 "radius_ca_cert",
                                 "oidc",
                                 "oidc_keys",
+                                "oidc_pairwise_secret",
                                 "auth",
                                 "sync",
                                 "ca",
@@ -137,6 +138,7 @@ write_value_acls = {
                                 "sso_key",
                                 "sso_secret",
                                 "sso_csrf_secret",
+                                "oidc_pairwise_secret",
                                 "cluster_key",
                                 ],
                     "renew"     : [
@@ -630,6 +632,15 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_sso_csrf_secret',
                     'args'              : ['secret'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'oidc_pairwise_secret'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_pairwise_secret',
+                    'oargs'             : ['secret', 'force'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1499,6 +1510,85 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'client'])
+    # Whether the deprecated PKCE method ``plain`` is acceptable for
+    # the authorize flow. OAuth 2.1 §7.5.2 forbids ``plain`` because
+    # an attacker who steals the auth code immediately also has the
+    # verifier (verifier == challenge). Default False; the only use
+    # case for True is interop with a legacy RP that hardcodes plain
+    # and cannot be upgraded.
+    config.register_config_parameter(name="oidc_allow_plain_pkce",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site', 'unit', 'client'])
+    # Maximum age of an id_token_hint at /end_session. We deliberately
+    # don't enforce ``exp`` -- a user logging out an hour after the AT
+    # expired is a legit case -- but unbounded acceptance would let a
+    # years-old leaked ID Token from a backup still drive a logout.
+    # 90 days is a reasonable default; reduce for higher-assurance
+    # deployments. Accepts human units (e.g. ``7D``, ``12h``, ``2W``);
+    # stored as int seconds on disk.
+    def oidc_id_token_hint_max_age_setter(value, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.time2int(value, time_unit="s")
+        except Exception as err:
+            msg = _("Invalid OIDC id_token_hint max age.")
+            raise ValueError(msg) from err
+    def oidc_id_token_hint_max_age_getter(value, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.int2time(value, time_unit="s")[0]
+        except Exception as err:
+            msg = _("Invalid OIDC id_token_hint max age.")
+            raise ValueError(msg) from err
+    config.register_config_parameter(name="oidc_id_token_hint_max_age",
+                                    ctype=int,
+                                    setter=oidc_id_token_hint_max_age_setter,
+                                    getter=oidc_id_token_hint_max_age_getter,
+                                    default_value=90 * 86400,
+                                    object_types=['site', 'unit', 'client'])
+    # Lifetime of the OIDC access token (and the ID Token issued
+    # alongside it). Default 1h matches OAuth 2.1 guidance for
+    # bearer tokens. High-value RPs (banking, admin tooling) may
+    # set 5m; low-value internal tools may set 8h. Refresh tokens
+    # are bounded by the parent SSO session, not by this TTL.
+    # Accepts human units (e.g. ``5m``, ``1h``, ``8h``); stored as
+    # int seconds on disk.
+    def oidc_access_token_ttl_setter(value, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.time2int(value, time_unit="s")
+        except Exception as err:
+            msg = _("Invalid OIDC access token TTL.")
+            raise ValueError(msg) from err
+    def oidc_access_token_ttl_getter(value, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.int2time(value, time_unit="s")[0]
+        except Exception as err:
+            msg = _("Invalid OIDC access token TTL.")
+            raise ValueError(msg) from err
+    config.register_config_parameter(name="oidc_access_token_ttl",
+                                    ctype=int,
+                                    setter=oidc_access_token_ttl_setter,
+                                    getter=oidc_access_token_ttl_getter,
+                                    default_value=3600,
+                                    object_types=['site', 'unit', 'client'])
+    # Authentication Context Class Reference (acr) scheme used in
+    # ID Tokens. Heuristic is the same regardless of scheme:
+    # hardware-backed (hwk/fido/sc) or explicit mfa marker => "2",
+    # any single non-empty factor => "1", nothing => "0".
+    #   numeric: "0" / "1" / "2"           (default; broadest RP support)
+    #   loa:     "loa0" / "loa1" / "loa2"  (govt / Behörden patterns)
+    #   none:    don't emit acr            (only amr is included)
+    # AMR (Authentication Methods References, RFC 8176) is always
+    # emitted when an auth_token is known -- there is no off-switch
+    # for it because RPs that don't care simply ignore unknown claims.
+    config.register_config_parameter(name="oidc_acr_scheme",
+                                    ctype=str,
+                                    default_value="numeric",
+                                    valid_values=['numeric', 'loa', 'none'],
+                                    object_types=['site', 'unit', 'client'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -1623,6 +1713,13 @@ class Site(OTPmeObject):
         self.sso_key = None
         self.sso_secret = None
         self.sso_csrf_secret = None
+        # Pairwise sub HMAC key. MUST be present when an OIDC client
+        # uses subject_type=pairwise — without it, the per-RP sub
+        # collapses to a deterministic value across all sites with the
+        # same sector_id, defeating the privacy guarantee. Filled in
+        # by enable_oidc() on activation; Site sync replicates it to
+        # every sso_host so multi-host OPs compute identical subs.
+        self.oidc_pairwise_secret = None
         self.required_votes = 0
         self.cluster_key = None
         self.fido2_ca_certs = {}
@@ -1662,6 +1759,7 @@ class Site(OTPmeObject):
                                 "SSO_CERT",
                                 "SSO_SECRET",
                                 "SSO_CSRF_SECRET",
+                                "OIDC_PAIRWISE_SECRET",
                                 "CONFIG_PARAMS:reverse_proxy_ips",
                                 ],
                         },
@@ -1810,6 +1908,13 @@ class Site(OTPmeObject):
                                             'var_name'  : 'oidc_keys',
                                             'type'      : dict,
                                             'required'  : False,
+                                        },
+
+            'OIDC_PAIRWISE_SECRET'      : {
+                                            'var_name'      : 'oidc_pairwise_secret',
+                                            'type'          : str,
+                                            'required'      : False,
+                                            'encryption'    : config.disk_encryption,
                                         },
 
             'ADMIN_TOKEN'                : {
@@ -2415,6 +2520,66 @@ class Site(OTPmeObject):
         self.sso_secret = secret
         return self._cache(callback=callback)
 
+    @check_acls(['edit:oidc_pairwise_secret'])
+    @object_lock()
+    @backend.transaction
+    @audit_log(ignore_args=['secret'])
+    def change_oidc_pairwise_secret(
+        self,
+        secret: str=None,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Rotate the per-Site OIDC pairwise sub HMAC key.
+
+        Without ``secret`` a fresh 64-hex-char key is autogenerated.
+        Pass ``secret`` only when re-importing a known value during a
+        site clone / DR drill -- otherwise omit so the OP never sees
+        a human-chosen key.
+
+        WARNING: rotating invalidates every existing pairwise sub on
+        every RP -- the next ID Token presents a new sub for the same
+        user, and RPs that key their account model on sub will see a
+        "fresh" user (account split / lockout). Only rotate after a
+        suspected key leak, then coordinate re-linking with each RP.
+        """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+        if not force:
+            msg = _("Rotate OIDC pairwise secret for site '{name}'? "
+                    "All existing pairwise 'sub' values on RPs will "
+                    "change.: ")
+            msg = msg.format(name=self.name)
+            if not self.ask_change_confirmation(msg, force=force,
+                                                callback=callback):
+                return callback.abort()
+        if secret:
+            self.oidc_pairwise_secret = secret
+            audit_reason = "rotate_explicit"
+        else:
+            self.oidc_pairwise_secret = stuff.gen_secret(len=64, encoding="hex")
+            audit_reason = "rotate_autogen"
+        actor = None
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Crypto", "oidc_pairwise_secret_generated",
+                   level='warning',
+                   actor=actor,
+                   site=self.name,
+                   reason=audit_reason)
+        return self._cache(callback=callback)
+
     @check_acls(['edit:sso_csrf_secret'])
     @object_lock()
     @backend.transaction
@@ -2688,6 +2853,23 @@ class Site(OTPmeObject):
         if not found_active_key:
             self.gen_oidc_key()
 
+        # Auto-generate the per-Site pairwise HMAC key. Without it,
+        # subject_type=pairwise collapses to a deterministic value
+        # across sites that share a sector_id, defeating the privacy
+        # guarantee announced in /.well-known discovery.
+        if not self.oidc_pairwise_secret:
+            self.oidc_pairwise_secret = stuff.gen_secret(len=64, encoding="hex")
+            actor = None
+            try:
+                if config.auth_token:
+                    actor = config.auth_token.rel_path
+            except Exception:
+                pass
+            emit_audit("Crypto", "oidc_pairwise_secret_generated",
+                       actor=actor,
+                       site=self.name,
+                       reason="enable_oidc")
+
         return self._write(callback=callback)
 
     @check_acls(['disable:oidc'])
@@ -2918,8 +3100,29 @@ class Site(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        oidc_keys = self.oidc_keys.copy()
+        oidc_keys = self.get_oidc_keys()
         return callback.ok(oidc_keys)
+
+    def get_oidc_keys(self):
+        """ Return a plain ``dict`` snapshot of OIDC signing keys.
+
+        Site attributes that are dicts are wrapped in
+        ``IncrementalDict`` for cluster-sync change tracking.
+        ``IncrementalDict`` is not a ``dict`` subclass, which breaks
+        joserfc's ``isinstance(value, dict)`` discrimination in
+        ``Key.import_key`` -- it'd then take the PEM/bytes path and
+        raise ``TypeError`` on a non-bytes input. ``.copy()`` on
+        ``IncrementalDict`` recursively unwraps to plain dicts (see
+        ``IncrementalDict.copy``), so callers handing JWKs to
+        joserfc must go through this getter rather than reading
+        ``self.oidc_keys`` directly.
+
+        Read-only snapshot: mutations on the returned dict do NOT
+        propagate back. Internal Site code that mutates keys (rotate,
+        revoke) still works on ``self.oidc_keys`` directly to keep
+        the cluster-sync incremental machinery alive.
+        """
+        return self.oidc_keys.copy() if self.oidc_keys else {}
 
     def create_site_cert(
         self,
@@ -4677,6 +4880,13 @@ class Site(OTPmeObject):
             lines.append(f'SSO_CSRF_SECRET="{self.sso_csrf_secret}"')
         else:
             lines.append('SSO_CSRF_SECRET=""')
+
+        if self.verify_acl("view:oidc_pairwise_secret") \
+        or self.verify_acl("edit:oidc_pairwise_secret"):
+            pw_secret = self.oidc_pairwise_secret or ""
+            lines.append(f'OIDC_PAIRWISE_SECRET="{pw_secret}"')
+        else:
+            lines.append('OIDC_PAIRWISE_SECRET=""')
 
         if self.verify_acl("view:mgmt_cert"):
             lines.append(f'MGMT_CERT="{self.mgmt_cert}"')

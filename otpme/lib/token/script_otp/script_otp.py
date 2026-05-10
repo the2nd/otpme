@@ -109,6 +109,16 @@ def register_token_type():
 @match_class_typing
 class ScriptToken(Token):
     """ 'script' token that runs a script to verify user/pass. """
+
+    @property
+    def oidc_amr_values(self):
+        # Same shared class is used for two distinct token types --
+        # discriminate by self.token_type at access time so RFC 8176
+        # ``amr`` reflects what the user actually did.
+        if getattr(self, 'token_type', None) == "script_otp":
+            return ['otp']
+        return ['pwd']
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

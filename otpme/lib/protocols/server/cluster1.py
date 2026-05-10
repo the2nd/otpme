@@ -529,16 +529,19 @@ class OTPmeClusterP1(OTPmeServer1):
                         remote_object_data = remote_objects[x_oid.full_oid]
                     except KeyError:
                         remote_object_data = None
-                        sync_object = True
                     if remote_object_data:
                         remote_checksum = remote_object_data['sync_checksum']
                         if remote_checksum != x_checksum:
                             sync_object = True
+                    else:
+                        sync_object = True
                     if not sync_object:
                         sync_objects[x_oid.full_oid] = None
                         continue
                     x_object_config = backend.read_config(x_oid)
                     if not x_object_config:
+                        # Hotfix our index.
+                        backend.index_del(x_oid)
                         continue
                     x_object_config = x_object_config.copy()
                     x_sync_checksum = backend.get_sync_checksum(x_oid)
@@ -811,7 +814,8 @@ class OTPmeClusterP1(OTPmeServer1):
                         status = False
             if status:
                 try:
-                    backend.delete_object(object_id=object_id)
+                    backend.delete_object(object_id=object_id,
+                                        no_exists_check=True)
                 except UnknownObject:
                     pass
                 except Exception as e:

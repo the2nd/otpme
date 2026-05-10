@@ -15,8 +15,8 @@ the backchannel-logout side-effect on delete are layered on top later.
 """
 import os
 import time
-import hashlib
 import secrets
+import threading
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -28,12 +28,40 @@ except Exception:
 
 from otpme.lib.audit import emit_audit
 from otpme.lib.classes.session import Session
+from otpme.lib.protocols.oidc_helpers import compute_at_hash
+from otpme.lib.protocols.oidc_helpers import hash_token as _hash_token
+
+
+# Backward-compat re-export -- existing call sites import hash_token
+# from this module. The implementation lives in oidc_helpers so it's
+# unit-testable without the full Session import chain.
+def hash_token(token):
+    return _hash_token(token)
 
 
 SESSION_TYPE = "oidc"
 
 STATE_PENDING_CODE_EXCHANGE = "pending_code_exchange"
 STATE_ACTIVE = "active"
+
+# Cap concurrent backchannel logout POSTs across the process. Mass
+# session-delete (user disable, site failover, expired-session reaper)
+# can fire thousands of OIDCSession.delete()s in a tight loop -- each
+# one sending an HTTP POST to a separate RP. Without a cap we could
+# spawn an unbounded number of sockets / threads against our own OP.
+# 32 is a reasonable balance: small enough to keep fd / memory usage
+# tame, large enough that a normal logout cascade isn't visibly
+# serialized. submit-time waiting is bounded by the per-call HTTP
+# timeout (10s), so worst-case a deep mass-logout pipelines at 32 RPs
+# at a time.
+_BACKCHANNEL_LOGOUT_CONCURRENCY = 32
+_backchannel_logout_slots = threading.BoundedSemaphore(
+        _BACKCHANNEL_LOGOUT_CONCURRENCY)
+# Bound the response body size we'll read from an RP; logout tokens
+# are POST-only, the spec mandates the response body is empty/ignored
+# (RFC OIDC Back-Channel Logout 1.0 §2.6). A misbehaving RP that
+# streams data back forever would otherwise pin a worker thread.
+_BACKCHANNEL_LOGOUT_RESP_LIMIT = 4096
 
 
 REGISTER_BEFORE = []
@@ -43,22 +71,22 @@ REGISTER_AFTER = ['otpme.lib.classes.session']
 def register():
     """ Register OIDCSession-specific index attributes.
 
-    These three hashes are how /token, /userinfo and /introspect
-    resolve an opaque token back to its session. They live here
-    (not in the parent session module) so the base Session stays
-    free of OIDC-specific concerns.
+    These hashes are how /token, /userinfo and /introspect resolve an
+    opaque token back to its session. They live here (not in the
+    parent session module) so the base Session stays free of
+    OIDC-specific concerns.
+
+    ``burned_refresh_token_hash`` is multi-valued: every refresh-token
+    rotation appends the previous RT hash. A /token call that resolves
+    via this index instead of ``refresh_token_hash`` is a replay
+    attempt -- OAuth 2.1 §6.1 mandates invalidating the whole token
+    chain in that case.
     """
     from otpme.lib import config
     config.register_index_attribute('authcode_hash')
     config.register_index_attribute('access_token_hash')
     config.register_index_attribute('refresh_token_hash')
-
-
-def hash_token(token: str) -> str:
-    """ Canonical hash for OIDC token storage and indexed lookup. """
-    if isinstance(token, str):
-        token = token.encode("utf-8")
-    return hashlib.sha256(token).hexdigest()
+    config.register_index_attribute('burned_refresh_token_hash')
 
 
 class OIDCSession(Session):
@@ -88,6 +116,11 @@ class OIDCSession(Session):
         self.refresh_token_hash = None
         # RT lifetime is bounded by the parent SSO session's expiry,
         # so we don't track refresh_token_expires_at separately.
+        # Hashes of refresh tokens that were rotated out via
+        # issue_tokens(). Replay of any of these -- the legitimate
+        # holder would only ever present the current RT -- is a
+        # token-theft signal and triggers chain-invalidation.
+        self.burned_refresh_token_hashes = []
 
     def write_config(self, wait_for_cluster_writes: bool=True):
         """ Persist with cluster sync.
@@ -113,6 +146,7 @@ class OIDCSession(Session):
         self.object_config['OIDC_ACCESS_TOKEN_HASH'] = self.access_token_hash
         self.object_config['OIDC_ACCESS_TOKEN_EXPIRES_AT'] = self.access_token_expires_at
         self.object_config['OIDC_REFRESH_TOKEN_HASH'] = self.refresh_token_hash
+        self.object_config['OIDC_BURNED_REFRESH_TOKEN_HASHES'] = list(self.burned_refresh_token_hashes)
 
     def _set_extra_variables(self):
         """ Read OIDC-specific fields back from object_config. """
@@ -129,6 +163,8 @@ class OIDCSession(Session):
         self.access_token_hash = self.get_config_parameter('OIDC_ACCESS_TOKEN_HASH')
         self.access_token_expires_at = self.get_config_parameter('OIDC_ACCESS_TOKEN_EXPIRES_AT') or 0
         self.refresh_token_hash = self.get_config_parameter('OIDC_REFRESH_TOKEN_HASH')
+        self.burned_refresh_token_hashes = list(
+                self.get_config_parameter('OIDC_BURNED_REFRESH_TOKEN_HASHES') or [])
 
     def set_authcode(self, code: str, expires_in: int=300):
         """ Store the SHA-256 of the issued auth code on the session
@@ -159,22 +195,125 @@ class OIDCSession(Session):
         session, and update the indexes. Used for both initial code
         exchange and refresh-token rotation. Returns ``(at, rt)`` --
         the only point at which the plaintext values exist.
+
+        On rotation the previous RT hash is moved from the active
+        ``refresh_token_hash`` index to the multi-valued
+        ``burned_refresh_token_hash`` index, so a later replay of the
+        rotated-out RT is detectable rather than collapsing into a
+        generic ``invalid_grant`` (OAuth 2.1 §6.1).
         """
         new_at = secrets.token_urlsafe(32)
         new_rt = secrets.token_urlsafe(32)
         new_at_hash = hash_token(new_at)
         new_rt_hash = hash_token(new_rt)
-        # Drop the previous index entries before overwriting state.
+        # AT rotation: the old AT just disappears -- no replay
+        # detection on AT (RFC 6749 doesn't expect AT replay to be
+        # forensically tracked).
         if self.access_token_hash:
             self.del_index("access_token_hash", self.access_token_hash)
+        # RT rotation: move the old hash onto the burn list.
         if self.refresh_token_hash:
             self.del_index("refresh_token_hash", self.refresh_token_hash)
+            self.burned_refresh_token_hashes.append(self.refresh_token_hash)
+            self.add_index("burned_refresh_token_hash",
+                           self.refresh_token_hash)
         self.access_token_hash = new_at_hash
         self.access_token_expires_at = int(time.time()) + ttl_access
         self.refresh_token_hash = new_rt_hash
         self.add_index("access_token_hash", new_at_hash)
         self.add_index("refresh_token_hash", new_rt_hash)
         return new_at, new_rt
+
+    def issue_tokens_with_id_token(self, ttl_access, client, site, claims):
+        """ Combined AT/RT rotation + ID-Token mint. The freshly-rotated
+        AT plaintext is hashed into the ID Token's ``at_hash`` claim
+        before being returned, so callers can't accidentally bind
+        the wrong AT.
+
+        ``claims`` carries the OIDC-domain values resolved by the
+        protocol handler (sub, user_claims merged in, auth_time, amr,
+        acr). The session adds infrastructure claims it owns directly
+        (iss, aud, sid, nonce, iat/exp/jti) and the at_hash binding.
+
+        Returns ``(at, rt, id_token, id_token_jti)``. The jti is
+        surfaced so the caller can audit-log it for cross-system
+        correlation with RP logs.
+        """
+        at, rt = self.issue_tokens(ttl_access=ttl_access)
+        id_token, id_token_jti = self._build_id_token(client=client,
+                                                       site=site,
+                                                       ttl=ttl_access,
+                                                       access_token=at,
+                                                       claims=claims)
+        return at, rt, id_token, id_token_jti
+
+    def _build_id_token(self, client, site, ttl, access_token, claims):
+        """ Build and sign the ID Token JWT.
+
+        ``claims`` is a dict of OIDC-domain values pre-resolved by the
+        caller (sub is REQUIRED; auth_time/amr/acr/user-claim names
+        are optional). Infrastructure claims (iss, aud, iat, exp, jti,
+        sid, nonce) are added here -- they're rooted in session/site
+        state, not protocol-handler context. ``at_hash`` is computed
+        against ``access_token`` per OIDC Core 3.1.3.6 with the digest
+        determined by the signing alg.
+        """
+        from joserfc import jwt as joserfc_jwt
+        from joserfc.jwk import RSAKey, ECKey, OKPKey
+        from otpme.lib.encryption.jwk import find_active_key
+
+        # site.get_oidc_keys() returns a plain dict snapshot; reading
+        # site.oidc_keys directly hands joserfc IncrementalDict
+        # instances which fail its isinstance(value, dict) check.
+        oidc_keys = list(site.get_oidc_keys().values())
+        active = find_active_key(oidc_keys)
+        kty = active.get("kty")
+        if kty == "RSA":
+            signing_key = RSAKey.import_key(active)
+        elif kty == "EC":
+            signing_key = ECKey.import_key(active)
+        elif kty == "OKP":
+            signing_key = OKPKey.import_key(active)
+        else:
+            from otpme.lib.exceptions import OTPmeException
+            raise OTPmeException(f"Unsupported key type: {kty}")
+
+        alg = getattr(client, 'oidc_id_token_signed_response_alg', None) \
+              or active.get("alg", "RS256")
+
+        issuer = f"https://{site.sso_fqdn}/oidc"
+        now = int(time.time())
+
+        # jti is generated separately so the caller can audit-log it
+        # for cross-system correlation: the RP usually logs the jti it
+        # processed, the OP logs the jti it issued.
+        jti = secrets.token_urlsafe(16)
+
+        full_claims = dict(claims) if claims else {}
+        full_claims.update({
+            "iss":  issuer,
+            "aud":  client.name,
+            "iat":  now,
+            "exp":  now + ttl,
+            "jti":  jti,
+            # sid lets /end_session and back-channel logout correlate
+            # this token to the OIDCSession that issued it.
+            "sid":  self.uuid,
+        })
+        if self.nonce:
+            full_claims["nonce"] = self.nonce
+
+        # at_hash binds this ID Token to the access token issued
+        # alongside it. Optional in code-flow per OIDC Core 3.1.3.6;
+        # we always emit it -- many RP libraries validate when present
+        # and it's defense-in-depth against AT/ID-Token cross-mixing.
+        if access_token:
+            at_hash = compute_at_hash(access_token, alg)
+            if at_hash is not None:
+                full_claims["at_hash"] = at_hash
+
+        header = {"alg": alg, "kid": active.get("kid"), "typ": "JWT"}
+        return joserfc_jwt.encode(header, full_claims, signing_key), jti
 
     def access_token_valid(self) -> bool:
         """ True if an access token is currently issued and not yet
@@ -200,40 +339,60 @@ class OIDCSession(Session):
         """
         try:
             self._send_backchannel_logout()
-        except Exception:
+        except Exception as e:
             # Defensive: even an unexpected error in our notify path
-            # must not stop the cleanup.
-            pass
+            # must not stop the cleanup. Log with full traceback so a
+            # recurring failure (e.g. a bad RP-config that consistently
+            # raises during dispatch) is diagnosable.
+            try:
+                from otpme.lib.classes.session import logger
+                log_msg = _("OIDC backchannel logout dispatch raised "
+                            "unexpectedly for session '{sid}': {err}",
+                            log=True)[1]
+                log_msg = log_msg.format(sid=self.session_id, err=e)
+                logger.warning(log_msg, exc_info=True)
+            except Exception:
+                pass
         return super().delete(**kwargs)
 
     def _send_backchannel_logout(self):
-        """ POST a signed Logout Token to the RP's
-        oidc_backchannel_logout_uri if one is configured. No-op
-        when:
+        """ Fire-and-forget POST of a signed Logout Token to the RP's
+        oidc_backchannel_logout_uri if one is configured. No-op when:
             - the session is still pending (nothing handed to RP)
             - the client has been deleted
             - the client has no backchannel_logout_uri set
             - the site has no active signing key
+
+        The actual HTTP POST is dispatched to a daemon worker thread
+        so that ``OIDCSession.delete()`` -- and by extension the
+        whole session-cleanup pipeline -- never blocks waiting for
+        an RP. Concurrency is bounded by a process-wide semaphore
+        so a mass-logout cascade can't spawn unbounded threads/sockets.
         """
         if self.state != STATE_ACTIVE:
             return
         if not self.client:
             return
         from otpme.lib import backend
-        from otpme.lib.classes.session import logger
         client = backend.get_object(object_type="client", uuid=self.client)
         if client is None:
             return
         uri = getattr(client, 'oidc_backchannel_logout_uri', None)
         if not uri:
             return
+
+        # Build + sign the token in the caller -- it touches the
+        # site's signing key and we want the call to fail visibly if
+        # that's wrong, not in a fire-and-forget thread no one reads.
         try:
-            self._post_logout_token(client, uri)
+            logout_token, logout_token_jti = self._build_logout_token(client)
         except Exception as e:
+            from otpme.lib.classes.session import logger
             try:
-                log_msg = _("OIDC backchannel logout to {uri} failed: {err}", log=True)[1]
+                log_msg = _("OIDC backchannel logout token build failed "
+                            "for {uri}: {err}", log=True)[1]
                 log_msg = log_msg.format(uri=uri, err=e)
-                logger.warning(log_msg)
+                logger.warning(log_msg, exc_info=True)
             except Exception:
                 pass
             emit_audit("OIDC", "backchannel_logout_failed",
@@ -241,22 +400,38 @@ class OIDCSession(Session):
                        client=client.name,
                        session=self.session_id,
                        uri=uri,
-                       reason=str(e))
+                       reason=f"build_token: {e}")
             return
-        emit_audit("OIDC", "backchannel_logout_sent",
-                   client=client.name,
-                   session=self.session_id,
-                   uri=uri)
+        if logout_token is None:
+            # No active site key, etc. -- _build_logout_token already
+            # decided this is a silent no-op (matches pre-fix behavior).
+            return
 
-    def _post_logout_token(self, client, uri: str):
-        """ Build, sign, and POST the Logout Token. Per OIDC
-        Back-Channel Logout 1.0:
+        # Snapshot fields the worker thread needs; the OIDCSession is
+        # about to be deleted, so we capture by value.
+        client_name = client.name
+        session_id = self.session_id
+
+        from otpme.lib import multiprocessing as _otpme_mp
+        _otpme_mp.start_thread(
+                name=f"oidc-backchannel-logout-{session_id}",
+                target=_dispatch_backchannel_logout,
+                target_args=(uri, logout_token, logout_token_jti,
+                             client_name, session_id),
+                daemon=True)
+
+    def _build_logout_token(self, client):
+        """ Build + sign a Logout Token for the given client. Returns
+        ``(signed_jwt, jti)`` on success, or ``(None, None)`` if the
+        site has no usable active signing key (silent no-op preserved
+        from the pre-async implementation).
+
+        Per OIDC Back-Channel Logout 1.0:
             - typ header = "logout+jwt"
             - claims must include iss, aud, iat, jti, events
             - either sub or sid (we use sid; sub requires per-RP
               subject computation that's done at ID-Token-issue time)
         """
-        from urllib.request import Request, urlopen
         from joserfc import jwt as joserfc_jwt
         from joserfc.jwk import RSAKey, ECKey, OKPKey
         from otpme.lib import backend
@@ -264,11 +439,11 @@ class OIDCSession(Session):
 
         site = backend.get_object(object_type="site", name=self.site)
         if site is None or not getattr(site, 'oidc_keys', None):
-            return
+            return None, None
         try:
-            active = find_active_key(list(site.oidc_keys.values()))
+            active = find_active_key(list(site.get_oidc_keys().values()))
         except LookupError:
-            return
+            return None, None
 
         kty = active.get("kty")
         if kty == "RSA":
@@ -278,15 +453,19 @@ class OIDCSession(Session):
         elif kty == "OKP":
             signing_key = OKPKey.import_key(active)
         else:
-            return
+            return None, None
 
         issuer = f"https://{site.sso_fqdn}/oidc"
         now = int(time.time())
+        # jti returned alongside the signed token so the dispatch
+        # path can audit-log it for cross-system correlation with the
+        # RP's "logout-token consumed" entry.
+        jti = secrets.token_urlsafe(16)
         claims = {
             "iss": issuer,
             "aud": client.name,
             "iat": now,
-            "jti": secrets.token_urlsafe(16),
+            "jti": jti,
             "sid": self.uuid,
             "events": {
                 "http://schemas.openid.net/event/backchannel-logout": {}
@@ -297,10 +476,67 @@ class OIDCSession(Session):
             "kid": active.get("kid"),
             "typ": "logout+jwt",
         }
-        logout_token = joserfc_jwt.encode(header, claims, signing_key)
+        return joserfc_jwt.encode(header, claims, signing_key), jti
 
+
+def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
+                                  client_name, session_id):
+    """ Worker run on a daemon thread: POSTs the prebuilt logout
+    token and audit-logs the outcome. Bounded by the module-level
+    semaphore so a mass-delete burst can't blow the fd table.
+
+    ``logout_token_jti`` is included in every audit emission for
+    cross-system correlation -- the RP usually logs the jti it
+    consumed, so an OP-side ``backchannel_logout_sent
+    logout_token_jti=...`` line ties our send to the RP's receive.
+    """
+    from urllib.request import Request, urlopen
+    from otpme.lib.classes.session import logger
+
+    acquired = _backchannel_logout_slots.acquire(timeout=30)
+    if not acquired:
+        # Semaphore saturated for >30s -- treat as failure rather
+        # than queueing further. The session has already been
+        # deleted; the RP just doesn't get notified this round.
+        emit_audit("OIDC", "backchannel_logout_failed",
+                   level='warning',
+                   client=client_name,
+                   session=session_id,
+                   uri=uri,
+                   logout_token_jti=logout_token_jti,
+                   reason="dispatch slot timeout")
+        return
+    try:
         body = f"logout_token={logout_token}".encode()
         req = Request(uri, data=body, method="POST",
-                      headers={"Content-Type": "application/x-www-form-urlencoded"})
-        with urlopen(req, timeout=10):
-            pass
+                      headers={"Content-Type":
+                               "application/x-www-form-urlencoded"})
+        try:
+            with urlopen(req, timeout=10) as resp:
+                # Drain a bounded amount; spec response body is
+                # empty/ignored. Without a cap a misbehaving RP could
+                # stream forever and pin this worker.
+                resp.read(_BACKCHANNEL_LOGOUT_RESP_LIMIT)
+        except Exception as e:
+            try:
+                log_msg = _("OIDC backchannel logout to {uri} failed: {err}",
+                            log=True)[1]
+                log_msg = log_msg.format(uri=uri, err=e)
+                logger.warning(log_msg, exc_info=True)
+            except Exception:
+                pass
+            emit_audit("OIDC", "backchannel_logout_failed",
+                       level='warning',
+                       client=client_name,
+                       session=session_id,
+                       uri=uri,
+                       logout_token_jti=logout_token_jti,
+                       reason=str(e))
+            return
+        emit_audit("OIDC", "backchannel_logout_sent",
+                   client=client_name,
+                   session=session_id,
+                   uri=uri,
+                   logout_token_jti=logout_token_jti)
+    finally:
+        _backchannel_logout_slots.release()

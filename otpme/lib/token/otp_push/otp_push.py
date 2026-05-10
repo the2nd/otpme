@@ -270,6 +270,10 @@ def register_config_params():
 @match_class_typing
 class OtppushToken(Token):
     """ Class for OTP push tokens (e.g. send OTP via SMS). """
+    # OTP delivered out-of-band over a separate channel (SMS/push):
+    # otp + multiple-channel-auth.
+    oidc_amr_values = ['otp', 'mca']
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,
