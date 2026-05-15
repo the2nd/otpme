@@ -14,17 +14,31 @@ otpme.lib.protocols.server.sso1; views.py never touches the backend
 directly. This is required because the web layer can run on hosts
 that don't host any OTPme objects.
 
-Endpoints:
-    /.well-known/openid-configuration   - discovery
-    /jwks                               - JWKS public keys
-    /authorize                          - browser-driven login start
-    /token                              - code exchange / refresh
-    /userinfo                           - claims for AT
-    /introspect                         - RFC 7662
-    /revoke                             - RFC 7009
-    /end_session                        - RP-initiated logout
+Endpoints + governing specs:
+    /.well-known/openid-configuration -- OIDC Discovery 1.0
+        https://openid.net/specs/openid-connect-discovery-1_0.html
+        (cf. RFC 8414 "OAuth 2.0 Authorization Server Metadata"
+         https://datatracker.ietf.org/doc/html/rfc8414)
+    /jwks            -- RFC 7517 "JSON Web Key (JWK)"
+        https://datatracker.ietf.org/doc/html/rfc7517
+    /authorize       -- OIDC Core 1.0 §3.1 "Authorization Code Flow"
+        https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth
+        (cf. RFC 6749 §4.1 "Authorization Code Grant"
+         https://datatracker.ietf.org/doc/html/rfc6749#section-4.1)
+    /token           -- OIDC Core 1.0 §3.1.3 "Token Endpoint" +
+                        RFC 6749 §3.2 "Token Endpoint"
+        https://openid.net/specs/openid-connect-core-1_0.html#TokenEndpoint
+        https://datatracker.ietf.org/doc/html/rfc6749#section-3.2
+    /userinfo        -- OIDC Core 1.0 §5.3 "UserInfo Endpoint"
+        https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
+    /introspect      -- RFC 7662 "OAuth 2.0 Token Introspection"
+        https://datatracker.ietf.org/doc/html/rfc7662
+    /revoke          -- RFC 7009 "OAuth 2.0 Token Revocation"
+        https://datatracker.ietf.org/doc/html/rfc7009
+    /end_session     -- OIDC RP-Initiated Logout 1.0
+        https://openid.net/specs/openid-connect-rpinitiated-1_0.html
 """
-from flask import jsonify, request, make_response, redirect, session as flask_session, url_for
+from flask import jsonify, request, make_response, redirect, session as flask_session, url_for, render_template
 
 from otpme.lib import config
 from otpme.lib import connections
@@ -52,6 +66,10 @@ logger = config.logger
 #
 # The browser-driven endpoints /authorize and /end_session do NOT
 # need CORS because they use top-level navigation, not fetch.
+#
+# Spec: WHATWG Fetch (CORS protocol; supersedes the historical
+#   CORS W3C Recommendation referenced by older RFCs)
+#   https://fetch.spec.whatwg.org/#http-cors-protocol
 
 _CORS_ROUTES = (
     'oidc.discovery',
@@ -90,8 +108,15 @@ def _oidc_cors_response(response):
 
 
 def _no_store(response):
-    """ Mark a response as non-cacheable per OIDC spec for token-
-    bearing endpoints (/token, /userinfo, /introspect, /revoke). """
+    """ Mark a response as non-cacheable for token-bearing endpoints
+    (/token, /userinfo, /introspect, /revoke).
+
+    Spec: RFC 6749 §5.1 "Successful Response"
+      (Cache-Control: no-store, Pragma: no-cache MUST be set)
+      https://datatracker.ietf.org/doc/html/rfc6749#section-5.1
+    Spec: OIDC Core 1.0 §3.1.3.3 "Successful Token Response"
+      https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
+    """
     response.headers['Cache-Control'] = 'no-store'
     response.headers['Pragma'] = 'no-cache'
     return response
@@ -100,14 +125,20 @@ def _no_store(response):
 def _extract_client_credentials():
     """ Parse client_id + client_secret from the request.
 
-    Per RFC 6749 §2.3.1 the OP MUST support
-    ``client_secret_basic`` (HTTP Basic) and SHOULD support
-    ``client_secret_post`` (form body). Returns
+    The OP MUST support ``client_secret_basic`` (HTTP Basic) and
+    SHOULD support ``client_secret_post`` (form body). Returns
     ``(client_id, client_secret)`` -- either may be ``None``.
 
     A client MUST NOT use both methods in the same request; if it
-    does, RFC 6749 says the OP MUST reject. We surface that to the
+    does, the spec says the OP MUST reject. We surface that to the
     caller via a third return slot ``error_msg``.
+
+    Spec: RFC 6749 §2.3.1 "Client Password" (Basic + form-post)
+      https://datatracker.ietf.org/doc/html/rfc6749#section-2.3.1
+    Spec: OIDC Core 1.0 §9 "Client Authentication"
+      (defines ``client_secret_basic`` / ``client_secret_post`` /
+      ``none`` token_endpoint_auth_method names)
+      https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
     """
     import base64
     from urllib.parse import unquote
@@ -122,8 +153,9 @@ def _extract_client_credentials():
                 decoded = base64.b64decode(parts[1]).decode('utf-8')
                 cid, sep, csec = decoded.partition(':')
                 if sep:
-                    # Per RFC 6749, client_id and client_secret
-                    # in Basic must be form-urlencoded.
+                    # client_id and client_secret in Basic must be
+                    # form-urlencoded per RFC 6749 §2.3.1.
+                    #   https://datatracker.ietf.org/doc/html/rfc6749#section-2.3.1
                     basic_id = unquote(cid)
                     basic_secret = unquote(csec)
             except Exception:
@@ -143,7 +175,14 @@ def _extract_client_credentials():
 
 
 def _oidc_error(error, description=None, http_status=400, www_auth=None):
-    """ Build an OIDC-spec error response. """
+    """ Build an OAuth/OIDC error response body.
+
+    Spec: RFC 6749 §5.2 "Error Response" (token endpoint errors)
+      https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
+    Spec: RFC 6750 §3 "The WWW-Authenticate Response Header Field"
+      (Bearer realm, error="invalid_token" etc.)
+      https://datatracker.ietf.org/doc/html/rfc6750#section-3
+    """
     payload = {'error': error}
     if description:
         payload['error_description'] = description
@@ -154,7 +193,7 @@ def _oidc_error(error, description=None, http_status=400, www_auth=None):
 
 
 def _extract_bearer_token():
-    """ Extract a Bearer access token from the request per RFC 6750.
+    """ Extract a Bearer access token from the request.
 
     Sources, in order of preference:
       1. ``Authorization: Bearer <token>`` header  (recommended)
@@ -163,13 +202,22 @@ def _extract_bearer_token():
     The URL-query form (``?access_token=...``) is intentionally
     NOT supported -- it leaks tokens to logs, Referer headers, and
     browser history.
+
+    Spec: RFC 6750 §2.1 "Authorization Request Header Field"
+      https://datatracker.ietf.org/doc/html/rfc6750#section-2.1
+    Spec: RFC 6750 §2.2 "Form-Encoded Body Parameter"
+      (POST + application/x-www-form-urlencoded only)
+      https://datatracker.ietf.org/doc/html/rfc6750#section-2.2
+    Spec: RFC 6750 §2.3 "URI Query Parameter"
+      (NOT IMPLEMENTED -- known to leak via logs/Referer)
+      https://datatracker.ietf.org/doc/html/rfc6750#section-2.3
     """
     auth = request.headers.get('Authorization', '')
     if auth:
         parts = auth.split(None, 1)
         if len(parts) == 2 and parts[0].lower() == "bearer":
             return parts[1].strip()
-    # Form body (POST) -- per RFC 6750 §2.2 allowed only for
+    # Form body (POST). RFC 6750 §2.2: allowed only for
     # application/x-www-form-urlencoded requests.
     if request.method == "POST" and request.form:
         body_token = request.form.get('access_token')
@@ -246,9 +294,17 @@ def _send_oidc_command(command, command_args):
 
 @oidc_bp.route('/.well-known/openid-configuration', methods=['GET', 'OPTIONS'])
 def discovery():
-    """ OIDC Discovery 1.0 metadata. ssod builds the doc from the
-    site's runtime config (issuer, signing-alg list, supported
-    scopes, ...) -- web layer just relays. """
+    """ Discovery metadata. ssod builds the doc from the site's
+    runtime config (issuer, signing-alg list, supported scopes, ...);
+    web layer just relays.
+
+    Spec: OIDC Discovery 1.0 §4 "Obtaining OpenID Provider
+      Configuration Information" (well-known URL + JSON document)
+      https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
+    Spec: RFC 8414 "OAuth 2.0 Authorization Server Metadata"
+      (sibling spec, aligned field set)
+      https://datatracker.ietf.org/doc/html/rfc8414
+    """
     status, response = _send_oidc_command('oidc_discovery', {})
     if status is None:
         return jsonify(response), 500
@@ -266,7 +322,14 @@ def discovery():
 def jwks():
     """ Public signing keys (active + retired). ssod strips private
     parameters via joserfc per-kty allowlist; only public material
-    leaves the OP. """
+    leaves the OP.
+
+    Spec: RFC 7517 §5 "JWK Set Format"
+      https://datatracker.ietf.org/doc/html/rfc7517#section-5
+    Spec: OIDC Core 1.0 §10.1 "Signing" (key rotation; OP keeps
+      retired keys published so RPs can verify in-flight tokens)
+      https://openid.net/specs/openid-connect-core-1_0.html#SigEnc
+    """
     status, response = _send_oidc_command('oidc_jwks', {})
     if status is None:
         return jsonify(response), 500
@@ -282,7 +345,7 @@ def jwks():
 
 @oidc_bp.route('/token', methods=['POST', 'OPTIONS'])
 def token():
-    """ /token endpoint per RFC 6749 §3.2 + OIDC Core 3.1.3.
+    """ /token endpoint.
 
     Dispatches by ``grant_type`` (server-side in ssod). Currently
     handles ``authorization_code`` and ``refresh_token``.
@@ -292,7 +355,23 @@ def token():
     ``token_endpoint_auth_method=none`` may omit the secret as long
     as PKCE is in play.
 
-    Responses are RFC-mandated to be ``Cache-Control: no-store``.
+    Responses are mandated to be ``Cache-Control: no-store``.
+
+    Spec: RFC 6749 §3.2 "Token Endpoint" (HTTP semantics)
+      https://datatracker.ietf.org/doc/html/rfc6749#section-3.2
+    Spec: RFC 6749 §4.1.3 "Access Token Request"
+      https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+    Spec: RFC 6749 §6 "Refreshing an Access Token"
+      https://datatracker.ietf.org/doc/html/rfc6749#section-6
+    Spec: RFC 6749 §5.2 "Error Response"
+      (invalid_client => 401; other errors => 400)
+      https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
+    Spec: OIDC Core 1.0 §3.1.3 "Token Endpoint" (adds id_token to
+      the response, plus at_hash / nonce binding)
+      https://openid.net/specs/openid-connect-core-1_0.html#TokenEndpoint
+    Spec: RFC 7636 "PKCE" (code_verifier; required by default per
+      OAuth 2.1 §7.5)
+      https://datatracker.ietf.org/doc/html/rfc7636
     """
     client_id, client_secret, cred_err = _extract_client_credentials()
     if cred_err:
@@ -323,7 +402,8 @@ def token():
         # ssod returned an OIDC error dict with 'error' + 'error_description'.
         err = (response or {}).get('error', 'invalid_request')
         desc = (response or {}).get('error_description')
-        # Per RFC 6749 §5.2: invalid_client => 401, others => 400.
+        # RFC 6749 §5.2: invalid_client => 401, others => 400.
+        #   https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
         http_status = 401 if err == 'invalid_client' else 400
         www_auth = 'Basic realm="oidc"' if err == 'invalid_client' else None
         return _oidc_error(err, desc, http_status=http_status,
@@ -339,15 +419,28 @@ def token():
 
 @oidc_bp.route('/userinfo', methods=['GET', 'POST', 'OPTIONS'])
 def userinfo():
-    """ /userinfo per OIDC Core 5.3.
+    """ /userinfo endpoint.
 
     Auth: ``Authorization: Bearer <access_token>``. The token is
     self-identifying; no client credentials. Returns user claims
     filtered by the granted scope of the originating session.
 
     On authentication failure: HTTP 401 with
-    ``WWW-Authenticate: Bearer error="invalid_token"`` per RFC 6750
-    §3.
+    ``WWW-Authenticate: Bearer error="invalid_token"``.
+
+    Spec: OIDC Core 1.0 §5.3 "UserInfo Endpoint"
+      https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
+    Spec: OIDC Core 1.0 §5.3.2 "Successful UserInfo Response"
+      (``sub`` claim REQUIRED in response)
+      https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
+    Spec: OIDC Core 1.0 §5.3.3 "UserInfo Error Response"
+      https://openid.net/specs/openid-connect-core-1_0.html#UserInfoError
+    Spec: RFC 6750 §3 "WWW-Authenticate Response Header Field"
+      (Bearer realm, error="invalid_token")
+      https://datatracker.ietf.org/doc/html/rfc6750#section-3
+    Spec: OIDC Core 1.0 §5.4 "Requesting Claims using Scope Values"
+      (profile/email/address/phone scope -> claim mappings)
+      https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
     """
     bearer_www_auth = ('Bearer realm="oidc", '
                        'error="invalid_token", '
@@ -387,7 +480,7 @@ def userinfo():
 
 @oidc_bp.route('/introspect', methods=['POST', 'OPTIONS'])
 def introspect():
-    """ /introspect per RFC 7662.
+    """ /introspect endpoint.
 
     Server-to-server: RP authenticates via ``client_id`` +
     ``client_secret`` (Basic header or form body).
@@ -395,14 +488,20 @@ def introspect():
     Request body: ``token`` (REQUIRED), ``token_type_hint``
     (OPTIONAL: ``access_token``/``refresh_token``).
 
-    Response per RFC 7662 §2.2: HTTP 200 with ``{"active": true,
-    ...}`` for currently-valid tokens, ``{"active": false}`` for
-    anything else. The "anything else" branch covers unknown,
-    expired, revoked, AND tokens belonging to a different client --
-    no information leak about token existence.
+    Response: HTTP 200 with ``{"active": true, ...}`` for currently-
+    valid tokens, ``{"active": false}`` for anything else. The
+    "anything else" branch covers unknown, expired, revoked, AND
+    tokens belonging to a different client -- no information leak
+    about token existence.
 
     Real HTTP errors (4xx) only on client-auth failure or missing
     ``token`` parameter.
+
+    Spec: RFC 7662 §2 "Introspection Endpoint" (request schema)
+      https://datatracker.ietf.org/doc/html/rfc7662#section-2
+    Spec: RFC 7662 §2.2 "Introspection Response"
+      (active true/false; both are HTTP 200)
+      https://datatracker.ietf.org/doc/html/rfc7662#section-2.2
     """
     client_id, client_secret, cred_err = _extract_client_credentials()
     if cred_err:
@@ -432,7 +531,8 @@ def introspect():
         return _oidc_error(err, desc, http_status=http_status,
                            www_auth=www_auth)
 
-    # Per RFC 7662, success = HTTP 200 regardless of active true/false.
+    # RFC 7662 §2.2: success = HTTP 200 regardless of active true/false.
+    #   https://datatracker.ietf.org/doc/html/rfc7662#section-2.2
     return _no_store(make_response(jsonify(response), 200))
 
 
@@ -443,7 +543,7 @@ def introspect():
 
 @oidc_bp.route('/revoke', methods=['POST', 'OPTIONS'])
 def revoke():
-    """ /revoke per RFC 7009.
+    """ /revoke endpoint.
 
     Server-to-server: RP authenticates via ``client_id`` +
     ``client_secret``.
@@ -451,11 +551,18 @@ def revoke():
     Request body: ``token`` (REQUIRED), ``token_type_hint``
     (OPTIONAL).
 
-    Response per RFC 7009 §2.2: HTTP 200 with empty body for ANY
-    valid request -- whether the token existed, was already
-    revoked, or belongs to a different client. This prevents
-    token-existence probing. Real HTTP errors only on client-auth
-    failure or missing ``token`` parameter.
+    Response: HTTP 200 with empty body for ANY valid request --
+    whether the token existed, was already revoked, or belongs to a
+    different client. This prevents token-existence probing. Real
+    HTTP errors only on client-auth failure or missing ``token``
+    parameter.
+
+    Spec: RFC 7009 §2 "Token Revocation" (request schema)
+      https://datatracker.ietf.org/doc/html/rfc7009#section-2
+    Spec: RFC 7009 §2.2 "Revocation Response"
+      (200 + empty body uniformly; only invalid_client / 400 errors
+      reach the caller)
+      https://datatracker.ietf.org/doc/html/rfc7009#section-2.2
     """
     client_id, client_secret, cred_err = _extract_client_credentials()
     if cred_err:
@@ -485,7 +592,8 @@ def revoke():
         return _oidc_error(err, desc, http_status=http_status,
                            www_auth=www_auth)
 
-    # Success per RFC 7009: 200 with empty JSON body.
+    # RFC 7009 §2.2: success = 200 with empty (JSON) body.
+    #   https://datatracker.ietf.org/doc/html/rfc7009#section-2.2
     return _no_store(make_response(jsonify({}), 200))
 
 
@@ -496,8 +604,12 @@ def revoke():
 
 def _append_state(target_uri, state):
     """ Append ``state=<value>`` to a redirect URI, preserving any
-    existing query string. Per OIDC RP-Initiated Logout 1.0 the OP
-    MUST echo back the state value to the post_logout_redirect_uri.
+    existing query string. The OP MUST echo back the ``state`` value
+    to the post_logout_redirect_uri.
+
+    Spec: OIDC RP-Initiated Logout 1.0 §3 "Redirection to RP After
+      Logout" (state parameter handling)
+      https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
     """
     if not target_uri or not state:
         return target_uri
@@ -523,7 +635,7 @@ def _logged_out_page():
 
 @oidc_bp.route('/end_session', methods=['GET', 'POST'])
 def end_session():
-    """ /end_session per OIDC RP-Initiated Logout 1.0.
+    """ /end_session endpoint.
 
     Browser-driven, no client_secret envelope -- trust comes from
     the signed ``id_token_hint``.
@@ -532,6 +644,13 @@ def end_session():
     ``oidc_logout_scope`` config (sso or rp) and validates the
     requested ``post_logout_redirect_uri`` against the client's
     allowlist. The web layer just acts on the action ssod returns.
+
+    Spec: OIDC RP-Initiated Logout 1.0 §2 "RP-Initiated Logout"
+      (id_token_hint, post_logout_redirect_uri, state)
+      https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
+    Spec: OIDC Back-Channel Logout 1.0 (sid claim, side-effect
+      logout to other RPs in the SSO session)
+      https://openid.net/specs/openid-connect-backchannel-1_0.html
     """
     id_token_hint = request.values.get('id_token_hint')
     client_id_q = request.values.get('client_id')
@@ -601,6 +720,89 @@ def _build_redirect_with_params(redirect_uri, params):
     return f"{redirect_uri}{sep}{urlencode(pairs)}"
 
 
+_SCOPE_FRIENDLY = {
+    'openid':        ('Verify your identity',
+                      'Confirm who you are so the application can sign you in.'),
+    'profile':       ('Basic profile information',
+                      'Your name, username and basic profile fields.'),
+    'email':         ('Email address',
+                      'Your primary email address.'),
+    'address':       ('Postal address',
+                      'Your postal/mailing address attributes.'),
+    'phone':         ('Phone number',
+                      'Your phone number on file.'),
+    'groups':        ('Group memberships',
+                      'Which groups you belong to (used by the app for access control).'),
+    'offline_access': ('Stay signed in when offline',
+                       'Allow the application to refresh its session without asking you again.'),
+}
+
+
+# Which claim keys are populated by which OIDC scope. Mirrors the
+# logic in sso1.py:_get_user_claims -- when that gets a new scope or
+# claim, this table needs updating too so the consent screen stays
+# accurate. Custom scopes get a generic preview ("any claims the
+# application has access to").
+_SCOPE_CLAIM_MAP = {
+    'openid':  ['sub'],  # not actually emitted as a user claim by _get_user_claims,
+                          # but conceptually "the user identifier"
+    'profile': ['name', 'given_name', 'family_name', 'preferred_username'],
+    'email':   ['email'],
+    'phone':   ['phone_number'],
+    'address': ['address'],
+    'groups':  ['groups'],
+}
+
+
+def _format_claim_value(value):
+    """ Render a single OIDC claim value for the consent UI. Lists
+    join with commas; dicts (e.g. ``address``) show as ``key: val``
+    bullets; everything else is stringified. """
+    if value is None or value == '' or value == []:
+        return ''
+    if isinstance(value, list):
+        return ', '.join(str(v) for v in value)
+    if isinstance(value, dict):
+        return '; '.join(f"{k}: {v}" for k, v in value.items() if v)
+    return str(value)
+
+
+def _scope_descriptions(scopes, claims_preview=None):
+    """ Map OIDC scopes to (label, description, claim previews) for
+    the consent screen. ``claims_preview`` is the dict the ssod
+    pre-computed via :py:func:`_get_user_claims` so the user can see
+    the concrete values the RP would receive, not just the category.
+    """
+    claims_preview = claims_preview or {}
+    out = []
+    for s in scopes:
+        if s in _SCOPE_FRIENDLY:
+            label, desc = _SCOPE_FRIENDLY[s]
+        else:
+            label = s
+            desc = f"Application-specific permission '{s}'."
+        claim_items = []
+        # openid by itself doesn't generate user claims in _get_user_claims;
+        # the identifier travels as `sub` which is wholly managed by the OP.
+        # Skip the per-claim listing for it so we don't show an empty row.
+        if s == 'openid':
+            pass
+        elif s in _SCOPE_CLAIM_MAP:
+            for ck in _SCOPE_CLAIM_MAP[s]:
+                if ck in claims_preview:
+                    val_str = _format_claim_value(claims_preview[ck])
+                    if val_str:
+                        claim_items.append({'name': ck, 'value': val_str})
+        else:
+            # Custom scope -- we don't know which claim keys it
+            # contributes. Show whatever the preview offered that we
+            # haven't already shown under a known scope (best effort).
+            pass
+        out.append({'name': s, 'label': label,
+                    'description': desc, 'claims': claim_items})
+    return out
+
+
 def _authorize_error_page(error, description):
     """ Tier-1 error page -- displayed when redirect_uri/client_id
     is invalid and we MUST NOT redirect (open-redirect defense).
@@ -622,7 +824,7 @@ def _authorize_error_page(error, description):
 
 @oidc_bp.route('/authorize', methods=['GET', 'POST'])
 def authorize():
-    """ /authorize per OIDC Core 3.1.
+    """ /authorize endpoint.
 
     Browser-driven. Three roundtrips:
       1. ssod ``oidc_authorize_validate`` -> validates + issues SOTP
@@ -631,6 +833,25 @@ def authorize():
 
     If the user has no SSO session yet, /login is invoked with
     ``next=<this URL>`` so they come back here after authenticating.
+
+    Spec: OIDC Core 1.0 §3.1.2 "Authorization Endpoint"
+      https://openid.net/specs/openid-connect-core-1_0.html#AuthorizationEndpoint
+    Spec: OIDC Core 1.0 §3.1.2.1 "Authentication Request"
+      (client_id, redirect_uri, response_type, scope, state, nonce,
+      code_challenge, code_challenge_method)
+      https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+    Spec: OIDC Core 1.0 §3.1.2.5 "Successful Authentication Response"
+      (302 to redirect_uri with code + state)
+      https://openid.net/specs/openid-connect-core-1_0.html#AuthResponse
+    Spec: OIDC Core 1.0 §3.1.2.6 "Authentication Error Response"
+      (two-tier reporting: redirect_uri-invalid stays on OP, others
+      redirect with error+state)
+      https://openid.net/specs/openid-connect-core-1_0.html#AuthError
+    Spec: RFC 6749 §4.1.1 "Authorization Request"
+      https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
+    Spec: RFC 7636 §4.3 "Client Sends the Code Challenge with the
+      Authorization Request"
+      https://datatracker.ietf.org/doc/html/rfc7636#section-4.3
     """
     # OIDC accepts params via GET query or POST body; ``request.values``
     # covers both.
@@ -642,6 +863,10 @@ def authorize():
     nonce = request.values.get('nonce')
     code_challenge = request.values.get('code_challenge')
     code_challenge_method = request.values.get('code_challenge_method') or 'plain'
+    # OIDC ``prompt`` parameter (Core 3.1.2.1). Forwarded to ssod
+    # which encodes the policy (``consent`` forces re-prompt,
+    # ``none`` forbids any user interaction).
+    prompt_param = request.values.get('prompt') or ''
 
     # SSO cookie check -- if user isn't logged in, hand off to /login
     # with our full URL as next= so they bounce back here after auth.
@@ -655,8 +880,38 @@ def authorize():
 
     client_ip = check_forwarded_for()[0]
 
+    # Consent-screen continuation: if the user just clicked Allow on
+    # the consent template (rendered earlier in this same /authorize
+    # flow), the form POST carries the flag plus a CSRF nonce from
+    # flask_session so a fresh /authorize hit can't bypass consent
+    # by guessing the parameter.
+    consent_granted = False
+    if request.method == 'POST' and request.form.get('_oidc_consent_grant'):
+        nonce_stored = flask_session.pop('oidc_consent_nonce', None)
+        nonce_form = request.form.get('_oidc_consent_nonce')
+        if nonce_stored and nonce_form and nonce_stored == nonce_form:
+            consent_granted = True
+
+    # Deny-button: redirect back to the RP with access_denied per
+    # OIDC Core 3.1.2.6 / OAuth 2.0 §4.1.2.1. We honor the user's no
+    # without storing anything; a future /authorize re-prompts.
+    if request.method == 'POST' and request.form.get('_oidc_consent_deny'):
+        nonce_stored = flask_session.pop('oidc_consent_nonce', None)
+        nonce_form = request.form.get('_oidc_consent_nonce')
+        if nonce_stored and nonce_form and nonce_stored == nonce_form \
+                and redirect_uri:
+            target = _build_redirect_with_params(redirect_uri, {
+                'error':             'access_denied',
+                'error_description': 'user denied the request',
+                'state':             state,
+            })
+            return redirect(target)
+        # Without a valid nonce we can't trust the request -- fall
+        # through to normal validation (which will re-prompt).
+
     # Step 1: ssod validates the request and -- on success -- hands
-    # back a SOTP scoped to the OIDC client's access_group.
+    # back a SOTP scoped to the OIDC client's access_group, or
+    # signals that user consent is needed first.
     validate_args = {
         'username':              username,
         'sso_jwt':               sso_jwt,
@@ -668,8 +923,14 @@ def authorize():
         'scope':                  scope,
         'code_challenge':         code_challenge,
         'code_challenge_method':  code_challenge_method,
+        'prompt':                 prompt_param,
+        'consent_granted':        consent_granted,
     }
-    ssod_conn = get_ssod_conn(username)
+    # consent_granted=True implies user.set_oidc_consent + user._write
+    # on the ssod side. Object modifications must happen on the
+    # master node, so route through the mgmt FQDN in that case.
+    # The read-only validate path stays local.
+    ssod_conn = get_ssod_conn(username, mgmt=bool(consent_granted))
     try:
         v_status, _vc, v_response, _vbin = ssod_conn.send(
                             command='oidc_authorize_validate',
@@ -707,6 +968,38 @@ def authorize():
             return _authorize_error_page(err, desc)
         return _authorize_error_page('server_error',
                                      'invalid validation response')
+
+    # Consent gate: ssod tells us the user must approve scopes before
+    # we issue a SOTP. Render the consent template; the form POSTs
+    # back to /authorize with _oidc_consent_grant=1 to continue.
+    if isinstance(v_response, dict) and v_response.get('consent_required'):
+        import secrets as _secrets
+        consent_nonce = _secrets.token_urlsafe(16)
+        flask_session['oidc_consent_nonce'] = consent_nonce
+        # Carry every /authorize input forward as hidden form fields
+        # so the POST is a complete re-submission, not a stub.
+        return render_template('oidc_consent.html',
+            client_name=v_response.get('client_name') or client_id,
+            client_description=v_response.get('client_description') or '',
+            scopes=v_response.get('scopes') or [],
+            scope_descriptions=_scope_descriptions(
+                    v_response.get('scopes') or [],
+                    claims_preview=v_response.get('claims_preview') or {}),
+            consent_nonce=consent_nonce,
+            authorize_url=url_for('oidc.authorize',
+                                  _external=True, _scheme='https'),
+            params={
+                'client_id':              client_id or '',
+                'redirect_uri':           redirect_uri or '',
+                'response_type':          response_type or '',
+                'scope':                  scope or '',
+                'state':                  state or '',
+                'nonce':                  nonce or '',
+                'code_challenge':         code_challenge or '',
+                'code_challenge_method':  code_challenge_method or '',
+                'prompt':                 prompt_param or '',
+            },
+        )
 
     # Success: extract SOTP from the response.
     sotp_value = v_response.get('sotp')

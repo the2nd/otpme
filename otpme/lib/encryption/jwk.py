@@ -7,6 +7,17 @@ Used by the OIDC OP for signing-key generation, JWKS rendering, and
 key-rotation bookkeeping. Kept under otpme/lib/encryption/ so
 otpme.lib.classes (Site) can use it without importing from the web
 layer.
+
+Specs:
+  RFC 7517 "JSON Web Key (JWK)"
+    https://datatracker.ietf.org/doc/html/rfc7517
+  RFC 7518 "JSON Web Algorithms (JWA)"
+    https://datatracker.ietf.org/doc/html/rfc7518
+  RFC 7638 "JSON Web Key (JWK) Thumbprint"
+    https://datatracker.ietf.org/doc/html/rfc7638
+  RFC 8037 "CFRG Elliptic Curve Diffie-Hellman (ECDH) and Signatures
+            in JOSE" (OKP key type, Ed25519/Ed448)
+    https://datatracker.ietf.org/doc/html/rfc8037
 """
 import hashlib
 from typing import Any, Dict, List
@@ -35,6 +46,13 @@ def generate_signing_key(kty: str = _DEFAULT_KEY_TYPE,
 
     A custom ``otpme_status`` field is set to "active" by default; on
     rotation the caller flips the previous active key to "retired".
+
+    Spec: RFC 7517 §4 "JSON Web Key (JWK) Format" (kty, alg, use, kid)
+      https://datatracker.ietf.org/doc/html/rfc7517#section-4
+    Spec: RFC 7518 §6 "Cryptographic Algorithms for Keys"
+      §6.3 RSA, §6.2 EC, RFC 8037 §2 OKP
+      https://datatracker.ietf.org/doc/html/rfc7518#section-6
+      https://datatracker.ietf.org/doc/html/rfc8037#section-2
     """
     parameters = {"alg": alg, "use": "sig"}
     if kty == "RSA":
@@ -59,6 +77,17 @@ def derive_kid(jwk: Dict[str, Any]) -> str:
     SHA-256 of the canonical public-key fingerprint, hex-truncated to
     16 chars. Stable across serialization, unique per key, doesn't
     leak timing information.
+
+    NOTE: This is a custom canonicalization (key=value joined by ``&``,
+    sorted alphabetically), NOT the RFC 7638 JWK Thumbprint format.
+    A future migration to the standard thumbprint would change kid
+    values for existing keys; the field is opaque to RPs so a one-shot
+    re-publish via JWKS rotation is sufficient.
+
+    Spec: RFC 7517 §4.5 "kid" (Key ID) Parameter
+      https://datatracker.ietf.org/doc/html/rfc7517#section-4.5
+    Spec: RFC 7638 "JSON Web Key (JWK) Thumbprint" (standard form)
+      https://datatracker.ietf.org/doc/html/rfc7638
     """
     public_only = {k: v for k, v in jwk.items()
                    if k in ("kty", "n", "e", "crv", "x", "y")}
@@ -78,6 +107,13 @@ def public_jwk(jwk: Dict[str, Any]) -> Dict[str, Any]:
     hand and that would silently leak when a new kty is added.
 
     OTPme-internal metadata (``otpme_status``) is stripped on top.
+
+    Spec: RFC 7518 §6.3.2 "Parameters for RSA Private Keys"
+      https://datatracker.ietf.org/doc/html/rfc7518#section-6.3.2
+    Spec: RFC 7518 §6.2.2 "Parameters for Elliptic Curve Private Keys"
+      https://datatracker.ietf.org/doc/html/rfc7518#section-6.2.2
+    Spec: RFC 8037 §2 "Key Type "OKP"" (Ed25519/Ed448 ``d`` parameter)
+      https://datatracker.ietf.org/doc/html/rfc8037#section-2
     """
     kty = jwk.get("kty")
     if kty == "RSA":
@@ -98,6 +134,11 @@ def render_jwks(signing_keys: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     Includes both active and retired keys (so RPs can verify tokens
     signed before the latest rotation). Strips private fields.
+
+    Spec: RFC 7517 §5 "JWK Set Format" ({"keys": [...]} wrapper)
+      https://datatracker.ietf.org/doc/html/rfc7517#section-5
+    Spec: OIDC Core 1.0 §10.1 "Signing" (key rotation guidance)
+      https://openid.net/specs/openid-connect-core-1_0.html#SigEnc
     """
     return {"keys": [public_jwk(k) for k in signing_keys]}
 

@@ -1487,6 +1487,17 @@ class User(OTPmeObject):
         self.used_pass_salt = None
         # SSO session data.
         self.sso_session_data = {}
+        # OIDC consent decisions, keyed by client UUID. Each entry:
+        #   {client_uuid: {
+        #       'scopes':     ['openid', 'profile', ...],
+        #       'granted_at': <unix_ts>,
+        #   }}
+        # Set by Site/Unit/Client ``oidc_require_consent=True``: the
+        # /authorize handler stores the user's approval here so a
+        # subsequent login for the same (user, client) skips the
+        # consent screen unless the RP asks for a wider scope or
+        # forces it via prompt=consent.
+        self.oidc_consents = {}
         self.auth_script = None
         self.auth_script_enabled = False
         # User photo.
@@ -1672,6 +1683,11 @@ class User(OTPmeObject):
                                                         'type'      : dict,
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
+                                                    },
+                        'OIDC_CONSENTS'             : {
+                                                        'var_name'  : 'oidc_consents',
+                                                        'type'      : dict,
+                                                        'required'  : False,
                                                     },
                         'PHOTO'                     : {
                                                         'var_name'  : 'photo',
@@ -4323,6 +4339,70 @@ class User(OTPmeObject):
                             **deploy_args):
             return callback.error("Error deploying token.")
         return self._cache(callback=callback)
+
+    # ------------------------------------------------------------------
+    # OIDC consent storage. Worker methods (no ACL/persist) intended
+    # for direct use by the protocol handler. The CLI is exposed via
+    # the wrapper methods in the OIDC consent block further below.
+    # ------------------------------------------------------------------
+
+    def get_oidc_consent(self, client_uuid):
+        """ Return the stored consent dict for ``client_uuid`` or
+        ``None`` if no consent was ever granted. Read-only worker
+        used by ssod's authorize path.
+        """
+        if not self.oidc_consents:
+            return None
+        record = self.oidc_consents.get(str(client_uuid))
+        if not record:
+            return None
+        # IncrementalDict -> plain dict so callers (jwt/json paths)
+        # don't trip over the wrapper.
+        try:
+            return dict(record)
+        except Exception:
+            return record
+
+    def set_oidc_consent(self, client_uuid, scopes):
+        """ Persist a consent record for (user, client). ``scopes`` is
+        the list of scope names the user has approved. Returns the
+        stored record. Caller must write_config() afterwards.
+
+        Trust-on-first-use: a later authorize request with the same
+        or a narrower set of scopes is auto-approved. A wider scope
+        set triggers a fresh consent prompt and overwrites.
+        """
+        import time as _time
+        record = {
+            'scopes':     sorted(set(scopes or [])),
+            'granted_at': int(_time.time()),
+        }
+        self.oidc_consents[str(client_uuid)] = record
+        return record
+
+    def revoke_oidc_consent(self, client_uuid):
+        """ Drop the consent record for ``client_uuid``. Returns True
+        if a record was present (caller should write_config), False
+        if there was nothing to revoke. Does not by itself terminate
+        active OIDC sessions; that's the caller's responsibility.
+        """
+        key = str(client_uuid)
+        if key in self.oidc_consents:
+            del self.oidc_consents[key]
+            return True
+        return False
+
+    def list_oidc_consents(self):
+        """ Return all granted consents as ``{client_uuid: record}``.
+        Snapshot (plain dicts); mutations don't propagate back.
+        """
+        out = {}
+        for cid, rec in (self.oidc_consents or {}).items():
+            try:
+                out[str(cid)] = dict(rec)
+            except Exception:
+                out[str(cid)] = rec
+        return out
 
     @check_acls(['add:token'])
     @object_lock()

@@ -87,11 +87,13 @@ class HttpDaemon(OTPmeDaemon):
         ssl_cert = own_site.sso_cert
         ssl_key = own_site.sso_key
 
-        # Encrypt cert private key with password.
-        key_pass = stuff.gen_secret(len=32)
-        key_pass = key_pass.encode()
+        # Encrypt cert private key with password. Stored on the
+        # instance so reload can re-encrypt a freshly-fetched key
+        # with the same passphrase -- gunicorn's create_ssl_context
+        # closure binds this value at worker spawn time.
+        self.key_pass = stuff.gen_secret(len=32).encode()
         _cert = SSLCert(key=ssl_key)
-        ssl_key = _cert.encrypt_key(passphrase=key_pass)
+        ssl_key = _cert.encrypt_key(passphrase=self.key_pass)
 
         # Temp file paths.
         self.cert_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(len=32)}-cert.pem")
@@ -153,11 +155,16 @@ class HttpDaemon(OTPmeDaemon):
                 return self.application
 
         def create_ssl_context(config, default_ssl_context_factory):
+            # Re-read cert/key from disk on each worker spawn so a
+            # SIGHUP-driven reload picks up an updated Site SSO cert
+            # without restarting the whole httpd. Passphrase is the
+            # stable instance attribute so a reload that rewrote the
+            # encrypted key with the same passphrase still loads.
             context = ssl.SSLContext(ssl.PROTOCOL_TLS)
             context.minimum_version = ssl.TLSVersion.TLSv1_2
             context.load_cert_chain(certfile=self.cert_file,
                                     keyfile=self.key_file,
-                                    password=key_pass)
+                                    password=self.key_pass)
             return context
 
         gunicorn_logger = self.logger
@@ -168,10 +175,14 @@ class HttpDaemon(OTPmeDaemon):
                 self.access_log = gunicorn_logger
 
         # Gunicorn options
+        own_site = backend.get_object(uuid=config.site_uuid)
+        socket_uri = own_site.get_config_parameter("httpd_socket_uri")
+        if not socket_uri:
+            socket_uri = "tcp://[::]:443"
         options = {
           # Dual-stack: '[::]' binds both IPv6 and IPv4 (V6ONLY=0 default
           # on Linux). One socket accepts traffic from both families.
-          'bind': '[::]:443',
+          'bind': socket_uri,
           'workers': 4,
           'worker_class': 'gevent',
           'worker_connections': 1000,
@@ -207,6 +218,102 @@ class HttpDaemon(OTPmeDaemon):
 
         # Start main loop.
         self.__run()
+
+    def _reload_cert(self):
+        """ Re-read the Site's SSO cert/key from the backend, re-encrypt
+        the private key with the existing passphrase, and atomically
+        overwrite the temp files gunicorn is configured with.
+
+        Followed by SIGHUP to the gunicorn master, which spawns fresh
+        workers; each new worker calls our ``create_ssl_context``
+        callback which re-reads the files from disk. In-flight
+        connections on old workers terminate gracefully, so the cert
+        rotation is zero-downtime.
+
+        Failures are logged and the existing cert is left in place --
+        a broken rotation must NOT bring the OP down.
+        """
+        own_site = backend.get_object(uuid=config.site_uuid)
+        if not own_site or not own_site.sso_cert or not own_site.sso_key:
+            log_msg = _("Cert reload skipped: site has no sso_cert/sso_key.",
+                        log=True)[1]
+            self.logger.warning(log_msg)
+            return False
+        try:
+            check_ssl_cert_key(own_site.sso_cert, own_site.sso_key)
+        except Exception as e:
+            log_msg = _("Cert reload aborted: new SSO cert/key do "
+                        "not match: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            return False
+
+        try:
+            _cert = SSLCert(key=own_site.sso_key)
+            encrypted_key = _cert.encrypt_key(passphrase=self.key_pass)
+        except Exception as e:
+            log_msg = _("Cert reload aborted: failed to re-encrypt key: "
+                        "{error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg, exc_info=True)
+            return False
+
+        # Atomic per-file write: stage to <path>.new, fsync, rename.
+        # On Linux, rename within the same directory is atomic, so a
+        # gunicorn worker spawning concurrently never sees a half-
+        # written file.
+        try:
+            self._atomic_write(self.cert_file, own_site.sso_cert,
+                                mode=0o600)
+            self._atomic_write(self.key_file, encrypted_key,
+                                mode=0o600)
+        except Exception as e:
+            log_msg = _("Cert reload failed during file write: {error}",
+                        log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg, exc_info=True)
+            return False
+
+        # SIGHUP signals gunicorn master to reload: workers are
+        # gracefully restarted (drain + replace), each new worker
+        # invokes create_ssl_context which re-reads the updated files.
+        try:
+            os.kill(self.gunicorn_child.pid, signal.SIGHUP)
+        except Exception as e:
+            log_msg = _("Cert reload: failed to SIGHUP gunicorn "
+                        "(pid={pid}): {error}", log=True)[1]
+            log_msg = log_msg.format(pid=getattr(self.gunicorn_child,
+                                                  'pid', '?'), error=e)
+            self.logger.warning(log_msg, exc_info=True)
+            return False
+
+        log_msg = _("SSO cert reloaded; gunicorn SIGHUP'd for "
+                    "graceful worker rotation.", log=True)[1]
+        self.logger.info(log_msg)
+        return True
+
+    def _atomic_write(self, path, content, mode=0o600):
+        """ Stage to ``<path>.new``, fsync, ``os.replace`` onto path.
+        ``os.replace`` is atomic on POSIX within the same FS, so a
+        concurrent gunicorn-worker open() sees either the old or the
+        new file -- never a partial one. Ownership matches the
+        configured daemon user/group.
+        """
+        tmp = f"{path}.new"
+        fd = open(tmp, "w")
+        try:
+            fd.write(content)
+            fd.flush()
+            os.fsync(fd.fileno())
+        finally:
+            fd.close()
+        filetools.set_fs_permissions(path=tmp, mode=mode, recursive=False)
+        if self.user or self.group:
+            filetools.set_fs_ownership(path=tmp,
+                                        user=self.user,
+                                        group=self.group,
+                                        recursive=False)
+        os.replace(tmp, path)
 
     def __run(self, **kwargs):
         # Notify controld that we are ready.
@@ -245,7 +352,23 @@ class HttpDaemon(OTPmeDaemon):
                 except DaemonQuit:
                     break
                 except DaemonReload:
-                    self.comm_handler.send("controld", command="reload_shutdown")
+                    # Pick up an updated SSO cert/key via SIGHUP to
+                    # the gunicorn master. The reload is in-process
+                    # (no daemon restart) so existing connections
+                    # drain on the old workers and new ones come up
+                    # with the new cert. On failure we still report
+                    # reload_done -- the alternative (reload_shutdown)
+                    # would tear down the OP for what is at worst a
+                    # cert-not-rotated condition the operator can
+                    # observe in the log.
+                    try:
+                        self._reload_cert()
+                    except Exception as e:
+                        log_msg = _("Cert reload raised unexpectedly: "
+                                    "{error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        self.logger.critical(log_msg, exc_info=True)
+                    self.comm_handler.send("controld", command="reload_done")
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:

@@ -83,7 +83,24 @@
         <h4>Existing Device Tokens</h4>
         <ul id="deviceTokenList" class="device-token-list"></ul>
     </div>
+
+    <!-- Connected applications (OIDC consents) -->
+    <div class="settings-card">
+        <h3>Connected Applications</h3>
+        <p class="settings-desc">
+            Applications you have granted access to your account. Disconnecting
+            removes the approval and terminates the application's active session.
+        </p>
+        <div class="status-msg" id="consentStatus"></div>
+        <div class="error-msg" id="consentError"></div>
+        <ul id="oidcConsentList" class="device-token-list"></ul>
+    </div>
 </div>
+
+<div id="oidc-consent-urls"
+     data-url-list="{{ url_for('list_oidc_consents', _external=True, _scheme='https') }}"
+     data-url-revoke="{{ url_for('revoke_oidc_consent', _external=True, _scheme='https') }}"
+     style="display:none;"></div>
 
 <script src="{{ url_for('static', filename='settings.js') }}"></script>
 {% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-wrapper">
+  <div class="deploy-card">
+    <h1>Authorize {{ client_name }}</h1>
+    {% if client_description %}
+    <p class="deploy-desc">{{ client_description }}</p>
+    {% endif %}
+    <p class="deploy-desc">
+      <strong>{{ client_name }}</strong> is asking permission to access
+      your account. If you approve, it will receive:
+    </p>
+
+    <ul class="consent-scope-list">
+      {% for s in scope_descriptions %}
+      <li class="consent-scope">
+        <div class="consent-scope-label">{{ s.label }}</div>
+        <div class="consent-scope-desc">{{ s.description }}</div>
+        {% if s.claims %}
+        <ul class="consent-claims">
+          {% for c in s.claims %}
+          <li>
+            <span class="claim-key">{{ c.name }}</span>
+            <span class="claim-val">{{ c.value }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+
+    <p class="consent-hint">
+      You can revoke this approval at any time from the Settings page.
+    </p>
+
+    <form method="POST" action="{{ authorize_url }}">
+      {% for k, v in params.items() %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}">
+      {% endfor %}
+      <input type="hidden" name="_oidc_consent_nonce" value="{{ consent_nonce }}">
+      <div class="login-buttons" style="margin-top:18px;">
+        <button type="submit" name="_oidc_consent_grant" value="1"
+                class="btn btn-primary">Allow</button>
+        <button type="submit" name="_oidc_consent_deny" value="1"
+                class="btn btn-secondary">Deny</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

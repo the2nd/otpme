@@ -245,6 +245,106 @@
         }
     }
 
+    function getConsentUrls() {
+        const el = document.getElementById('oidc-consent-urls');
+        return el ? el.dataset : null;
+    }
+
+    function formatGrantedAt(ts) {
+        if (!ts) return '';
+        try {
+            return new Date(ts * 1000).toLocaleString();
+        } catch (e) {
+            return '';
+        }
+    }
+
+    async function loadOidcConsents() {
+        const urls = getConsentUrls();
+        const listEl = document.getElementById('oidcConsentList');
+        if (!urls || !listEl) return;
+        listEl.innerHTML = '';
+        try {
+            const resp = await fetch(urls.urlList);
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Failed to load consents.');
+            }
+            const consents = result.consents || [];
+            if (consents.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = 'No connected applications.';
+                listEl.appendChild(li);
+                return;
+            }
+            for (const c of consents) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'device-label';
+                const head = document.createElement('strong');
+                head.textContent = c.client_name;
+                label.appendChild(head);
+                if (c.scopes && c.scopes.length) {
+                    const scopes = document.createElement('span');
+                    scopes.className = 'hint';
+                    scopes.style.display = 'block';
+                    scopes.textContent = 'Scopes: ' + c.scopes.join(', ');
+                    label.appendChild(scopes);
+                }
+                if (c.granted_at) {
+                    const granted = document.createElement('span');
+                    granted.className = 'hint';
+                    granted.style.display = 'block';
+                    granted.textContent = 'Granted: ' + formatGrantedAt(c.granted_at);
+                    label.appendChild(granted);
+                }
+                li.appendChild(label);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-secondary btn-small';
+                btn.textContent = 'Disconnect';
+                btn.addEventListener('click',
+                        () => revokeOidcConsent(c.client_uuid, c.client_name));
+                li.appendChild(btn);
+                listEl.appendChild(li);
+            }
+        } catch (e) {
+            const li = document.createElement('li');
+            li.className = 'error-msg';
+            li.textContent = e.message || 'Failed to load consents.';
+            listEl.appendChild(li);
+        }
+    }
+
+    async function revokeOidcConsent(clientUuid, label) {
+        const urls = getConsentUrls();
+        if (!urls) return;
+        if (!confirm('Disconnect "' + label
+                     + '"? Active sessions for this application will be terminated.')) {
+            return;
+        }
+        const statusEl = document.getElementById('consentStatus');
+        const errorEl = document.getElementById('consentError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+        try {
+            const resp = await fetch(urls.urlRevoke, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({client_uuid: clientUuid}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Failed to revoke consent.');
+            }
+            statusEl.textContent = result.message || 'Disconnected.';
+            loadOidcConsents();
+        } catch (e) {
+            errorEl.textContent = e.message || 'Failed to revoke consent.';
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         const pwBtn = document.getElementById('changePwBtn');
         if (pwBtn) pwBtn.addEventListener('click', changePassword);
@@ -259,5 +359,6 @@
         if (copyBtn) copyBtn.addEventListener('click', copyDevicePassword);
 
         loadDeviceTokens();
+        loadOidcConsents();
     });
 })();

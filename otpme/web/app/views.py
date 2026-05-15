@@ -331,6 +331,52 @@ def del_device_token():
         return error
     return jsonify({"status": "ok", "message": "Device token deleted."})
 
+@app.route('/settings/oidc_consents', methods=['GET'])
+@login_required
+def list_oidc_consents():
+    if not g.user.is_authenticated:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        response, error = _send_ssod_command(
+                command="list_oidc_consents",
+                default_error="Failed to list OIDC consents.")
+    except Exception as e:
+        logger.critical(f"list_oidc_consents failed: {e}")
+        return jsonify({"error": "Failed to list OIDC consents."}), 500
+    if error:
+        return error
+    consents = []
+    if isinstance(response, dict):
+        consents = response.get('consents', [])
+    return jsonify({"consents": consents})
+
+
+@app.route('/settings/oidc_consents/revoke', methods=['POST'])
+@login_required
+def revoke_oidc_consent():
+    if not g.user.is_authenticated:
+        return jsonify({"error": "Not authenticated"}), 401
+    data = request.json or {}
+    client_uuid = (data.get('client_uuid') or '').strip()
+    if not client_uuid:
+        return jsonify({"error": "client_uuid is required."}), 400
+    response, error = _send_ssod_command(
+            command="revoke_oidc_consent",
+            extra_args={'client_uuid': client_uuid},
+            default_error="Failed to revoke consent.",
+            mgmt=True)
+    if error:
+        return error
+    killed = 0
+    if isinstance(response, dict):
+        killed = int(response.get('sessions_killed') or 0)
+    msg = "Consent revoked."
+    if killed:
+        msg = f"Consent revoked; terminated {killed} active session(s)."
+    return jsonify({"status": "ok", "message": msg,
+                    "sessions_killed": killed})
+
+
 @app.route('/settings/redeploy')
 @login_required
 def settings_redeploy():

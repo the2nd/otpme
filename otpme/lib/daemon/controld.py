@@ -975,7 +975,7 @@ class ControlDaemon(UnixDaemon):
             elif command == "reload":
                 try:
                     daemon_name = data['daemon']
-                except KeyError:
+                except Exception:
                     daemon_name = None
                 if daemon_name:
                     if daemon_name in self.daemons:
@@ -985,7 +985,7 @@ class ControlDaemon(UnixDaemon):
             elif command == "restart":
                 try:
                     daemon_name = data['daemon']
-                except KeyError:
+                except Exception:
                     continue
                 if daemon_name not in self.daemons:
                     continue

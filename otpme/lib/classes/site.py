@@ -1445,6 +1445,18 @@ def register_config():
                                     warn_if_exists=True,
                                     setter=reverse_proxy_ips_setter,
                                     object_types=['site'])
+    def socket_uri_setter(socket_uri, **kwargs):
+        try:
+            protocol, address, port = net.parse_socket_uri(socket_uri)
+        except Exception as err:
+            msg = _("Invalid socket URI.")
+            raise ValueError(msg) from err
+        return socket_uri
+    config.register_config_parameter(name="httpd_socket_uri",
+                                    ctype=str,
+                                    setter=socket_uri_setter,
+                                    default_value="tcp://[::]:443",
+                                    object_types=['site', 'unit', 'node'])
     # OIDC default scopes.
     def scopes_setter(scopes, callback=default_callback, **kwargs):
         if isinstance(scopes, str):
@@ -1588,6 +1600,20 @@ def register_config():
                                     ctype=str,
                                     default_value="numeric",
                                     valid_values=['numeric', 'loa', 'none'],
+                                    object_types=['site', 'unit', 'client'])
+    # Whether the OP shows an end-user consent screen at /authorize.
+    # Default False matches the enterprise-SSO sweet spot: the admin
+    # has already gated per-Scope-allowlist who-can-grant-what; an
+    # additional per-user click is friction for trusted internal RPs.
+    # Set True per-client for public-facing or multi-tenant RPs where
+    # the user must explicitly approve data sharing. Once granted, the
+    # consent is remembered per (user, client) on the user object
+    # (trust-on-first-use); a wider scope request re-prompts. The
+    # OIDC spec prompt=consent parameter overrides the stored value
+    # and always re-shows the consent screen.
+    config.register_config_parameter(name="oidc_require_consent",
+                                    ctype=bool,
+                                    default_value=False,
                                     object_types=['site', 'unit', 'client'])
 
 def register_hooks():
@@ -1760,6 +1786,7 @@ class Site(OTPmeObject):
                                 "SSO_SECRET",
                                 "SSO_CSRF_SECRET",
                                 "OIDC_PAIRWISE_SECRET",
+                                "CONFIG_PARAMS:httpd_socket_uri",
                                 "CONFIG_PARAMS:reverse_proxy_ips",
                                 ],
                         },

@@ -933,10 +933,10 @@ class Token(OTPmeObject):
     # RFC 8176 Authentication Methods References (amr) values that
     # describe how this token type authenticates the user. Read by the
     # OIDC ID Token builder to populate the ``amr`` claim. Subclasses
-    # override per token type; e.g. fido2 emits ``["hwk", "fido",
-    # "user"]``. Default is single-factor password-equivalent so an
-    # un-overridden token (a fresh / minimal subclass) still produces
-    # a valid claim instead of silently emitting nothing.
+    # override per token type; e.g. fido2 emits ``["hwk", "user"]``.
+    # Default is single-factor password-equivalent so an un-overridden
+    # token (a fresh / minimal subclass) still produces a valid claim
+    # instead of silently emitting nothing.
     oidc_amr_values = ['pwd']
 
     @classmethod

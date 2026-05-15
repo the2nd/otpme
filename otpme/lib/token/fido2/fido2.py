@@ -263,8 +263,8 @@ def register_config_parameters():
 class Fido2Token(Token):
     """ Class for fido2 tokens. """
     commands = commands
-    # RFC 8176: hardware key + FIDO + explicit user-presence check.
-    oidc_amr_values = ['hwk', 'fido', 'user']
+    # RFC 8176: hardware-secured key + explicit user-presence check.
+    oidc_amr_values = ['hwk', 'user']
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

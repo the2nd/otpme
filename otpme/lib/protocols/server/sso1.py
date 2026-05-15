@@ -825,6 +825,103 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         return f"device-{sanitized}"
 
+    def list_oidc_consents(self, username, sso_jwt, command_args):
+        """ Return the user's stored OIDC consents enriched with the
+        client's display name so the settings UI can show "Disconnect
+        Nextcloud" instead of a bare UUID. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'AUTH_FAILED', 'status': False,
+            })
+        consents = []
+        for cid, rec in user.list_oidc_consents().items():
+            client = backend.get_object(object_type="client", uuid=cid)
+            if client is None:
+                # Stale consent for a deleted client -- surface so the
+                # user can clean it up; name falls back to UUID.
+                client_name = cid
+                client_desc = '(client no longer registered)'
+            else:
+                client_name = getattr(client, 'name', cid)
+                client_desc = getattr(client, 'description', '') or ''
+            consents.append({
+                'client_uuid':        cid,
+                'client_name':        client_name,
+                'client_description': client_desc,
+                'scopes':             rec.get('scopes') or [],
+                'granted_at':         rec.get('granted_at') or 0,
+            })
+        consents.sort(key=lambda c: c['client_name'])
+        return self.build_response(True, {'consents': consents,
+                                          'status':   True})
+
+    def revoke_oidc_consent(self, username, sso_jwt, command_args):
+        """ Drop the consent record for a specific client and -- as a
+        side effect -- terminate every live OIDCSession this user
+        still has open with that client. Without the session sweep
+        the user could revoke the future-grant approval but a stolen
+        AT/RT would keep working until natural expiry, which would
+        surprise the user (the settings UI advertises the action as
+        "disconnect").
+        """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'AUTH_FAILED', 'status': False,
+            })
+        client_uuid = command_args.get('client_uuid')
+        if not client_uuid:
+            return self.build_response(False, {
+                'message': 'client_uuid missing', 'status': False,
+            })
+        removed = user.revoke_oidc_consent(client_uuid)
+        if removed:
+            try:
+                user._write(callback=self.get_callback())
+            except Exception as e:
+                log_msg = _("Failed to persist OIDC consent revocation "
+                            "for user '{user}': {err}", log=True)[1]
+                log_msg = log_msg.format(user=user.name, err=e)
+                self.logger.warning(log_msg)
+        # Kill live OIDC sessions for this (user, client) tuple. The
+        # session.delete() override fires backchannel logout if the
+        # client is configured for it.
+        sessions = backend.search(object_type="session",
+                                  attributes={
+                                      'user_uuid':    {'value': user.uuid},
+                                      'client':       {'value': client_uuid},
+                                      'session_type': {'value': 'oidc'},
+                                  },
+                                  return_type="instance") or []
+        killed = 0
+        for sess in sessions:
+            try:
+                sess.delete(force=True, verify_acls=False)
+                killed += 1
+            except Exception as e:
+                log_msg = _("Failed to terminate OIDC session '{sid}' "
+                            "during consent revocation: {err}",
+                            log=True)[1]
+                log_msg = log_msg.format(sid=sess.session_id, err=e)
+                self.logger.warning(log_msg)
+        emit_audit("OIDC", 'consent_revoked',
+                        user=user.name,
+                        client=client_uuid,
+                        was_present=removed,
+                        sessions_killed=killed)
+        return self.build_response(True, {'status':          True,
+                                          'was_present':     removed,
+                                          'sessions_killed': killed})
+
     def list_device_tokens(self, username, sso_jwt, command_args):
         # Verify SSO jwt.
         try:
@@ -1252,9 +1349,25 @@ class OTPmeSsoP1(OTPmeServer1):
     # ------------------------------------------------------------------
 
     def _compute_oidc_amr(self, auth_token):
-        """ Read the RFC 8176 amr values declared on the token's
-        class. Returns a fresh list (defensive copy). Empty list if
-        the token disappeared or doesn't declare amr values.
+        """ Read the amr values declared on the token's class.
+        Returns a fresh list (defensive copy). Empty list if the
+        token disappeared or doesn't declare amr values.
+
+        All values emitted by OTPme token classes are IANA-registered
+        (``hwk``, ``sc``, ``otp``, ``swk``, ``mca``, ``user``,
+        ``pin``).
+
+        Spec: RFC 8176 "Authentication Method Reference Values"
+          (defines the ``amr`` claim + creates the IANA registry;
+          ``pwd``, ``otp``, ``mfa``, ``hwk``, ``swk``, ``sc`` etc.
+          are registered in §2)
+          https://datatracker.ietf.org/doc/html/rfc8176
+        IANA "Authentication Method Reference Values" registry
+          (authoritative live list -- additions made after RFC 8176
+          are tracked here)
+          https://www.iana.org/assignments/authentication-method-reference-values/authentication-method-reference-values.xhtml
+        Spec: OIDC Core 1.0 §2 "ID Token" (``amr`` claim)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDToken
         """
         if auth_token is None:
             return []
@@ -1267,6 +1380,12 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Map an amr list to an acr string per scheme. Implementation
         lives in otpme.lib.protocols.oidc_helpers so it's
         unit-testable without the full handler import chain.
+
+        Spec: OIDC Core 1.0 §2 "ID Token" (``acr`` claim)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+        Spec: OIDC Core 1.0 §3.1.2.1 "Authentication Request"
+          (acr_values request parameter; voluntary claim)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
         """
         return _compute_acr_helper(amr, scheme)
 
@@ -1288,11 +1407,11 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Returns an int (unix timestamp) when known, ``None`` when not.
         Caller MUST omit the ``auth_time`` claim when this returns
-        ``None``: per OIDC Core 3.1.2.1, an RP that asked for
-        ``max_age`` will then treat the response as failing the
-        freshness check and force re-auth -- which is the conservative
-        and correct outcome. Faking ``now`` here would silently bypass
-        max_age policies on banking / step-up RPs.
+        ``None``: an RP that asked for ``max_age`` will then treat the
+        response as failing the freshness check and force re-auth --
+        which is the conservative and correct outcome. Faking ``now``
+        here would silently bypass max_age policies on banking /
+        step-up RPs.
 
         Resolution order:
           1. Parent SSO session's ``creation_time`` -- the actual user
@@ -1301,6 +1420,14 @@ class OTPmeSsoP1(OTPmeServer1):
              happened then, so user auth must be at-or-before this.
              Acceptable lower bound; still a real freshness indicator.
           3. ``None`` -- truly unknown, nothing to claim.
+
+        Spec: OIDC Core 1.0 §2 "ID Token" (``auth_time`` claim:
+          time of end-user authentication, REQUIRED when max_age is
+          requested or essential)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+        Spec: OIDC Core 1.0 §3.1.2.1 "Authentication Request"
+          (``max_age`` parameter)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
         """
         try:
             parents = backend.search(object_type="session",
@@ -1324,6 +1451,13 @@ class OTPmeSsoP1(OTPmeServer1):
         hierarchy. Falls back to 3600s on any read/parse failure to
         keep the issuance path robust. Same TTL is used for the ID
         Token's exp.
+
+        Spec: RFC 6749 §5.1 "Successful Response" (``expires_in`` --
+          recommended in token response, in seconds)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-5.1
+        Spec: OIDC Core 1.0 §2 "ID Token" (``exp`` claim -- absolute
+          unix-timestamp expiry, MUST be present in ID Token)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDToken
         """
         from otpme.lib.humanize import units
         try:
@@ -1343,7 +1477,21 @@ class OTPmeSsoP1(OTPmeServer1):
         ``(None, internal_reason)`` on failure -- the internal_reason
         is for server-side logging only and MUST NOT be returned to
         the caller; the caller surfaces a generic
-        "client authentication failed". """
+        "client authentication failed".
+
+        Spec: RFC 6749 §2.3 "Client Authentication" (confidential
+          clients authenticate; public clients may be unauthenticated)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-2.3
+        Spec: RFC 6749 §2.3.1 "Client Password" (Basic / form-body)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-2.3.1
+        Spec: OIDC Core 1.0 §9 "Client Authentication"
+          (``token_endpoint_auth_method``: client_secret_basic,
+          client_secret_post, none, ...)
+          https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
+        Spec: OAuth 2.1 §4.4 "Client Authentication" (public clients
+          MUST use PKCE; ``none`` requires code_challenge)
+          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+        """
         import secrets as _secrets
         if not client_id:
             return None, "client_id missing"
@@ -1371,9 +1519,14 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _verify_pkce(self, code_verifier, code_challenge,
                      code_challenge_method):
-        """ Per RFC 7636. Returns True/False. Implementation lives in
+        """ Verify the PKCE code_verifier against the bound
+        code_challenge. Returns True/False. Implementation lives in
         otpme.lib.protocols.oidc_helpers so it's unit-testable
         without the full handler import chain.
+
+        Spec: RFC 7636 §4.6 "Server Verifies code_verifier before
+          Returning the Tokens"
+          https://datatracker.ietf.org/doc/html/rfc7636#section-4.6
         """
         return _verify_pkce_helper(code_verifier, code_challenge,
                                     code_challenge_method)
@@ -1392,6 +1545,16 @@ class OTPmeSsoP1(OTPmeServer1):
         privacy guarantee. enable_oidc() autogenerates one; if a Site
         was upgraded from a pre-fix build the operator has to run
         ``otpme-site change_oidc_pairwise_secret`` once.
+
+        Spec: OIDC Core 1.0 §8 "Subject Identifier Types"
+          (public vs pairwise)
+          https://openid.net/specs/openid-connect-core-1_0.html#SubjectIDTypes
+        Spec: OIDC Core 1.0 §8.1 "Pairwise Identifier Algorithm"
+          (informative: SHA-256/HMAC variants, sector_identifier
+          derived from sector_identifier_uri host)
+          https://openid.net/specs/openid-connect-core-1_0.html#PairwiseAlg
+        Spec: RFC 2104 "HMAC: Keyed-Hashing for Message Authentication"
+          https://datatracker.ietf.org/doc/html/rfc2104
         """
         subject_type = getattr(client, 'oidc_subject_type', 'public')
         if subject_type != "pairwise":
@@ -1421,6 +1584,22 @@ class OTPmeSsoP1(OTPmeServer1):
         LDIF source attributes for individual claims are configurable
         via Site/Unit config params (e.g. ``oidc_email_attribute``)
         so admins can map non-standard schemas without code changes.
+
+        Spec: OIDC Core 1.0 §5.1 "Standard Claims"
+          (name, given_name, family_name, preferred_username, email,
+          phone_number, address sub-claims, ...)
+          https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
+        Spec: OIDC Core 1.0 §5.1.1 "Address Claim"
+          (street_address, locality, region, postal_code, country)
+          https://openid.net/specs/openid-connect-core-1_0.html#AddressClaim
+        Spec: OIDC Core 1.0 §5.4 "Requesting Claims using Scope Values"
+          (profile / email / address / phone scope mappings)
+          https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
+        Note: ``groups`` is not a Standard OIDC scope; widely supported
+          de-facto via CAS Protocol §2.6 attribute return and the
+          ``groups`` IANA-registered claim, used by NextCloud, Grafana,
+          Authentik, ... For formal registration see "OAuth Parameters"
+          IANA registry.
         """
         def _first(attr):
             try:
@@ -1526,7 +1705,16 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Resolve the OIDC-domain claim values that the handler is
         responsible for (sub, user-attribute claims, auth_time, amr,
         acr). Infrastructure claims (iss/aud/iat/exp/jti/sid/nonce)
-        and at_hash live on OIDCSession.build_id_token. """
+        and at_hash live on OIDCSession.build_id_token.
+
+        Spec: OIDC Core 1.0 §2 "ID Token" (claim set: iss, sub, aud,
+          exp, iat, auth_time, nonce, acr, amr, azp)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+        Spec: OIDC Core 1.0 §5.4 "Requesting Claims using Scope Values"
+          (user-attribute claims included in ID Token when the
+          ``id_token`` audience requests them via scope)
+          https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
+        """
         claims = {
             "sub": self._compute_oidc_sub(user, client, site),
         }
@@ -1559,7 +1747,16 @@ class OTPmeSsoP1(OTPmeServer1):
         return claims
 
     def oidc_token(self, command_args):
-        """ /token endpoint. Dispatches by grant_type. """
+        """ /token endpoint. Dispatches by grant_type.
+
+        Spec: RFC 6749 §3.2 "Token Endpoint"
+          https://datatracker.ietf.org/doc/html/rfc6749#section-3.2
+        Spec: RFC 6749 §4.5 "Extension Grants" (the dispatch model
+          for unknown grant_type values -> ``unsupported_grant_type``)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-4.5
+        Spec: OIDC Core 1.0 §3.1.3 "Token Endpoint"
+          https://openid.net/specs/openid-connect-core-1_0.html#TokenEndpoint
+        """
         grant_type = command_args.get("grant_type")
         if grant_type == "authorization_code":
             return self._oidc_token_code_exchange(command_args)
@@ -1576,6 +1773,24 @@ class OTPmeSsoP1(OTPmeServer1):
             - locate OIDCSession via SHA-256(code) index
             - verify redirect_uri match, PKCE, expiry, single-use
             - consume code, issue AT+RT, build ID Token
+
+        Spec: RFC 6749 §4.1.3 "Access Token Request"
+          (grant_type=authorization_code parameters: code,
+          redirect_uri, client_id)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+        Spec: RFC 6749 §4.1.4 "Access Token Response"
+          https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.4
+        Spec: RFC 6749 §5.2 "Error Response" (invalid_grant,
+          invalid_client, invalid_request, unsupported_grant_type)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
+        Spec: OIDC Core 1.0 §3.1.3.2 "Token Request Validation"
+          (redirect_uri match, code single-use)
+          https://openid.net/specs/openid-connect-core-1_0.html#TokenRequestValidation
+        Spec: OIDC Core 1.0 §3.1.3.3 "Successful Token Response"
+          (id_token added to RFC 6749 response)
+          https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
+        Spec: RFC 7636 §4.6 "Server Verifies code_verifier"
+          https://datatracker.ietf.org/doc/html/rfc7636#section-4.6
         """
         from otpme.lib.session.oidc_session import (
                 hash_token, STATE_PENDING_CODE_EXCHANGE)
@@ -1743,6 +1958,20 @@ class OTPmeSsoP1(OTPmeServer1):
             - locate OIDCSession via SHA-256(refresh_token) index
             - check state=active, client matches (cross-client replay)
             - rotate AT+RT, build fresh ID Token
+
+        Spec: RFC 6749 §6 "Refreshing an Access Token"
+          (grant_type=refresh_token; refresh_token, scope parameters)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-6
+        Spec: OAuth 2.1 §6.1 "Refresh Token Protection"
+          (rotate-and-invalidate-chain on replay; revoke the entire
+          chain when a burned RT is presented)
+          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+        Spec: OAuth 2.0 Security Best Current Practice §4.13
+          (RT rotation; detection of replay; chain invalidation)
+          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics
+        Spec: OIDC Core 1.0 §12 "Using Refresh Tokens"
+          (ID Token may be re-issued during refresh; iat refreshed)
+          https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens
         """
         from otpme.lib.session.oidc_session import hash_token, STATE_ACTIVE
 
@@ -1798,7 +2027,10 @@ class OTPmeSsoP1(OTPmeServer1):
             # Active index missed -- check the burn index. A hit there
             # means this RT was already rotated out, so the legitimate
             # RP can't be presenting it: it's a replay (token theft).
-            # OAuth 2.1 §6.1 says invalidate the whole token chain.
+            # OAuth 2.1 §6.1 says invalidate the whole token chain:
+            #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+            # (mirrored in OAuth Security BCP §4.13:
+            #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics)
             burned = backend.search(object_type="session",
                                     attribute="burned_refresh_token_hash",
                                     value=rt_hash,
@@ -1928,6 +2160,16 @@ class OTPmeSsoP1(OTPmeServer1):
         Auth: Bearer access_token (no client_id/secret). The token is
         self-identifying -- a single Storage-Lookup on its hash gives
         us the OIDCSession, from there user/client/scope.
+
+        Spec: OIDC Core 1.0 §5.3 "UserInfo Endpoint"
+          https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
+        Spec: OIDC Core 1.0 §5.3.2 "Successful UserInfo Response"
+          (``sub`` REQUIRED in response; claims filtered by granted
+          scope)
+          https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
+        Spec: RFC 6750 §2 "Authenticated Requests" (Bearer access
+          token in Authorization header)
+          https://datatracker.ietf.org/doc/html/rfc6750#section-2
         """
         from otpme.lib.session.oidc_session import hash_token, STATE_ACTIVE
 
@@ -1997,23 +2239,34 @@ class OTPmeSsoP1(OTPmeServer1):
             pass
 
         claims = self._get_user_claims(user, oidc_session.scope, client=client)
-        # `sub` is REQUIRED in /userinfo response per OIDC Core 5.3.
+        # `sub` REQUIRED in /userinfo response:
+        # OIDC Core 1.0 §5.3.2 "Successful UserInfo Response"
+        #   https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
         claims['sub'] = self._compute_oidc_sub(user, client, site)
         return self.build_response(True, claims)
 
     def oidc_introspect(self, command_args):
-        """ /introspect endpoint per RFC 7662.
+        """ /introspect endpoint.
 
         Auth: client_id + client_secret (server-to-server).
         Request: ``token`` (REQUIRED), ``token_type_hint`` (OPTIONAL,
         either ``access_token`` or ``refresh_token`` -- only a search
         order hint, the spec requires us to check both).
 
-        Per RFC 7662 section 2.2, ANY situation where the token is
-        not currently valid (unknown / expired / revoked / belongs
-        to another client) is reported uniformly as
-        ``{"active": false}`` -- no info leak about which tokens
-        exist or who they belong to.
+        ANY situation where the token is not currently valid (unknown
+        / expired / revoked / belongs to another client) is reported
+        uniformly as ``{"active": false}`` -- no info leak about
+        which tokens exist or who they belong to.
+
+        Spec: RFC 7662 §2 "Introspection Endpoint"
+          (token + token_type_hint request parameters)
+          https://datatracker.ietf.org/doc/html/rfc7662#section-2
+        Spec: RFC 7662 §2.1 "Introspection Request"
+          (``token_type_hint`` is a hint only, not authoritative)
+          https://datatracker.ietf.org/doc/html/rfc7662#section-2.1
+        Spec: RFC 7662 §2.2 "Introspection Response"
+          (active true/false + optional claims; uniform 200 response)
+          https://datatracker.ietf.org/doc/html/rfc7662#section-2.2
         """
         from otpme.lib.session.oidc_session import hash_token, STATE_ACTIVE
 
@@ -2124,22 +2377,32 @@ class OTPmeSsoP1(OTPmeServer1):
         return self.build_response(True, response)
 
     def oidc_revoke(self, command_args):
-        """ /revoke endpoint per RFC 7009.
+        """ /revoke endpoint.
 
         Auth: client_id + client_secret (server-to-server).
         Request: ``token`` (REQUIRED), ``token_type_hint`` (OPTIONAL,
         ``access_token`` or ``refresh_token`` -- search-order hint
         only; we check both indexes anyway).
 
-        Per RFC 7009 section 2.2 the OP MUST return HTTP 200 for any
-        valid client request, regardless of whether the token existed
-        or belonged to the calling client. Only ``invalid_client`` /
-        ``invalid_request`` are real errors. This prevents
-        token-existence probing.
+        The OP MUST return HTTP 200 for any valid client request,
+        regardless of whether the token existed or belonged to the
+        calling client. Only ``invalid_client`` / ``invalid_request``
+        are real errors. This prevents token-existence probing.
 
         Revoking either an AT or an RT terminates the underlying
         OIDCSession (and triggers backchannel logout via the session's
         delete()) -- AT and RT share a single session here.
+
+        Spec: RFC 7009 §2 "Token Revocation" (token + token_type_hint)
+          https://datatracker.ietf.org/doc/html/rfc7009#section-2
+        Spec: RFC 7009 §2.1 "Revocation Request"
+          (token_type_hint is a search-order hint, not authoritative)
+          https://datatracker.ietf.org/doc/html/rfc7009#section-2.1
+        Spec: RFC 7009 §2.2 "Revocation Response"
+          (200 + empty body uniformly to prevent token probing)
+          https://datatracker.ietf.org/doc/html/rfc7009#section-2.2
+        Spec: RFC 7009 §2.1, 2nd ¶ (revoking a refresh token SHOULD
+          also invalidate access tokens issued under it)
         """
         from otpme.lib.session.oidc_session import hash_token
 
@@ -2195,8 +2458,9 @@ class OTPmeSsoP1(OTPmeServer1):
                 oidc_session = result[0]
                 break
 
-        # Per RFC 7009: success regardless of whether the token was
+        # RFC 7009 §2.2: success regardless of whether the token was
         # found or whether the calling client owns it.
+        #   https://datatracker.ietf.org/doc/html/rfc7009#section-2.2
         if oidc_session is None:
             return self.build_response(True, {})
 
@@ -2267,6 +2531,19 @@ class OTPmeSsoP1(OTPmeServer1):
         is included in the response so the web layer can decide
         between honoring the redirect and showing a generic OP
         logout page.
+
+        Spec: OIDC RP-Initiated Logout 1.0 §2 "RP-Initiated Logout"
+          (id_token_hint, client_id, post_logout_redirect_uri, state)
+          https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
+        Spec: OIDC RP-Initiated Logout 1.0 §3 "Redirection to RP
+          After Logout" (state echo, validation against
+          post_logout_redirect_uris)
+          https://openid.net/specs/openid-connect-rpinitiated-1_0.html#ValidationAndErrorHandling
+        Spec: OIDC Back-Channel Logout 1.0 (cascade to other RPs in
+          the SSO session when ``oidc_logout_scope=sso``)
+          https://openid.net/specs/openid-connect-backchannel-1_0.html
+        Spec: OWASP ASVS V5.1.5 (open-redirect defense:
+          allowlist-based validation of post_logout_redirect_uri)
         """
         id_token_hint = command_args.get("id_token_hint")
         client_id = command_args.get("client_id")
@@ -2448,13 +2725,34 @@ class OTPmeSsoP1(OTPmeServer1):
             2. authd verify(password=sotp, oidc_context=True, ...)
             3. 302 redirect to RP
 
-        Two-tier error reporting per OIDC Core 3.1.2.6:
+        Two-tier error reporting:
           - ``client_id`` / ``redirect_uri`` invalid  -> ``can_redirect=False``,
             web layer renders an error page (no redirect: would be an
             open-redirect vector).
           - All other errors -> ``can_redirect=True``, web layer
             redirects back to the validated redirect_uri with
             ``?error=...&state=...``.
+
+        Spec: OIDC Core 1.0 §3.1.2.1 "Authentication Request"
+          (request parameters: response_type, scope, client_id,
+          redirect_uri, state, nonce, code_challenge,
+          code_challenge_method)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+        Spec: OIDC Core 1.0 §3.1.2.2 "Authentication Request
+          Validation" (server-side checks before issuing code)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthRequestValidation
+        Spec: OIDC Core 1.0 §3.1.2.6 "Authentication Error Response"
+          (two-tier: redirect_uri-invalid stays on OP; everything else
+          redirects with error+state)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthError
+        Spec: RFC 6749 §3.1.2 "Redirection Endpoint"
+          (redirect_uri must match a pre-registered value exactly)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-3.1.2
+        Spec: RFC 7636 §4.3 "Client Sends the Code Challenge..."
+          https://datatracker.ietf.org/doc/html/rfc7636#section-4.3
+        Spec: OAuth 2.1 §7.5.2 (PKCE required; ``plain`` forbidden by
+          default, opt-in only via oidc_allow_plain_pkce)
+          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
         """
         # Authenticate the calling user via the SSO JWT, the same way
         # get_sotp does it. We need a verified user identity to issue
@@ -2490,6 +2788,19 @@ class OTPmeSsoP1(OTPmeServer1):
         code_challenge = command_args.get("code_challenge")
         code_challenge_method = command_args.get("code_challenge_method") or "plain"
         client_ip = command_args.get("client_ip")
+        # OIDC ``prompt`` parameter (Core 3.1.2.1). Space-separated;
+        # we only care about ``consent`` (force re-show even if a
+        # stored consent covers the request) and ``none`` (RP forbids
+        # any user interaction, so any consent gap must be reported
+        # as ``interaction_required``).
+        prompt_values = set((command_args.get("prompt") or "").split())
+        # Set by the web layer after the user clicked Allow on the
+        # consent screen. Without this flag, consent gaps return
+        # ``consent_required`` to the web layer instead of issuing
+        # a SOTP -- a malicious /authorize caller cannot bypass the
+        # consent screen by setting it themselves because they don't
+        # have a valid SSO JWT for the affected user.
+        consent_granted = bool(command_args.get("consent_granted"))
 
         log_msg = _("OIDC authorize-validate from {ip} for user '{user}', client '{cid}'.", log=True)[1]
         log_msg = log_msg.format(ip=client_ip or "?",
@@ -2568,10 +2879,11 @@ class OTPmeSsoP1(OTPmeServer1):
                         "scope must include 'openid'",
                         can_redirect=True)
 
-        # PKCE is required by default (OAuth 2.1). Per-client / unit
-        # / site override walks up via the standard config-param
-        # parent hierarchy. Disable only for legacy RPs that can't
-        # generate code_verifier/code_challenge.
+        # PKCE is required by default (OAuth 2.1 §7.5):
+        #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+        # Per-client / unit / site override walks up via the standard
+        # config-param parent hierarchy. Disable only for legacy RPs
+        # that can't generate code_verifier/code_challenge.
         try:
             pkce_required = client.get_config_parameter("oidc_pkce_required")
         except Exception:
@@ -2590,9 +2902,11 @@ class OTPmeSsoP1(OTPmeServer1):
                 return _err('invalid_request',
                             f"code_challenge_method '{code_challenge_method}' not supported",
                             can_redirect=True)
-            # OAuth 2.1 §7.5.2 forbids 'plain'. Allowed only when the
-            # client (or its site/unit) explicitly opted in via
-            # oidc_allow_plain_pkce -- never the default.
+            # OAuth 2.1 §7.5.2 forbids 'plain':
+            #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+            # Allowed only when the client (or its site/unit)
+            # explicitly opted in via oidc_allow_plain_pkce -- never
+            # the default.
             if code_challenge_method == "plain":
                 try:
                     allow_plain = client.get_config_parameter(
@@ -2604,6 +2918,85 @@ class OTPmeSsoP1(OTPmeServer1):
                                 "code_challenge_method 'plain' is forbidden "
                                 "(OAuth 2.1); use 'S256'",
                                 can_redirect=True)
+
+        # End-user consent. Decision matrix:
+        #   require_consent=False, no prompt=consent  -> skip
+        #   prompt=consent                            -> force show
+        #   stored consent covers requested scopes    -> skip
+        #   otherwise                                 -> consent_required
+        # prompt=none on top: any consent gap becomes interaction_required.
+        requested_scopes = set(scope.split())
+        try:
+            require_consent = client.get_config_parameter(
+                    "oidc_require_consent")
+        except Exception:
+            require_consent = False
+        force_consent = "consent" in prompt_values
+        if force_consent or require_consent:
+            stored = user.get_oidc_consent(client.uuid) or {}
+            stored_scopes = set(stored.get('scopes') or [])
+            covered = (not force_consent
+                       and requested_scopes.issubset(stored_scopes))
+            if not covered and not consent_granted:
+                # prompt=none + consent gap is a hard error per spec.
+                if "none" in prompt_values:
+                    return _err('interaction_required',
+                                "user consent required but prompt=none",
+                                can_redirect=True)
+                emit_audit("OIDC", 'authorize_consent_required',
+                                user=user.name,
+                                client=client_id,
+                                scope=scope,
+                                forced=force_consent,
+                                ip=client_ip)
+                # No SOTP yet -- the web layer renders the consent
+                # screen and re-invokes with consent_granted=True.
+                client_name = getattr(client, 'name', client_id)
+                client_desc = getattr(client, 'description', '') or ''
+                # Compute the concrete claim values the RP would
+                # receive so the consent screen can show "email:
+                # alice@example.com" instead of just "email". This is
+                # the same computation that runs at /token (and
+                # /userinfo) -- previewing it doesn't leak anything
+                # the user doesn't already know about themselves.
+                try:
+                    claims_preview = self._get_user_claims(user, scope,
+                                                            client=client) or {}
+                except Exception as e:
+                    log_msg = _("Failed to compute claims preview for "
+                                "consent screen: {err}", log=True)[1]
+                    log_msg = log_msg.format(err=e)
+                    self.logger.warning(log_msg)
+                    claims_preview = {}
+                # Normalise: callers send dict-able values only.
+                # Strip anything non-JSON-serialisable defensively so
+                # the response stays clean for ssod/web transport.
+                claims_preview = {k: v for k, v in claims_preview.items()
+                                  if isinstance(v, (str, int, float, bool,
+                                                    list, dict, type(None)))}
+                return self.build_response(True, {
+                    'consent_required':  True,
+                    'client_name':       client_name,
+                    'client_description': client_desc,
+                    'scopes':            sorted(requested_scopes),
+                    'claims_preview':    claims_preview,
+                })
+            if consent_granted:
+                user.set_oidc_consent(client.uuid, requested_scopes)
+                try:
+                    user._write(callback=self.get_callback())
+                except Exception as e:
+                    log_msg = _("Failed to persist OIDC consent for "
+                                "user '{user}' / client '{cid}': "
+                                "{err}", log=True)[1]
+                    log_msg = log_msg.format(user=user.name,
+                                              cid=client_id, err=e)
+                    self.logger.warning(log_msg)
+                emit_audit("OIDC", 'authorize_consent_granted',
+                                user=user.name,
+                                client=client_id,
+                                scope=scope,
+                                ip=client_ip)
 
         # Resolve client AG -> UUID, generate SOTP from session.
         ag_search = backend.search(object_type="accessgroup",
@@ -2640,21 +3033,45 @@ class OTPmeSsoP1(OTPmeServer1):
     def oidc_discovery(self, command_args):
         """ /.well-known/openid-configuration metadata.
 
-        Field set is per OIDC Discovery 1.0; values come from the
-        running site + configured capabilities so admins don't drift
-        from reality.
+        Field set is per the OIDC Discovery spec; values come from
+        the running site + configured capabilities so admins don't
+        drift from reality.
 
         Issuer + endpoint URLs are derived from ``site.sso_fqdn``;
         web layer doesn't need to pass anything.
 
         ``scopes_supported`` lists every enabled Scope object in the
-        realm. Per OIDC Discovery 1.0 §3, this field is meant as the
-        full set of scopes the OP accepts -- some RP libraries
-        (mod_auth_openidc, oidc-client-ts, ...) refuse to complete
-        auto-setup if a configured scope is missing here. Custom
-        scopes (e.g. ``payments.execute``) are still gated by their
-        per-Scope client allowlist; advertisement is independent of
-        grant.
+        realm. This field is meant as the full set of scopes the OP
+        accepts -- some RP libraries (mod_auth_openidc, oidc-client-ts,
+        ...) refuse to complete auto-setup if a configured scope is
+        missing here. Custom scopes (e.g. ``payments.execute``) are
+        still gated by their per-Scope client allowlist;
+        advertisement is independent of grant.
+
+        Spec: OIDC Discovery 1.0 §3 "OpenID Provider Metadata"
+          (issuer, *_endpoint, scopes_supported,
+          response_types_supported, subject_types_supported,
+          id_token_signing_alg_values_supported,
+          token_endpoint_auth_methods_supported,
+          claims_supported, grant_types_supported,
+          code_challenge_methods_supported, ...)
+          https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+        Spec: OIDC Discovery 1.0 §4 "Obtaining OpenID Provider
+          Configuration Information" (.well-known URL convention)
+          https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
+        Spec: RFC 8414 "OAuth 2.0 Authorization Server Metadata"
+          (sibling spec; same metadata, OAuth-only)
+          https://datatracker.ietf.org/doc/html/rfc8414
+        Spec: OIDC Back-Channel Logout 1.0 §4 "Logout Discovery"
+          (backchannel_logout_supported,
+          backchannel_logout_session_supported)
+          https://openid.net/specs/openid-connect-backchannel-1_0.html#BCSupport
+        Spec: OIDC Front-Channel Logout 1.0 §3 "Discovery Document"
+          (frontchannel_logout_supported)
+          https://openid.net/specs/openid-connect-frontchannel-1_0.html#FCSupport
+        Spec: RFC 7636 §4.3 (advertise S256 in
+          code_challenge_methods_supported; OAuth 2.1 omits "plain")
+          https://datatracker.ietf.org/doc/html/rfc7636#section-4.3
         """
         site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if site is None:
@@ -2717,10 +3134,11 @@ class OTPmeSsoP1(OTPmeServer1):
                 "authorization_code",
                 "refresh_token",
             ],
-            # OAuth 2.1 §7.5.2: only S256 in discovery. ``plain`` is
-            # still accepted on the wire when an individual client has
-            # ``oidc_allow_plain_pkce=True`` (legacy interop), but
-            # we don't advertise it.
+            # OAuth 2.1 §7.5.2: only S256 in discovery.
+            #   https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+            # ``plain`` is still accepted on the wire when an
+            # individual client has ``oidc_allow_plain_pkce=True``
+            # (legacy interop), but we don't advertise it.
             "code_challenge_methods_supported": ["S256"],
             "claims_supported": [
                 "sub", "iss", "aud", "iat", "exp", "jti", "sid",
@@ -2741,6 +3159,17 @@ class OTPmeSsoP1(OTPmeServer1):
         Returns active + retired keys (so RPs can verify tokens
         signed before the most recent rotation). Revoked keys are
         removed from oidc_keys entirely and never appear here.
+
+        Spec: RFC 7517 §5 "JWK Set Format"
+          ({"keys": [<JWK>, ...]})
+          https://datatracker.ietf.org/doc/html/rfc7517#section-5
+        Spec: OIDC Core 1.0 §10.1 "Signing" (key rotation guidance;
+          OP keeps retired keys published until tokens signed under
+          them expire)
+          https://openid.net/specs/openid-connect-core-1_0.html#SigEnc
+        Spec: OIDC Core 1.0 §10.1.1 "Rotation of Asymmetric Signing
+          Keys"
+          https://openid.net/specs/openid-connect-core-1_0.html#RotateSigKeys
         """
         from otpme.lib.encryption.jwk import render_jwks
 
@@ -2776,6 +3205,22 @@ class OTPmeSsoP1(OTPmeServer1):
         DOES enforce a separate ``iat``-age cap (config parameter
         ``oidc_id_token_hint_max_age``, default 90 days) so a years-
         old ID Token from a leaked backup can't still drive a logout.
+
+        Spec: OIDC RP-Initiated Logout 1.0 §2 "RP-Initiated Logout"
+          (id_token_hint -- a previously issued ID Token used to
+          identify the user/session being logged out)
+          https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
+        Spec: OIDC Core 1.0 §3.1.3.7 "ID Token Validation"
+          (signature, iss, aud checks -- exp deliberately relaxed
+          here because logout-after-expiry is a legitimate flow)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+        Spec: RFC 7519 §4.1.3 "aud" (may be a single string or an
+          array of strings)
+          https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3
+        Spec: RFC 8725 §3 "Don't Mix Up Algorithms"
+          (keyset-based verification pins to the alg encoded in
+          the JWK; ``none`` is never accepted)
+          https://datatracker.ietf.org/doc/html/rfc8725#section-3
         """
         import time as _time
         from joserfc import jwt as joserfc_jwt
@@ -2853,7 +3298,9 @@ class OTPmeSsoP1(OTPmeServer1):
                         f"id_token_hint is older than the configured "
                         f"max age ({max_age}s)")
 
-        # RFC 7519: ``aud`` may be a JSON string or array of strings.
+        # RFC 7519 §4.1.3: ``aud`` may be a JSON string or array of
+        # strings:
+        #   https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3
         aud_claim = claims["aud"]
         if isinstance(aud_claim, list):
             if not aud_claim:
@@ -2889,6 +3336,8 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_discovery",
                             "oidc_jwks",
                             "oidc_authorize_validate",
+                            "list_oidc_consents",
+                            "revoke_oidc_consent",
                         ]
 
         # OIDC commands are server-to-server (or browser-to-server
@@ -3025,6 +3474,16 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command oidc_authorize_validate.", log=True)[1]
             self.logger.info(log_msg)
             return self.oidc_authorize_validate(username, sso_jwt, command_args)
+
+        if command == "list_oidc_consents":
+            log_msg = _("Processing command list_oidc_consents.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.list_oidc_consents(username, sso_jwt, command_args)
+
+        if command == "revoke_oidc_consent":
+            log_msg = _("Processing command revoke_oidc_consent.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.revoke_oidc_consent(username, sso_jwt, command_args)
 
         return self.build_response(status, message)
 

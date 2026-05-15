@@ -12,6 +12,25 @@ RP's storage.
 Skeleton only at this stage -- field set, indexed lookups, state
 machine helpers. Token issuance, rotation and consumption logic plus
 the backchannel-logout side-effect on delete are layered on top later.
+
+Specs governing this module:
+  OIDC Core 1.0 §3.1 "Authorization Code Flow"
+    https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth
+  OIDC Core 1.0 §2 "ID Token"
+    https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+  OIDC Core 1.0 §3.1.3.6 "ID Token" (at_hash)
+    https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
+  OIDC Back-Channel Logout 1.0
+    https://openid.net/specs/openid-connect-backchannel-1_0.html
+  RFC 6749 §6 "Refreshing an Access Token"
+    https://datatracker.ietf.org/doc/html/rfc6749#section-6
+  RFC 7519 "JSON Web Token (JWT)"
+    https://datatracker.ietf.org/doc/html/rfc7519
+  RFC 7636 "Proof Key for Code Exchange (PKCE)"
+    https://datatracker.ietf.org/doc/html/rfc7636
+  OAuth 2.1 §6.1 "Refresh Token Protection" (RT rotation +
+    chain invalidation on replay)
+    https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
 """
 import os
 import time
@@ -58,9 +77,13 @@ _BACKCHANNEL_LOGOUT_CONCURRENCY = 32
 _backchannel_logout_slots = threading.BoundedSemaphore(
         _BACKCHANNEL_LOGOUT_CONCURRENCY)
 # Bound the response body size we'll read from an RP; logout tokens
-# are POST-only, the spec mandates the response body is empty/ignored
-# (RFC OIDC Back-Channel Logout 1.0 §2.6). A misbehaving RP that
-# streams data back forever would otherwise pin a worker thread.
+# are POST-only, the spec mandates the response body is empty/ignored.
+# A misbehaving RP that streams data back forever would otherwise pin
+# a worker thread.
+#
+# Spec: OIDC Back-Channel Logout 1.0 §2.8 "Back-Channel Logout
+#   Response" (response body is empty / ignored)
+#   https://openid.net/specs/openid-connect-backchannel-1_0.html#BCResponse
 _BACKCHANNEL_LOGOUT_RESP_LIMIT = 4096
 
 
@@ -79,8 +102,11 @@ def register():
     ``burned_refresh_token_hash`` is multi-valued: every refresh-token
     rotation appends the previous RT hash. A /token call that resolves
     via this index instead of ``refresh_token_hash`` is a replay
-    attempt -- OAuth 2.1 §6.1 mandates invalidating the whole token
-    chain in that case.
+    attempt -- the whole token chain is invalidated in that case.
+
+    Spec: OAuth 2.1 §6.1 "Refresh Token Protection"
+      (rotate + invalidate chain on replay)
+      https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
     """
     from otpme.lib import config
     config.register_index_attribute('authcode_hash')
@@ -170,6 +196,13 @@ class OIDCSession(Session):
         """ Store the SHA-256 of the issued auth code on the session
         and index it for /token lookup. The plaintext code lives only
         in the redirect to the RP.
+
+        Spec: OIDC Core 1.0 §3.1.2.5 "Successful Authentication
+          Response" (code in redirect_uri query)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthResponse
+        Spec: RFC 6749 §4.1.2 "Authorization Response" (auth code,
+          short-lived; recommended ≤10 minutes)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2
         """
         if self.authcode_hash:
             # Replace any previous code (e.g. /authorize re-entered).
@@ -183,6 +216,12 @@ class OIDCSession(Session):
         """ Single-use: drop the auth code hash + index entry and
         transition the session into the active token-bearing state.
         Caller is responsible for issue_tokens() afterwards.
+
+        Spec: RFC 6749 §4.1.2 "Authorization Response"
+          ("The client MUST NOT use the authorization code more than
+          once.  If an authorization code is used more than once, the
+          authorization server MUST deny the request...")
+          https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2
         """
         if self.authcode_hash:
             self.del_index("authcode_hash", self.authcode_hash)
@@ -200,7 +239,16 @@ class OIDCSession(Session):
         ``refresh_token_hash`` index to the multi-valued
         ``burned_refresh_token_hash`` index, so a later replay of the
         rotated-out RT is detectable rather than collapsing into a
-        generic ``invalid_grant`` (OAuth 2.1 §6.1).
+        generic ``invalid_grant``.
+
+        Spec: RFC 6749 §5.1 "Successful Response"
+          (access_token + refresh_token + token_type)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-5.1
+        Spec: RFC 6749 §6 "Refreshing an Access Token"
+          https://datatracker.ietf.org/doc/html/rfc6749#section-6
+        Spec: OAuth 2.1 §6.1 "Refresh Token Protection"
+          (sender-constrain or rotate-and-invalidate-chain on replay)
+          https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
         """
         new_at = secrets.token_urlsafe(32)
         new_rt = secrets.token_urlsafe(32)
@@ -238,6 +286,12 @@ class OIDCSession(Session):
         Returns ``(at, rt, id_token, id_token_jti)``. The jti is
         surfaced so the caller can audit-log it for cross-system
         correlation with RP logs.
+
+        Spec: OIDC Core 1.0 §3.1.3.3 "Successful Token Response"
+          (id_token co-issued with access_token + refresh_token)
+          https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
+        Spec: OIDC Core 1.0 §3.1.3.6 "ID Token" (at_hash binding)
+          https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
         """
         at, rt = self.issue_tokens(ttl_access=ttl_access)
         id_token, id_token_jti = self._build_id_token(client=client,
@@ -255,8 +309,27 @@ class OIDCSession(Session):
         are optional). Infrastructure claims (iss, aud, iat, exp, jti,
         sid, nonce) are added here -- they're rooted in session/site
         state, not protocol-handler context. ``at_hash`` is computed
-        against ``access_token`` per OIDC Core 3.1.3.6 with the digest
-        determined by the signing alg.
+        against ``access_token`` with the digest determined by the
+        signing alg.
+
+        Spec: OIDC Core 1.0 §2 "ID Token" (claim semantics:
+          iss, sub, aud, exp, iat, auth_time, nonce, acr, amr, azp)
+          https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+        Spec: OIDC Core 1.0 §3.1.3.6 "ID Token" (at_hash computation)
+          https://openid.net/specs/openid-connect-core-1_0.html#CodeIDToken
+        Spec: OIDC Front-Channel Logout 1.0 §3 / OIDC Session 1.0 §5
+          (sid claim)
+          https://openid.net/specs/openid-connect-frontchannel-1_0.html
+          https://openid.net/specs/openid-connect-session-1_0.html
+        Spec: RFC 7519 §4.1 "Registered Claim Names"
+          (iss, sub, aud, exp, nbf, iat, jti)
+          https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
+        Spec: RFC 7515 §4.1 "Registered Header Parameter Names"
+          (alg, kid, typ)
+          https://datatracker.ietf.org/doc/html/rfc7515#section-4.1
+        Spec: RFC 8725 "JSON Web Token Best Current Practices"
+          (typ=JWT; alg pinning)
+          https://datatracker.ietf.org/doc/html/rfc8725
         """
         from joserfc import jwt as joserfc_jwt
         from joserfc.jwk import RSAKey, ECKey, OKPKey
@@ -318,7 +391,12 @@ class OIDCSession(Session):
     def access_token_valid(self) -> bool:
         """ True if an access token is currently issued and not yet
         expired. Does not check revocation; that's handled by the
-        session's own delete() / state lifecycle. """
+        session's own delete() / state lifecycle.
+
+        Spec: RFC 6749 §1.4 "Access Token" (opaque to the client,
+          server-side validity check)
+          https://datatracker.ietf.org/doc/html/rfc6749#section-1.4
+        """
         if not self.access_token_hash:
             return False
         return int(time.time()) < self.access_token_expires_at
@@ -336,6 +414,10 @@ class OIDCSession(Session):
         """ Override: fire backchannel logout to the RP before the
         session is actually removed. Failures here NEVER block the
         delete -- the OP must always be able to terminate.
+
+        Spec: OIDC Back-Channel Logout 1.0 §2 "Back-Channel Logout"
+          (OP-initiated POST to RP's backchannel_logout_uri)
+          https://openid.net/specs/openid-connect-backchannel-1_0.html#BCLogout
         """
         try:
             self._send_backchannel_logout()
@@ -368,6 +450,11 @@ class OIDCSession(Session):
         whole session-cleanup pipeline -- never blocks waiting for
         an RP. Concurrency is bounded by a process-wide semaphore
         so a mass-logout cascade can't spawn unbounded threads/sockets.
+
+        Spec: OIDC Back-Channel Logout 1.0 §2.5 "Back-Channel Logout
+          Request" (POST application/x-www-form-urlencoded with
+          ``logout_token=<JWT>``)
+          https://openid.net/specs/openid-connect-backchannel-1_0.html#BCRequest
         """
         if self.state != STATE_ACTIVE:
             return
@@ -426,11 +513,19 @@ class OIDCSession(Session):
         site has no usable active signing key (silent no-op preserved
         from the pre-async implementation).
 
-        Per OIDC Back-Channel Logout 1.0:
+        Per the Back-Channel Logout spec:
             - typ header = "logout+jwt"
             - claims must include iss, aud, iat, jti, events
             - either sub or sid (we use sid; sub requires per-RP
               subject computation that's done at ID-Token-issue time)
+
+        Spec: OIDC Back-Channel Logout 1.0 §2.4 "Logout Token"
+          (claim + header requirements; events claim with the
+          ``http://schemas.openid.net/event/backchannel-logout`` key)
+          https://openid.net/specs/openid-connect-backchannel-1_0.html#LogoutToken
+        Spec: RFC 8417 "Security Event Token (SET)"
+          (events claim base format)
+          https://datatracker.ietf.org/doc/html/rfc8417
         """
         from joserfc import jwt as joserfc_jwt
         from joserfc.jwk import RSAKey, ECKey, OKPKey
@@ -489,6 +584,14 @@ def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
     cross-system correlation -- the RP usually logs the jti it
     consumed, so an OP-side ``backchannel_logout_sent
     logout_token_jti=...`` line ties our send to the RP's receive.
+
+    Spec: OIDC Back-Channel Logout 1.0 §2.5 "Back-Channel Logout
+      Request" (HTTP POST, application/x-www-form-urlencoded,
+      single ``logout_token`` parameter)
+      https://openid.net/specs/openid-connect-backchannel-1_0.html#BCRequest
+    Spec: OIDC Back-Channel Logout 1.0 §2.8 "Back-Channel Logout
+      Response" (response body empty / ignored)
+      https://openid.net/specs/openid-connect-backchannel-1_0.html#BCResponse
     """
     from urllib.request import Request, urlopen
     from otpme.lib.classes.session import logger
