@@ -155,12 +155,111 @@ TLS certificate presented by the SSO portal (**httpd**).
 SSO_KEY  
 Private key matching the SSO TLS certificate.
 
+OIDC_PAIRWISE_SECRET  
+HMAC key used to derive pairwise OIDC *sub* claims. Replicated to all
+SSO hosts of a site so every host computes the same *sub* for the same
+(RP, user) pair.
+
 To actually start the SSO portal on the host, set **SSO_SERVER="True"**
 in */etc/otpme/otpme.conf*. See **otpme.conf**(5).
 
 **del_sso_host *site* *host_name***  
 Remove the SSO host role from a host. The SSO data will no longer be
 synchronized to this host.
+
+## OIDC OpenID Connect Provider
+
+OTPme can act as an OpenID Connect Provider (OP) per site. The OP is
+**site-local**: each site exposes its own discovery document at
+*https://{site.sso_fqdn}/oidc/.well-known/openid-configuration* with
+*issuer = https://{site.sso_fqdn}/oidc*. Each OIDC client object lives
+on exactly one site, and a Relying Party must address the issuer of that
+site to authenticate against it.
+
+Sites in the same realm do not share OIDC clients, signing keys, or
+pairwise secrets -- each site is its own OP. For high availability
+within one site, use multiple SSO hosts (see **add_sso_host**) behind a
+load balancer or DNS round-robin; they all serve the same issuer and
+share the necessary site data via SSO-host sync. For genuinely separate
+OPs, run OIDC on each site individually with its own clients.
+
+Supported flow: only the OAuth 2.1 **Authorization Code Flow with** PKCE
+is implemented (response_type=code, grant_type=authorization_code +
+refresh_token). The legacy **Implicit Flow** (response_type=id_token) is
+intentionally not supported -- OAuth 2.1 §1.4 deprecates it because
+tokens delivered via the URL fragment leak through browser history,
+referrers, XSS and extensions; modern SPAs should use Code+PKCE instead.
+The **Hybrid Flow** (response_type="code id_token") is likewise not
+supported; its only marginal benefit (immediate identity rendering
+before the /token call) does not justify the additional fragment-based
+delivery surface. PKCE is mandatory by default
+(**oidc_pkce_required=True**) and only **S256** is advertised in
+discovery; **plain** can be enabled per client for legacy interop but is
+never advertised (see **oidc_allow_plain_pkce**).
+
+**enable_oidc *site***  
+Enable the OIDC OP on this site. On first activation, an active signing
+key (**gen_oidc_key**) and a pairwise secret are auto-generated.
+
+**disable_oidc *site***  
+Disable the OIDC OP. Existing keys and secrets are kept on disk so
+**enable_oidc** resumes without re-issuing tokens.
+
+**gen_oidc_key \[**--key-type** *preset*\] \[**--kty** *RSA\|EC\|OKP*\] \[**--size** *N*\] \[**--alg** *alg*\] \[**--retired-max-age** *seconds*\] *site***  
+Rotate the active OIDC signing key. The previous active key is demoted
+to **retired** and removed from JWKS once *retired_max_age* (default
+7200s) has elapsed, so RPs that fetched ID Tokens just before rotation
+can still verify them. Presets: **rsa-2048**, **rsa-3072**,
+**rsa-4096**, **ec-p256**, **ec-p384**, **ec-p521**, **ed25519**.
+
+**revoke_oidc_key *site* *kid***  
+Permanently remove a signing key from JWKS. Tokens signed by it stop
+verifying immediately. If the revoked key was the active one, a
+replacement is generated automatically.
+
+**show_oidc_keys *site***  
+List the OIDC signing keys currently on the site (active, retired, and
+their algorithms / kid).
+
+**oidc_pairwise_secret \[**--force**\] *site* \[*secret*\]**  
+Rotate (or set) the pairwise sub HMAC secret for this site. Without
+*secret* a fresh 64-hex-char key is auto-generated. **WARNING:**
+rotating invalidates every existing pairwise *sub* on every RP -- RPs
+that key their account model on *sub* will see a "fresh" user on next
+login. Coordinate with each RP before rotating.
+
+Site / Unit / Client config parameters relevant to OIDC:
+
+> oidc_pkce_required  
+> Whether PKCE is mandatory for the authorize flow. Default **True**
+> (OAuth 2.1).
+>
+> oidc_allow_plain_pkce  
+> Whether the deprecated **plain** PKCE method is accepted. Default
+> **False**. Override per client only for legacy RPs that hardcode
+> **plain**; the discovery document never advertises it regardless.
+>
+> oidc_logout_scope  
+> Scope of */end_session*: **sso** (default) terminates the whole SSO
+> session via the regular logout cascade; **rp** terminates only the
+> OIDCSession for this RP.
+>
+> oidc_require_consent  
+> Whether the OP renders an end-user consent screen at */authorize*.
+> Default **False** -- enterprise-SSO assumes admin-side Scope
+> allowlists are the policy boundary. Set **True** per client for
+> public-facing / multi-tenant RPs. Granted consents are remembered per
+> (user, client) trust-on-first-use; a wider scope request re-prompts.
+> The OIDC **prompt=consent** request parameter forces the screen even
+> when a stored consent exists. End users review and revoke their
+> consents in the SSO portal Settings page.
+>
+> oidc_default_scopes  
+> Comma-separated list of scopes auto-granted to RPs without an explicit
+> Scope-object grant.
+>
+> oidc_email_attribute  
+> LDIF attribute used as the source for the *email* claim.
 
 ## Cluster
 

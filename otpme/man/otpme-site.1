@@ -230,6 +230,15 @@ Whether the deprecated \fBplain\fR PKCE method is accepted. Default
 Scope of \fI/end_session\fR: \fBsso\fR (default) terminates the whole
 SSO session via the regular logout cascade; \fBrp\fR terminates only
 the OIDCSession for this RP.
+.IP \fBoidc_require_consent\fR 4
+Whether the OP renders an end-user consent screen at \fI/authorize\fR.
+Default \fBFalse\fR -- enterprise-SSO assumes admin-side Scope
+allowlists are the policy boundary. Set \fBTrue\fR per client for
+public-facing / multi-tenant RPs. Granted consents are remembered
+per (user, client) trust-on-first-use; a wider scope request
+re-prompts. The OIDC \fBprompt=consent\fR request parameter forces
+the screen even when a stored consent exists. End users review and
+revoke their consents in the SSO portal Settings page.
 .IP \fBoidc_default_scopes\fR 4
 Comma-separated list of scopes auto-granted to RPs without an
 explicit Scope-object grant.
