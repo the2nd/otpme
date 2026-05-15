@@ -264,17 +264,19 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca info {ca} [info]'),
-                    'cmd'   :   '<|object|> [info]',
+                    'cmd'   :   '--language :language: <|object|> [info]',
                     '_help' :   {
                                     'cmd'                   : _('Set CA info'),
+                                    '--language <lang>'     : _('Change info for language.'),
                                 },
                 },
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca dump_info {ca}'),
-                    'cmd'   :   '<|object|>',
+                    'cmd'   :   '--language :language: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump CA info'),
+                                    '--language <lang>'     : _('Dump info for language.'),
                                 },
                 },
 

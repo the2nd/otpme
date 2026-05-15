@@ -169,17 +169,19 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pool info {pool} [info]'),
-                    'cmd'   :   '<|object|> [info]',
+                    'cmd'   :   '--language :language: <|object|> [info]',
                     '_help' :   {
                                     'cmd'                   : _('Set pool info'),
+                                    '--language <lang>'     : _('Change info for language.'),
                                 },
                 },
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pool dump_info {pool}'),
-                    'cmd'   :   '<|object|>',
+                    'cmd'   :   '--language :language: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump pool info'),
+                                    '--language <lang>'     : _('Dump info for language.'),
                                 },
                 },
 

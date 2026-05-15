@@ -224,17 +224,19 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm info {realm} [info]'),
-                    'cmd'   :   '<|object|> [info]',
+                    'cmd'   :   '--language :language: <|object|> [info]',
                     '_help' :   {
                                     'cmd'                   : _('Set realm info'),
+                                    '--language <lang>'     : _('Change info for language.'),
                                 },
                 },
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm dump_info {realm}'),
-                    'cmd'   :   '<|object|>',
+                    'cmd'   :   '--language :language: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump realm info'),
+                                    '--language <lang>'     : _('Dump info for language.'),
                                 },
                 },
 

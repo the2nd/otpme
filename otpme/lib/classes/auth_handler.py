@@ -2999,13 +2999,16 @@ class AuthHandler(object):
             login_user_uuid = None
             login_user_name = None
             login_user_site_uuid = None
+            login_user_language = None
             if self.user:
                 login_user_uuid = self.user.uuid
                 login_user_name = self.user.name
                 login_user_site_uuid = self.user.site_uuid
+                login_user_language = self.user.language
             auth_response['login_user_uuid'] = login_user_uuid
             auth_response['login_user_name'] = login_user_name
             auth_response['login_user_site_uuid'] = login_user_site_uuid
+            auth_response['login_user_language'] = login_user_language
 
             if self.realm_login:
                 # Get users login script.

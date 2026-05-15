@@ -152,17 +152,19 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver info {resolver} [info]'),
-                    'cmd'   :   '<|object|> [info]',
+                    'cmd'   :   '--language :language: <|object|> [info]',
                     '_help' :   {
                                     'cmd'                   : _('Set resolver info'),
+                                    '--language <lang>'     : _('Change info for language.'),
                                 },
                 },
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver dump_info {resolver}'),
-                    'cmd'   :   '<|object|>',
+                    'cmd'   :   '--language :language: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump resolver info'),
+                                    '--language <lang>'     : _('Dump info for language.'),
                                 },
                 },
 

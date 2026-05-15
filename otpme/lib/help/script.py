@@ -251,17 +251,19 @@ cmd_help = {
 
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script info {script} [info]'),
-                    'cmd'   :   '<|object|> [info]',
+                    'cmd'   :   '--language :language: <|object|> [info]',
                     '_help' :   {
                                     'cmd'                   : _('Set script info'),
+                                    '--language <lang>'     : _('Change info for language.'),
                                 },
                 },
 
     'dump_info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script dump_info {script}'),
-                    'cmd'   :   '<|object|>',
+                    'cmd'   :   '--language :language: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Dump script info'),
+                                    '--language <lang>'     : _('Dump info for language.'),
                                 },
                 },
 

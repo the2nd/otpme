@@ -7,23 +7,23 @@
      data-url-add-device-token="{{ url_for('add_device_token', _external=True, _scheme='https') }}"
      data-url-del-device-token="{{ url_for('del_device_token', _external=True, _scheme='https') }}"></div>
 <div class="portal-wrapper">
-    <h2>Settings</h2>
+    <h2>{{ gettext("Settings") }}</h2>
 
     <!-- Password Change -->
     {% if show_password_change %}
     <div class="settings-card">
-        <h3>Change Password</h3>
+        <h3>{{ gettext("Change Password") }}</h3>
         <div class="settings-form">
-            <label for="currentPassword">Current Password</label>
+            <label for="currentPassword">{{ gettext("Current Password") }}</label>
             <input type="password" id="currentPassword" autocomplete="current-password">
 
-            <label for="newPassword">New Password</label>
+            <label for="newPassword">{{ gettext("New Password") }}</label>
             <input type="password" id="newPassword" autocomplete="new-password">
 
-            <label for="confirmPassword">Confirm New Password</label>
+            <label for="confirmPassword">{{ gettext("Confirm New Password") }}</label>
             <input type="password" id="confirmPassword" autocomplete="new-password">
 
-            <button type="button" id="changePwBtn" class="btn btn-primary" style="margin-top:8px;">Change Password</button>
+            <button type="button" id="changePwBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Change Password") }}</button>
             <div class="status-msg" id="pwStatus"></div>
             <div class="error-msg" id="pwError"></div>
         </div>
@@ -33,18 +33,18 @@
     <!-- PIN Change -->
     {% if show_pin_change %}
     <div class="settings-card">
-        <h3>Change PIN</h3>
+        <h3>{{ gettext("Change PIN") }}</h3>
         <div class="settings-form">
-            <label for="currentPin">Current PIN</label>
+            <label for="currentPin">{{ gettext("Current PIN") }}</label>
             <input type="password" id="currentPin" autocomplete="current-password" inputmode="numeric">
 
-            <label for="newPin">New PIN</label>
+            <label for="newPin">{{ gettext("New PIN") }}</label>
             <input type="password" id="newPin" autocomplete="new-password" inputmode="numeric">
 
-            <label for="confirmPin">Confirm New PIN</label>
+            <label for="confirmPin">{{ gettext("Confirm New PIN") }}</label>
             <input type="password" id="confirmPin" autocomplete="new-password" inputmode="numeric">
 
-            <button type="button" id="changePinBtn" class="btn btn-primary" style="margin-top:8px;">Change PIN</button>
+            <button type="button" id="changePinBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Change PIN") }}</button>
             <div class="status-msg" id="pinStatus"></div>
             <div class="error-msg" id="pinError"></div>
         </div>
@@ -53,43 +53,42 @@
 
     <!-- Login Token Re-Deploy -->
     <div class="settings-card">
-        <h3>Login Token</h3>
-        <p class="settings-desc">Re-deploy your login token. This will replace your current login token with a new one.</p>
-        <a href="{{ url_for('settings_redeploy', _external=True, _scheme='https') }}" class="btn btn-secondary btn-small">Re-deploy Login Token</a>
+        <h3>{{ gettext("Login Token") }}</h3>
+        <p class="settings-desc">{{ gettext("Re-deploy your login token. This will replace your current login token with a new one.") }}</p>
+        <a href="{{ url_for('settings_redeploy', _external=True, _scheme='https') }}" class="btn btn-secondary btn-small">{{ gettext("Re-deploy Login Token") }}</a>
     </div>
 
     <!-- Device Tokens -->
     <div class="settings-card">
-        <h3>Device Tokens</h3>
+        <h3>{{ gettext("Device Tokens") }}</h3>
         <p class="settings-desc" id="deviceRoleInfo"></p>
         <p class="settings-desc device-disabled-hint" id="deviceDisabledHint" style="display:none;">
-            Device tokens are not available: <code>sso_token_role</code> is not configured.
+            {{ gettext("Device tokens are not available:") }} <code>sso_token_role</code> {{ gettext("is not configured.") }}
         </p>
         <div class="settings-form" id="deviceAddForm">
-            <label for="deviceName">Device Name</label>
-            <input type="text" id="deviceName" placeholder="e.g. my-phone" autocomplete="off">
-            <button type="button" id="addDeviceBtn" class="btn btn-primary" style="margin-top:8px;">Add Device Token</button>
+            <label for="deviceName">{{ gettext("Device Name") }}</label>
+            <input type="text" id="deviceName" placeholder="{{ gettext('e.g. my-phone') }}" autocomplete="off">
+            <button type="button" id="addDeviceBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Add Device Token") }}</button>
             <div class="status-msg" id="deviceStatus"></div>
             <div class="error-msg" id="deviceError"></div>
         </div>
         <div id="deviceResult" class="device-token-reveal" style="display:none;">
             <div>
-                <strong>New password:</strong>
+                <strong>{{ gettext("New password:") }}</strong>
                 <code id="devicePassword"></code>
-                <button type="button" id="copyDevicePwBtn" class="btn btn-secondary btn-small" style="margin-left:8px;">Copy</button>
+                <button type="button" id="copyDevicePwBtn" class="btn btn-secondary btn-small" style="margin-left:8px;">{{ gettext("Copy") }}</button>
             </div>
-            <span class="hint">This password is shown only once. Copy it now.</span>
+            <span class="hint">{{ gettext("This password is shown only once. Copy it now.") }}</span>
         </div>
-        <h4>Existing Device Tokens</h4>
+        <h4>{{ gettext("Existing Device Tokens") }}</h4>
         <ul id="deviceTokenList" class="device-token-list"></ul>
     </div>
 
     <!-- Connected applications (OIDC consents) -->
     <div class="settings-card">
-        <h3>Connected Applications</h3>
+        <h3>{{ gettext("Connected Applications") }}</h3>
         <p class="settings-desc">
-            Applications you have granted access to your account. Disconnecting
-            removes the approval and terminates the application's active session.
+            {{ gettext("Applications you have granted access to your account. Disconnecting removes the approval and terminates the application's active session.") }}
         </p>
         <div class="status-msg" id="consentStatus"></div>
         <div class="error-msg" id="consentError"></div>

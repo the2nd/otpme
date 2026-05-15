@@ -5997,6 +5997,7 @@ class CommandHandler(object):
         # Get object info.
         info_content = self.send_command(command=command,
                                         subcommand="dump_info",
+                                        command_args=command_args,
                                         object_list=[object_identifier],
                                         parse_command_syntax=False,
                                         client_type="RAPI")
@@ -6026,7 +6027,7 @@ class CommandHandler(object):
             return msg
 
         # Build final command to replace OTPme info with new one.
-        command_args = {'info':file_content}
+        command_args['info'] = file_content
 
         # Add edited info.
         try:

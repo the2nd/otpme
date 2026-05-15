@@ -6,24 +6,24 @@
      data-url-fido2-complete="{{ url_for('fido2_auth_complete', _external=True, _scheme='https') }}"></div>
 <div class="login-wrapper">
   <div class="login-card">
-    <h1>Sign In</h1>
+    <h1>{{ gettext("Sign In") }}</h1>
     <form action="" method="post" name="login" id="loginForm">
         {{ form.hidden_tag() }}
-        <label for="username">Username</label>
+        <label for="username">{{ gettext("Username") }}</label>
         {{ form.username(size=80, id="username", class="") }}
         {% for error in form.username.errors %}
           <span class="error-msg">[{{ error }}]</span>
         {% endfor %}
 
-        <label for="password">Password</label>
+        <label for="password">{{ gettext("Password") }}</label>
         {{ form.password(size=80, id="password", class="") }}
         {% for error in form.password.errors %}
           <span class="error-msg">[{{ error }}]</span>
         {% endfor %}
 
         <div class="login-buttons">
-          <input type="submit" value="Sign In" class="btn btn-primary">
-          <button type="button" id="fido2LoginBtn" class="btn btn-secondary">Security Key</button>
+          <input type="submit" value="{{ gettext('Sign In') }}" class="btn btn-primary">
+          <button type="button" id="fido2LoginBtn" class="btn btn-secondary">{{ gettext("Security Key") }}</button>
         </div>
     </form>
     <div class="status-msg" id="fido2Status"></div>

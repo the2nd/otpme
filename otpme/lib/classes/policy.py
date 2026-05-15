@@ -273,7 +273,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_info',
-                    'oargs'             : ['info'],
+                    'oargs'             : ['info', 'language'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -282,6 +282,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
+                    'oargs'             : ['language'],
                     'job_type'          : 'thread',
                     },
                 },

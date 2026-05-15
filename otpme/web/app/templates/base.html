@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ get_locale() }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
     {% if title %}
-    <title>{{ title }} - SSO Portal</title>
+    <title>{{ title }} - {{ gettext("SSO Portal") }}</title>
     {% else %}
-    <title>SSO Portal</title>
+    <title>{{ gettext("SSO Portal") }}</title>
     {% endif %}
     <meta name="description" content="otpme-sso">
     <meta name="author" content="the2nd">
@@ -17,13 +17,13 @@
 
   <body>
     <nav class="navbar">
-      <b>SSO Portal</b>
-      <a href="/index">Home</a>
+      <b>{{ gettext("SSO Portal") }}</b>
+      <a href="/index">{{ gettext("Home") }}</a>
       {% if g.user.is_authenticated %}
         <span class="spacer"></span>
-        <span class="navbar-user" title="Logged in user">{{ g.user.name }}</span>
-        <a href="{{ url_for('settings', _external=True, _scheme='https') }}">Settings</a>
-        <a href="{{ url_for('logout', _external=True, _scheme='https') }}">Logout</a>
+        <span class="navbar-user" title="{{ gettext('Logged in user') }}">{{ g.user.name }}</span>
+        <a href="{{ url_for('settings', _external=True, _scheme='https') }}">{{ gettext("Settings") }}</a>
+        <a href="{{ url_for('logout', _external=True, _scheme='https') }}">{{ gettext("Logout") }}</a>
       {% endif %}
     </nav>
 

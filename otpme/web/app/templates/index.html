@@ -5,7 +5,7 @@
      data-url-sotp="{{ url_for('get_sotp', _external=True, _scheme='https') }}"
      data-username="{{ g.user.name }}"></div>
 <div class="portal-wrapper">
-    <h2>Applications</h2>
+    <h2>{{ gettext("Applications") }}</h2>
     <div class="app-grid" id="app-tiles"></div>
 </div>
 

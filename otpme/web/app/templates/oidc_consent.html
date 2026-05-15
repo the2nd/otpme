@@ -2,13 +2,12 @@
 {% block content %}
 <div class="login-wrapper">
   <div class="deploy-card">
-    <h1>Authorize {{ client_name }}</h1>
+    <h1>{{ gettext("Authorize %(client)s", client=client_name) }}</h1>
     {% if client_description %}
     <p class="deploy-desc">{{ client_description }}</p>
     {% endif %}
     <p class="deploy-desc">
-      <strong>{{ client_name }}</strong> is asking permission to access
-      your account. If you approve, it will receive:
+      {{ gettext("<strong>%(client)s</strong> is asking permission to access your account. If you approve, it will receive:", client=client_name) | safe }}
     </p>
 
     <ul class="consent-scope-list">
@@ -31,7 +30,7 @@
     </ul>
 
     <p class="consent-hint">
-      You can revoke this approval at any time from the Settings page.
+      {{ gettext("You can revoke this approval at any time from the Settings page.") }}
     </p>
 
     <form method="POST" action="{{ authorize_url }}">
@@ -41,9 +40,9 @@
       <input type="hidden" name="_oidc_consent_nonce" value="{{ consent_nonce }}">
       <div class="login-buttons" style="margin-top:18px;">
         <button type="submit" name="_oidc_consent_grant" value="1"
-                class="btn btn-primary">Allow</button>
+                class="btn btn-primary">{{ gettext("Allow") }}</button>
         <button type="submit" name="_oidc_consent_deny" value="1"
-                class="btn btn-secondary">Deny</button>
+                class="btn btn-secondary">{{ gettext("Deny") }}</button>
       </div>
     </form>
   </div>

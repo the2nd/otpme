@@ -167,7 +167,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = f"{log_msg}: {e}"
             self.logger.warning(log_msg)
             auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
-            return self.build_response(status, auth_response)
+            return self.build_response(False, auth_response)
         finally:
             ssod_conn.close()
         return self.build_response(status, deploy_data)
@@ -811,6 +811,47 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'sso_token_role is not configured.', 'status':False})
         return self.build_response(True, {'role_uuid': role.uuid, 'status': True})
 
+    def _localized_info(self, obj, language, fallback="en"):
+        """ Read an object's localized info field. OTPmeObject.info is a
+        dict keyed by language code; pick the requested language, fall
+        back to the configured fallback locale, then to any remaining
+        entry, and finally to an empty string. """
+        info = obj.info
+        if not info:
+            return ""
+        try:
+            return info[language]
+        except KeyError:
+            pass
+        try:
+            return info[fallback]
+        except KeyError:
+            pass
+        for v in info.values():
+            if not v:
+                continue
+            return v
+        return ""
+
+    def _resolve_language(self, user, command_args):
+        """ Determine which language to render localized object fields in.
+        Priority: an explicit `language` from the caller (CLI flag or API
+        arg) wins, then the user's persisted language preference, then a
+        soft `accept_language` hint sent by the web layer, else "en". """
+        args = command_args or {}
+        explicit = args.get('language')
+        if explicit:
+            return explicit
+        try:
+            if user.language:
+                return user.language
+        except Exception:
+            pass
+        hint = args.get('accept_language')
+        if hint:
+            return hint
+        return "en"
+
     def _sanitize_device_token_name(self, device_name):
         """ Build a valid token name from a user-supplied device name. """
         name = device_name.strip().lower()
@@ -975,10 +1016,11 @@ class OTPmeSsoP1(OTPmeServer1):
                         'name'          : token.name,
                         'device_name'   : token.name,
                     })
+        language = self._resolve_language(user, command_args)
         response = {
                     'device_tokens'     : device_tokens,
                     'role_configured'   : True,
-                    'role_info'         : role.info or "",
+                    'role_info'         : self._localized_info(role, language),
                     'status'            : True,
                 }
         return self.build_response(True, response)

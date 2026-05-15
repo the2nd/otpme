@@ -39,6 +39,7 @@ Endpoints + governing specs:
         https://openid.net/specs/openid-connect-rpinitiated-1_0.html
 """
 from flask import jsonify, request, make_response, redirect, session as flask_session, url_for, render_template
+from flask_babel import gettext, lazy_gettext
 
 from otpme.lib import config
 from otpme.lib import connections
@@ -721,20 +722,20 @@ def _build_redirect_with_params(redirect_uri, params):
 
 
 _SCOPE_FRIENDLY = {
-    'openid':        ('Verify your identity',
-                      'Confirm who you are so the application can sign you in.'),
-    'profile':       ('Basic profile information',
-                      'Your name, username and basic profile fields.'),
-    'email':         ('Email address',
-                      'Your primary email address.'),
-    'address':       ('Postal address',
-                      'Your postal/mailing address attributes.'),
-    'phone':         ('Phone number',
-                      'Your phone number on file.'),
-    'groups':        ('Group memberships',
-                      'Which groups you belong to (used by the app for access control).'),
-    'offline_access': ('Stay signed in when offline',
-                       'Allow the application to refresh its session without asking you again.'),
+    'openid':        (lazy_gettext('Verify your identity'),
+                      lazy_gettext('Confirm who you are so the application can sign you in.')),
+    'profile':       (lazy_gettext('Basic profile information'),
+                      lazy_gettext('Your name, username and basic profile fields.')),
+    'email':         (lazy_gettext('Email address'),
+                      lazy_gettext('Your primary email address.')),
+    'address':       (lazy_gettext('Postal address'),
+                      lazy_gettext('Your postal/mailing address attributes.')),
+    'phone':         (lazy_gettext('Phone number'),
+                      lazy_gettext('Your phone number on file.')),
+    'groups':        (lazy_gettext('Group memberships'),
+                      lazy_gettext('Which groups you belong to (used by the app for access control).')),
+    'offline_access': (lazy_gettext('Stay signed in when offline'),
+                       lazy_gettext('Allow the application to refresh its session without asking you again.')),
 }
 
 
@@ -780,7 +781,7 @@ def _scope_descriptions(scopes, claims_preview=None):
             label, desc = _SCOPE_FRIENDLY[s]
         else:
             label = s
-            desc = f"Application-specific permission '{s}'."
+            desc = gettext("Application-specific permission '%(scope)s'.", scope=s)
         claim_items = []
         # openid by itself doesn't generate user claims in _get_user_claims;
         # the identifier travels as `sub` which is wholly managed by the OP.
@@ -809,10 +810,11 @@ def _authorize_error_page(error, description):
     """
     safe_err = (error or "invalid_request").replace("<", "&lt;").replace(">", "&gt;")
     safe_desc = (description or "").replace("<", "&lt;").replace(">", "&gt;")
+    title = gettext("Authorization error")
     html = (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-        "<title>Authorization error</title></head>"
-        "<body><h1>Authorization error</h1>"
+        f"<title>{title}</title></head>"
+        f"<body><h1>{title}</h1>"
         f"<p><strong>{safe_err}</strong></p>"
         f"<p>{safe_desc}</p>"
         "</body></html>"

@@ -1540,7 +1540,12 @@ class OTPmeBaseObject(OTPmeLockObject):
                 if attr_type == IncrementalList:
                     attr.set(val)
                 elif attr_type == IncrementalDict:
-                    attr.set(val)
+                    try:
+                        attr.set(val)
+                    except Exception:
+                        msg = _("Failed to set value: {attr}: {val}")
+                        msg = msg.format(attr=attr, val=val)
+                        logger.warning(msg)
                 else:
                     setattr(self, var_name, val)
 
@@ -1977,7 +1982,6 @@ class OTPmeObject(OTPmeBaseObject):
         self._extensions = {}
         self.token_owner = None
         self.description = ""
-        self.info = ""
         self.secret = None
         self.secret_format_regex = None
         self.secret_format_warning = None
@@ -2013,6 +2017,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
+                            "INFO",
                             "DESCRIPTION",
                             "CREATOR",
                             "CREATE_TIME",
@@ -2048,6 +2053,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
+                            "INFO",
                             "DESCRIPTION",
                             "CREATOR",
                             "CREATE_TIME",
@@ -2532,7 +2538,7 @@ class OTPmeObject(OTPmeBaseObject):
 
             'INFO'                      : {
                                             'var_name'      : 'info',
-                                            'type'          : str,
+                                            'type'          : dict,
                                             'required'      : False,
                                         },
 
@@ -8426,6 +8432,7 @@ class OTPmeObject(OTPmeBaseObject):
     def change_info(
         self,
         info: str=None,
+        language: str="en",
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
@@ -8445,11 +8452,16 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
 
+        try:
+            cur_info = self.info[language]
+        except Exception:
+            cur_info = ""
+
         # Check if we got info as argument.
         if info is None:
-            info = callback.ask(input_prefill=self.info,
-                                        message="New info: ")
-        self.info = str(info)
+            info = callback.ask(input_prefill=cur_info, message="New info: ")
+
+        self.info[language] = str(info)
 
         # Update extensions.
         self.update_extensions("change_info",
@@ -8463,6 +8475,7 @@ class OTPmeObject(OTPmeBaseObject):
     @audit_log()
     def dump_info(
         self,
+        language: str="en",
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
@@ -8470,7 +8483,11 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Dump object info. """
-        return callback.ok(self.info)
+        try:
+            info = self.info[language]
+        except Exception:
+            info = ""
+        return callback.ok(info)
 
     @object_lock()
     def add_default_policies(self, callback: JobCallback=default_callback):
@@ -9631,7 +9648,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if self.verify_acl("view:info") \
         or self.verify_acl("edit:info"):
-            lines.append(f'INFO="{self.info}"')
+            lines.append(f'INFO="{dict(self.info)}"')
         else:
             lines.append('INFO=""')
 

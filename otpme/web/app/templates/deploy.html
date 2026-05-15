@@ -7,22 +7,22 @@
      data-url-fido2-register-complete="{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}"></div>
 <div class="login-wrapper">
   <div class="deploy-card">
-    <h1>Token Enrollment</h1>
+    <h1>{{ gettext("Token Enrollment") }}</h1>
     {% if not deploy_optional %}
-    <p class="deploy-desc">Your account requires a new authentication token.</p>
+    <p class="deploy-desc">{{ gettext("Your account requires a new authentication token.") }}</p>
     {% endif %}
 
     <!-- Step 1: Choose token type and start -->
     <div id="step-start">
       {% if deploy_token_types|length > 1 %}
-      <p class="deploy-hint" style="margin-bottom:14px;">Choose your preferred authentication method:</p>
+      <p class="deploy-hint" style="margin-bottom:14px;">{{ gettext("Choose your preferred authentication method:") }}</p>
       <div class="token-choice">
         {% for tt in deploy_token_types %}
         <button type="button" class="btn btn-secondary token-choice-btn" data-token-type="{{ tt }}" id="btn-{{ tt }}">
           {% if tt == "totp" %}
-          Authenticator App (TOTP)
+          {{ gettext("Authenticator App (TOTP)") }}
           {% elif tt == "fido2" %}
-          Security Key (FIDO2)
+          {{ gettext("Security Key (FIDO2)") }}
           {% else %}
           {{ tt|upper }}
           {% endif %}
@@ -32,9 +32,9 @@
       {% else %}
       <button type="button" id="deployBtn" data-token-type="{{ deploy_token_types[0] }}" class="btn btn-primary" style="width:100%;">
         {% if deploy_token_types[0] == "fido2" %}
-        Register Security Key
+        {{ gettext("Register Security Key") }}
         {% else %}
-        Set Up Authenticator App
+        {{ gettext("Set Up Authenticator App") }}
         {% endif %}
       </button>
       {% endif %}
@@ -42,22 +42,22 @@
 
     <!-- Step 2a: QR code for OATH tokens -->
     <div id="step-qrcode" style="display:none;">
-      <div class="qr-container"><img id="qrcodeImg" src="" alt="QR Code" style="image-rendering:pixelated;"></div>
+      <div class="qr-container"><img id="qrcodeImg" src="" alt="{{ gettext('QR Code') }}" style="image-rendering:pixelated;"></div>
       <div class="deploy-info">
         <div class="info-row">
-          <span class="info-label">PIN:</span>
+          <span class="info-label">{{ gettext("PIN:") }}</span>
           <code class="info-value" id="pinDisplay"></code>
         </div>
         <div class="info-row">
-          <span class="info-label">Secret:</span>
+          <span class="info-label">{{ gettext("Secret:") }}</span>
           <code class="info-value info-secret" id="secretDisplay"></code>
         </div>
       </div>
-      <p class="deploy-hint">Scan the QR code with your authenticator app (e.g. Google Authenticator, Authy). Then enter the OTP shown in your app to verify.</p>
+      <p class="deploy-hint">{{ gettext("Scan the QR code with your authenticator app (e.g. Google Authenticator, Authy). Then enter the OTP shown in your app to verify.") }}</p>
 
-      <label for="otpInput">One-Time Password</label>
-      <input type="text" id="otpInput" maxlength="10" autocomplete="one-time-code" placeholder="Enter OTP from app">
-      <button type="button" id="verifyBtn" class="btn btn-primary" style="width:100%;">Verify &amp; Activate</button>
+      <label for="otpInput">{{ gettext("One-Time Password") }}</label>
+      <input type="text" id="otpInput" maxlength="10" autocomplete="one-time-code" placeholder="{{ gettext('Enter OTP from app') }}">
+      <button type="button" id="verifyBtn" class="btn btn-primary" style="width:100%;">{{ gettext("Verify & Activate") }}</button>
     </div>
 
     <div class="status-msg" id="deployStatus"></div>
