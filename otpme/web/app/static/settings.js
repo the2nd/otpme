@@ -345,12 +345,46 @@
         }
     }
 
+    async function saveLanguage() {
+        const urls = getUrls();
+        const statusEl = document.getElementById('languageStatus');
+        const errorEl = document.getElementById('languageError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+
+        const select = document.getElementById('languageSelect');
+        const language = select.value;
+        const btn = document.getElementById('saveLanguageBtn');
+        btn.disabled = true;
+        statusEl.textContent = 'Saving...';
+        try {
+            const resp = await fetch(urls.urlChangeLanguage, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({language: language}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Failed to save language.');
+            }
+            // Reload so Babel re-renders the page in the new locale.
+            window.location.reload();
+        } catch (e) {
+            errorEl.textContent = e.message || 'Failed to save language.';
+            statusEl.textContent = '';
+            btn.disabled = false;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         const pwBtn = document.getElementById('changePwBtn');
         if (pwBtn) pwBtn.addEventListener('click', changePassword);
 
         const pinBtn = document.getElementById('changePinBtn');
         if (pinBtn) pinBtn.addEventListener('click', changePin);
+
+        const langBtn = document.getElementById('saveLanguageBtn');
+        if (langBtn) langBtn.addEventListener('click', saveLanguage);
 
         const addBtn = document.getElementById('addDeviceBtn');
         if (addBtn) addBtn.addEventListener('click', addDeviceToken);

@@ -360,7 +360,8 @@ a:hover { text-decoration: underline; }
   margin-bottom: 4px;
 }
 .settings-form input[type="password"],
-.settings-form input[type="text"] {
+.settings-form input[type="text"],
+.settings-form select {
   width: 100%;
   max-width: 360px;
   padding: 10px 12px;
@@ -370,11 +371,25 @@ a:hover { text-decoration: underline; }
   margin-bottom: 14px;
   outline: none;
   transition: border-color .15s;
+  background-color: #fff;
+  color: #1c1e21;
 }
 .settings-form input[type="password"]:focus,
-.settings-form input[type="text"]:focus {
+.settings-form input[type="text"]:focus,
+.settings-form select:focus {
   border-color: #4a7cff;
   box-shadow: 0 0 0 3px rgba(74,124,255,.15);
+}
+.settings-form select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23555' d='M6 8 0 0h12z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 10px 7px;
+  padding-right: 32px;
+  cursor: pointer;
 }
 .settings-card h4 {
   font-size: 14px;

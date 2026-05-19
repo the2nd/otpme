@@ -443,7 +443,9 @@ class AuthHandler(object):
                 self.logger.info(log_msg)
                 self.auth_message = "SESSION_LOGOUT_OK"
             # Delete session if this is a logout request.
-            session.delete(force=True, recursive=True, verify_acls=False)
+            session.delete(force=True, recursive=True, verify_acls=False,
+                           skip_backchannel_client=getattr(self,
+                               'oidc_skip_backchannel_client', None))
             # On session logout authentication fails but the action was
             # successful. Thus loglevel INFO is sufficient.
             self.error_log_method = self.logger.info
@@ -706,7 +708,9 @@ class AuthHandler(object):
             # Found SLP.
             if request_type == "logout":
                 # Delete session if it matches the given SLP.
-                session.delete(force=True, recursive=True, verify_acls=False)
+                session.delete(force=True, recursive=True, verify_acls=False,
+                               skip_backchannel_client=getattr(self,
+                                   'oidc_skip_backchannel_client', None))
                 log_msg = _("Logged out old user session: {session_name}", log=True)[1]
                 log_msg = log_msg.format(session_name=session.name)
                 self.logger.debug(log_msg)
@@ -2047,7 +2051,11 @@ class AuthHandler(object):
     def create_user_sessions(self):
         """ Create sessions. """
         # If session creation is disabled we are done.
-        if not self.create_sessions:
+        # OIDC /authorize is the exception: the OIDCSession is a logical
+        # child of the existing SSO parent session, not a new top-level
+        # session, so the RP access_group's ``sessions_enabled`` flag
+        # must not gate it.
+        if not self.create_sessions and not self.oidc_context:
             return
 
         # Cannot create sessions for script OTP token when doing MSCHAP auth.
@@ -2227,7 +2235,8 @@ class AuthHandler(object):
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
         oidc_context=False, oidc_scope="",
         oidc_nonce=None, oidc_redirect_uri=None,
-        oidc_code_challenge=None, oidc_code_challenge_method=None):
+        oidc_code_challenge=None, oidc_code_challenge_method=None,
+        oidc_skip_backchannel_client=None):
         """
         Try to authenticate user:
             auth_type can be clear-text, mschap or ssh:
@@ -2346,6 +2355,11 @@ class AuthHandler(object):
         self.oidc_redirect_uri = oidc_redirect_uri
         self.oidc_code_challenge = oidc_code_challenge
         self.oidc_code_challenge_method = oidc_code_challenge_method
+        # On SSO-logout, skip back-channel notify for this client UUID
+        # (set when /end_session triggered the SLP cascade; the
+        # initiating RP already cleaned up locally and notifying it
+        # back would just produce HTTP 4xx noise).
+        self.oidc_skip_backchannel_client = oidc_skip_backchannel_client
         if gen_jwt is None:
             if self.jwt_challenge:
                 self.gen_jwt = True
@@ -3004,7 +3018,13 @@ class AuthHandler(object):
                 login_user_uuid = self.user.uuid
                 login_user_name = self.user.name
                 login_user_site_uuid = self.user.site_uuid
-                login_user_language = self.user.language
+                # Only forward the language pref when the user actually
+                # set one. Otherwise leave it None so the web layer
+                # falls back to the browser's Accept-Language -- a
+                # default-only user.language would otherwise pin every
+                # session to 'en' regardless of the browser.
+                if getattr(self.user, 'language_set', False):
+                    login_user_language = self.user.language
             auth_response['login_user_uuid'] = login_user_uuid
             auth_response['login_user_name'] = login_user_name
             auth_response['login_user_site_uuid'] = login_user_site_uuid

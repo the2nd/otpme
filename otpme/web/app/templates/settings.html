@@ -3,6 +3,7 @@
 <div id="page-data"
      data-url-change-password="{{ url_for('change_password', _external=True, _scheme='https') }}"
      data-url-change-pin="{{ url_for('change_pin', _external=True, _scheme='https') }}"
+     data-url-change-language="{{ url_for('change_language', _external=True, _scheme='https') }}"
      data-url-list-device-tokens="{{ url_for('list_device_tokens', _external=True, _scheme='https') }}"
      data-url-add-device-token="{{ url_for('add_device_token', _external=True, _scheme='https') }}"
      data-url-del-device-token="{{ url_for('del_device_token', _external=True, _scheme='https') }}"></div>
@@ -56,6 +57,24 @@
         <h3>{{ gettext("Login Token") }}</h3>
         <p class="settings-desc">{{ gettext("Re-deploy your login token. This will replace your current login token with a new one.") }}</p>
         <a href="{{ url_for('settings_redeploy', _external=True, _scheme='https') }}" class="btn btn-secondary btn-small">{{ gettext("Re-deploy Login Token") }}</a>
+    </div>
+
+    <!-- Language -->
+    <div class="settings-card">
+        <h3>{{ gettext("Language") }}</h3>
+        <p class="settings-desc">{{ gettext("Choose your preferred language. \"Browser default\" follows the language sent by your browser.") }}</p>
+        <div class="settings-form">
+            <label for="languageSelect">{{ gettext("Language") }}</label>
+            <select id="languageSelect">
+                <option value="default" {% if current_language == "default" %}selected{% endif %}>{{ gettext("Browser default") }}</option>
+                {% for loc in locale_choices %}
+                <option value="{{ loc.code }}" {% if current_language == loc.code %}selected{% endif %}>{{ loc.label }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" id="saveLanguageBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Save") }}</button>
+            <div class="status-msg" id="languageStatus"></div>
+            <div class="error-msg" id="languageError"></div>
+        </div>
     </div>
 
     <!-- Device Tokens -->

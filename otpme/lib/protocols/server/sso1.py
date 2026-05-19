@@ -69,9 +69,12 @@ def _deserialize_fido2_state(data):
 def get_apps(token):
     """ Return SSO app metadata visible to the given token. """
     app_data = []
+    search_attributes = {
+                        "oidc_auth"     : {'or_values'  : [True]},
+                        "sso_enabled"   : {'or_values'  : [True]},
+                    }
     result = backend.search(object_type="client",
-                            attribute="sso_enabled",
-                            value=True,
+                            attributes=search_attributes,
                             realm=config.realm,
                             site=config.site,
                             return_type="instance")
@@ -81,6 +84,8 @@ def get_apps(token):
     for client in result:
         if not client.enabled:
             continue
+        if not client.access_group_uuid:
+            continue
         client_ag = backend.get_object(uuid=client.access_group_uuid)
         if client_ag.uuid not in token_ags:
             continue
@@ -88,9 +93,12 @@ def get_apps(token):
                     'app_ag'    : client_ag.name,
                     'app_name'  : client.sso_name,
                     'login_url' : client.login_url,
-                    'helper_url': client.helper_url,
-                    'sso_popup' : client.sso_popup,
                 }
+        if client.sso_enabled:
+            client_data['helper_url'] = client.helper_url
+            client_data['sso_popup'] = client.sso_popup
+        if client.oidc_auth:
+            client_data['oidc'] = True
         if client.sso_logo:
             client_data['logo_type'] = client.sso_logo['image_type']
             client_data['logo_data'] = client.sso_logo['image_data']
@@ -625,6 +633,57 @@ class OTPmeSsoP1(OTPmeServer1):
         response = {'message':log_msg, 'status':True}
         return self.build_response(True, response)
 
+    def change_language(self, username, sso_jwt, command_args):
+        """ Persist the user's preferred UI language on the User object.
+
+        Accepts ``language`` either as a supported locale code (e.g.
+        "en", "de") or the literal string ``"default"`` to reset the
+        pref (clears ``language_set`` so the locale selector falls
+        back to Accept-Language).
+        """
+        try:
+            language = command_args['language']
+        except Exception:
+            return self.build_response(False,
+                    {'message': 'AUTHD_INCOMPLETE_COMMAND', 'status': False})
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message': 'AUTH_FAILED', 'status': False})
+        # Cross-site: user lives on a different site; the object
+        # write must happen there.
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="change_language",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.change_language(language=language,
+                                 verify_acls=False,
+                                 callback=callback)
+        except Exception as e:
+            message, log_msg = _("Language change failed for user "
+                                 "'{user_name}': {e}", log=True)
+            log_msg = log_msg.format(user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            message = message.format(user_name=user.name, e=e)
+            return self.build_response(False,
+                    {'message': message, 'status': False})
+        user._write(callback=callback)
+        # Echo back the effective state so the web layer can refresh
+        # its flask_session cache without re-querying.
+        effective = user.language if user.language_set else None
+        return self.build_response(True, {
+            'message': 'OK',
+            'language': effective,
+        })
+
     def change_password(self, username, sso_jwt, command_args):
         try:
             current_password = command_args['current_password']
@@ -835,15 +894,20 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _resolve_language(self, user, command_args):
         """ Determine which language to render localized object fields in.
-        Priority: an explicit `language` from the caller (CLI flag or API
-        arg) wins, then the user's persisted language preference, then a
-        soft `accept_language` hint sent by the web layer, else "en". """
+        Priority: an explicit `language` from the caller (CLI flag or
+        API arg) wins, then the user's persisted language preference
+        when the user actually set one (language_set=True), then a
+        soft `accept_language` hint sent by the web layer, else "en".
+
+        A user.language that is only the default ('en' with
+        language_set=False) is intentionally ignored so the browser's
+        Accept-Language still steers the render. """
         args = command_args or {}
         explicit = args.get('language')
         if explicit:
             return explicit
         try:
-            if user.language:
+            if getattr(user, 'language_set', False) and user.language:
                 return user.language
         except Exception:
             pass
@@ -1876,6 +1940,9 @@ class OTPmeSsoP1(OTPmeServer1):
         client, err = self._verify_oidc_client(client_id, client_secret)
         if err:
             return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
+        if "authorization_code" not in (client.oidc_grant_types or []):
+            return _fail('unauthorized_client', 'unauthorized_client',
+                         "authorization_code not enabled for this client")
         if not code:
             # Configuration / request bug -- safe to be specific.
             emit_audit("OIDC", 'token_code_exchange_failed',
@@ -1988,10 +2055,11 @@ class OTPmeSsoP1(OTPmeServer1):
             'access_token': at,
             'token_type': 'Bearer',
             'expires_in': at_ttl,
-            'refresh_token': rt,
             'id_token': id_token,
             'scope': oidc_session.scope or "",
         }
+        if "refresh_token" in (client.oidc_grant_types or []):
+            response['refresh_token'] = rt
         return self.build_response(True, response)
 
     def _oidc_token_refresh(self, command_args):
@@ -2048,6 +2116,9 @@ class OTPmeSsoP1(OTPmeServer1):
         client, err = self._verify_oidc_client(client_id, client_secret)
         if err:
             return _fail('invalid_client', GENERIC_INVALID_CLIENT, err)
+        if "refresh_token" not in (client.oidc_grant_types or []):
+            return _fail('unauthorized_client', 'unauthorized_client',
+                         "refresh_token not enabled for this client")
         if not refresh_token:
             emit_audit("OIDC", 'token_refresh_failed',
                             level='warning',
@@ -2609,7 +2680,8 @@ class OTPmeSsoP1(OTPmeServer1):
             })
 
         try:
-            sid, hint_aud = self._parse_id_token_hint(id_token_hint)
+            sid, hint_aud = self._parse_id_token_hint(id_token_hint,
+                                                     allow_expired=True)
         except Exception as e:
             log_msg = _("OIDC end_session: id_token_hint invalid: {err}", log=True)[1]
             log_msg = log_msg.format(err=e)
@@ -2699,6 +2771,10 @@ class OTPmeSsoP1(OTPmeServer1):
                             post_logout_redirect_uri=validated_post_uri,
                             ip=client_ip)
             response['action'] = 'redirect_logout'
+            # Surface the initiating client so the SLP cascade can
+            # suppress back-channel logout to *this* RP -- it already
+            # triggered the logout itself.
+            response['initiating_client_uuid'] = client.uuid
             return self.build_response(True, response)
 
         # scope_mode == "rp": kill just this OIDCSession.
@@ -2732,7 +2808,12 @@ class OTPmeSsoP1(OTPmeServer1):
 
         session_id_for_audit = oidc_session.session_id
         try:
-            oidc_session.delete(force=True, verify_acls=False)
+            # skip_backchannel: the RP itself triggered /end_session,
+            # so a back-channel logout POST to it would be redundant
+            # (and the RP typically answers HTTP 4xx because it has
+            # already cleaned up locally).
+            oidc_session.delete(force=True, verify_acls=False,
+                                skip_backchannel=True)
         except Exception as e:
             log_msg = _("OIDC end_session: delete failed for session '{sid}': {err}", log=True)[1]
             log_msg = log_msg.format(sid=oidc_session.session_id, err=e)
@@ -2913,6 +2994,12 @@ class OTPmeSsoP1(OTPmeServer1):
         if response_type not in allowed_response_types:
             return _err('unsupported_response_type',
                         f"response_type '{response_type}' not allowed for this client",
+                        can_redirect=True)
+
+        allowed_grant_types = getattr(client, 'oidc_grant_types', []) or []
+        if "authorization_code" not in allowed_grant_types:
+            return _err('unauthorized_client',
+                        "authorization_code grant not enabled for this client",
                         can_redirect=True)
 
         scope_set = set(scope.split())
@@ -3232,29 +3319,33 @@ class OTPmeSsoP1(OTPmeServer1):
 
         return self.build_response(True, render_jwks(keys))
 
-    def _parse_id_token_hint(self, id_token_hint: str):
+    def _parse_id_token_hint(self, id_token_hint: str,
+            allow_expired: bool = False):
         """ Decode + verify a JWT ID Token issued by us.
 
         Returns ``(sid, aud)``. Raises ``OTPmeException`` on
         signature/issuer/audience problems.
 
-        Does NOT enforce ``exp``: a user logging out an hour after
-        the AT expired is still a legit logout request. The claims
-        registry would normally enforce exp/iat -- we override its
-        ``now`` to a far-future value so validate_exp/validate_iat
-        pass for any real timestamp.
+        ``allow_expired``: when True, ``exp``/``iat``/``nbf`` time
+        checks are skipped. Only the /end_session flow should set
+        this -- logout after the AT/ID-Token expired is legitimate
+        per OIDC RP-Initiated Logout 1.0 §2. Any other use of the
+        id_token_hint (e.g. silent re-auth, prompt=none binding)
+        MUST keep the default ``False`` so an expired token can't
+        be replayed.
 
-        DOES enforce a separate ``iat``-age cap (config parameter
-        ``oidc_id_token_hint_max_age``, default 90 days) so a years-
-        old ID Token from a leaked backup can't still drive a logout.
+        Independent of ``allow_expired``, an ``iat``-age cap is
+        enforced (config parameter ``oidc_id_token_hint_max_age``,
+        default 90 days) so a years-old ID Token from a leaked
+        backup can't still drive an /end_session.
 
         Spec: OIDC RP-Initiated Logout 1.0 §2 "RP-Initiated Logout"
           (id_token_hint -- a previously issued ID Token used to
           identify the user/session being logged out)
           https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout
         Spec: OIDC Core 1.0 §3.1.3.7 "ID Token Validation"
-          (signature, iss, aud checks -- exp deliberately relaxed
-          here because logout-after-expiry is a legitimate flow)
+          (signature, iss, aud checks; exp normally enforced --
+          relaxed only on the end_session path)
           https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
         Spec: RFC 7519 §4.1.3 "aud" (may be a single string or an
           array of strings)
@@ -3269,6 +3360,14 @@ class OTPmeSsoP1(OTPmeServer1):
         from joserfc.jwt import JWTClaimsRegistry
         from joserfc.jwk import RSAKey, ECKey, OKPKey, KeySet
         from otpme.lib.encryption.jwk import public_jwk
+
+        class _NoTimeJWTClaimsRegistry(JWTClaimsRegistry):
+            def validate_exp(self, value):
+                return
+            def validate_iat(self, value):
+                return
+            def validate_nbf(self, value):
+                return
 
         site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if site is None or not getattr(site, 'oidc_keys', None):
@@ -3297,8 +3396,9 @@ class OTPmeSsoP1(OTPmeServer1):
         claims = decoded.claims
 
         issuer = f"https://{site.sso_fqdn}/oidc"
-        registry = JWTClaimsRegistry(
-            now=lambda: 9999999999,   # disable exp/iat time checks
+        registry_cls = _NoTimeJWTClaimsRegistry if allow_expired \
+                else JWTClaimsRegistry
+        registry = registry_cls(
             iss={"essential": True, "value": issuer},
             aud={"essential": True},
             sid={"essential": True},
@@ -3362,6 +3462,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "deploy_verify",
                             "change_password",
                             "change_pin",
+                            "change_language",
                             "fido2_register_begin",
                             "fido2_register_complete",
                             "list_device_tokens",
@@ -3481,6 +3582,11 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command change_pin.", log=True)[1]
             self.logger.info(log_msg)
             return self.change_pin(username, sso_jwt, command_args)
+
+        if command == "change_language":
+            log_msg = _("Processing command change_language.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.change_language(username, sso_jwt, command_args)
 
         if command == "list_device_tokens":
             log_msg = _("Processing command list_device_tokens.", log=True)[1]

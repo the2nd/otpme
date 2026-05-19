@@ -681,17 +681,20 @@ def end_session():
 
     action = (response or {}).get('action')
     validated_uri = (response or {}).get('post_logout_redirect_uri')
+    initiating_client_uuid = (response or {}).get('initiating_client_uuid')
     target = _append_state(validated_uri, state)
 
     if action == 'redirect_logout':
         # scope=sso: terminate the user's SSO session via the
         # existing SLP-based logout (cascades into all child
-        # OIDCSessions; each fires backchannel-logout if configured).
+        # OIDCSessions; backchannel-logout fires for each child
+        # except the initiating RP -- it already logged out).
         if target:
             resp = make_response(redirect(target))
         else:
             resp = _logged_out_page()
-        return _do_sso_logout(resp)
+        return _do_sso_logout(resp,
+                skip_backchannel_client=initiating_client_uuid)
 
     if action == 'redirect_post_logout':
         # scope=rp: ssod already killed the calling RP's OIDCSession
@@ -1013,6 +1016,7 @@ def authorize():
     # validates SOTP -> finds parent SSO session -> attaches OIDCSession
     # via add_oidc_child_session -> returns oidc_authcode.
     verify_args = {
+        'oidc_login':                     True,
         'username':                       username,
         'password':                       sotp_value,
         'client':                         client_id,

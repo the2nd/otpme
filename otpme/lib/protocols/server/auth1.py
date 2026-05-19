@@ -789,7 +789,8 @@ class OTPmeAuthP1(OTPmeServer1):
         host_type=None, host_ip=None, client=None, client_ip=None,
         oidc_context=None, oidc_scope=None, oidc_nonce=None,
         oidc_redirect_uri=None, oidc_code_challenge=None,
-        oidc_code_challenge_method=None):
+        oidc_code_challenge_method=None,
+        oidc_skip_backchannel_client=None):
         # Build auth request.
         kwargs = {
                     'auth_mode'                 : auth_mode,
@@ -810,6 +811,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     'oidc_redirect_uri'         : oidc_redirect_uri,
                     'oidc_code_challenge'       : oidc_code_challenge,
                     'oidc_code_challenge_method': oidc_code_challenge_method,
+                    'oidc_skip_backchannel_client': oidc_skip_backchannel_client,
                     'ecdh_curve'                : self.ecdh_curve,
                 }
         # Do authentication.
@@ -983,6 +985,11 @@ class OTPmeAuthP1(OTPmeServer1):
             sso_challenge = None
 
         try:
+            oidc_login = command_args['oidc_login']
+        except Exception:
+            oidc_login = False
+
+        try:
             oidc_context = command_args['oidc_context']
         except Exception:
             oidc_context = None
@@ -1011,6 +1018,11 @@ class OTPmeAuthP1(OTPmeServer1):
             oidc_code_challenge_method = command_args['oidc_code_challenge_method']
         except Exception:
             oidc_code_challenge_method = None
+
+        try:
+            oidc_skip_backchannel_client = command_args['oidc_skip_backchannel_client']
+        except Exception:
+            oidc_skip_backchannel_client = None
 
         # Set host IP from source IP if requested.
         if host_ip == "auto":
@@ -1119,6 +1131,8 @@ class OTPmeAuthP1(OTPmeServer1):
                 stuff.get_site_trust_status(user.realm, user.site)
             except SiteNotTrusted:
                 redirect_connection = True
+        if oidc_login:
+            redirect_connection = False
         if sso_logout:
             redirect_connection = False
 
@@ -1171,7 +1185,8 @@ class OTPmeAuthP1(OTPmeServer1):
                             oidc_nonce=oidc_nonce,
                             oidc_redirect_uri=oidc_redirect_uri,
                             oidc_code_challenge=oidc_code_challenge,
-                            oidc_code_challenge_method=oidc_code_challenge_method)
+                            oidc_code_challenge_method=oidc_code_challenge_method,
+                            oidc_skip_backchannel_client=oidc_skip_backchannel_client)
 
     def _close(self):
         pass

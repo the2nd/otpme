@@ -1380,10 +1380,18 @@ class Session(OTPmeLockObject):
         force: bool=False,
         recursive: bool=False,
         verify_acls: bool=True,
+        skip_backchannel_client: str=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Delete session. """
+        """ Delete session.
+
+        ``skip_backchannel_client``: UUID of an OIDC client whose
+        OIDCSession (if found during a recursive cascade) should be
+        deleted without firing a back-channel logout notification.
+        Used during /end_session so the initiating RP isn't notified
+        about a logout it just triggered itself.
+        """
         if verify_acls and config.auth_token:
             if config.auth_token.uuid != config.admin_token_uuid:
                 actor = None
@@ -1467,7 +1475,8 @@ class Session(OTPmeLockObject):
                 session = child_sessions[x]
                 session.delete(recursive=recursive,
                                 force=True,
-                                verify_acls=verify_acls)
+                                verify_acls=verify_acls,
+                                skip_backchannel_client=skip_backchannel_client)
 
         try:
             backend.delete_object(self.oid,

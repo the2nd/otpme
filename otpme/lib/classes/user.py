@@ -1461,7 +1461,8 @@ class User(OTPmeObject):
         self._recursive_default_acls = get_recursive_default_acls()
 
         # Localization for mgmtd stuff.
-        self.language = None
+        self.language = "en"
+        self.language_set = False
         # Users primary group cache.
         self._group_uuid = None
         # Indicates that the user is allowed to login even if realm/site/accessgroup/unit is disabled.
@@ -1558,6 +1559,12 @@ class User(OTPmeObject):
                         'LANGUAGE'                  : {
                                                         'var_name'  : 'language',
                                                         'type'      : str,
+                                                        'required'  : False,
+                                                    },
+
+                        'LANGUAGE_SET'              : {
+                                                        'var_name'  : 'language_set',
+                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
 
@@ -2366,11 +2373,17 @@ class User(OTPmeObject):
     @check_acls(['edit:language'])
     def change_language(self, language, callback: JobCallback=default_callback, **kwargs):
         """ Change users localization. """
-        if language == self.language:
-            msg = _("Users language already set to {language}")
-            msg = msg.format(language=self.language)
-            return callback.error(msg)
-        self.language = language
+        if self.language_set:
+            if language == self.language:
+                msg = _("Users language already set to {language}")
+                msg = msg.format(language=self.language)
+                return callback.error(msg)
+        if language == "default":
+            self.language = "en"
+            self.language_set = False
+        else:
+            self.language = language
+            self.language_set = True
         return self._cache(callback=callback)
 
     @check_acls(['edit:key_mode'])
@@ -3993,6 +4006,8 @@ class User(OTPmeObject):
                 log_msg = log_msg.format(self_name=self.name)
                 logger.debug(log_msg)
                 used_oid = backend.get_oid(uuid=uuid, instance=True)
+                if not used_oid:
+                    continue
                 try:
                     backend.delete_object(used_oid, cluster=True)
                 except UnknownObject:
@@ -4354,7 +4369,7 @@ class User(OTPmeObject):
         """
         if not self.oidc_consents:
             return None
-        record = self.oidc_consents.get(str(client_uuid))
+        record = self.oidc_consents.get(str(client_uuid), None)
         if not record:
             return None
         # IncrementalDict -> plain dict so callers (jwt/json paths)
@@ -6250,6 +6265,7 @@ class User(OTPmeObject):
         if self.language:
             language = self.language
         lines.append(f"\tlanguage:\t\t{language}\n")
+        lines.append(f"\tlanguage_set:\t\t{self.language_set}\n")
 
         description = ""
         if self.description:

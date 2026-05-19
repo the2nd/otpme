@@ -7,6 +7,7 @@ import signal
 import datetime
 import setproctitle
 from functools import wraps
+from sqlalchemy.exc import ResourceClosedError
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -1423,9 +1424,13 @@ class HostDaemon(OTPmeDaemon):
                             'enabled'       : {'value':True},
                             'auto_disable'  : {'value':True},
                         }
-        result = backend.search(attributes=search_attributes,
-                                realm=config.realm,
-                                site=config.site)
+        try:
+            result = backend.search(attributes=search_attributes,
+                                    realm=config.realm,
+                                    site=config.site)
+        except ResourceClosedError:
+            return
+
         for x_uuid in result:
             if not config.master_node:
                break

@@ -219,9 +219,26 @@ def settings():
     login_token_pass_type = flask_session.get('login_token_pass_type')
     show_password_change = (login_token_pass_type == "static")
     show_pin_change = (login_token_pass_type == "otp")
+    from otpme.web.app import SUPPORTED_LOCALES
+    # Stashed value reflects user.language only when language_set=True;
+    # the "default" sentinel is what we POST back to clear it.
+    current_language = flask_session.get('user_language') or "default"
+    # Build (code, label) pairs. Label is the locale's native display
+    # name ("Deutsch", "English"); falls back to the bare code if Babel
+    # can't parse it (custom locales).
+    from babel import Locale, UnknownLocaleError
+    locale_choices = []
+    for code in SUPPORTED_LOCALES:
+        try:
+            label = Locale.parse(code).get_display_name(code)
+        except (UnknownLocaleError, Exception):
+            label = code
+        locale_choices.append({'code': code, 'label': label})
     return render_template("settings.html", title=gettext('Settings'),
                            show_password_change=show_password_change,
-                           show_pin_change=show_pin_change)
+                           show_pin_change=show_pin_change,
+                           locale_choices=locale_choices,
+                           current_language=current_language)
 
 def _stash_user_language(language):
     """ Stash the user's persisted language pref in the Flask session
@@ -528,6 +545,34 @@ def change_pin():
     logger.info(log_msg)
     return jsonify({"status": "ok", "message": "PIN changed successfully."})
 
+@app.route('/settings/language', methods=['POST'])
+@login_required
+def change_language():
+    """ Persist the user's language preference. Accepts the literal
+    "default" to clear the pref (revert to Accept-Language). """
+    if not g.user.is_authenticated:
+        return jsonify({"error": gettext("Not authenticated")}), 401
+    data = request.json or {}
+    language = data.get('language', '')
+    if not language:
+        return jsonify({"error": gettext("Missing language.")}), 400
+    # Whitelist against locales we ship + the reset sentinel; the user
+    # object will reject anything else server-side too, but a 400 here
+    # is friendlier than a generic ssod error.
+    from otpme.web.app import SUPPORTED_LOCALES
+    if language != "default" and language not in SUPPORTED_LOCALES:
+        return jsonify({"error": gettext("Unsupported language.")}), 400
+    response, error = _send_ssod_command(command="change_language",
+            extra_args={'language': language},
+            default_error=gettext("Failed to change language."),
+            mgmt=True)
+    if error is not None:
+        return error
+    # ssod echoes back the effective stored language (None when reset).
+    effective = (response or {}).get('language') if isinstance(response, dict) else None
+    _stash_user_language(effective)
+    return jsonify({"status": "ok"})
+
 # ---- SSO Token Deploy (enrollment) ----
 
 @app.route('/deploy')
@@ -814,8 +859,14 @@ def login():
     login_user(web_user)
     return resp
 
-def _do_sso_logout(response):
-    """ Terminate the user's SSO session on authd and clear local state. """
+def _do_sso_logout(response, skip_backchannel_client=None):
+    """ Terminate the user's SSO session on authd and clear local state.
+
+    ``skip_backchannel_client``: OIDC client UUID to skip when the
+    SLP cascade fires back-channel logout notifications. Set by the
+    /end_session flow so the initiating RP isn't notified about a
+    logout it just triggered itself.
+    """
     slp = request.cookies.get('otpme_slp')
     username = flask_session.get('otpme_username')
     response.set_cookie('otpme_slp', '', expires=0)
@@ -845,6 +896,8 @@ def _do_sso_logout(response):
                             'realm_login'   : False,
                             'realm_logout'  : False,
                         }
+            if skip_backchannel_client:
+                verify_args['oidc_skip_backchannel_client'] = skip_backchannel_client
             try:
                 authd_conn.send(command="verify", command_args=verify_args)
             except Exception as e:

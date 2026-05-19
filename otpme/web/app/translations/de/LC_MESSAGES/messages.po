@@ -7,234 +7,269 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-15 21:33+0200\n"
+"POT-Creation-Date: 2026-05-16 19:33+0200\n"
 "PO-Revision-Date: 2026-05-15 21:36+0200\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language: de\n"
 "Language-Team: de <LL@li.org>\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: views.py:295 views.py:925
+#: templates/base.html:8 templates/base.html:10 templates/base.html:20
+#: views.py:212
+msgid "SSO Portal"
+msgstr "SSO-Portal"
+
+#: templates/base.html:25 templates/settings.html:11 views.py:237
+msgid "Settings"
+msgstr "Einstellungen"
+
+#: views.py:312 views.py:982
 msgid "Session expired. Please log in again."
 msgstr "Sitzung abgelaufen. Bitte erneut anmelden."
 
-#: views.py:307 views.py:333 views.py:355 views.py:372 views.py:392
-#: views.py:428 views.py:482 views.py:556 views.py:631 views.py:938
-#: views.py:981
+#: views.py:324 views.py:350 views.py:372 views.py:389 views.py:409
+#: views.py:445 views.py:499 views.py:554 views.py:601 views.py:676
+#: views.py:995 views.py:1038
 msgid "Not authenticated"
 msgstr "Nicht angemeldet"
 
-#: views.py:310 views.py:313
+#: views.py:327 views.py:330
 msgid "Failed to list device tokens."
 msgstr "Geräte-Token konnten nicht aufgelistet werden."
 
-#: views.py:337
+#: views.py:354
 msgid "Device name is required."
 msgstr "Gerätename ist erforderlich."
 
-#: views.py:340
+#: views.py:357
 msgid "Failed to add device token."
 msgstr "Geräte-Token konnte nicht hinzugefügt werden."
 
-#: views.py:359
+#: views.py:376
 msgid "Token name is required."
 msgstr "Token-Name ist erforderlich."
 
-#: views.py:362
+#: views.py:379
 msgid "Failed to delete device token."
 msgstr "Geräte-Token konnte nicht gelöscht werden."
 
-#: views.py:376 views.py:379
+#: views.py:393 views.py:396
 msgid "Failed to list OIDC consents."
 msgstr "OIDC-Zustimmungen konnten nicht aufgelistet werden."
 
-#: views.py:396
+#: views.py:413
 msgid "client_uuid is required."
 msgstr "client_uuid ist erforderlich."
 
-#: views.py:400
+#: views.py:417
 msgid "Failed to revoke consent."
 msgstr "Zustimmung konnte nicht widerrufen werden."
 
-#: views.py:431 views.py:485
+#: views.py:448 views.py:502
 msgid "Missing data"
 msgstr "Fehlende Daten"
 
-#: views.py:436 views.py:490
+#: views.py:453 views.py:507
 msgid "All fields are required."
 msgstr "Alle Felder sind erforderlich."
 
-#: views.py:438
+#: views.py:455
 msgid "New passwords do not match."
 msgstr "Die neuen Passwörter stimmen nicht überein."
 
-#: views.py:440
+#: views.py:457
 msgid "Password must not be empty."
 msgstr "Das Passwort darf nicht leer sein."
 
-#: views.py:443
+#: views.py:460
 msgid "Token does not support password change."
 msgstr "Token unterstützt keine Passwortänderung."
 
-#: views.py:467
+#: views.py:484
 msgid "Failed to change password."
 msgstr "Passwort konnte nicht geändert werden."
 
-#: views.py:492
+#: views.py:509
 msgid "New PINs do not match."
 msgstr "Die neuen PINs stimmen nicht überein."
 
-#: views.py:494
+#: views.py:511
 msgid "PIN must not be empty."
 msgstr "Die PIN darf nicht leer sein."
 
-#: views.py:497
+#: views.py:514
 msgid "Token does not support PIN change."
 msgstr "Token unterstützt keine PIN-Änderung."
 
-#: views.py:520
+#: views.py:537
 msgid "Failed to change PIN."
 msgstr "PIN konnte nicht geändert werden."
 
-#: views.py:559
+#: views.py:558
+#, fuzzy
+msgid "Missing language."
+msgstr "Fehlende Daten"
+
+#. AI-generated
+#: views.py:564
+msgid "Unsupported language."
+msgstr "Nicht unterstützte Sprache."
+
+#: views.py:567
+#, fuzzy
+msgid "Failed to change language."
+msgstr "PIN konnte nicht geändert werden."
+
+#: templates/deploy.html:10 views.py:593
+msgid "Token Enrollment"
+msgstr "Token-Einrichtung"
+
+#: views.py:604
 msgid "Deployment not required"
 msgstr "Token-Einrichtung nicht erforderlich"
 
-#: views.py:569
+#: views.py:614
 msgid "Invalid token type."
 msgstr "Ungültiger Token-Typ."
 
-#: views.py:592
+#: views.py:637
 msgid "Failed to start token deploy."
 msgstr "Token-Einrichtung konnte nicht gestartet werden."
 
-#: views.py:636
+#: views.py:681
 msgid "No deployment in progress."
 msgstr "Keine Einrichtung im Gange."
 
-#: views.py:660
+#: views.py:705
 msgid "Failed to verify token deploy."
 msgstr "Token-Einrichtung konnte nicht verifiziert werden."
 
-#: views.py:755 views.py:760 views.py:773 views.py:785 views.py:1126
-#: views.py:1138
+#: templates/login.html:9 templates/login.html:25 views.py:769
+msgid "Sign In"
+msgstr "Anmelden"
+
+#: views.py:800 views.py:805 views.py:818 views.py:830 views.py:1183
+#: views.py:1195
 msgid "Login failed."
 msgstr "Anmeldung fehlgeschlagen."
 
-#: views.py:872
+#: views.py:929
 msgid "Failed to get app list."
 msgstr "App-Liste konnte nicht geladen werden."
 
-#: views.py:914
+#: views.py:971
 msgid "Failed to get SOTP."
 msgstr "SOTP konnte nicht abgerufen werden."
 
-#: views.py:963
+#: views.py:1020
 msgid "Failed to start fido2 registration."
 msgstr "FIDO2-Registrierung konnte nicht gestartet werden."
 
-#: views.py:985
+#: views.py:1042
 msgid "No registration in progress"
 msgstr "Keine Registrierung im Gange"
 
-#: views.py:988
+#: views.py:1045
 msgid "Missing registration data"
 msgstr "Registrierungsdaten fehlen"
 
-#: views.py:1014
+#: views.py:1071
 msgid "Failed to complete fido2 registration."
 msgstr "FIDO2-Registrierung konnte nicht abgeschlossen werden."
 
-#: views.py:1032
+#: views.py:1089
 msgid "Username required"
 msgstr "Benutzername erforderlich"
 
-#: views.py:1054
+#: views.py:1111
 msgid "Failed to start fido2 authentication."
 msgstr "FIDO2-Anmeldung konnte nicht gestartet werden."
 
-#: views.py:1073
+#: views.py:1130
 msgid "No authentication in progress"
 msgstr "Keine Anmeldung im Gange"
 
-#: views.py:1077
+#: views.py:1134
 msgid "Missing auth response"
 msgstr "Anmeldeantwort fehlt"
 
-#: views.py:1083
+#: views.py:1140
 msgid "Login failed"
 msgstr "Anmeldung fehlgeschlagen"
 
-#: views.py:1109
+#: views.py:1166
 msgid "Failed to complete fido2 authentication."
 msgstr "FIDO2-Anmeldung konnte nicht abgeschlossen werden."
 
-#: oidc/views.py:725
+#: oidc/views.py:728
 msgid "Verify your identity"
 msgstr "Identität bestätigen"
 
-#: oidc/views.py:726
+#: oidc/views.py:729
 msgid "Confirm who you are so the application can sign you in."
 msgstr "Bestätige, wer Du bist, damit die Anwendung Dich anmelden kann."
 
-#: oidc/views.py:727
+#: oidc/views.py:730
 msgid "Basic profile information"
 msgstr "Grundlegende Profilinformationen"
 
-#: oidc/views.py:728
+#: oidc/views.py:731
 msgid "Your name, username and basic profile fields."
 msgstr "Dein Name, Benutzername und grundlegende Profildaten."
 
-#: oidc/views.py:729
+#: oidc/views.py:732
 msgid "Email address"
 msgstr "E-Mail-Adresse"
 
-#: oidc/views.py:730
+#: oidc/views.py:733
 msgid "Your primary email address."
 msgstr "Deine primäre E-Mail-Adresse."
 
-#: oidc/views.py:731
+#: oidc/views.py:734
 msgid "Postal address"
 msgstr "Postanschrift"
 
-#: oidc/views.py:732
+#: oidc/views.py:735
 msgid "Your postal/mailing address attributes."
 msgstr "Deine postalischen Adressdaten."
 
-#: oidc/views.py:733
+#: oidc/views.py:736
 msgid "Phone number"
 msgstr "Telefonnummer"
 
-#: oidc/views.py:734
+#: oidc/views.py:737
 msgid "Your phone number on file."
 msgstr "Deine hinterlegte Telefonnummer."
 
-#: oidc/views.py:735
+#: oidc/views.py:738
 msgid "Group memberships"
 msgstr "Gruppenzugehörigkeiten"
 
-#: oidc/views.py:736
+#: oidc/views.py:739
 msgid "Which groups you belong to (used by the app for access control)."
-msgstr "Zu welchen Gruppen Du gehörst (von der Anwendung zur Zugriffskontrolle verwendet)."
+msgstr ""
+"Zu welchen Gruppen Du gehörst (von der Anwendung zur Zugriffskontrolle "
+"verwendet)."
 
-#: oidc/views.py:737
+#: oidc/views.py:740
 msgid "Stay signed in when offline"
 msgstr "Auch offline angemeldet bleiben"
 
-#: oidc/views.py:738
+#: oidc/views.py:741
 msgid "Allow the application to refresh its session without asking you again."
-msgstr "Der Anwendung erlauben, ihre Sitzung zu erneuern, ohne erneut nachzufragen."
+msgstr ""
+"Der Anwendung erlauben, ihre Sitzung zu erneuern, ohne erneut nachzufragen."
 
-#: oidc/views.py:784
+#: oidc/views.py:787
 #, python-format
 msgid "Application-specific permission '%(scope)s'."
 msgstr "Anwendungsspezifische Berechtigung '%(scope)s'."
 
-#: oidc/views.py:813
+#: oidc/views.py:816
 msgid "Authorization error"
 msgstr "Autorisierungsfehler"
 
@@ -252,11 +287,8 @@ msgstr "Ein unerwarteter Fehler ist aufgetreten"
 
 #: templates/500.html:6
 msgid "The administrator has been notified. Sorry for the inconvenience!"
-msgstr "Der Administrator wurde benachrichtigt. Entschuldige die Unannehmlichkeiten!"
-
-#: templates/base.html:8 templates/base.html:10 templates/base.html:20
-msgid "SSO Portal"
-msgstr "SSO-Portal"
+msgstr ""
+"Der Administrator wurde benachrichtigt. Entschuldige die Unannehmlichkeiten!"
 
 #: templates/base.html:21
 msgid "Home"
@@ -266,17 +298,9 @@ msgstr "Start"
 msgid "Logged in user"
 msgstr "Angemeldeter Benutzer"
 
-#: templates/base.html:25 templates/settings.html:10
-msgid "Settings"
-msgstr "Einstellungen"
-
 #: templates/base.html:26
 msgid "Logout"
 msgstr "Abmelden"
-
-#: templates/deploy.html:10
-msgid "Token Enrollment"
-msgstr "Token-Einrichtung"
 
 #: templates/deploy.html:12
 msgid "Your account requires a new authentication token."
@@ -318,7 +342,9 @@ msgstr "Geheimnis:"
 msgid ""
 "Scan the QR code with your authenticator app (e.g. Google Authenticator, "
 "Authy). Then enter the OTP shown in your app to verify."
-msgstr "Scanne den QR-Code mit Deiner Authenticator-App (z.B. Google Authenticator, Authy). Gib dann den in der App angezeigten OTP zur Bestätigung ein."
+msgstr ""
+"Scanne den QR-Code mit Deiner Authenticator-App (z.B. Google Authenticator, "
+"Authy). Gib dann den in der App angezeigten OTP zur Bestätigung ein."
 
 #: templates/deploy.html:58
 msgid "One-Time Password"
@@ -335,10 +361,6 @@ msgstr "Bestätigen & Aktivieren"
 #: templates/index.html:8
 msgid "Applications"
 msgstr "Anwendungen"
-
-#: templates/login.html:9 templates/login.html:25
-msgid "Sign In"
-msgstr "Anmelden"
 
 #: templates/login.html:12
 msgid "Username"
@@ -360,13 +382,16 @@ msgstr "%(client)s autorisieren"
 #: templates/oidc_consent.html:10
 #, python-format
 msgid ""
-"<strong>%(client)s</strong> is asking permission to access your account. "
-"If you approve, it will receive:"
-msgstr "<strong>%(client)s</strong> möchte auf dein Konto zugreifen. Wenn du zustimmst, werden folgende Informationen übermittelt:"
+"<strong>%(client)s</strong> is asking permission to access your account. If "
+"you approve, it will receive:"
+msgstr ""
+"<strong>%(client)s</strong> möchte auf dein Konto zugreifen. Wenn du "
+"zustimmst, werden folgende Informationen übermittelt:"
 
 #: templates/oidc_consent.html:33
 msgid "You can revoke this approval at any time from the Settings page."
-msgstr "Du kannst diese Zustimmung jederzeit über die Einstellungsseite widerrufen."
+msgstr ""
+"Du kannst diese Zustimmung jederzeit über die Einstellungsseite widerrufen."
 
 #: templates/oidc_consent.html:43
 msgid "Allow"
@@ -376,99 +401,126 @@ msgstr "Erlauben"
 msgid "Deny"
 msgstr "Ablehnen"
 
-#: templates/settings.html:15 templates/settings.html:26
+#: templates/settings.html:16 templates/settings.html:27
 msgid "Change Password"
 msgstr "Passwort ändern"
 
-#: templates/settings.html:17
+#: templates/settings.html:18
 msgid "Current Password"
 msgstr "Aktuelles Passwort"
 
-#: templates/settings.html:20
+#: templates/settings.html:21
 msgid "New Password"
 msgstr "Neues Passwort"
 
-#: templates/settings.html:23
+#: templates/settings.html:24
 msgid "Confirm New Password"
 msgstr "Neues Passwort bestätigen"
 
-#: templates/settings.html:36 templates/settings.html:47
+#: templates/settings.html:37 templates/settings.html:48
 msgid "Change PIN"
 msgstr "PIN ändern"
 
-#: templates/settings.html:38
+#: templates/settings.html:39
 msgid "Current PIN"
 msgstr "Aktuelle PIN"
 
-#: templates/settings.html:41
+#: templates/settings.html:42
 msgid "New PIN"
 msgstr "Neue PIN"
 
-#: templates/settings.html:44
+#: templates/settings.html:45
 msgid "Confirm New PIN"
 msgstr "Neue PIN bestätigen"
 
-#: templates/settings.html:56
+#: templates/settings.html:57
 msgid "Login Token"
 msgstr "Anmelde-Token"
 
-#: templates/settings.html:57
-msgid ""
-"Re-deploy your login token. This will replace your current login token "
-"with a new one."
-msgstr "Anmelde-Token neu einrichten. Damit wird Dein aktueller Anmelde-Token durch einen neuen ersetzt."
-
 #: templates/settings.html:58
+msgid ""
+"Re-deploy your login token. This will replace your current login token with "
+"a new one."
+msgstr ""
+"Anmelde-Token neu einrichten. Damit wird Dein aktueller Anmelde-Token durch "
+"einen neuen ersetzt."
+
+#: templates/settings.html:59
 msgid "Re-deploy Login Token"
 msgstr "Anmelde-Token neu einrichten"
 
-#: templates/settings.html:63
+#. AI-generated
+#: templates/settings.html:64 templates/settings.html:67
+msgid "Language"
+msgstr "Sprache"
+
+#. AI-generated
+#: templates/settings.html:65
+msgid ""
+"Choose your preferred language. \"Browser default\" follows the language "
+"sent by your browser."
+msgstr ""
+"Wählen Sie Ihre bevorzugte Sprache. \"Browser-Standard\" folgt der von Ihrem"
+" Browser gesendeten Sprache."
+
+#. AI-generated
+#: templates/settings.html:69
+msgid "Browser default"
+msgstr "Browser-Standard"
+
+#. AI-generated
+#: templates/settings.html:74
+msgid "Save"
+msgstr "Speichern"
+
+#: templates/settings.html:82
 msgid "Device Tokens"
 msgstr "Geräte-Token"
 
-#: templates/settings.html:66
+#: templates/settings.html:85
 msgid "Device tokens are not available:"
 msgstr "Geräte-Token sind nicht verfügbar:"
 
-#: templates/settings.html:66
+#: templates/settings.html:85
 msgid "is not configured."
 msgstr "ist nicht konfiguriert."
 
-#: templates/settings.html:69
+#: templates/settings.html:88
 msgid "Device Name"
 msgstr "Gerätename"
 
-#: templates/settings.html:70
+#: templates/settings.html:89
 msgid "e.g. my-phone"
 msgstr "z.B. mein-handy"
 
-#: templates/settings.html:71
+#: templates/settings.html:90
 msgid "Add Device Token"
 msgstr "Geräte-Token hinzufügen"
 
-#: templates/settings.html:77
+#: templates/settings.html:96
 msgid "New password:"
 msgstr "Neues Passwort:"
 
-#: templates/settings.html:79
+#: templates/settings.html:98
 msgid "Copy"
 msgstr "Kopieren"
 
-#: templates/settings.html:81
+#: templates/settings.html:100
 msgid "This password is shown only once. Copy it now."
 msgstr "Dieses Passwort wird nur einmal angezeigt. Kopiere es jetzt."
 
-#: templates/settings.html:83
+#: templates/settings.html:102
 msgid "Existing Device Tokens"
 msgstr "Vorhandene Geräte-Token"
 
-#: templates/settings.html:89
+#: templates/settings.html:108
 msgid "Connected Applications"
 msgstr "Verbundene Anwendungen"
 
-#: templates/settings.html:91
+#: templates/settings.html:110
 msgid ""
-"Applications you have granted access to your account. Disconnecting "
-"removes the approval and terminates the application's active session."
-msgstr "Anwendungen, denen Du Zugriff auf Dein Konto gewährt hast. Beim Trennen wird die Zustimmung entfernt und die aktive Sitzung der Anwendung beendet."
-
+"Applications you have granted access to your account. Disconnecting removes "
+"the approval and terminates the application's active session."
+msgstr ""
+"Anwendungen, denen Du Zugriff auf Dein Konto gewährt hast. Beim Trennen wird"
+" die Zustimmung entfernt und die aktive Sitzung der Anwendung beendet."

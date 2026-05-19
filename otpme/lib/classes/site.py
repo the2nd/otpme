@@ -1588,19 +1588,25 @@ def register_config():
                                     default_value=3600,
                                     object_types=['site', 'unit', 'client'])
     # Authentication Context Class Reference (acr) scheme used in
-    # ID Tokens. Heuristic is the same regardless of scheme:
-    # hardware-backed (hwk/fido/sc) or explicit mfa marker => "2",
-    # any single non-empty factor => "1", nothing => "0".
-    #   numeric: "0" / "1" / "2"           (default; broadest RP support)
-    #   loa:     "loa0" / "loa1" / "loa2"  (govt / Behörden patterns)
-    #   none:    don't emit acr            (only amr is included)
+    # ID Tokens. Heuristic: hardware-backed (hwk/fido/sc) or explicit
+    # mfa marker => "2", any single non-empty factor => "1", nothing
+    # => "0". OIDC Core 1.0 §2 defines "0" normatively ("did not meet
+    # ISO/IEC 29115 LoA 1"); "1"/"2" are the widely understood
+    # ISO/IEC 29115 / NIST 800-63 conventions.
+    #   numeric: "0" / "1" / "2"   (default; broadest RP support)
+    #   none:    don't emit acr    (only amr is included)
     # AMR (Authentication Methods References, RFC 8176) is always
     # emitted when an auth_token is known -- there is no off-switch
     # for it because RPs that don't care simply ignore unknown claims.
+    # NOTE: REFEDS MFA (https://refeds.org/profile/mfa) is intentionally
+    # NOT offered: its profile requires that MFA happened for *this*
+    # authentication event, but we only do real MFA at portal-login
+    # and /authorize reuses the SSO session. Adding it would require
+    # honoring max_age/prompt=login first.
     config.register_config_parameter(name="oidc_acr_scheme",
                                     ctype=str,
                                     default_value="numeric",
-                                    valid_values=['numeric', 'loa', 'none'],
+                                    valid_values=['numeric', 'none'],
                                     object_types=['site', 'unit', 'client'])
     # Whether the OP shows an end-user consent screen at /authorize.
     # Default False matches the enterprise-SSO sweet spot: the admin

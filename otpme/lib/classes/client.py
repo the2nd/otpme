@@ -72,6 +72,8 @@ read_value_acls =    {
                                 "oidc_subject_type",
                                 "oidc_sector_identifier_uri",
                                 "oidc_backchannel_logout_uri",
+                                "oidc_backchannel_tls_verify",
+                                "oidc_backchannel_ca_cert",
                                 "oidc_grant_types",
                                 "oidc_response_types",
                                 ],
@@ -109,6 +111,7 @@ write_value_acls = {
                                 "auth_cache",
                                 "dot1x_auth",
                                 "oidc_auth",
+                                "oidc_backchannel_tls_verify",
                                 ],
                     "disable"   : [
                                 "sso",
@@ -116,6 +119,7 @@ write_value_acls = {
                                 "auth_cache",
                                 "dot1x_auth",
                                 "oidc_auth",
+                                "oidc_backchannel_tls_verify",
                                 ],
                     "edit"      : [
                                 "config",
@@ -130,6 +134,7 @@ write_value_acls = {
                                 "oidc_subject_type",
                                 "oidc_sector_identifier_uri",
                                 "oidc_backchannel_logout_uri",
+                                "oidc_backchannel_ca_cert",
                                 ],
                 }
 
@@ -564,6 +569,31 @@ commands = {
                     },
                 },
             },
+    'enable_oidc_backchannel_tls_verify'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_oidc_backchannel_tls_verify',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_oidc_backchannel_tls_verify'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_oidc_backchannel_tls_verify',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'oidc_backchannel_ca_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_oidc_backchannel_ca_cert',
+                    'oargs'             : ['ca_cert', 'clear'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_oidc_grant_type'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -979,6 +1009,7 @@ def register():
     register_commands("client", commands)
     # Register index attributes.
     config.register_index_attribute("address")
+    config.register_index_attribute("oidc_auth")
     config.register_index_attribute("sso_enabled")
     config.register_index_attribute("auth_cache_enabled")
     config.register_index_attribute("auth_cache_timeout")
@@ -1002,6 +1033,9 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "change_oidc_subject_type")
     config.register_auth_on_action_hook("client", "change_oidc_sector_identifier_uri")
     config.register_auth_on_action_hook("client", "change_oidc_backchannel_logout_uri")
+    config.register_auth_on_action_hook("client", "enable_oidc_backchannel_tls_verify")
+    config.register_auth_on_action_hook("client", "disable_oidc_backchannel_tls_verify")
+    config.register_auth_on_action_hook("client", "change_oidc_backchannel_ca_cert")
     config.register_auth_on_action_hook("client", "add_oidc_grant_type")
     config.register_auth_on_action_hook("client", "del_oidc_grant_type")
     config.register_auth_on_action_hook("client", "add_oidc_response_type")
@@ -1150,6 +1184,8 @@ class Client(OTPmeClientObject):
         self.oidc_subject_type = "public"
         self.oidc_sector_identifier_uri = None
         self.oidc_backchannel_logout_uri = None
+        self.oidc_backchannel_tls_verify = True
+        self.oidc_backchannel_ca_cert = None
 
         self._sync_fields = {
                     'node'  : {
@@ -1249,6 +1285,16 @@ class Client(OTPmeClientObject):
                                                     },
                         'OIDC_BACKCHANNEL_LOGOUT_URI' : {
                                                         'var_name'  : 'oidc_backchannel_logout_uri',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_BACKCHANNEL_TLS_VERIFY' : {
+                                                        'var_name'  : 'oidc_backchannel_tls_verify',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_BACKCHANNEL_CA_CERT'   : {
+                                                        'var_name'  : 'oidc_backchannel_ca_cert',
                                                         'type'      : str,
                                                         'required'  : False,
                                                     },
@@ -1843,6 +1889,112 @@ class Client(OTPmeClientObject):
             except Exception as e:
                 return callback.error()
         self.oidc_backchannel_logout_uri = new_value
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:oidc_backchannel_tls_verify'])
+    @object_lock()
+    @audit_log()
+    def enable_oidc_backchannel_tls_verify(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Enable TLS certificate verification for back-channel logout. """
+        if self.oidc_backchannel_tls_verify:
+            msg = _("Backchannel TLS verification already enabled.")
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_oidc_backchannel_tls_verify",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_backchannel_tls_verify = True
+        return self._write(callback=callback)
+
+    @check_acls(['disable:oidc_backchannel_tls_verify'])
+    @object_lock()
+    @audit_log()
+    def disable_oidc_backchannel_tls_verify(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable TLS certificate verification for back-channel logout.
+
+        Intended for lab/dev RPs with self-signed certs. In production,
+        prefer pinning the RP's CA via change_oidc_backchannel_ca_cert.
+        """
+        if not self.oidc_backchannel_tls_verify:
+            msg = _("Backchannel TLS verification already disabled.")
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_oidc_backchannel_tls_verify",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_backchannel_tls_verify = False
+        return self._write(callback=callback)
+
+    @object_lock()
+    @check_acls(['edit:oidc_backchannel_ca_cert'])
+    @audit_log()
+    def change_oidc_backchannel_ca_cert(
+        self,
+        ca_cert: str=None,
+        clear: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set or clear a PEM CA bundle used to verify the RP's TLS
+        cert on back-channel logout. When set, this CA bundle replaces
+        the system trust store for this client's backchannel POST --
+        use it to pin to an internal/private CA.
+
+        Has no effect when oidc_backchannel_tls_verify is disabled.
+        """
+        if clear:
+            new_value = None
+        else:
+            if not ca_cert:
+                msg = _("Either provide a CA cert (PEM) or use --clear.")
+                return callback.error(msg)
+            # Minimal sanity check -- full parsing happens at dispatch
+            # time. We just reject obviously-wrong input here.
+            if "-----BEGIN CERTIFICATE-----" not in ca_cert:
+                msg = _("CA cert must be PEM-encoded.")
+                return callback.error(msg)
+            new_value = ca_cert
+
+        if new_value == self.oidc_backchannel_ca_cert:
+            msg = _("Backchannel CA cert unchanged.")
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_oidc_backchannel_ca_cert",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_backchannel_ca_cert = new_value
         return self._cache(callback=callback)
 
     OIDC_GRANT_TYPES_WHITELIST = (
@@ -3074,6 +3226,21 @@ class Client(OTPmeClientObject):
         or self.verify_acl("edit:oidc_backchannel_logout_uri"):
             oidc_backchannel_logout_uri = self.oidc_backchannel_logout_uri or ""
         lines.append(f'OIDC_BACKCHANNEL_LOGOUT_URI="{oidc_backchannel_logout_uri}"')
+
+        oidc_backchannel_tls_verify = ""
+        if self.verify_acl("view:oidc_backchannel_tls_verify") \
+        or self.verify_acl("enable:oidc_backchannel_tls_verify") \
+        or self.verify_acl("disable:oidc_backchannel_tls_verify"):
+            oidc_backchannel_tls_verify = self.oidc_backchannel_tls_verify
+        lines.append(f'OIDC_BACKCHANNEL_TLS_VERIFY="{oidc_backchannel_tls_verify}"')
+
+        oidc_backchannel_ca_cert = ""
+        if self.verify_acl("view:oidc_backchannel_ca_cert") \
+        or self.verify_acl("edit:oidc_backchannel_ca_cert"):
+            # Render only a presence flag -- the PEM itself can be many
+            # KB and clutters the listing.
+            oidc_backchannel_ca_cert = "set" if self.oidc_backchannel_ca_cert else ""
+        lines.append(f'OIDC_BACKCHANNEL_CA_CERT="{oidc_backchannel_ca_cert}"')
 
         oidc_grant_types = ""
         if self.verify_acl("view:oidc_grant_types") \

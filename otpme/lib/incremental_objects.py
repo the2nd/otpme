@@ -114,17 +114,15 @@ class IncrementalDict(IncrementaObject):
                                     key, value))
 
     def __getitem__(self, key):
-        return self.get(key)
+        key = str(key)
+        return self.data[key]
 
     def get(self, key, default=None):
         key = str(key)
         try:
-            data = self.data[key]
+            return self.data[key]
         except KeyError:
-            if default is not None:
-                return default
-            raise
-        return data
+            return default
 
     def copy(self):
         dict_copy = {}

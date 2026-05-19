@@ -45,6 +45,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import config
 from otpme.lib.audit import emit_audit
 from otpme.lib.classes.session import Session
 from otpme.lib.protocols.oidc_helpers import compute_at_hash
@@ -108,7 +109,6 @@ def register():
       (rotate + invalidate chain on replay)
       https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
     """
-    from otpme.lib import config
     config.register_index_attribute('authcode_hash')
     config.register_index_attribute('access_token_hash')
     config.register_index_attribute('refresh_token_hash')
@@ -410,15 +410,35 @@ class OIDCSession(Session):
             return False
         return int(time.time()) < self.authcode_expires_at
 
-    def delete(self, **kwargs):
+    def delete(self, skip_backchannel: bool = False,
+               skip_backchannel_client: str = None, **kwargs):
         """ Override: fire backchannel logout to the RP before the
         session is actually removed. Failures here NEVER block the
         delete -- the OP must always be able to terminate.
+
+        ``skip_backchannel=True`` unconditionally suppresses the
+        notify; used by /end_session scope=rp where the calling RP
+        directly addresses one OIDCSession.
+
+        ``skip_backchannel_client`` is a client UUID; when it matches
+        ``self.client`` the notify is suppressed. Used by the
+        SLP-cascade variant of /end_session (scope=sso) where the
+        whole SSO tree is being torn down but the initiating RP
+        already knows.
+
+        In both cases the RP triggered the logout itself, so a
+        back-channel POST would just race with the RP's own cleanup
+        and typically produce HTTP 4xx noise.
 
         Spec: OIDC Back-Channel Logout 1.0 §2 "Back-Channel Logout"
           (OP-initiated POST to RP's backchannel_logout_uri)
           https://openid.net/specs/openid-connect-backchannel-1_0.html#BCLogout
         """
+        if skip_backchannel \
+                or (skip_backchannel_client
+                    and self.client == skip_backchannel_client):
+            return super().delete(skip_backchannel_client=skip_backchannel_client,
+                                  **kwargs)
         try:
             self._send_backchannel_logout()
         except Exception as e:
@@ -435,7 +455,8 @@ class OIDCSession(Session):
                 logger.warning(log_msg, exc_info=True)
             except Exception:
                 pass
-        return super().delete(**kwargs)
+        return super().delete(skip_backchannel_client=skip_backchannel_client,
+                              **kwargs)
 
     def _send_backchannel_logout(self):
         """ Fire-and-forget POST of a signed Logout Token to the RP's
@@ -498,13 +519,16 @@ class OIDCSession(Session):
         # about to be deleted, so we capture by value.
         client_name = client.name
         session_id = self.session_id
+        tls_verify = bool(getattr(client, 'oidc_backchannel_tls_verify', True))
+        ca_cert = getattr(client, 'oidc_backchannel_ca_cert', None) or None
 
         from otpme.lib import multiprocessing as _otpme_mp
         _otpme_mp.start_thread(
                 name=f"oidc-backchannel-logout-{session_id}",
                 target=_dispatch_backchannel_logout,
                 target_args=(uri, logout_token, logout_token_jti,
-                             client_name, session_id),
+                             client_name, session_id,
+                             tls_verify, ca_cert),
                 daemon=True)
 
     def _build_logout_token(self, client):
@@ -532,7 +556,7 @@ class OIDCSession(Session):
         from otpme.lib import backend
         from otpme.lib.encryption.jwk import find_active_key
 
-        site = backend.get_object(object_type="site", name=self.site)
+        site = backend.get_object(object_type="site", name=self.site, realm=config.realm)
         if site is None or not getattr(site, 'oidc_keys', None):
             return None, None
         try:
@@ -575,7 +599,8 @@ class OIDCSession(Session):
 
 
 def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
-                                  client_name, session_id):
+                                  client_name, session_id,
+                                  tls_verify=True, ca_cert=None):
     """ Worker run on a daemon thread: POSTs the prebuilt logout
     token and audit-logs the outcome. Bounded by the module-level
     semaphore so a mass-delete burst can't blow the fd table.
@@ -585,6 +610,11 @@ def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
     consumed, so an OP-side ``backchannel_logout_sent
     logout_token_jti=...`` line ties our send to the RP's receive.
 
+    ``tls_verify``/``ca_cert`` control TLS validation against the RP.
+    ``tls_verify=False`` produces an unverified context (lab/dev RPs
+    with self-signed certs). A PEM ``ca_cert`` pins the trust root
+    for this RP, replacing the system trust store.
+
     Spec: OIDC Back-Channel Logout 1.0 §2.5 "Back-Channel Logout
       Request" (HTTP POST, application/x-www-form-urlencoded,
       single ``logout_token`` parameter)
@@ -593,8 +623,16 @@ def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
       Response" (response body empty / ignored)
       https://openid.net/specs/openid-connect-backchannel-1_0.html#BCResponse
     """
+    import ssl
     from urllib.request import Request, urlopen
     from otpme.lib.classes.session import logger
+
+    if not tls_verify:
+        ssl_ctx = ssl._create_unverified_context()
+    elif ca_cert:
+        ssl_ctx = ssl.create_default_context(cadata=ca_cert)
+    else:
+        ssl_ctx = ssl.create_default_context()
 
     acquired = _backchannel_logout_slots.acquire(timeout=30)
     if not acquired:
@@ -615,7 +653,7 @@ def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
                       headers={"Content-Type":
                                "application/x-www-form-urlencoded"})
         try:
-            with urlopen(req, timeout=10) as resp:
+            with urlopen(req, timeout=10, context=ssl_ctx) as resp:
                 # Drain a bounded amount; spec response body is
                 # empty/ignored. Without a cap a misbehaving RP could
                 # stream forever and pin this worker.

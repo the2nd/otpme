@@ -667,6 +667,31 @@ cmd_help = {
                                 },
                 },
 
+    'enable_oidc_backchannel_tls_verify'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client enable_oidc_backchannel_tls_verify {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable TLS certificate verification for back-channel logout POSTs to the RP.'),
+                                },
+                },
+
+    'disable_oidc_backchannel_tls_verify'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client disable_oidc_backchannel_tls_verify {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable TLS certificate verification for back-channel logout. Use only for lab/dev RPs with self-signed certs; in production pin a CA via oidc_backchannel_ca_cert instead.'),
+                                },
+                },
+
+    'oidc_backchannel_ca_cert'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client oidc_backchannel_ca_cert [--clear] {client} {ca_cert_file}'),
+                    'cmd'   :   '--clear :clear=True: <|object|> [file:ca_cert]',
+                    '_help' :   {
+                                    'cmd'                   : _('Pin a PEM CA bundle (read from file) used to verify the RP TLS cert on back-channel logout (replaces the system trust store for this client).'),
+                                    '--clear'               : _('Remove the pinned CA bundle (falls back to system trust store).'),
+                                },
+                },
+
     'add_oidc_grant_type'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client add_oidc_grant_type {client} {grant_type}'),
                     'cmd'   :   '<|object|> <grant_type>',

@@ -64,6 +64,14 @@
                     openButton.textContent = 'Open';
                     openButton.classList.add('btn', 'btn-primary', 'btn-small');
                     openButton.addEventListener('click', () => {
+                        // OIDC RPs handle SSO themselves -- the browser
+                        // just needs to land on the RP, which then
+                        // redirects to /oidc/authorize; the SSO cookie
+                        // proves the user is already logged in.
+                        if (item.oidc) {
+                            window.open(item.login_url, '_blank');
+                            return;
+                        }
                         const url = sotpUrl + "?access_group=" + encodeURIComponent(item.app_ag);
                         fetch(url)
                             .then(async response => {
