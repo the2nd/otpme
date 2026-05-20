@@ -338,7 +338,7 @@ class OTPmeSsoP1(OTPmeServer1):
             user.del_token(token_name=DEPLOY_NAME,
                             force=True,
                             verify_acls=False,
-                            run_policies=False,
+                            run_policies=True,
                             add_to_trash=add_to_trash,
                             callback=callback)
         # Create sso-deploy token under the user.
@@ -350,7 +350,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             gen_qrcode=False,
                             force=True,
                             verify_acls=False,
-                            run_policies=False,
+                            run_policies=True,
                             callback=callback)
         except Exception as e:
             log_msg = _("SSO deploy failed for user '{user_name}': {e}", log=True)[1]
@@ -1099,7 +1099,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                     gen_qrcode=False,
                                     verify_acls=False,
                                     enable_mschap=True,
-                                    run_policies=False,
+                                    run_policies=True,
                                     callback=callback)
         token = user.token(token_name)
         if not token:
@@ -1171,7 +1171,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 user.del_token(token_name=token.name,
                                 force=True,
                                 verify_acls=False,
-                                run_policies=False,
+                                run_policies=True,
                                 add_to_trash=add_to_trash,
                                 callback=callback)
             except Exception:
@@ -1208,7 +1208,7 @@ class OTPmeSsoP1(OTPmeServer1):
             user.del_token(token_name=token_name,
                             force=True,
                             verify_acls=False,
-                            run_policies=False,
+                            run_policies=True,
                             add_to_trash=add_to_trash,
                             callback=callback)
         except Exception as e:
@@ -1315,7 +1315,7 @@ class OTPmeSsoP1(OTPmeServer1):
                         no_token_infos=True,
                         force=True,
                         verify_acls=False,
-                        run_policies=False,
+                        run_policies=True,
                         callback=callback)
             user._write(callback=callback)
             # Load the role (by UUID returned from remote) for the local
@@ -1367,7 +1367,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     user.del_token(token_name=token_name,
                                     force=True,
                                     verify_acls=False,
-                                    run_policies=False,
+                                    run_policies=True,
                                     add_to_trash=add_to_trash,
                                     callback=callback)
             except Exception:
@@ -1433,7 +1433,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 user.del_token(token_name=token_name,
                                 force=True,
                                 verify_acls=False,
-                                run_policies=False,
+                                run_policies=True,
                                 add_to_trash=add_to_trash,
                                 callback=callback)
             except Exception as e:
@@ -3401,6 +3401,7 @@ class OTPmeSsoP1(OTPmeServer1):
         registry = registry_cls(
             iss={"essential": True, "value": issuer},
             aud={"essential": True},
+            sub={"essential": True},
             sid={"essential": True},
         )
         try:

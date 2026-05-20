@@ -3223,20 +3223,22 @@ class ClusterDaemon(OTPmeDaemon):
 
         q = multiprocessing.MessageQueue(queue_name, identifier="")
 
+        send_failed = False
         while True:
             if config.daemon_shutdown:
                 break
 
             # Receive journal entry ID from coordinator.
-            try:
-                journal_id = q.recv(timeout=1)
-            except TimeoutReached:
-                continue
-            except Exception as e:
-                log_msg = _("Session worker {idx}: queue error: {error}", log=True)[1]
-                log_msg = log_msg.format(idx=worker_idx, error=e)
-                self.logger.warning(log_msg)
-                continue
+            if not send_failed:
+                try:
+                    journal_id = q.recv(timeout=1)
+                except TimeoutReached:
+                    continue
+                except Exception as e:
+                    log_msg = _("Session worker {idx}: queue error: {error}", log=True)[1]
+                    log_msg = log_msg.format(idx=worker_idx, error=e)
+                    self.logger.warning(log_msg)
+                    continue
 
             # Ensure we have a connection.
             if self.node_conn is None:
@@ -3245,16 +3247,16 @@ class ClusterDaemon(OTPmeDaemon):
                     time.sleep(0.1)
                     continue
 
-            # Process the single journal entry.
-            cluster_journal_entry = ClusterJournalEntry(
-                journal_id=journal_id,
-                journal_dir=SESSIONS_JOURNAL_DIR)
+            # Get the single journal entry.
+            cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                        journal_dir=SESSIONS_JOURNAL_DIR)
             try:
                 if not cluster_journal_entry.committed:
                     continue
                 cluster_journal_entry.lock(write=False)
             except ObjectDeleted:
                 continue
+            # Check if cluster entry was already processed.
             try:
                 if node_name in cluster_journal_entry.get_nodes():
                     if self.check_member_nodes(cluster_journal_entry):
@@ -3262,6 +3264,7 @@ class ClusterDaemon(OTPmeDaemon):
                     continue
             finally:
                 cluster_journal_entry.release()
+            # Try to process cluster journal entry.
             try:
                 self.process_cluster_out_journal(node_name, [cluster_journal_entry])
             except ProcessingFailed as e:
@@ -3269,11 +3272,15 @@ class ClusterDaemon(OTPmeDaemon):
                 log_msg = log_msg.format(idx=worker_idx, error=e)
                 self.logger.warning(log_msg)
                 self.node_conn = None
+                send_failed = True
             except Exception as e:
                 log_msg = _("Session worker {idx}: error: {error}", log=True)[1]
                 log_msg = log_msg.format(idx=worker_idx, error=e)
                 self.logger.critical(log_msg)
                 self.node_conn = None
+                send_failed = True
+            else:
+                send_failed = False
 
         os._exit(0)
 
@@ -3351,7 +3358,7 @@ class ClusterDaemon(OTPmeDaemon):
                 start_over = True
                 log_msg = _("Failed to handle cluster last used journal: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
-                self.logger.critical(log_msg)
+                self.logger.warning(log_msg)
                 #config.raise_exception()
 
     def get_journal_entries_to_process(self, node_name, sessions=False):

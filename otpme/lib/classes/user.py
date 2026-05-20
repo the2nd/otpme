@@ -25,6 +25,7 @@ from otpme.lib import trash
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import otpme_acl
 from otpme.lib.encryption import aes
 from otpme.lib import sign_key_cache
 from otpme.lib.audit import audit_log
@@ -4616,6 +4617,27 @@ class User(OTPmeObject):
                 new_token.add_acl(raw_acl=x,
                                 verify_acls=False,
                                 callback=callback)
+            # Remove orphan ACLs.
+            for x in list(new_token.acls):
+                try:
+                    _acl = otpme_acl.decode(x)
+                except Exception as e:
+                    msg, log_msg = _("Error decoding raw ACL: {raw_acl}: {exception}", log=True)
+                    msg = msg.format(raw_acl=x, exception=e)
+                    log_msg = log_msg.format(raw_acl=x, exception=e)
+                    logger.critical(log_msg)
+                    callback.error(msg)
+                    continue
+                owner_oid = backend.get_oid(uuid=_acl.owner_uuid)
+                if owner_oid:
+                    continue
+                msg = _("Removing orphan ACL: {acl}")
+                msg = msg.format(acl=x)
+                callback.send(msg)
+                new_token.del_acl(raw_acl=x,
+                                verify_acls=False,
+                                callback=callback)
+
             new_token.acl_inheritance_enabled = cur_token.acl_inheritance_enabled
             if new_token.allow_offline is not None:
                 new_token.allow_offline = cur_token.allow_offline
@@ -5893,11 +5915,11 @@ class User(OTPmeObject):
         mysite = backend.get_object(object_type="site", uuid=config.site_uuid)
         acl = f"token:{admin_token.uuid}:all"
         mysite.add_acl(acl=acl,
-                        recursive_acls=False,
-                        apply_default_acls=False,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
+                    recursive_acls=False,
+                    apply_default_acls=False,
+                    verify_acls=False,
+                    verbose_level=1,
+                    callback=callback)
 
         return self._write(callback=callback)
 

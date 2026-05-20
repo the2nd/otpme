@@ -3873,12 +3873,11 @@ def index_add(object_id, object_paths=None, object_config=None,
             object_acls = object_config['ACLS']
         except KeyError:
             object_acls = []
-            full_acl_update = False
 
     # Add/del ACLs of existing object (update index).
     acls = []
     clear_acl_cache = False
-    if full_acl_update and object_acls:
+    if full_acl_update:
         clear_acl_cache = True
         if index_object:
             existing_acls = session.query(IndexObjectACL.value)
@@ -3924,7 +3923,7 @@ def index_add(object_id, object_paths=None, object_config=None,
         #if autocommit:
         #    session.commit()
 
-    if use_acl_journal and acl_journal:
+    elif use_acl_journal and acl_journal:
         # Get existing attributes.
         deleted_acls = []
         existing_acls = []

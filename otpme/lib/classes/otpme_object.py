@@ -6913,6 +6913,12 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
             owner_type = _acl.owner_type
             owner_uuid = _acl.owner_uuid
+            if action == "add":
+                owner_oid = backend.get_oid(uuid=owner_uuid)
+                if not owner_oid:
+                    msg = _("Cannot add ACL for unknown owner: {owner_uuid}: {acl}")
+                    msg = msg.format(owner_uuid=owner_uuid, acl=raw_acl)
+                    return callback.error(msg)
         # Try to get object type and UUID from ACL.
         elif not owner_type and not owner_uuid:
             try:
@@ -9126,14 +9132,16 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(acl=i)
                 callback.send(msg)
             object_changed = True
-            self.acls.remove(i)
+            self.del_acl(raw_acl=i,
+                        verify_acls=False,
+                        callback=callback)
 
-        msg = None
         if not object_changed:
             if verbose_level > 0:
                 msg = _("No orphan ACLs found for {object_type}: {object_name}")
                 msg = msg.format(object_type=self.type, object_name=self.name)
-            return callback.ok(msg)
+                return callback.ok(msg)
+            return callback.ok()
 
         return self._cache(callback=callback)
 
@@ -9176,12 +9184,12 @@ class OTPmeObject(OTPmeBaseObject):
             # Update index.
             self.del_index('policy', i)
 
-        msg = None
         if not object_changed:
             if verbose_level > 0:
                 msg = _("No orphan policies found for {object_type}: {object_name}")
                 msg = msg.format(object_type=self.type, object_name=self.name)
-            return callback.ok(msg)
+                return callback.ok(msg)
+            return callback.ok()
 
         return self._cache(callback=callback)
 
@@ -9229,17 +9237,18 @@ class OTPmeObject(OTPmeBaseObject):
             self.del_index('signature', i)
 
         if not object_changed:
-            msg = None
             if verbose_level > 0:
                 msg = _("No orphan objects found for {object_type}: {object_name}")
                 msg = msg.format(object_type=self.type, object_name=self.name)
-            return callback.ok(msg)
+                return callback.ok(msg)
+            return callback.ok()
 
         return self._cache(callback=callback)
 
     @object_lock()
     def remove_orphans(
         self,
+        _caller: str="API",
         force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -9259,7 +9268,9 @@ class OTPmeObject(OTPmeBaseObject):
         status = self.remove_orphan_signatures(force=force, callback=callback, **kwargs)
         if return_status:
             return_status = status
-        return return_status
+        if _caller == "API":
+            return return_status
+        return callback.ok()
 
     @audit_log()
     def set_config_param(
