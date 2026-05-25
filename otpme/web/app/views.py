@@ -915,9 +915,10 @@ def _do_sso_logout(response, skip_backchannel_client=None):
 
 @app.route('/logout')
 def logout():
+    next_url = _safe_next_url(request.args.get('next'))
     if not g.user:
-        return redirect(url_for('login', _external=True, _scheme='https'))
-    resp = make_response(redirect(url_for('login', _external=True, _scheme='https')))
+        return redirect(url_for('login', next=next_url, _external=True, _scheme='https'))
+    resp = make_response(redirect(url_for('login', next=next_url, _external=True, _scheme='https')))
     return _do_sso_logout(resp)
 
 @app.route('/get_apps')

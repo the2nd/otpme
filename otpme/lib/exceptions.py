@@ -85,6 +85,9 @@ class UnknownLoginSession(OTPmeException):
 class UnknownObjectType(OTPmeException):
     pass
 
+class UnknownAccessgroup(OTPmeException):
+    pass
+
 class AlreadyLoggedIn(OTPmeException):
     pass
 

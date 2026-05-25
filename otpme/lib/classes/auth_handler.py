@@ -1947,15 +1947,6 @@ class AuthHandler(object):
         log_msg = log_msg.format(max_sessions=self.auth_group.max_sessions)
         self.logger.debug(log_msg)
 
-        # If relogin_timeout is not set, we cannot free a slot.
-        if self.auth_group.relogin_timeout <= 0:
-            log_msg = _("Max sessions reached for this accessgroup and no relogin allowed.", log=True)[1]
-            self.logger.debug(log_msg)
-            self.auth_failed = True
-            self.auth_message = "AUTH_FAILED_MAX_SESSIONS"
-            self.count_fails = False
-            return
-
         log_msg = _("Checking for sessions older than relogin timeout: {relogin_timeout}", log=True)[1]
         log_msg = log_msg.format(relogin_timeout=self.auth_group.relogin_timeout)
         self.logger.debug(log_msg)
@@ -2889,7 +2880,7 @@ class AuthHandler(object):
         # remove other sessions.
         if not self.auth_failed:
             if self.auth_group.max_sessions > 0:
-                if self.create_sessions:
+                if self.create_sessions or self.oidc_context:
                     if not self.realm_logout:
                         self.check_max_sessions()
 

@@ -319,6 +319,39 @@ def discovery():
 # ---------------------------------------------------------------------------
 
 
+@oidc_bp.route('/avatar/<path:user_uuid>', methods=['GET'])
+def avatar(user_uuid):
+    """ Public avatar endpoint -- serves user.photo as image/jpeg.
+
+    Used by RPs that follow the ``picture`` claim as a downloadable
+    URL (e.g. Nextcloud user_oidc) rather than consuming a data: URI
+    inline. The user UUID is the obscurity guard; UUIDs aren't
+    enumerable and the URL is only minted into tokens that already
+    identify the holder.
+
+    Accepts the UUID with or without ``.jpg`` suffix (helps caches /
+    browsers infer the file type).
+    """
+    import base64
+    if user_uuid.endswith('.jpg'):
+        user_uuid = user_uuid[:-4]
+    status, response = _send_oidc_command('oidc_avatar',
+                                          {'user_uuid': user_uuid})
+    if status is None or not status:
+        return make_response('', 404)
+    photo_b64 = (response or {}).get('photo')
+    if not photo_b64:
+        return make_response('', 404)
+    try:
+        photo_bytes = base64.b64decode(photo_b64)
+    except Exception:
+        return make_response('', 404)
+    resp = make_response(photo_bytes, 200)
+    resp.headers['Content-Type'] = 'image/jpeg'
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+
 @oidc_bp.route('/jwks', methods=['GET', 'OPTIONS'])
 def jwks():
     """ Public signing keys (active + retired). ssod strips private
@@ -658,15 +691,22 @@ def end_session():
     post_logout_redirect_uri = request.values.get('post_logout_redirect_uri')
     state = request.values.get('state')
 
+    # OIDC RP-Initiated Logout 1.0 §2: id_token_hint is RECOMMENDED,
+    # not REQUIRED. Without it, fall back to the browser-session user
+    # (always SSO-scope logout, since RP-scope needs the hint's sid).
+    hintless_username = None
     if not id_token_hint:
-        return _oidc_error('invalid_request',
-                           'id_token_hint missing',
-                           http_status=400)
+        hintless_username = flask_session.get('otpme_username')
+        if not hintless_username:
+            return _oidc_error('invalid_request',
+                               'id_token_hint missing and no active session',
+                               http_status=400)
 
     args = {
         'id_token_hint':            id_token_hint,
         'client_id':                client_id_q,
         'post_logout_redirect_uri': post_logout_redirect_uri,
+        'username':                 hintless_username,
     }
     status, response = _send_oidc_command('oidc_end_session', args)
     if status is None:
@@ -958,9 +998,9 @@ def authorize():
             err = v_response.get('error', 'invalid_request')
             desc = v_response.get('error_description', '')
             can_redirect = v_response.get('can_redirect', False)
-            # JWT trouble -> back to login (treat like missing SSO).
+            # JWT trouble -> try to logout user which redirects to login.
             if v_response.get('message') == 'JWT_INVALID':
-                return redirect(url_for('login',
+                return redirect(url_for('logout',
                                         next=request.full_path,
                                         _external=True, _scheme='https'))
             if can_redirect and redirect_uri:

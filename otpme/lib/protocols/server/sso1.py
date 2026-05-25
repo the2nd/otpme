@@ -84,6 +84,8 @@ def get_apps(token):
     for client in result:
         if not client.enabled:
             continue
+        if not client.login_url:
+            continue
         if not client.access_group_uuid:
             continue
         client_ag = backend.get_object(uuid=client.access_group_uuid)
@@ -148,6 +150,15 @@ class OTPmeSsoP1(OTPmeServer1):
         callback = config.get_callback()
         callback.job.client = self.client
         return callback
+
+    def gen_sotp(self, user, ag_uuid, session_hash):
+        user_ags = user.get_access_groups(return_type="uuid")
+        if ag_uuid not in user_ags:
+            msg = _("Unknown accessgroup")
+            raise UnknownAccessgroup(msg)
+        sotp_data = sotp.gen(password_hash=session_hash,
+                             access_group=ag_uuid)
+        return sotp_data
 
     def ssod_redirect_command(self, command, user, command_args, mgmt=False):
         try:
@@ -295,8 +306,18 @@ class OTPmeSsoP1(OTPmeServer1):
                 'message': 'UNKNOWN_AG', 'status': False,
             })
         ag_uuid = result[0]
-        sotp_data = sotp.gen(password_hash=session.pass_hash,
-                         access_group=ag_uuid)
+        try:
+            sotp_data = self.gen_sotp(user, ag_uuid, session.pass_hash)
+        except UnknownAccessgroup:
+            emit_audit("SSO", "sotp_failed",
+                       level='warning',
+                       user=user.name,
+                       ag=access_group,
+                       reason='no_ag_permissions',
+                       ip=client_ip)
+            return self.build_response(False, {
+                'message': 'UNKNOWN_AG', 'status': False,
+            })
         emit_audit("SSO", "sotp_issued",
                    user=user.name,
                    ag=access_group,
@@ -1729,6 +1750,22 @@ class OTPmeSsoP1(OTPmeServer1):
             elif given and sn:
                 claims['name'] = f"{given} {sn}"
             claims['preferred_username'] = user.name
+            # ``picture`` per OIDC Core 1.0 §5.4 (part of profile scope).
+            # We point at the public /oidc/avatar/<uuid>.jpg endpoint
+            # (served by oidc_avatar) instead of inlining the photo as
+            # a data: URI. Inline data: URIs blow past gunicorn's
+            # request-line limit when the ID Token is round-tripped
+            # via ``/end_session?id_token_hint=...`` and bloat
+            # cookies. The endpoint is public, with the user UUID as
+            # the obscurity guard.
+            if getattr(user, 'photo', None):
+                site = backend.get_object(object_type="site",
+                                          uuid=config.site_uuid)
+                if site is not None and getattr(site, 'sso_fqdn', None):
+                    claims['picture'] = (
+                        f"https://{site.sso_fqdn}"
+                        f"/oidc/avatar/{user.uuid}.jpg"
+                    )
         if "email" in scopes:
             mail_attr = "mail"
             try:
@@ -2449,15 +2486,29 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(True, {'active': False})
 
         # Cross-client introspection defense: a token must be
-        # introspected by the client it was issued to.
+        # introspected either by the client it was issued to, or by
+        # a peer client in the same accessgroup. The same-AG path
+        # covers the resource-server pattern (IMAP/POP/SMTP servers
+        # validating tokens issued to mail clients) without forcing
+        # callers to share a client_id.
         if oidc_session.client != client.uuid:
-            emit_audit("OIDC", 'introspect_cross_client',
-                            level='warning',
+            same_ag = (client.access_group_uuid
+                       and oidc_session.access_group_uuid
+                       and client.access_group_uuid == oidc_session.access_group_uuid)
+            if not same_ag:
+                emit_audit("OIDC", 'introspect_cross_client',
+                                level='warning',
+                                client=client_id,
+                                session=oidc_session.session_id,
+                                token_kind=token_kind,
+                                ip=client_ip)
+                return self.build_response(True, {'active': False})
+            emit_audit("OIDC", 'introspect_same_ag',
                             client=client_id,
                             session=oidc_session.session_id,
                             token_kind=token_kind,
+                            access_group=client.access_group,
                             ip=client_ip)
-            return self.build_response(True, {'active': False})
 
         user = backend.get_object(object_type="user",
                                   uuid=oidc_session.user_uuid)
@@ -2662,42 +2713,54 @@ class OTPmeSsoP1(OTPmeServer1):
         client_id = command_args.get("client_id")
         post_logout_redirect_uri = command_args.get("post_logout_redirect_uri")
         client_ip = command_args.get("client_ip")
+        hintless_username = command_args.get("username")
 
         log_msg = _("OIDC end_session from {ip} for client '{cid}'.", log=True)[1]
         log_msg = log_msg.format(ip=client_ip or "?", cid=client_id or "?")
         self.logger.info(log_msg)
 
+        # Hintless path: per OIDC RP-Initiated Logout 1.0 §2,
+        # id_token_hint is RECOMMENDED, not REQUIRED. If the web layer
+        # identified the user via the browser session, fall back to
+        # SSO-scope logout (RP-scope needs the hint's sid).
+        sid = None
+        hint_aud = None
         if not id_token_hint:
-            emit_audit("OIDC", 'end_session_failed',
-                            level='warning',
-                            client=client_id,
-                            error='invalid_request',
-                            reason='id_token_hint missing',
+            if not hintless_username:
+                emit_audit("OIDC", 'end_session_failed',
+                                level='warning',
+                                client=client_id,
+                                error='invalid_request',
+                                reason='id_token_hint missing',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'error': 'invalid_request',
+                    'error_description': 'id_token_hint missing',
+                })
+            emit_audit("OIDC", 'end_session_no_hint',
+                            client=client_id or '?',
+                            username=hintless_username,
                             ip=client_ip)
-            return self.build_response(False, {
-                'error': 'invalid_request',
-                'error_description': 'id_token_hint missing',
-            })
+        else:
+            try:
+                sid, hint_aud = self._parse_id_token_hint(id_token_hint,
+                                                         allow_expired=True)
+            except Exception as e:
+                log_msg = _("OIDC end_session: id_token_hint invalid: {err}", log=True)[1]
+                log_msg = log_msg.format(err=e)
+                self.logger.warning(log_msg)
+                emit_audit("OIDC", 'end_session_failed',
+                                level='warning',
+                                client=client_id,
+                                error='invalid_request',
+                                reason=f'id_token_hint invalid: {e}',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'error': 'invalid_request',
+                    'error_description': 'id_token_hint invalid',
+                })
 
-        try:
-            sid, hint_aud = self._parse_id_token_hint(id_token_hint,
-                                                     allow_expired=True)
-        except Exception as e:
-            log_msg = _("OIDC end_session: id_token_hint invalid: {err}", log=True)[1]
-            log_msg = log_msg.format(err=e)
-            self.logger.warning(log_msg)
-            emit_audit("OIDC", 'end_session_failed',
-                            level='warning',
-                            client=client_id,
-                            error='invalid_request',
-                            reason=f'id_token_hint invalid: {e}',
-                            ip=client_ip)
-            return self.build_response(False, {
-                'error': 'invalid_request',
-                'error_description': 'id_token_hint invalid',
-            })
-
-        if client_id and client_id != hint_aud:
+        if client_id and hint_aud and client_id != hint_aud:
             log_msg = _("OIDC end_session: client_id mismatch with id_token_hint aud (got '{cid}', hint='{aud}').", log=True)[1]
             log_msg = log_msg.format(cid=client_id, aud=hint_aud)
             self.logger.warning(log_msg)
@@ -2713,6 +2776,19 @@ class OTPmeSsoP1(OTPmeServer1):
                 'error_description': 'client_id does not match id_token_hint',
             })
         client_id = client_id or hint_aud
+
+        # Hintless + no client_id query param: we can't validate the
+        # post_logout_redirect_uri without a client. Defer to /logout
+        # (SSO-scope) and let the web layer show the generic
+        # logged-out page.
+        if client_id is None:
+            emit_audit("OIDC", 'end_session_sso_deferred_no_client',
+                            username=hintless_username,
+                            ip=client_ip)
+            return self.build_response(True, {
+                'scope': 'sso',
+                'action': 'redirect_logout',
+            })
 
         client = backend.get_object(object_type="client",
                                     name=client_id,
@@ -2754,6 +2830,10 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             scope_mode = None
         if scope_mode not in ("sso", "rp"):
+            scope_mode = "sso"
+        # RP-scope needs the hint's sid to identify the specific
+        # OIDCSession to terminate. Without a hint, force SSO-scope.
+        if sid is None and scope_mode == "rp":
             scope_mode = "sso"
 
         response = {'scope': scope_mode}
@@ -3136,9 +3216,17 @@ class OTPmeSsoP1(OTPmeServer1):
             return _err('server_error', f"unknown access_group '{client_ag}'",
                         can_redirect=False)
         ag_uuid = ag_search[0]
-        sotp_data = sotp.gen(password_hash=session.pass_hash,
-                             access_group=ag_uuid)
-
+        try:
+            sotp_data = self.gen_sotp(user, ag_uuid, session.pass_hash)
+        except UnknownAccessgroup:
+            emit_audit("SSO", "oidc_authorize_validate_failed",
+                       level='warning',
+                       user=user.name,
+                       ag=client_ag,
+                       reason='no_ag_permissions',
+                       ip=client_ip)
+            return _err('server_error', f"unknown access_group '{client_ag}'",
+                        can_redirect=False)
         emit_audit("SSO", "sotp_issued",
                    user=user.name,
                    ag=client_ag,
@@ -3272,6 +3360,7 @@ class OTPmeSsoP1(OTPmeServer1):
             "claims_supported": [
                 "sub", "iss", "aud", "iat", "exp", "jti", "sid",
                 "name", "given_name", "family_name", "preferred_username",
+                "picture",
                 "email", "phone_number",
                 "address",
                 "groups",
@@ -3318,6 +3407,32 @@ class OTPmeSsoP1(OTPmeServer1):
         keys = list(site.get_oidc_keys().values())
 
         return self.build_response(True, render_jwks(keys))
+
+    def oidc_avatar(self, command_args):
+        """ Serve a user's avatar (jpegPhoto) as base64 JPEG.
+
+        Public, unauthenticated endpoint -- the user UUID in the URL
+        is the obscurity guard (UUIDs aren't enumerable and the
+        ``picture`` claim is only minted into tokens that already
+        identify the user). Used by RPs (e.g. Nextcloud user_oidc)
+        that follow ``claims.picture`` as a downloadable URL instead
+        of consuming a data: URI inline.
+
+        Returns ``{'photo': '<base64 jpeg>'}`` on success, 404-ish
+        error otherwise. The web layer decodes and serves with
+        Content-Type: image/jpeg.
+        """
+        user_uuid = command_args.get("user_uuid")
+        if not user_uuid:
+            return self.build_response(False, {
+                'error': 'not_found',
+            })
+        user = backend.get_object(object_type="user", uuid=user_uuid)
+        if user is None or not getattr(user, 'photo', None):
+            return self.build_response(False, {
+                'error': 'not_found',
+            })
+        return self.build_response(True, {'photo': user.photo})
 
     def _parse_id_token_hint(self, id_token_hint: str,
             allow_expired: bool = False):
@@ -3479,6 +3594,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_end_session",
                             "oidc_discovery",
                             "oidc_jwks",
+                            "oidc_avatar",
                             "oidc_authorize_validate",
                             "list_oidc_consents",
                             "revoke_oidc_consent",
@@ -3490,7 +3606,8 @@ class OTPmeSsoP1(OTPmeServer1):
         oidc_commands = ("oidc_token", "oidc_userinfo",
                          "oidc_introspect", "oidc_revoke",
                          "oidc_end_session",
-                         "oidc_discovery", "oidc_jwks")
+                         "oidc_discovery", "oidc_jwks",
+                         "oidc_avatar")
 
         # Check if we got a valid command.
         if not command in valid_commands:
@@ -3525,6 +3642,8 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.oidc_discovery(command_args)
             if command == "oidc_jwks":
                 return self.oidc_jwks(command_args)
+            if command == "oidc_avatar":
+                return self.oidc_avatar(command_args)
 
         # Try to get username.
         try:

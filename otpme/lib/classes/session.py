@@ -1191,8 +1191,15 @@ class Session(OTPmeLockObject):
                                 code_challenge_method=code_challenge_method)
         authcode = secrets.token_urlsafe(32)
         oidc_session.set_authcode(authcode, expires_in=ttl)
+        # Pass on timeouts.
+        timeout = None
+        unused_timeout = None
+        session_ag = backend.get_object(uuid=self.access_group_uuid)
+        if session_ag and session_ag.timeout_pass_on:
+            timeout = session_ag.session_timeout
+            unused_timeout = session_ag.unused_session_timeout
         # add() ends in write_config() so no separate write needed.
-        oidc_session.add()
+        oidc_session.add(timeout=timeout, unused_timeout=unused_timeout)
         self.add_child_session(oidc_session.uuid)
         emit_audit("OIDC", "session_attached",
                    parent_session=self.session_id,
@@ -1322,27 +1329,37 @@ class Session(OTPmeLockObject):
         return True
 
     @object_lock()
-    def add(self, offline_data_key: Union[str,None]=None):
+    def add(
+        self,
+        timeout: int=None,
+        unused_timeout: int=None,
+        offline_data_key: Union[str,None]=None
+        ):
         """ Add a session. """
         # Set session creation time.
         self.creation_time = time.time()
         self.offline_data_key = offline_data_key
 
-        # Get accessgroup instance to get timeout values from.
-        ag = backend.get_object(object_type="accessgroup",
-                            name=self.access_group,
-                            realm=self.realm,
-                            site=self.site)
-        # FIXME: search accessgroup via backend.search!?
-        #        what to do if accessgroup does not exist?
-        # Get time values from accessgroup.
-        if not ag:
-            msg = _("Unknown accessgroup: {access_group}")
-            msg = msg.format(access_group=self.access_group)
-            raise OTPmeException(msg)
-        # Set timeouts from accessgroup
-        self.timeout = ag.session_timeout
-        self.unused_timeout = ag.unused_session_timeout
+        if not timeout and not unused_timeout:
+            # Get accessgroup instance to get timeout values from.
+            ag = backend.get_object(object_type="accessgroup",
+                                name=self.access_group,
+                                realm=self.realm,
+                                site=self.site)
+            # FIXME: search accessgroup via backend.search!?
+            #        what to do if accessgroup does not exist?
+            # Get time values from accessgroup.
+            if not ag:
+                msg = _("Unknown accessgroup: {access_group}")
+                msg = msg.format(access_group=self.access_group)
+                raise OTPmeException(msg)
+            # Set timeouts from accessgroup
+            self.timeout = ag.session_timeout
+            self.unused_timeout = ag.unused_session_timeout
+        if timeout:
+            self.timeout = timeout
+        if unused_timeout:
+            self.unused_timeout = unused_timeout
 
         self.add_index('creation_time', self.creation_time)
         self.add_index("session_id", self.session_id)

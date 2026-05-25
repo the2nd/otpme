@@ -1413,6 +1413,10 @@ def register_config():
             msg = msg.format(role=role)
             raise ValueError(msg)
         role = result[0]
+        if not role.verify_acl("add:token"):
+            msg = _("You dont have permissions to add tokens to this role: {role}")
+            msg = msg.format(role=role.oid)
+            raise PermissionDenied(msg)
         return role.uuid
     def sso_role_getter(uuid, callback=JobCallback, **kwargs):
         result = backend.search(object_type='role',
