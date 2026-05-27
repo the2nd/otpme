@@ -667,6 +667,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_oidc_force_backchannel_logout'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client enable_oidc_force_backchannel_logout {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Force back-channel logout POSTs to the RP.'),
+                                },
+                },
+
+    'disable_oidc_force_backchannel_logout'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client disable_oidc_force_backchannel_logout {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable forced back-channel logout.'),
+                                },
+                },
+
     'enable_oidc_backchannel_tls_verify'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client enable_oidc_backchannel_tls_verify {client}'),
                     'cmd'   :   '<|object|>',

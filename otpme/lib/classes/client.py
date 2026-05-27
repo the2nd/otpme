@@ -73,6 +73,7 @@ read_value_acls =    {
                                 "oidc_sector_identifier_uri",
                                 "oidc_backchannel_logout_uri",
                                 "oidc_backchannel_tls_verify",
+                                "oidc_force_backchannel_logout",
                                 "oidc_backchannel_ca_cert",
                                 "oidc_grant_types",
                                 "oidc_response_types",
@@ -112,6 +113,7 @@ write_value_acls = {
                                 "dot1x_auth",
                                 "oidc_auth",
                                 "oidc_backchannel_tls_verify",
+                                "oidc_force_backchannel_logout",
                                 ],
                     "disable"   : [
                                 "sso",
@@ -120,6 +122,7 @@ write_value_acls = {
                                 "dot1x_auth",
                                 "oidc_auth",
                                 "oidc_backchannel_tls_verify",
+                                "oidc_force_backchannel_logout",
                                 ],
                     "edit"      : [
                                 "config",
@@ -264,6 +267,22 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_dot1x',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_oidc_force_backchannel_logout'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_oidc_force_backchannel_logout',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_oidc_force_backchannel_logout'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_oidc_force_backchannel_logout',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1033,6 +1052,8 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "change_oidc_subject_type")
     config.register_auth_on_action_hook("client", "change_oidc_sector_identifier_uri")
     config.register_auth_on_action_hook("client", "change_oidc_backchannel_logout_uri")
+    config.register_auth_on_action_hook("client", "enable_oidc_force_backchannel_logout")
+    config.register_auth_on_action_hook("client", "disable_oidc_force_backchannel_logout")
     config.register_auth_on_action_hook("client", "enable_oidc_backchannel_tls_verify")
     config.register_auth_on_action_hook("client", "disable_oidc_backchannel_tls_verify")
     config.register_auth_on_action_hook("client", "change_oidc_backchannel_ca_cert")
@@ -1186,6 +1207,7 @@ class Client(OTPmeClientObject):
         self.oidc_backchannel_logout_uri = None
         self.oidc_backchannel_tls_verify = True
         self.oidc_backchannel_ca_cert = None
+        self.oidc_force_backchannel_logout = False
 
         self._sync_fields = {
                     'node'  : {
@@ -1286,6 +1308,11 @@ class Client(OTPmeClientObject):
                         'OIDC_BACKCHANNEL_LOGOUT_URI' : {
                                                         'var_name'  : 'oidc_backchannel_logout_uri',
                                                         'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'OIDC_FORCE_BACKCHANNEL_LOGOUT' : {
+                                                        'var_name'  : 'oidc_force_backchannel_logout',
+                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
                         'OIDC_BACKCHANNEL_TLS_VERIFY' : {
@@ -1947,6 +1974,60 @@ class Client(OTPmeClientObject):
             except Exception as e:
                 return callback.error()
         self.oidc_backchannel_tls_verify = False
+        return self._write(callback=callback)
+
+    @check_acls(['enable:oidc_force_backchannel_logout'])
+    @object_lock()
+    @audit_log()
+    def enable_oidc_force_backchannel_logout(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Enable forced back-channel logout. """
+        if self.oidc_force_backchannel_logout:
+            msg = _("Backchannel logout already forced.")
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_oidc_force_backchannel_logout",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_force_backchannel_logout = True
+        return self._write(callback=callback)
+
+    @check_acls(['disable:oidc_force_backchannel_logout'])
+    @object_lock()
+    @audit_log()
+    def disable_oidc_force_backchannel_logout(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable forced back-channel logout. """
+        if not self.oidc_force_backchannel_logout:
+            msg = _("Forced backchannel logout already disabled.")
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_oidc_force_backchannel_logout",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.oidc_force_backchannel_logout = False
         return self._write(callback=callback)
 
     @object_lock()
@@ -3226,6 +3307,13 @@ class Client(OTPmeClientObject):
         or self.verify_acl("edit:oidc_backchannel_logout_uri"):
             oidc_backchannel_logout_uri = self.oidc_backchannel_logout_uri or ""
         lines.append(f'OIDC_BACKCHANNEL_LOGOUT_URI="{oidc_backchannel_logout_uri}"')
+
+        oidc_force_backchannel_logout = ""
+        if self.verify_acl("view:oidc_force_backchannel_logout") \
+        or self.verify_acl("enable:oidc_force_backchannel_logout") \
+        or self.verify_acl("disable:oidc_force_backchannel_logout"):
+            oidc_force_backchannel_logout = self.oidc_force_backchannel_logout
+        lines.append(f'OIDC_FORCE_BACKCHANNEL_LOGOUT="{oidc_force_backchannel_logout}"')
 
         oidc_backchannel_tls_verify = ""
         if self.verify_acl("view:oidc_backchannel_tls_verify") \

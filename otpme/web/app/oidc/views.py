@@ -251,8 +251,9 @@ def _get_oidc_ssod_conn():
                            site=config.site,
                            follow_redirect=False,
                            request_token=False,
-                           auto_preauth=True,
-                           auto_auth=False)
+                           auto_preauth=False,
+                           auto_auth=False,
+                           encrypt_session=False)
 
 
 def _send_oidc_command(command, command_args):
@@ -912,6 +913,38 @@ def authorize():
     # which encodes the policy (``consent`` forces re-prompt,
     # ``none`` forbids any user interaction).
     prompt_param = request.values.get('prompt') or ''
+    # OIDC ``max_age`` (Core 3.1.2.1): maximum allowable age of the
+    # last authentication in seconds. ssod compares against the SSO
+    # session's reauth_time / creation_time and signals
+    # ``REAUTH_REQUIRED`` if the session is stale.
+    max_age_param = request.values.get('max_age') or ''
+
+    # Build a /oidc/authorize URL that survives a redirect through
+    # /login or /reauth. Both bounce-back via GET, so a POSTed
+    # authorization request would otherwise lose its body params
+    # (request.full_path only covers path+query). Rebuilding from
+    # request.values picks up params regardless of how they came in.
+    def _self_url(prompt_override=None):
+        from urllib.parse import urlencode
+        OIDC_PARAMS = (
+            'client_id', 'redirect_uri', 'response_type', 'scope',
+            'state', 'nonce', 'code_challenge',
+            'code_challenge_method', 'prompt', 'max_age',
+            'login_hint', 'id_token_hint', 'ui_locales',
+            'acr_values', 'display', 'response_mode', 'claims',
+            'claims_locales', 'request', 'request_uri',
+        )
+        items = []
+        for k in OIDC_PARAMS:
+            if k == 'prompt' and prompt_override is not None:
+                if prompt_override:
+                    items.append(('prompt', prompt_override))
+                continue
+            v = request.values.get(k)
+            if v not in (None, ''):
+                items.append((k, v))
+        qs = urlencode(items)
+        return '/oidc/authorize' + ('?' + qs if qs else '')
 
     # SSO cookie check -- if user isn't logged in, hand off to /login
     # with our full URL as next= so they bounce back here after auth.
@@ -919,8 +952,40 @@ def authorize():
     username = flask_session.get('otpme_username')
     session_uuid = request.cookies.get('otpme_sso_session')
     if not sso_jwt or not username or not session_uuid:
+        # OIDC Core §3.1.2.6: ``prompt=none`` forbids any user-facing
+        # interaction. Without an active session we can't authenticate
+        # silently, so we MUST redirect back to the RP with
+        # ``error=login_required`` instead of rendering /login.
+        if 'none' in (prompt_param or '').split():
+            v_status, v_response = _send_oidc_command(
+                    'oidc_prompt_none_no_session',
+                    {'client_id': client_id,
+                     'redirect_uri': redirect_uri})
+            if (v_status and isinstance(v_response, dict)
+                    and v_response.get('valid') and redirect_uri):
+                target = _build_redirect_with_params(redirect_uri, {
+                    'error': 'login_required',
+                    'error_description': 'no active session and prompt=none',
+                    'state': state,
+                })
+                return redirect(target)
+            return _authorize_error_page(
+                    'login_required',
+                    'no active session and prompt=none')
         return redirect(url_for('login',
-                                next=request.full_path,
+                                next=_self_url(),
+                                _external=True, _scheme='https'))
+
+    # OIDC Core §3.1.2.1: prompt=login MUST trigger reauthentication.
+    # Redirect through /reauth (a step-up FIDO2 verify) so the user
+    # gets a fresh auth_time without losing the SSO session or peer
+    # RP sessions. We strip ``login`` from the prompt before sending
+    # the user back, otherwise we'd loop indefinitely.
+    prompt_values = prompt_param.split()
+    if 'login' in prompt_values:
+        remaining = [v for v in prompt_values if v != 'login']
+        next_url = _self_url(prompt_override=' '.join(remaining))
+        return redirect(url_for('reauth', next=next_url,
                                 _external=True, _scheme='https'))
 
     client_ip = check_forwarded_for()[0]
@@ -969,6 +1034,13 @@ def authorize():
         'code_challenge':         code_challenge,
         'code_challenge_method':  code_challenge_method,
         'prompt':                 prompt_param,
+        'max_age':                max_age_param,
+        # Unsupported but checked: if present, ssod rejects with the
+        # spec-mandated request_not_supported / request_uri_not_supported
+        # error (OIDC Core §6.1 / §3.1.2.6) rather than silently
+        # ignoring as the OIDC conformance suite explicitly forbids.
+        'request':                request.values.get('request') or '',
+        'request_uri':            request.values.get('request_uri') or '',
         'consent_granted':        consent_granted,
     }
     # consent_granted=True implies user.set_oidc_consent + user._write
@@ -1001,7 +1073,16 @@ def authorize():
             # JWT trouble -> try to logout user which redirects to login.
             if v_response.get('message') == 'JWT_INVALID':
                 return redirect(url_for('logout',
-                                        next=request.full_path,
+                                        next=_self_url(),
+                                        _external=True, _scheme='https'))
+            # max_age exceeded -> route through /reauth (FIDO2
+            # step-up) so the SSO session gets a fresh reauth_time
+            # without losing the session itself. After reauth the
+            # user bounces back to /authorize with the original
+            # query (max_age still present, but now satisfied).
+            if v_response.get('message') == 'REAUTH_REQUIRED':
+                return redirect(url_for('reauth',
+                                        next=_self_url(),
                                         _external=True, _scheme='https'))
             if can_redirect and redirect_uri:
                 target = _build_redirect_with_params(redirect_uri, {

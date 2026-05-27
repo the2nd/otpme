@@ -8,6 +8,7 @@ from cryptography import x509
 from fido2.server import Fido2Server
 from fido2.webauthn import RegistrationResponse
 from fido2.webauthn import AttestedCredentialData
+from fido2.webauthn import AuthenticationResponse
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
@@ -21,6 +22,7 @@ except Exception:
     pass
 
 from otpme.lib import oid
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -521,6 +523,23 @@ class Fido2Token(Token):
             msg = _("Token verififcation failed: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
+        # Check fido2 counter.
+        parsed = AuthenticationResponse.from_dict(auth_response)
+        counter = parsed.response.authenticator_data.counter
+        last_counter = self.get_token_counter()
+        # W3C WebAuthn §6.1.1: an authenticator that does not implement
+        # a signature counter MUST emit ``counter=0`` on every assertion.
+        # In that case there is nothing to compare against (Apple
+        # Passkeys, iCloud Keychain, some platform authenticators);
+        # accept the assertion and do not persist a counter so the same
+        # token can keep authenticating.
+        if counter == 0 and last_counter <= 0:
+            pass
+        elif counter <= last_counter:
+            msg = _("Token verififcation failed: Already used token counter")
+            return callback.error(msg)
+        else:
+            self._add_token_counter(token_counter=counter)
         msg = _("Token verified successful: {rel_path}")
         msg = msg.format(rel_path=self.rel_path)
         return callback.ok(msg)
@@ -552,6 +571,21 @@ class Fido2Token(Token):
             msg = _("Token verififcation failed: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
+        # Check fido2 counter.
+        parsed = AuthenticationResponse.from_dict(auth_response)
+        counter = parsed.response.authenticator_data.counter
+        last_counter = self.get_token_counter()
+        # W3C WebAuthn §6.1.1: counter=0 means the authenticator does
+        # not implement a counter (Apple Passkeys, iCloud Keychain,
+        # some platform authenticators). Accept without persisting so
+        # subsequent assertions from the same token still pass.
+        if counter == 0 and last_counter <= 0:
+            pass
+        elif counter <= last_counter:
+            msg = _("Token verififcation failed: Already used token counter")
+            return callback.error(msg)
+        else:
+            self._add_token_counter(token_counter=counter)
         return True
 
     @object_lock(full_lock=True)
@@ -562,10 +596,13 @@ class Fido2Token(Token):
         **kwargs,
         ):
         """ Add a fido2 token. """
+        # Add counter hash salt.
+        self.used_otp_salt = stuff.gen_secret(32)
         if _caller == "CLIENT":
             return_message = _("NOTE: You have to deploy this fido2 token to make it usable.")
-            return callback.ok(return_message)
-        return callback.ok()
+            callback.send(return_message)
+            return self._cache(callback=callback)
+        return self._cache(callback=callback)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """

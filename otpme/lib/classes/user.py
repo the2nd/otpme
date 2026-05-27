@@ -2291,6 +2291,7 @@ class User(OTPmeObject):
 
         self.photo = image_base64
 
+        self.del_attribute(attribute="jpegPhoto")
         self.add_attribute(attribute="jpegPhoto", value=self.photo)
 
         return self._write(callback=callback)

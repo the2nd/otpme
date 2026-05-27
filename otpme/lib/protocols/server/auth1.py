@@ -22,6 +22,7 @@ from otpme.lib import jwt
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import multiprocessing
 from otpme.lib.audit import emit_audit
 from otpme.lib import connections
 from otpme.lib.humanize import units
@@ -263,9 +264,10 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = log_msg.format(command_error=command_error, log_username=self.log_username, log_access_group=self.log_access_group, log_client=self.log_client, log_client_ip=self.log_client_ip, log_auth_mode=self.log_auth_mode, log_auth_type=self.log_auth_type)
             return log_msg
 
-    def authd_redirect_command(self, command, user, command_args):
+    def authd_redirect_command(self, command, user, command_args, node=None):
         try:
             authd_conn = connections.get("authd",
+                                        node=node,
                                         realm=config.realm,
                                         site=user.site,
                                         auto_preauth=True,
@@ -293,7 +295,8 @@ class OTPmeAuthP1(OTPmeServer1):
             authd_conn.close()
         return status, response
 
-    def redirect_fido2_complete(self, user, smartcard_data, sso_challenge, client, client_ip):
+    def redirect_fido2_complete(self, user, smartcard_data, sso_challenge,
+        client, client_ip, fido2_state_id, node):
         # Gen JWT to be signed by other site.
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
@@ -323,11 +326,13 @@ class OTPmeAuthP1(OTPmeServer1):
                         'jwt_reason'        : jwt_reason,
                         'jwt_access_group'  : sso_jwt_ag,
                         'jwt_challenge'     : redirect_challenge,
+                        'fido2_state_id'    : fido2_state_id,
                     }
         status, \
         response = self.authd_redirect_command(command="token_verify_fido2",
                                         user=user,
-                                        command_args=verify_args)
+                                        command_args=verify_args,
+                                        node=node)
         try:
             redirect_response = response['jwt']
         except KeyError:
@@ -363,6 +368,26 @@ class OTPmeAuthP1(OTPmeServer1):
         auth_response['sso_jwt'] = response['sso_jwt']
         return self.build_response(status, auth_response)
 
+    def _pop_fido2_state_or_error(self, fido2_state_id):
+        """ Pop the FIDO2 auth state container for ``fido2_state_id``
+        from the shared store and return ``(state_dict, None)`` on
+        hit, or ``(None, error_response)`` on miss. Single-use: the
+        entry is removed by the lookup itself, so replay of the same
+        (cookie, assertion) pair within the TTL window can't find a
+        state to verify against.
+
+        On miss, callers can simply ``return error_response``.
+        """
+        try:
+            state_data = multiprocessing.fido2_auth_states.delete(
+                                                    fido2_state_id)
+        except KeyError:
+            log_msg = _("Fido2 auth state missing.", log=True)[1]
+            self.logger.warning(log_msg)
+            auth_response = {'message': 'Login failed.', 'status': False}
+            return None, self.build_response(False, auth_response)
+        return state_data, None
+
     def fido2_auth_begin(self, username, command_args):
         try:
             rp_id = command_args['rp_id']
@@ -388,6 +413,21 @@ class OTPmeAuthP1(OTPmeServer1):
             message = self.authd_redirect_command(command="fido2_auth_begin",
                                             user=user,
                                             command_args=command_args)
+            try:
+                fido2_state_id = message['fido2_state_id']
+            except KeyError:
+                pass
+            else:
+                try:
+                    fido2_auth_node = message.pop('fido2_auth_node')
+                except KeyError:
+                    pass
+                else:
+                    multiprocessing.fido2_auth_states.add(key=fido2_state_id,
+                                                        value={'node':fido2_auth_node},
+                                                        expire=60)
+                    my_host = self._get_host()
+                    message['fido2_auth_node'] = my_host.fqdn
             return self.build_response(status, message)
         # Find user's deployed FIDO2 tokens.
         user_tokens = backend.search(object_type="token",
@@ -416,9 +456,20 @@ class OTPmeAuthP1(OTPmeServer1):
         )
         fido2_auth_state = _serialize_fido2_state(auth_state)
         fido2_credential_token_map = credential_token_map
+        # Get own node FQDN.
+        my_host = self._get_host()
+        fido2_auth_node = my_host.fqdn
+        # Cache auth state
+        fido2_state_id = stuff.gen_secret(len=32)
+        multiprocessing.fido2_auth_states.add(key=fido2_state_id,
+                                            value={'state':fido2_auth_state,
+                                                    'node':fido2_auth_node},
+                                            expire=60)
+        # Build fido2 auth data.
         fido2_auth_data = {
                     'request_options'           : dict(request_options),
-                    'fido2_auth_state'          : fido2_auth_state,
+                    'fido2_state_id'            : fido2_state_id,
+                    'fido2_auth_node'           : fido2_auth_node,
                     'fido2_credential_token_map': fido2_credential_token_map,
                 }
         return self.build_response(True, fido2_auth_data)
@@ -431,7 +482,7 @@ class OTPmeAuthP1(OTPmeServer1):
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
-            auth_state = command_args['auth_state']
+            fido2_state_id = command_args['fido2_state_id']
         except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
@@ -448,6 +499,14 @@ class OTPmeAuthP1(OTPmeServer1):
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
+        # OIDC ``prompt=login`` / ``max_age`` step-up: web layer sets
+        # ``reauth=True`` + the current SSO session_uuid. On success we
+        # don't create a new login session -- we just bump
+        # ``reauth_time`` on the existing session so subsequent ID
+        # Tokens carry a fresh ``auth_time`` while peer RP sessions
+        # stay alive.
+        reauth = bool(command_args.get('reauth', False))
+        reauth_session_uuid = command_args.get('session_uuid')
         user = backend.get_object(object_type="user",
                                 name=username,
                                 realm=config.realm,
@@ -460,19 +519,105 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = self.build_log_msg(command_error)
             self.logger.warning(log_msg)
             return self.build_response(status, auth_response)
-        # Build smartcard_data for auth_handler.
-        smartcard_data = {
-            'rp_id': rp_id,
-            'auth_state': auth_state,
-            'auth_response': json.dumps(auth_response),
-        }
+        state_data, err = self._pop_fido2_state_or_error(fido2_state_id)
+        if err is not None:
+            return err
         # Check for command redirection.
         if user.site != config.site:
+            fido2_auth_node = state_data['node']
+            # Build smartcard_data for auth_handler.
+            smartcard_data = {
+                'rp_id'         : rp_id,
+                'auth_response' : json.dumps(auth_response),
+            }
             return self.redirect_fido2_complete(user=user,
                                         smartcard_data=smartcard_data,
                                         sso_challenge=sso_challenge,
                                         client=client,
-                                        client_ip=client_ip)
+                                        client_ip=client_ip,
+                                        fido2_state_id=fido2_state_id,
+                                        node=fido2_auth_node)
+        # Load fido2 auth state.
+        auth_state = _deserialize_fido2_state(state_data['state'])
+        # Build smartcard_data for auth_handler.
+        smartcard_data = {
+            'rp_id'         : rp_id,
+            'auth_state'    : auth_state,
+            'auth_response' : json.dumps(auth_response),
+        }
+        # Step-up reauth: verify FIDO2 directly on the token (which
+        # already enforces counter / replay protection) and bump
+        # reauth_time on the existing SSO session. We deliberately
+        # skip the auth_handler pipeline -- the user is already
+        # logged in, no need for fresh SOTP / cookies / session
+        # creation.
+        if reauth:
+            if not reauth_session_uuid:
+                log_msg = _("Reauth: session_uuid missing.", log=True)[1]
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            token = None
+            for t in backend.search(object_type="token",
+                                    attribute="owner_uuid",
+                                    value=user.uuid,
+                                    return_type="instance"):
+                if t.token_type == "fido2" and t.name == matched_token_name:
+                    token = t
+                    break
+            if token is None:
+                log_msg = _("Reauth: matched FIDO2 token not found.", log=True)[1]
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            try:
+                verify_ok = token.verify(smartcard_data=smartcard_data)
+            except Exception as e:
+                log_msg = _("Reauth: FIDO2 verify failed: {err}", log=True)[1]
+                log_msg = log_msg.format(err=e)
+                self.logger.warning(log_msg)
+                verify_ok = False
+            if not verify_ok:
+                emit_audit("Auth", "reauth_failed",
+                                level='warning',
+                                user=user.name,
+                                token=matched_token_name,
+                                reason='fido2_verify_failed',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            sso_session = backend.get_object(object_type="session",
+                                             uuid=reauth_session_uuid)
+            if sso_session is None or sso_session.user_uuid != user.uuid:
+                emit_audit("Auth", "reauth_failed",
+                                level='warning',
+                                user=user.name,
+                                token=matched_token_name,
+                                session=reauth_session_uuid,
+                                reason='session_user_mismatch',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            try:
+                sso_session.update_reauth_time(
+                                        wait_for_cluster_writes=True)
+            except Exception as e:
+                log_msg = _("Reauth: failed to persist reauth_time: {err}", log=True)[1]
+                log_msg = log_msg.format(err=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            emit_audit("Auth", "reauth_success",
+                            user=user.name,
+                            token=matched_token_name,
+                            session=sso_session.session_id,
+                            ip=client_ip)
+            return self.build_response(True, {'status': True})
         try:
             auth_result = user.authenticate(
                 auth_type="smartcard",
@@ -559,6 +704,20 @@ class OTPmeAuthP1(OTPmeServer1):
                     'response'  : mschap_response,
                     }
         if command == "token_verify_fido2":
+            try:
+                fido2_state_id = command_args.pop('fido2_state_id')
+            except KeyError:
+                status = False
+                log_msg = _("Fido2 state ID missing.", log=True)[1]
+                self.logger.warning(log_msg)
+                message = "AUTH_FAILED"
+                return self.build_response(status, message)
+            state_data, err = self._pop_fido2_state_or_error(fido2_state_id)
+            if err is not None:
+                return err
+            # Load fido2 auth state.
+            auth_state = _deserialize_fido2_state(state_data['state'])
+            smartcard_data['auth_state'] = auth_state
             token_verify_parms = {
                     'auth_type'     : "smartcard",
                     'smartcard_data': smartcard_data,

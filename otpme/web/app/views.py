@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import json
-import base64
 
 from flask import g
 from flask import flash
@@ -43,7 +42,7 @@ class WebUser(UserMixin):
         self.uuid = uuid
         self.name = name
 
-def get_authd_conn(username,  password=None):
+def get_authd_conn(username,  password=None, node=None):
     if config.host_data['type'] == "node":
         authd_conn = connections.get("authd",
                                     realm=config.realm,
@@ -60,6 +59,7 @@ def get_authd_conn(username,  password=None):
                                     encrypt_session=False)
     else:
         authd_conn = connections.get("authd",
+                                    node=node,
                                     realm=config.realm,
                                     site=config.site,
                                     username=username,
@@ -76,7 +76,6 @@ def get_ssod_conn(username, mgmt=False):
                                     realm=config.realm,
                                     site=config.site,
                                     username=username,
-                                    #auto_preauth=True,
                                     auto_auth=False,
                                     socket_uri=config.ssod_socket_path,
                                     local_socket=True,
@@ -92,8 +91,9 @@ def get_ssod_conn(username, mgmt=False):
                                     username=username,
                                     follow_redirect=False,
                                     request_token=False,
-                                    auto_preauth=True,
-                                    auto_auth=False)
+                                    auto_preauth=False,
+                                    auto_auth=False,
+                                    encrypt_session=False)
     return ssod_conn
 
 def check_forwarded_for():
@@ -132,18 +132,6 @@ def _get_fido2_rp_id():
         Checks X-Forwarded-Host for reverse proxy setups. """
     rp_id = check_forwarded_for()[1]
     return rp_id
-
-def _deserialize_fido2_state(data):
-    """ Deserialize fido2 state dict from Flask session. """
-    state = {}
-    for k, v in data.items():
-        if k.startswith('_b_'):
-            continue
-        if data.get('_b_' + k):
-            state[k] = base64.b64decode(v)
-        else:
-            state[k] = v
-    return state
 
 @lm.user_loader
 def load_user(id):
@@ -913,6 +901,37 @@ def _do_sso_logout(response, skip_backchannel_client=None):
     logout_user()
     return response
 
+@app.route('/reauth', methods=['GET'])
+@login_required
+def reauth():
+    """ Step-up re-authentication endpoint.
+
+    Re-verifies the current user via FIDO2 without touching the
+    existing SSO session: no new cookies, no peer-RP-session disruption.
+    On success the SSO session's reauth_time is bumped so subsequent
+    OIDC ID Tokens carry a fresh auth_time.
+
+    Driven by OIDC ``prompt=login`` / ``max_age`` -- the /oidc/authorize
+    handler redirects here with a ``next=<authorize-URL>`` (with
+    ``prompt=login`` stripped) so the user lands back at /authorize
+    once the step-up is done.
+    """
+    next_url = _safe_next_url(request.args.get('next'))
+    if next_url:
+        flask_session['reauth_next'] = next_url
+    # Marker the /fido2/auth/complete handler reads to branch into the
+    # step-up code path on the authd side.
+    flask_session['reauth_mode'] = True
+    username = flask_session.get('otpme_username') or ''
+    form = LoginForm()
+    form.username.data = username
+    return render_template('login.html',
+                           title=gettext('Re-authenticate'),
+                           user=None,
+                           form=form,
+                           reauth=True,
+                           reauth_username=username)
+
 @app.route('/logout')
 def logout():
     next_url = _safe_next_url(request.args.get('next'))
@@ -1118,18 +1137,19 @@ def fido2_auth_begin():
     request_options = auth_response['request_options']
     # Store state in Flask session.
     flask_session['fido2_auth_username'] = str(username)
-    flask_session['fido2_auth_state'] = auth_response['fido2_auth_state']
+    flask_session['fido2_state_id'] = auth_response['fido2_state_id']
+    flask_session['fido2_auth_node'] = auth_response['fido2_auth_node']
     flask_session['fido2_credential_token_map'] = auth_response['fido2_credential_token_map']
     return json.dumps(dict(request_options)), 200, {'Content-Type': 'application/json'}
 
 @app.route('/fido2/auth/complete', methods=['POST'])
 def fido2_auth_complete():
-    auth_state = flask_session.pop('fido2_auth_state', None)
+    fido2_state_id = flask_session.pop('fido2_state_id', None)
+    fido2_auth_node = flask_session.pop('fido2_auth_node', None)
     username = flask_session.pop('fido2_auth_username', None)
     credential_token_map = flask_session.pop('fido2_credential_token_map', {})
-    if not auth_state or not username:
+    if not fido2_state_id or not fido2_auth_node or not username:
         return jsonify({"error": gettext("No authentication in progress")}), 400
-    auth_state = _deserialize_fido2_state(auth_state)
     auth_response = request.json
     if not auth_response:
         return jsonify({"error": gettext("Missing auth response")}), 400
@@ -1142,17 +1162,26 @@ def fido2_auth_complete():
     rp_id = _get_fido2_rp_id()
     sso_jwt = request.cookies.get('otpme_jwt')
     client_ip = check_forwarded_for()[0]
+    # Step-up reauth marker set by /reauth. Tell authd to verify FIDO2
+    # against the existing SSO session (no new session/cookies, just
+    # a reauth_time bump). The current session_uuid comes from the
+    # SSO cookie -- authd cross-checks it against the user.
+    reauth_mode = bool(flask_session.pop('reauth_mode', False))
+    reauth_next = _safe_next_url(flask_session.pop('reauth_next', None))
     verify_args = {
                     'username'          : username,
                     'sso_jwt'           : sso_jwt,
                     'client'            : config.sso_client_name,
                     'client_ip'         : client_ip,
                     'rp_id'             : rp_id,
-                    'auth_state'        : auth_state,
+                    'fido2_state_id'    : fido2_state_id,
                     'auth_response'     : auth_response,
                     'matched_token_name': matched_token_name,
                 }
-    authd_conn = get_authd_conn(username)
+    if reauth_mode:
+        verify_args['reauth'] = True
+        verify_args['session_uuid'] = request.cookies.get('otpme_sso_session')
+    authd_conn = get_authd_conn(username, node=fido2_auth_node)
     try:
         status, \
         status_code, \
@@ -1170,6 +1199,14 @@ def fido2_auth_complete():
     if not status:
         error_msg = _ssod_error_message(auth_response, "Failed to complete fido2 authentication.")
         return jsonify({"error": error_msg}), 400
+    if reauth_mode:
+        # No new login session was created. Send the user back to
+        # whatever triggered the step-up (typically the OIDC RP's
+        # /authorize URL with prompt=login stripped).
+        redirect_target = (reauth_next
+                           or url_for('index', _external=True,
+                                      _scheme='https'))
+        return jsonify({"status": "ok", "redirect": redirect_target})
     try:
         login_token_pass_type = auth_response['login_token_pass_type']
         login_token_deploy = auth_response['login_token_sso_deploy']

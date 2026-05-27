@@ -942,6 +942,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
         # Only realm/site master node is allowed to sync all sites to peer.
         if self.peer.type == "node" \
+        and config.cluster_status \
         and not config.master_node:
             if sync_realm != config.realm:
                 response, log_msg = _("Permission denied: {realm}/{site}", log=True)

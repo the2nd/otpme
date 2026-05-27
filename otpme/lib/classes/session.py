@@ -289,6 +289,14 @@ class Session(OTPmeLockObject):
         self.pickable = True
         self.origin = None
         self.last_modified = None
+        # Unix timestamp of the last fresh end-user authentication
+        # against THIS session (FIDO2 step-up via OIDC prompt=login
+        # or similar). Distinct from creation_time -- if a step-up
+        # happens, the SSO session is kept (so peer RP sessions stay
+        # alive) but auth_time in subsequent ID Tokens reflects the
+        # step-up moment. None until first step-up; _resolve_auth_time
+        # falls back to creation_time in that case.
+        self.reauth_time = None
         # Be compatible with OTPmeLockObject.
         self.offline = False
         self.no_transaction = False
@@ -575,6 +583,19 @@ class Session(OTPmeLockObject):
         sync_config = self.object_config.copy()
         return sync_config
 
+    def update_reauth_time(self, wait_for_cluster_writes: bool=False):
+        """ Stamp ``reauth_time`` to now() and persist.
+
+        Called by the step-up auth flow after the user has just
+        re-authenticated against THIS SSO session (FIDO2 in response
+        to OIDC ``prompt=login`` / ``max_age``). Other RP sessions
+        attached to this SSO session stay alive; only the freshness
+        indicator is bumped, so subsequent ID Tokens carry an
+        ``auth_time`` reflecting the step-up moment.
+        """
+        self.reauth_time = time.time()
+        return self.write_config(wait_for_cluster_writes=wait_for_cluster_writes)
+
     @object_lock()
     def write_config(self, wait_for_cluster_writes: bool=False):
         """ Write session config to backend.
@@ -604,6 +625,7 @@ class Session(OTPmeLockObject):
         self.object_config['NAME'] = self.name
         self.object_config['UUID'] = self.uuid
         self.object_config['CREATION_TIME'] = self.creation_time
+        self.object_config['REAUTH_TIME'] = self.reauth_time
         self.object_config['CHILD_SESSIONS'] = ",".join(self.child_sessions)
         self.object_config['SESSION_TYPE'] = self.session_type
         self.object_config['USER_UUID'] = self.user_uuid
@@ -670,6 +692,7 @@ class Session(OTPmeLockObject):
         self.realm = self.get_config_parameter('REALM')
         self.site = self.get_config_parameter('SITE')
         self.creation_time = self.get_config_parameter('CREATION_TIME')
+        self.reauth_time = self.get_config_parameter('REAUTH_TIME')
         self.user_uuid = self.get_config_parameter('USER_UUID')
         self.pass_hash = self.get_config_parameter('PASS_HASH')
         self.slp = self.get_config_parameter('SLP')

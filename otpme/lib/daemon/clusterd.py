@@ -3517,6 +3517,15 @@ class ClusterDaemon(OTPmeDaemon):
                                 use_index_journal = False
                                 full_acl_update = True
                                 full_index_update = True
+                            # Nodes need always full update because node objects
+                            # are changed on secondary nodes (enable/disable).
+                            elif object_id.object_type == "node":
+                                acl_journal = None
+                                index_journal = None
+                                use_acl_journal = False
+                                use_index_journal = False
+                                full_acl_update = True
+                                full_index_update = True
                             else:
                                 full_acl_update = cluster_journal_entry.full_acl_update
                                 full_index_update = cluster_journal_entry.full_index_update

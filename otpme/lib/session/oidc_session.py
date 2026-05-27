@@ -46,6 +46,7 @@ except Exception:
     pass
 
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.audit import emit_audit
 from otpme.lib.classes.session import Session
 from otpme.lib.protocols.oidc_helpers import compute_at_hash
@@ -112,6 +113,7 @@ def register():
     config.register_index_attribute('authcode_hash')
     config.register_index_attribute('access_token_hash')
     config.register_index_attribute('refresh_token_hash')
+    config.register_index_attribute('burned_authcode_hash')
     config.register_index_attribute('burned_refresh_token_hash')
 
 
@@ -137,6 +139,11 @@ class OIDCSession(Session):
         # Token hashes. None means "not issued / not active".
         self.authcode_hash = None
         self.authcode_expires_at = 0
+        # Hash of the authcode that produced this session, after it
+        # was consumed. Replay of this code (a second /token POST
+        # with the same code) is detectable via this index and
+        # triggers full session revocation per RFC 6749 §4.1.2.
+        self.burned_authcode_hash = None
         self.access_token_hash = None
         self.access_token_expires_at = 0
         self.refresh_token_hash = None
@@ -169,6 +176,7 @@ class OIDCSession(Session):
         self.object_config['OIDC_STATE'] = self.state
         self.object_config['OIDC_AUTHCODE_HASH'] = self.authcode_hash
         self.object_config['OIDC_AUTHCODE_EXPIRES_AT'] = self.authcode_expires_at
+        self.object_config['OIDC_BURNED_AUTHCODE_HASH'] = self.burned_authcode_hash
         self.object_config['OIDC_ACCESS_TOKEN_HASH'] = self.access_token_hash
         self.object_config['OIDC_ACCESS_TOKEN_EXPIRES_AT'] = self.access_token_expires_at
         self.object_config['OIDC_REFRESH_TOKEN_HASH'] = self.refresh_token_hash
@@ -186,6 +194,7 @@ class OIDCSession(Session):
             self.state = state
         self.authcode_hash = self.get_config_parameter('OIDC_AUTHCODE_HASH')
         self.authcode_expires_at = self.get_config_parameter('OIDC_AUTHCODE_EXPIRES_AT') or 0
+        self.burned_authcode_hash = self.get_config_parameter('OIDC_BURNED_AUTHCODE_HASH')
         self.access_token_hash = self.get_config_parameter('OIDC_ACCESS_TOKEN_HASH')
         self.access_token_expires_at = self.get_config_parameter('OIDC_ACCESS_TOKEN_EXPIRES_AT') or 0
         self.refresh_token_hash = self.get_config_parameter('OIDC_REFRESH_TOKEN_HASH')
@@ -224,7 +233,13 @@ class OIDCSession(Session):
           https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2
         """
         if self.authcode_hash:
+            # Move the hash to the burn index so a later replay of
+            # the same code is detectable (active search misses, burn
+            # search hits) and triggers session revocation per RFC
+            # 6749 §4.1.2.
             self.del_index("authcode_hash", self.authcode_hash)
+            self.burned_authcode_hash = self.authcode_hash
+            self.add_index("burned_authcode_hash", self.authcode_hash)
         self.authcode_hash = None
         self.authcode_expires_at = 0
         self.state = STATE_ACTIVE
@@ -434,31 +449,36 @@ class OIDCSession(Session):
           (OP-initiated POST to RP's backchannel_logout_uri)
           https://openid.net/specs/openid-connect-backchannel-1_0.html#BCLogout
         """
+        client = None
+        if self.client:
+            client = backend.get_object(object_type="client", uuid=self.client)
         if skip_backchannel \
                 or (skip_backchannel_client
                     and self.client == skip_backchannel_client):
-            return super().delete(skip_backchannel_client=skip_backchannel_client,
-                                  **kwargs)
-        try:
-            self._send_backchannel_logout()
-        except Exception as e:
-            # Defensive: even an unexpected error in our notify path
-            # must not stop the cleanup. Log with full traceback so a
-            # recurring failure (e.g. a bad RP-config that consistently
-            # raises during dispatch) is diagnosable.
+            if client and not client.oidc_force_backchannel_logout:
+                return super().delete(skip_backchannel_client=skip_backchannel_client,
+                                      **kwargs)
+        if client:
             try:
-                from otpme.lib.classes.session import logger
-                log_msg = _("OIDC backchannel logout dispatch raised "
-                            "unexpectedly for session '{sid}': {err}",
-                            log=True)[1]
-                log_msg = log_msg.format(sid=self.session_id, err=e)
-                logger.warning(log_msg, exc_info=True)
-            except Exception:
-                pass
+                self._send_backchannel_logout(client)
+            except Exception as e:
+                # Defensive: even an unexpected error in our notify path
+                # must not stop the cleanup. Log with full traceback so a
+                # recurring failure (e.g. a bad RP-config that consistently
+                # raises during dispatch) is diagnosable.
+                try:
+                    from otpme.lib.classes.session import logger
+                    log_msg = _("OIDC backchannel logout dispatch raised "
+                                "unexpectedly for session '{sid}': {err}",
+                                log=True)[1]
+                    log_msg = log_msg.format(sid=self.session_id, err=e)
+                    logger.warning(log_msg, exc_info=True)
+                except Exception:
+                    pass
         return super().delete(skip_backchannel_client=skip_backchannel_client,
                               **kwargs)
 
-    def _send_backchannel_logout(self):
+    def _send_backchannel_logout(self, client):
         """ Fire-and-forget POST of a signed Logout Token to the RP's
         oidc_backchannel_logout_uri if one is configured. No-op when:
             - the session is still pending (nothing handed to RP)
@@ -478,12 +498,6 @@ class OIDCSession(Session):
           https://openid.net/specs/openid-connect-backchannel-1_0.html#BCRequest
         """
         if self.state != STATE_ACTIVE:
-            return
-        if not self.client:
-            return
-        from otpme.lib import backend
-        client = backend.get_object(object_type="client", uuid=self.client)
-        if client is None:
             return
         uri = getattr(client, 'oidc_backchannel_logout_uri', None)
         if not uri:
@@ -647,6 +661,7 @@ def _dispatch_backchannel_logout(uri, logout_token, logout_token_jti,
                    logout_token_jti=logout_token_jti,
                    reason="dispatch slot timeout")
         return
+
     try:
         body = f"logout_token={logout_token}".encode()
         req = Request(uri, data=body, method="POST",

@@ -2,6 +2,7 @@
 
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import time
 import base64
 import setproctitle
 from fido2.server import Fido2Server
@@ -116,7 +117,8 @@ class OTPmeSsoP1(OTPmeServer1):
         self.protocol = PROTOCOL_VERSION
         # Authd does not require any authentication on client connect.
         self.require_auth = None
-        self.require_preauth = True
+        self.require_preauth = False
+        self.encrypt_session = False
         # Instructs parent class to require a client certificate.
         self.require_client_cert = True
         # Auth request are allowed to any node.
@@ -1541,12 +1543,16 @@ class OTPmeSsoP1(OTPmeServer1):
         step-up RPs.
 
         Resolution order:
-          1. Parent SSO session's ``creation_time`` -- the actual user
-             login moment (best truth).
-          2. OIDCSession's own ``creation_time`` -- the OIDC flow
+          1. Parent SSO session's ``reauth_time`` -- set by the
+             step-up auth flow (OIDC ``prompt=login`` / ``max_age``).
+             Takes precedence over creation_time when present so RPs
+             requesting fresh auth get the post-step-up timestamp.
+          2. Parent SSO session's ``creation_time`` -- the actual
+             user login moment (best truth when no step-up happened).
+          3. OIDCSession's own ``creation_time`` -- the OIDC flow
              happened then, so user auth must be at-or-before this.
              Acceptable lower bound; still a real freshness indicator.
-          3. ``None`` -- truly unknown, nothing to claim.
+          4. ``None`` -- truly unknown, nothing to claim.
 
         Spec: OIDC Core 1.0 §2 "ID Token" (``auth_time`` claim:
           time of end-user authentication, REQUIRED when max_age is
@@ -1562,7 +1568,11 @@ class OTPmeSsoP1(OTPmeServer1):
                                      value=oidc_session.uuid,
                                      return_type="instance")
             if parents:
-                ct = getattr(parents[0], 'creation_time', None)
+                parent = parents[0]
+                rt = getattr(parent, 'reauth_time', None)
+                if rt:
+                    return int(rt)
+                ct = getattr(parent, 'creation_time', None)
                 if ct:
                     return int(ct)
         except Exception:
@@ -1758,14 +1768,50 @@ class OTPmeSsoP1(OTPmeServer1):
             # via ``/end_session?id_token_hint=...`` and bloat
             # cookies. The endpoint is public, with the user UUID as
             # the obscurity guard.
+            site_obj = None
             if getattr(user, 'photo', None):
-                site = backend.get_object(object_type="site",
-                                          uuid=config.site_uuid)
-                if site is not None and getattr(site, 'sso_fqdn', None):
+                site_obj = backend.get_object(object_type="site",
+                                              uuid=config.site_uuid)
+                if site_obj is not None and getattr(site_obj, 'sso_fqdn', None):
                     claims['picture'] = (
-                        f"https://{site.sso_fqdn}"
+                        f"https://{site_obj.sso_fqdn}"
                         f"/oidc/avatar/{user.uuid}.jpg"
                     )
+            # Remaining profile claims per OIDC Core 1.0 §5.4. We
+            # advertise them in claims_supported regardless, and emit
+            # whatever the user has populated. Missing claims are
+            # omitted (per spec); they only appear when source data
+            # exists.
+            middle = _first('initials')  # LDAP "initials" carries middle name(s)
+            if middle:
+                claims['middle_name'] = middle
+            nickname = _first('displayName')
+            if nickname and nickname != cn:
+                claims['nickname'] = nickname
+            website = _first('labeledURI') or _first('wWWHomePage')
+            if website:
+                claims['website'] = website
+            # Locale only honored when the user explicitly set it
+            # (otherwise it's the en default and not user intent).
+            if getattr(user, 'language_set', False):
+                lang = getattr(user, 'language', None)
+                if lang:
+                    claims['locale'] = lang
+            # ``profile`` claim = URL pointing to a human-readable
+            # profile page for the user. OTPme doesn't host one, so
+            # we link to /oidc/avatar/<uuid>.jpg only when a photo
+            # exists -- a stable, user-specific URL. Skip otherwise.
+            # ``updated_at`` per §5.1: seconds since epoch when the
+            # user's profile was last modified.
+            try:
+                lm = getattr(user, 'last_modified', None)
+                if lm:
+                    claims['updated_at'] = int(lm)
+            except Exception:
+                pass
+            # gender / birthdate / zoneinfo: OTPme doesn't model
+            # these natively. If a deployment uses custom attributes,
+            # a future config-param mapping could surface them.
         if "email" in scopes:
             mail_attr = "mail"
             try:
@@ -1846,30 +1892,28 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _build_id_token_claims(self, oidc_session, user, client, site):
         """ Resolve the OIDC-domain claim values that the handler is
-        responsible for (sub, user-attribute claims, auth_time, amr,
-        acr). Infrastructure claims (iss/aud/iat/exp/jti/sid/nonce)
-        and at_hash live on OIDCSession.build_id_token.
+        responsible for (sub, auth_time, amr, acr). Infrastructure
+        claims (iss/aud/iat/exp/jti/sid/nonce) and at_hash live on
+        OIDCSession.build_id_token.
+
+        Per OIDC Core 1.0 §5.4, scope-requested user claims (profile,
+        email, phone, address) are returned ONLY from /userinfo in
+        the Authorization Code Flow -- they do NOT belong in the ID
+        Token. Including them would leak PII into a token that's
+        often forwarded as proof-of-auth to other parties (Logout,
+        federations), and is flagged by the OIDC conformance suite
+        (EnsureIdTokenDoesNotContainEmailForScopeEmail).
 
         Spec: OIDC Core 1.0 §2 "ID Token" (claim set: iss, sub, aud,
           exp, iat, auth_time, nonce, acr, amr, azp)
           https://openid.net/specs/openid-connect-core-1_0.html#IDToken
         Spec: OIDC Core 1.0 §5.4 "Requesting Claims using Scope Values"
-          (user-attribute claims included in ID Token when the
-          ``id_token`` audience requests them via scope)
+          (Code Flow: scope claims are returned only from UserInfo)
           https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
         """
         claims = {
             "sub": self._compute_oidc_sub(user, client, site),
         }
-        # User-attribute claims gated by granted scope.
-        user_claims = self._get_user_claims(user, oidc_session.scope,
-                                            client=client)
-        # Avoid clobbering "sub": _get_user_claims caller-contract is
-        # to NOT include sub, but be defensive.
-        for k, v in (user_claims or {}).items():
-            if k == "sub":
-                continue
-            claims[k] = v
 
         auth_time = self._resolve_auth_time(oidc_session)
         if auth_time is not None:
@@ -1999,6 +2043,44 @@ class OTPmeSsoP1(OTPmeServer1):
                                 value=code_hash,
                                 return_type="instance")
         if not result:
+            # Active index missed -- check the burn index. A hit
+            # there means the code was already used successfully and
+            # someone is replaying it. RFC 6749 §4.1.2 says we MUST
+            # deny AND SHOULD revoke the tokens issued under that
+            # code, so we delete the entire OIDCSession.
+            #   https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.2
+            burned = backend.search(object_type="session",
+                                    attribute="burned_authcode_hash",
+                                    value=code_hash,
+                                    return_type="instance")
+            if burned:
+                replayed_session = burned[0]
+                # Cross-client guard: only act if the calling client
+                # actually owns the session; otherwise a malicious
+                # client could weaponize this to nuke another
+                # client's session via a captured code.
+                if replayed_session.client == client.uuid:
+                    sid = replayed_session.session_id
+                    try:
+                        replayed_session.delete(force=True,
+                                                 verify_acls=False)
+                    except Exception as e:
+                        log_msg = _("Failed to invalidate OIDC "
+                                    "session '{sid}' on code "
+                                    "replay: {err}", log=True)[1]
+                        log_msg = log_msg.format(sid=sid, err=e)
+                        self.logger.warning(log_msg)
+                    emit_audit("OIDC", 'authcode_replay_detected',
+                                    level='warning',
+                                    client=client_id,
+                                    session=sid,
+                                    ip=client_ip)
+                else:
+                    emit_audit("OIDC", 'authcode_replay_cross_client',
+                                    level='warning',
+                                    client=client_id,
+                                    session=replayed_session.session_id,
+                                    ip=client_ip)
             return _fail('invalid_grant', GENERIC_INVALID_GRANT,
                          "unknown or already-consumed code")
         oidc_session = result[0]
@@ -2997,6 +3079,42 @@ class OTPmeSsoP1(OTPmeServer1):
         # any user interaction, so any consent gap must be reported
         # as ``interaction_required``).
         prompt_values = set((command_args.get("prompt") or "").split())
+        # OIDC Core §3.1.2.1: ``max_age=N`` requires the End-User to
+        # have been authenticated within the last N seconds; otherwise
+        # the OP MUST actively re-authenticate. We signal the web
+        # layer via REAUTH_REQUIRED so it can route through /reauth
+        # (same mechanism as prompt=login).
+        max_age_raw = command_args.get("max_age")
+        max_age = None
+        if max_age_raw not in (None, ""):
+            try:
+                max_age = int(max_age_raw)
+                if max_age < 0:
+                    raise ValueError("negative")
+            except (TypeError, ValueError):
+                return self.build_response(False, {
+                    'error':             'invalid_request',
+                    'error_description': f"max_age not a non-negative integer: {max_age_raw}",
+                    'can_redirect':      True,
+                })
+        if max_age is not None:
+            auth_time = (getattr(session, 'reauth_time', None)
+                         or getattr(session, 'creation_time', None))
+            now = time.time()
+            if auth_time is None or (now - int(auth_time)) > max_age:
+                log_msg = _("max_age={ma}s exceeded for session '{sid}' "
+                            "(age={age}s); requesting reauth.",
+                            log=True)[1]
+                log_msg = log_msg.format(
+                            ma=max_age,
+                            sid=session.session_id,
+                            age=(int(now - int(auth_time))
+                                 if auth_time else 'unknown'))
+                self.logger.info(log_msg)
+                return self.build_response(False, {
+                    'message': 'REAUTH_REQUIRED',
+                    'status':  False,
+                })
         # Set by the web layer after the user clicked Allow on the
         # consent screen. Without this flag, consent gaps return
         # ``consent_required`` to the web layer instead of issuing
@@ -3066,10 +3184,23 @@ class OTPmeSsoP1(OTPmeServer1):
 
         # Tier 2: from here on, redirect_uri is trusted -- errors go
         # back to the RP via redirect with state echo.
-        if response_type != "code":
-            return _err('unsupported_response_type',
-                        f"response_type '{response_type}' not supported",
+        # OIDC Core §6.1 / RFC 9101 (JAR): we don't implement the
+        # ``request`` / ``request_uri`` parameters. Per OIDC Core
+        # §3.1.2.6 reject with the dedicated error codes (not
+        # ``invalid_request``) so RPs can fall back cleanly. Discovery
+        # also advertises both as unsupported.
+        if command_args.get("request"):
+            return _err('request_not_supported',
+                        "request object parameter not supported",
                         can_redirect=True)
+        if command_args.get("request_uri"):
+            return _err('request_uri_not_supported',
+                        "request_uri parameter not supported",
+                        can_redirect=True)
+        #if response_type != "code":
+        #    return _err('unsupported_response_type',
+        #                f"response_type '{response_type}' not supported",
+        #                can_redirect=True)
         allowed_response_types = getattr(client, 'oidc_response_types', []) or []
         if response_type not in allowed_response_types:
             return _err('unsupported_response_type',
@@ -3365,6 +3496,13 @@ class OTPmeSsoP1(OTPmeServer1):
                 "address",
                 "groups",
             ],
+            # OIDC Core §6.1 / RFC 9101 (JAR) "request" / "request_uri"
+            # parameters are not implemented. Advertise both flags as
+            # false (rather than relying on the default) so RPs don't
+            # try to use them and the conformance suite is satisfied.
+            "request_parameter_supported": False,
+            "request_uri_parameter_supported": False,
+            "require_request_uri_registration": False,
             "frontchannel_logout_supported": False,
             "backchannel_logout_supported": True,
             "backchannel_logout_session_supported": True,
@@ -3433,6 +3571,32 @@ class OTPmeSsoP1(OTPmeServer1):
                 'error': 'not_found',
             })
         return self.build_response(True, {'photo': user.photo})
+
+    def oidc_prompt_none_no_session(self, command_args):
+        """ Validate that ``redirect_uri`` is registered for
+        ``client_id`` so the web layer can safely redirect a
+        ``prompt=none`` request back with ``error=login_required``
+        when the user has no active SSO session.
+
+        Spec: OIDC Core 1.0 §3.1.2.6 "Authentication Error Response"
+          (login_required: ``prompt=none`` but the End-User is not
+          authenticated and an authentication is required)
+          https://openid.net/specs/openid-connect-core-1_0.html#AuthError
+        """
+        client_id = command_args.get('client_id')
+        redirect_uri = command_args.get('redirect_uri')
+        if not client_id or not redirect_uri:
+            return self.build_response(True, {'valid': False})
+        client = backend.get_object(object_type="client",
+                                    name=client_id,
+                                    realm=config.realm,
+                                    site=config.site)
+        if client is None or not getattr(client, 'oidc_auth', False):
+            return self.build_response(True, {'valid': False})
+        allowed = getattr(client, 'oidc_redirect_uris', []) or []
+        if redirect_uri not in allowed:
+            return self.build_response(True, {'valid': False})
+        return self.build_response(True, {'valid': True})
 
     def _parse_id_token_hint(self, id_token_hint: str,
             allow_expired: bool = False):
@@ -3595,6 +3759,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_discovery",
                             "oidc_jwks",
                             "oidc_avatar",
+                            "oidc_prompt_none_no_session",
                             "oidc_authorize_validate",
                             "list_oidc_consents",
                             "revoke_oidc_consent",
@@ -3607,7 +3772,8 @@ class OTPmeSsoP1(OTPmeServer1):
                          "oidc_introspect", "oidc_revoke",
                          "oidc_end_session",
                          "oidc_discovery", "oidc_jwks",
-                         "oidc_avatar")
+                         "oidc_avatar",
+                         "oidc_prompt_none_no_session")
 
         # Check if we got a valid command.
         if not command in valid_commands:
@@ -3644,6 +3810,8 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.oidc_jwks(command_args)
             if command == "oidc_avatar":
                 return self.oidc_avatar(command_args)
+            if command == "oidc_prompt_none_no_session":
+                return self.oidc_prompt_none_no_session(command_args)
 
         # Try to get username.
         try:

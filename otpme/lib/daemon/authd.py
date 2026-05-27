@@ -14,6 +14,7 @@ except Exception:
 from otpme.lib import log
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
@@ -25,6 +26,7 @@ REGISTER_AFTER = []
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("authd")
+    multiprocessing.register_shared_dict("fido2_auth_states")
 
 class AuthDaemon(OTPmeDaemon):
     """ AuthDaemon """
