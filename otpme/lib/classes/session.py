@@ -1421,6 +1421,7 @@ class Session(OTPmeLockObject):
         recursive: bool=False,
         verify_acls: bool=True,
         skip_backchannel_client: str=None,
+        skip_backchannel: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1431,6 +1432,15 @@ class Session(OTPmeLockObject):
         deleted without firing a back-channel logout notification.
         Used during /end_session so the initiating RP isn't notified
         about a logout it just triggered itself.
+
+        ``skip_backchannel``: when True, suppresses back-channel
+        logout notifications for ALL OIDC child sessions during a
+        recursive cascade. Used for hintless /end_session where we
+        can't reliably identify which RP to notify -- killing the
+        SSO session is correct, but blasting backchannel to every
+        attached RP without a clear initiator is more disruptive
+        than the spec requires and trips OIDC conformance tests
+        that flag unsolicited backchannel hits.
         """
         if verify_acls and config.auth_token:
             if config.auth_token.uuid != config.admin_token_uuid:
@@ -1516,7 +1526,8 @@ class Session(OTPmeLockObject):
                 session.delete(recursive=recursive,
                                 force=True,
                                 verify_acls=verify_acls,
-                                skip_backchannel_client=skip_backchannel_client)
+                                skip_backchannel_client=skip_backchannel_client,
+                                skip_backchannel=skip_backchannel)
 
         try:
             backend.delete_object(self.oid,

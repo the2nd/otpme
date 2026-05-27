@@ -847,13 +847,20 @@ def login():
     login_user(web_user)
     return resp
 
-def _do_sso_logout(response, skip_backchannel_client=None):
+def _do_sso_logout(response, skip_backchannel_client=None,
+                   skip_backchannel=False):
     """ Terminate the user's SSO session on authd and clear local state.
 
     ``skip_backchannel_client``: OIDC client UUID to skip when the
     SLP cascade fires back-channel logout notifications. Set by the
     /end_session flow so the initiating RP isn't notified about a
     logout it just triggered itself.
+
+    ``skip_backchannel``: when True, suppress back-channel logout for
+    ALL attached OIDC sessions. Used for hintless /end_session calls
+    where we can't reliably identify an initiator -- killing the SSO
+    session is correct, but unsolicited backchannel POSTs to every
+    attached RP are unnecessary and trip OIDC conformance tests.
     """
     slp = request.cookies.get('otpme_slp')
     username = flask_session.get('otpme_username')
@@ -886,6 +893,8 @@ def _do_sso_logout(response, skip_backchannel_client=None):
                         }
             if skip_backchannel_client:
                 verify_args['oidc_skip_backchannel_client'] = skip_backchannel_client
+            if skip_backchannel:
+                verify_args['oidc_skip_backchannel'] = True
             try:
                 authd_conn.send(command="verify", command_args=verify_args)
             except Exception as e:

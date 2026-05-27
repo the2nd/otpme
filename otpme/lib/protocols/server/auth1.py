@@ -949,7 +949,8 @@ class OTPmeAuthP1(OTPmeServer1):
         oidc_context=None, oidc_scope=None, oidc_nonce=None,
         oidc_redirect_uri=None, oidc_code_challenge=None,
         oidc_code_challenge_method=None,
-        oidc_skip_backchannel_client=None):
+        oidc_skip_backchannel_client=None,
+        oidc_skip_backchannel=False):
         # Build auth request.
         kwargs = {
                     'auth_mode'                 : auth_mode,
@@ -971,6 +972,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     'oidc_code_challenge'       : oidc_code_challenge,
                     'oidc_code_challenge_method': oidc_code_challenge_method,
                     'oidc_skip_backchannel_client': oidc_skip_backchannel_client,
+                    'oidc_skip_backchannel'     : oidc_skip_backchannel,
                     'ecdh_curve'                : self.ecdh_curve,
                 }
         # Do authentication.
@@ -1183,6 +1185,9 @@ class OTPmeAuthP1(OTPmeServer1):
         except Exception:
             oidc_skip_backchannel_client = None
 
+        oidc_skip_backchannel = bool(command_args.get(
+                                            'oidc_skip_backchannel', False))
+
         # Set host IP from source IP if requested.
         if host_ip == "auto":
             if not config.use_api:
@@ -1345,7 +1350,8 @@ class OTPmeAuthP1(OTPmeServer1):
                             oidc_redirect_uri=oidc_redirect_uri,
                             oidc_code_challenge=oidc_code_challenge,
                             oidc_code_challenge_method=oidc_code_challenge_method,
-                            oidc_skip_backchannel_client=oidc_skip_backchannel_client)
+                            oidc_skip_backchannel_client=oidc_skip_backchannel_client,
+                            oidc_skip_backchannel=oidc_skip_backchannel)
 
     def _close(self):
         pass

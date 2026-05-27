@@ -1777,11 +1777,12 @@ class OTPmeSsoP1(OTPmeServer1):
                         f"https://{site_obj.sso_fqdn}"
                         f"/oidc/avatar/{user.uuid}.jpg"
                     )
-            # Remaining profile claims per OIDC Core 1.0 §5.4. We
-            # advertise them in claims_supported regardless, and emit
-            # whatever the user has populated. Missing claims are
-            # omitted (per spec); they only appear when source data
-            # exists.
+            # Remaining profile claims per OIDC Core 1.0 §5.4. Emit
+            # whatever the user has populated; missing claims are
+            # omitted (per spec). Only those we can populate from
+            # OTPme/LDAP attributes are advertised in
+            # ``claims_supported``; gender/birthdate/zoneinfo/profile
+            # are deliberately absent.
             middle = _first('initials')  # LDAP "initials" carries middle name(s)
             if middle:
                 claims['middle_name'] = middle
@@ -1797,20 +1798,18 @@ class OTPmeSsoP1(OTPmeServer1):
                 lang = getattr(user, 'language', None)
                 if lang:
                     claims['locale'] = lang
-            # ``profile`` claim = URL pointing to a human-readable
-            # profile page for the user. OTPme doesn't host one, so
-            # we link to /oidc/avatar/<uuid>.jpg only when a photo
-            # exists -- a stable, user-specific URL. Skip otherwise.
-            # ``updated_at`` per §5.1: seconds since epoch when the
-            # user's profile was last modified.
+            # ``updated_at`` per OIDC Core §5.1: seconds since epoch
+            # when the user's profile was last modified.
             try:
                 lm = getattr(user, 'last_modified', None)
                 if lm:
                     claims['updated_at'] = int(lm)
             except Exception:
                 pass
-            # gender / birthdate / zoneinfo: OTPme doesn't model
-            # these natively. If a deployment uses custom attributes,
+            # Not emitted (OTPme has no native mapping):
+            #   profile (URL to a human-readable profile page),
+            #   gender, birthdate, zoneinfo.
+            # If a deployment uses custom attributes for any of these,
             # a future config-param mapping could surface them.
         if "email" in scopes:
             mail_attr = "mail"
@@ -1823,7 +1822,9 @@ class OTPmeSsoP1(OTPmeServer1):
             mail = _first(mail_attr)
             if mail:
                 claims['email'] = mail
-                # OTPme doesn't track email-verified state yet.
+            # ``email_verified`` is not emitted -- OTPme doesn't track
+            # verification state. RPs that care should treat the
+            # absence as "unknown" rather than "false".
         if "phone" in scopes:
             phone = _first('telephoneNumber')
             if phone:
@@ -3489,11 +3490,23 @@ class OTPmeSsoP1(OTPmeServer1):
             # (legacy interop), but we don't advertise it.
             "code_challenge_methods_supported": ["S256"],
             "claims_supported": [
+                # Infrastructure / ID-Token claims.
                 "sub", "iss", "aud", "iat", "exp", "jti", "sid",
-                "name", "given_name", "family_name", "preferred_username",
-                "picture",
-                "email", "phone_number",
+                "auth_time", "nonce", "acr", "amr", "azp",
+                # ``profile`` scope claims we MAY emit. Not all
+                # listed claims are guaranteed -- emission depends on
+                # whether the underlying user attribute is populated.
+                "name", "given_name", "family_name", "middle_name",
+                "nickname", "preferred_username", "picture", "website",
+                "locale", "updated_at",
+                # ``email`` scope.
+                "email",
+                # ``phone`` scope.
+                "phone_number",
+                # ``address`` scope (composite claim).
                 "address",
+                # Non-standard but widely supported by NextCloud,
+                # Grafana, Authentik, ...
                 "groups",
             ],
             # OIDC Core §6.1 / RFC 9101 (JAR) "request" / "request_uri"

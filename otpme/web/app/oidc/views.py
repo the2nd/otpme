@@ -653,14 +653,28 @@ def _append_state(target_uri, state):
     return f"{target_uri}{sep}{urlencode([('state', state)])}"
 
 
-def _logged_out_page():
+def _logged_out_page(error_notice=None):
     """ Generic OP logout-success page when no validated
-    post_logout_redirect_uri is available. """
+    post_logout_redirect_uri is available. ``error_notice`` (e.g.
+    the requested redirect URI was rejected because it's not in the
+    client's allowlist) is shown to the user so they know the
+    silent-redirect-back didn't happen by accident -- required by
+    OIDC RP-Initiated Logout 1.0 cert tests.
+    """
+    from markupsafe import escape
+    notice_html = ""
+    if error_notice:
+        notice_html = (
+            "<p style=\"color:#b00020;\"><strong>"
+            f"{escape(error_notice)}"
+            "</strong></p>"
+        )
     html = (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         "<title>Logged out</title></head>"
         "<body><h1>Logged out</h1>"
         "<p>You have been logged out.</p>"
+        f"{notice_html}"
         "</body></html>"
     )
     resp = make_response(html, 200)
@@ -693,15 +707,30 @@ def end_session():
     state = request.values.get('state')
 
     # OIDC RP-Initiated Logout 1.0 §2: id_token_hint is RECOMMENDED,
-    # not REQUIRED. Without it, fall back to the browser-session user
-    # (always SSO-scope logout, since RP-scope needs the hint's sid).
+    # not REQUIRED. Two hintless cases, treated differently:
+    #
+    # - ``post_logout_redirect_uri`` present but no hint -> we
+    #   cannot tie the request to a specific client/session and
+    #   therefore cannot safely honor the redirect (open-redirect
+    #   defense). Reject with an error page. Confirm dialogs are
+    #   not viable: automated test runners auto-submit them.
+    # - No params at all -> equivalent to the user navigating
+    #   directly to /end_session. Honor it via the browser
+    #   session and show a logged-out page.
     hintless_username = None
     if not id_token_hint:
+        if post_logout_redirect_uri:
+            return _oidc_html_error_page(
+                    'invalid_request',
+                    ('id_token_hint is required when '
+                     'post_logout_redirect_uri is provided.'),
+                    title=gettext("Logout error"))
         hintless_username = flask_session.get('otpme_username')
         if not hintless_username:
-            return _oidc_error('invalid_request',
-                               'id_token_hint missing and no active session',
-                               http_status=400)
+            # Nothing to do -- no session and no hint. Show a
+            # generic page rather than an error since the user
+            # asked to log out and there's nothing more to undo.
+            return _logged_out_page()
 
     args = {
         'id_token_hint':            id_token_hint,
@@ -711,19 +740,33 @@ def end_session():
     }
     status, response = _send_oidc_command('oidc_end_session', args)
     if status is None:
-        return _oidc_error('server_error',
-                           response.get('error_description'),
-                           http_status=500)
+        return _oidc_html_error_page(
+                'server_error',
+                (response or {}).get('error_description', ''),
+                title=gettext("Logout error"),
+                http_status=500)
 
     if not status:
         err = (response or {}).get('error', 'invalid_request')
         desc = (response or {}).get('error_description')
-        return _oidc_error(err, desc, http_status=400)
+        return _oidc_html_error_page(err, desc,
+                                      title=gettext("Logout error"))
 
     action = (response or {}).get('action')
     validated_uri = (response or {}).get('post_logout_redirect_uri')
     initiating_client_uuid = (response or {}).get('initiating_client_uuid')
     target = _append_state(validated_uri, state)
+    # The RP asked us to redirect back, but the URI wasn't in the
+    # client's allowlist (ssod returned no validated URI). Per OIDC
+    # RP-Initiated Logout 1.0 we MUST NOT honor the redirect; we
+    # still log the user out but show a notice so they aren't left
+    # wondering why they didn't bounce back.
+    rejected_notice = None
+    if post_logout_redirect_uri and not validated_uri:
+        rejected_notice = (
+            "The requested post_logout_redirect_uri is not registered "
+            "for this client and was ignored."
+        )
 
     if action == 'redirect_logout':
         # scope=sso: terminate the user's SSO session via the
@@ -733,9 +776,14 @@ def end_session():
         if target:
             resp = make_response(redirect(target))
         else:
-            resp = _logged_out_page()
+            resp = _logged_out_page(error_notice=rejected_notice)
+        # Hintless logout: we can't reliably identify which RP
+        # initiated the call, so suppress backchannel cascade to
+        # every attached RP. The SSO session is still terminated;
+        # other RPs find out lazily when their AT/RT stops working.
         return _do_sso_logout(resp,
-                skip_backchannel_client=initiating_client_uuid)
+                skip_backchannel_client=initiating_client_uuid,
+                skip_backchannel=(id_token_hint is None))
 
     if action == 'redirect_post_logout':
         # scope=rp: ssod already killed the calling RP's OIDCSession
@@ -743,10 +791,10 @@ def end_session():
         # stay logged in. Just send the user back to the RP.
         if target:
             return redirect(target)
-        return _logged_out_page()
+        return _logged_out_page(error_notice=rejected_notice)
 
     # Unknown action -- fall back to generic confirmation.
-    return _logged_out_page()
+    return _logged_out_page(error_notice=rejected_notice)
 
 
 # ---------------------------------------------------------------------------
@@ -852,9 +900,20 @@ def _authorize_error_page(error, description):
     """ Tier-1 error page -- displayed when redirect_uri/client_id
     is invalid and we MUST NOT redirect (open-redirect defense).
     """
+    return _oidc_html_error_page(error, description,
+                                  title=gettext("Authorization error"))
+
+
+def _oidc_html_error_page(error, description, title=None, http_status=400):
+    """ Browser-facing HTML error page for OIDC endpoints that have
+    no safe redirect target (e.g. /end_session with a bogus
+    id_token_hint -- we can't trust the post_logout_redirect_uri,
+    so we render here instead of bouncing back). JSON-style
+    ``_oidc_error`` is for server-to-server endpoints only.
+    """
     safe_err = (error or "invalid_request").replace("<", "&lt;").replace(">", "&gt;")
     safe_desc = (description or "").replace("<", "&lt;").replace(">", "&gt;")
-    title = gettext("Authorization error")
+    title = title or gettext("Error")
     html = (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         f"<title>{title}</title></head>"
@@ -863,7 +922,7 @@ def _authorize_error_page(error, description):
         f"<p>{safe_desc}</p>"
         "</body></html>"
     )
-    resp = make_response(html, 400)
+    resp = make_response(html, http_status)
     resp.headers['Content-Type'] = 'text/html; charset=utf-8'
     return resp
 

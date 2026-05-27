@@ -1873,6 +1873,10 @@ class Client(OTPmeClientObject):
         The OP POSTs a signed Logout Token to this URL when the user
         logs out, so the RP can terminate its local session
         server-to-server (independent of any browser).
+
+        Strict HTTPS-only (no loopback exception like for
+        ``redirect_uri``); the URL is fetched server-to-server so
+        TLS termination at the RP host is the only viable transport.
         """
         from urllib.parse import urlparse
         if clear:

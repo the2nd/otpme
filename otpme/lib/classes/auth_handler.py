@@ -444,8 +444,8 @@ class AuthHandler(object):
                 self.auth_message = "SESSION_LOGOUT_OK"
             # Delete session if this is a logout request.
             session.delete(force=True, recursive=True, verify_acls=False,
-                           skip_backchannel_client=getattr(self,
-                               'oidc_skip_backchannel_client', None))
+                           skip_backchannel_client=self.oidc_skip_backchannel_client,
+                           skip_backchannel=self.oidc_skip_backchannel)
             # On session logout authentication fails but the action was
             # successful. Thus loglevel INFO is sufficient.
             self.error_log_method = self.logger.info
@@ -709,8 +709,8 @@ class AuthHandler(object):
             if request_type == "logout":
                 # Delete session if it matches the given SLP.
                 session.delete(force=True, recursive=True, verify_acls=False,
-                               skip_backchannel_client=getattr(self,
-                                   'oidc_skip_backchannel_client', None))
+                               skip_backchannel_client=self.oidc_skip_backchannel_client,
+                               skip_backchannel=self.oidc_skip_backchannel)
                 log_msg = _("Logged out old user session: {session_name}", log=True)[1]
                 log_msg = log_msg.format(session_name=session.name)
                 self.logger.debug(log_msg)
@@ -2227,7 +2227,8 @@ class AuthHandler(object):
         oidc_context=False, oidc_scope="",
         oidc_nonce=None, oidc_redirect_uri=None,
         oidc_code_challenge=None, oidc_code_challenge_method=None,
-        oidc_skip_backchannel_client=None):
+        oidc_skip_backchannel_client=None,
+        oidc_skip_backchannel=False):
         """
         Try to authenticate user:
             auth_type can be clear-text, mschap or ssh:
@@ -2351,6 +2352,7 @@ class AuthHandler(object):
         # initiating RP already cleaned up locally and notifying it
         # back would just produce HTTP 4xx noise).
         self.oidc_skip_backchannel_client = oidc_skip_backchannel_client
+        self.oidc_skip_backchannel = oidc_skip_backchannel
         if gen_jwt is None:
             if self.jwt_challenge:
                 self.gen_jwt = True
