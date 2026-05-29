@@ -43,7 +43,12 @@ def register():
     config.register_otpme_protocol("authd", PROTOCOL_VERSION, server=True)
 
 def _serialize_fido2_state(state):
-    """ Serialize fido2 state dict for Flask session storage. """
+    """ Serialize an fido2-server auth/registration state dict to a
+    plain-JSON-safe form: bytes values are b64-encoded and tagged
+    with a sibling ``_b_<key>=True`` marker so the round-trip can
+    restore them. Used before stashing the state in the
+    Redis-backed shared dict (``multiprocessing.fido2_auth_states``)
+    that bridges the begin/complete HTTP roundtrip. """
     serialized = {}
     for k, v in state.items():
         if isinstance(v, bytes):
@@ -54,7 +59,10 @@ def _serialize_fido2_state(state):
     return serialized
 
 def _deserialize_fido2_state(data):
-    """ Deserialize fido2 state dict from Flask session. """
+    """ Inverse of ``_serialize_fido2_state``: rebuild the original
+    state dict (bytes restored where the ``_b_<key>=True`` marker is
+    present) before handing it to fido2-server's authenticate_complete /
+    register_complete. """
     state = {}
     for k, v in data.items():
         if k.startswith('_b_'):
@@ -95,7 +103,6 @@ class OTPmeAuthP1(OTPmeServer1):
             return
         new_proctitle = f"{self.proctitle} User: {username}"
         setproctitle.setproctitle(new_proctitle)
-        # FIXME: does this work when running as freeradius module?
         # In debug mode its handy to have username included in loglines
         if config.debug_enabled or config.loglevel == "DEBUG":
             log_banner = f"{config.log_name}:{username}:"
@@ -437,7 +444,7 @@ class OTPmeAuthP1(OTPmeServer1):
         credentials = []
         credential_token_map = {}
         for token in user_tokens:
-            if token.token_type == "fido2" and token.credential_data:
+            if token.token_type in ("fido2", "passkey") and token.credential_data:
                 cred_data = decode(token.credential_data, "hex")
                 acd = AttestedCredentialData(cred_data)
                 credentials.append(acd)
@@ -537,9 +544,10 @@ class OTPmeAuthP1(OTPmeServer1):
                                         client_ip=client_ip,
                                         fido2_state_id=fido2_state_id,
                                         node=fido2_auth_node)
-        # Load fido2 auth state.
+        # Load fido2 auth state and build the smartcard_data envelope
+        # consumed by both the step-up reauth path (``token.verify()``)
+        # and the regular login path (``user.authenticate()``).
         auth_state = _deserialize_fido2_state(state_data['state'])
-        # Build smartcard_data for auth_handler.
         smartcard_data = {
             'rp_id'         : rp_id,
             'auth_state'    : auth_state,
@@ -547,10 +555,9 @@ class OTPmeAuthP1(OTPmeServer1):
         }
         # Step-up reauth: verify FIDO2 directly on the token (which
         # already enforces counter / replay protection) and bump
-        # reauth_time on the existing SSO session. We deliberately
-        # skip the auth_handler pipeline -- the user is already
-        # logged in, no need for fresh SOTP / cookies / session
-        # creation.
+        # reauth_time on the existing SSO session. No full
+        # user.authenticate() call: the user is already logged in,
+        # so no new SOTP, no cookies, no session creation.
         if reauth:
             if not reauth_session_uuid:
                 log_msg = _("Reauth: session_uuid missing.", log=True)[1]
@@ -563,7 +570,7 @@ class OTPmeAuthP1(OTPmeServer1):
                                     attribute="owner_uuid",
                                     value=user.uuid,
                                     return_type="instance"):
-                if t.token_type == "fido2" and t.name == matched_token_name:
+                if t.token_type in ("fido2", "passkey") and t.name == matched_token_name:
                     token = t
                     break
             if token is None:
@@ -732,7 +739,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 if not x_token.mschap_enabled:
                     continue
             if command == "token_verify_fido2":
-                if x_token.token_type != "fido2":
+                if x_token.token_type not in ("fido2", "passkey"):
                     continue
             try:
                 verify_status = x_token.verify(**token_verify_parms)

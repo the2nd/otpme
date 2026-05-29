@@ -1011,7 +1011,6 @@ def register_config():
             msg = _("Invalid key length")
             raise ValueError(msg)
         return key_len
-
     # Private key backup key len.
     config.register_config_parameter(name="private_key_backup_key_len",
                                     ctype=int,
@@ -1395,45 +1394,60 @@ def register_config():
                     'unit',
                     'user',
                     ]
-    def sso_role_setter(role, callback=JobCallback, **kwargs):
-        if "/" in role:
-            role_site = role.split("/")[0]
-            role_name = role.split("/")[1]
-        else:
-            role_site = config.site
-            role_name = role
-        result = backend.search(object_type='role',
-                                attribute="name",
-                                value=role_name,
-                                realm=config.realm,
-                                site=role_site,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown role: {role}")
-            msg = msg.format(role=role)
-            raise ValueError(msg)
-        role = result[0]
-        if not role.verify_acl("add:token"):
-            msg = _("You dont have permissions to add tokens to this role: {role}")
-            msg = msg.format(role=role.oid)
-            raise PermissionDenied(msg)
-        return role.uuid
-    def sso_role_getter(uuid, callback=JobCallback, **kwargs):
-        result = backend.search(object_type='role',
-                                attribute="uuid",
-                                value=uuid,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown role: {uuid}")
-            msg = msg.format(uuid=uuid)
-            raise ValueError(msg)
-        role = result[0]
-        role_path = f"{role.site}/{role.name}"
-        return role_path
-    config.register_config_parameter(name="sso_token_role",
-                                    ctype=str,
+    def sso_role_setter(roles, callback=JobCallback, **kwargs):
+        if isinstance(roles, str):
+            roles = roles.split(",")
+        roles_uuids = []
+        for role in roles:
+            if "/" in role:
+                role_site = role.split("/")[0]
+                role_name = role.split("/")[1]
+            else:
+                role_site = config.site
+                role_name = role
+            result = backend.search(object_type='role',
+                                    attribute="name",
+                                    value=role_name,
+                                    realm=config.realm,
+                                    site=role_site,
+                                    return_type="instance")
+            if not result:
+                msg = _("Unknown role: {role}")
+                msg = msg.format(role=role)
+                raise ValueError(msg)
+            role = result[0]
+            if not role.verify_acl("add:token"):
+                msg = _("You dont have permissions to add tokens to this role: {role}")
+                msg = msg.format(role=role.oid)
+                raise PermissionDenied(msg)
+            roles_uuids.append(role.uuid)
+        return roles_uuids
+    def sso_role_getter(roles, callback=JobCallback, **kwargs):
+        if isinstance(roles, str):
+            roles = roles.split(",")
+        roles_paths = []
+        for role_uuid in roles:
+            result = backend.search(object_type='role',
+                                    attribute="uuid",
+                                    value=role_uuid,
+                                    return_type="instance")
+            if not result:
+                msg = _("Unknown role: {uuid}")
+                msg = msg.format(uuid=role_uuid)
+                raise ValueError(msg)
+            role = result[0]
+            role_path = f"{role.site}/{role.name}"
+            roles_paths.append(role_path)
+        return roles_paths
+    config.register_config_parameter(name="sso_token_roles",
+                                    ctype=list,
                                     setter=sso_role_setter,
                                     getter=sso_role_getter,
+                                    object_types=object_types)
+    # Allow passkeys in SSO portal.
+    config.register_config_parameter(name="sso_allow_passkeys",
+                                    ctype=bool,
+                                    default_value=True,
                                     object_types=object_types)
     # Put SSO device tokens to trash
     config.register_config_parameter(name="add_device_token_to_trash",

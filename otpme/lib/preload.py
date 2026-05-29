@@ -286,6 +286,7 @@ preload_modules = [
     'otpme.lib.token.motp.motp',
     'otpme.lib.token.oath.oath',
     'otpme.lib.token.otp_push.otp_push',
+    'otpme.lib.token.passkey.passkey',
     'otpme.lib.token.password.password',
     'otpme.lib.token.script_otp.script_otp',
     'otpme.lib.token.ssh.ssh',

@@ -530,6 +530,22 @@ a:hover { text-decoration: underline; }
 }
 
 /* ---- Responsive ---- */
+@media (max-width: 640px) {
+  /* Navbar: let items wrap onto a second line so the Logout link
+     never overflows off-screen. The spacer is collapsed so the user
+     chip and links pack from the left instead of being pushed past
+     the right edge. */
+  .navbar {
+    padding: 10px 14px;
+    gap: 10px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .navbar .spacer { flex-basis: 100%; height: 0; }
+  .navbar a { padding: 6px 10px; }
+  .navbar-user { padding: 4px 10px; font-size: 13px; }
+}
+
 @media (max-width: 480px) {
   .login-card { padding: 28px 20px 24px; }
   .login-buttons { flex-direction: column; }

@@ -711,6 +711,7 @@ def register():
     register_object_unit()
     register_ldap_object()
     register_sync_settings()
+    register_config_parameters()
     register_commands("role", commands)
     register_module("otpme.lib.classes.token")
     config.register_recursive_default_acl("site", "+role")
@@ -804,6 +805,12 @@ def register_ldap_object():
     config.register_ldap_object(object_type="role",
                                 default_scope="one",
                                 scopes=['one'])
+
+def register_config_parameters():
+    # SSO device tokens suffix.
+    config.register_config_parameter(name="device_token_suffix",
+                                    ctype=str,
+                                    object_types=['role'])
 
 def get_roles(role_uuid=None, skip_disabled=False, parent=False,
     recursive=True, return_type="name", return_attributes=None):

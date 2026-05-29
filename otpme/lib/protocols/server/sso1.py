@@ -4,6 +4,7 @@
 import os
 import time
 import base64
+import hashlib
 import setproctitle
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
@@ -342,8 +343,21 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             status = False
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
+        # Re-deploy assumes a credential the user can hand off and
+        # re-enroll (OTP secret, FIDO2 attestation, ...). A passkey has
+        # neither -- it lives on the device's authenticator -- so the
+        # re-deploy UX (replace current login token in-place) makes no
+        # sense. The settings page hides the entry point; defense in
+        # depth here in case someone hits the deploy URL directly.
+        if config.auth_token is not None \
+        and config.auth_token.token_type == "passkey":
+            return self.build_response(False, {
+                'message': 'Re-deploy is not supported when signed in '
+                           'with a passkey. Add or remove passkeys from '
+                           'the Settings page instead.',
+                'status': False})
         # Check for command redirection.
         if user.site != config.site:
             return self.ssod_redirect_command(command="deploy_begin",
@@ -442,7 +456,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             status = False
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
         # Check for command redirection.
         if user.site != config.site:
@@ -518,7 +532,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             status = False
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
         # Check for command redirection.
         if user.site != config.site:
@@ -599,7 +613,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             status = False
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
         # Check for command redirection.
         if user.site != config.site:
@@ -637,8 +651,7 @@ class OTPmeSsoP1(OTPmeServer1):
             try:
                 info_messages = verify_attestation_cert(registration_data)
             except OTPmeException as e:
-                log_msg = _("FIDO2 attestation cert verification failed for token "
-                            "'{token}' of user '{user_name}': {error}", log=True)[1]
+                log_msg = _("FIDO2 attestation cert verification failed for token '{token}' of user '{user_name}': {error}", log=True)[1]
                 log_msg = log_msg.format(token=fido2_token.rel_path,
                                         user_name=user.name,
                                         error=e)
@@ -655,6 +668,336 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         response = {'message':log_msg, 'status':True}
         return self.build_response(True, response)
+
+    def _sanitize_passkey_token_name(self, device_name):
+        """ Build a valid passkey token name from a user-supplied label.
+
+        Restricted to ``[a-z0-9-]`` for the same reasons as
+        ``_sanitize_device_token_name`` — kept identical so both flows
+        agree on what the user just typed. """
+        name = device_name.strip().lower()
+        out = []
+        for ch in name:
+            if ch.isalnum() and ch.isascii():
+                out.append(ch)
+            elif ch in " _":
+                out.append("-")
+        sanitized = "".join(out).strip("-")
+        if not sanitized:
+            return None
+        return f"passkey-{sanitized}"
+
+    def list_passkeys(self, username, sso_jwt, command_args):
+        """ Return the user's passkey tokens (name + friendly description).
+
+        Gated by the ``sso_allow_passkeys`` config parameter (walks
+        user → unit → site). When disabled, return ``allowed=False``
+        and an empty list so the frontend can hide the entire card. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="list_passkeys",
+                                            user=user,
+                                            command_args=command_args)
+        if not user.get_config_parameter("sso_allow_passkeys"):
+            return self.build_response(True, {'passkeys': [], 'allowed': False, 'status': True})
+        passkeys = []
+        for token_uuid in user.tokens:
+            try:
+                token = backend.get_object(object_type="token", uuid=token_uuid)
+            except Exception as e:
+                log_msg = _("Failed to read token object: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                continue
+            if not token or token.token_type != "passkey":
+                continue
+            # Only list deployed passkeys -- a slot without credential_data
+            # is the residue of a flow that bypassed the new add-via-web
+            # path (it now creates the slot only on successful complete).
+            if not token.credential_data:
+                continue
+            passkeys.append({
+                        'name'          : token.name,
+                        'device_name'   : token.description or token.name,
+                    })
+        return self.build_response(True, {'passkeys': passkeys, 'allowed': True, 'status': True})
+
+    def passkey_register_begin(self, username, sso_jwt, command_args):
+        """ Build WebAuthn create-options for a new passkey.
+
+        residentKey + userVerification are forced to "required" (that is
+        the passkey definition). excludeCredentials carries the user's
+        already-bound FIDO2 + passkey credentials so the browser refuses
+        to bind the same authenticator twice. No token slot is created
+        here — the slot materializes in ``passkey_register_complete`` on
+        a successful registration so a cancelled flow leaves no debris.
+        """
+        try:
+            rp_id = command_args['rp_id']
+            device_name = command_args['device_name']
+        except Exception:
+            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+        if not device_name or not str(device_name).strip():
+            return self.build_response(False, {'message':'Device name required.', 'status':False})
+        device_name = str(device_name).strip()
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="passkey_register_begin",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not user.get_config_parameter("sso_allow_passkeys"):
+            return self.build_response(False, {'message':'Passkeys are not enabled.', 'status':False})
+        token_name = self._sanitize_passkey_token_name(device_name)
+        if not token_name:
+            return self.build_response(False, {'message':'Invalid device name.', 'status':False})
+        if user.token(token_name):
+            return self.build_response(False, {'message':'A passkey with this name already exists.', 'status':False})
+        # excludeCredentials: any already-bound FIDO2 or passkey credential
+        # of this user. Browsers honour this to stop the same authenticator
+        # registering twice (UX: "this key is already registered").
+        existing_credentials = []
+        for tok_uuid in user.tokens:
+            tok = backend.get_object(object_type="token", uuid=tok_uuid)
+            if not tok:
+                continue
+            if tok.token_type not in ("fido2", "passkey"):
+                continue
+            if not tok.credential_data:
+                continue
+            try:
+                cred_data = decode(tok.credential_data, "hex")
+                existing_credentials.append(AttestedCredentialData(cred_data))
+            except Exception:
+                continue
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        # attestation="none" matches PasskeyToken — synced passkeys rarely
+        # carry useful attestation, requiring it would lock them out.
+        fido2_server = Fido2Server(rp_data, attestation="none")
+        # user.id MUST be a stable byte string per WebAuthn — UUID survives
+        # renames and is what cloud-synced passkeys key off internally.
+        user_data = {"id":          user.uuid.encode(),
+                    "name":         user.name,
+                    "displayName":  user.name}
+        try:
+            create_options, reg_state = fido2_server.register_begin(
+                user_data,
+                credentials=existing_credentials,
+                resident_key_requirement="required",
+                user_verification="required",
+            )
+        except Exception as e:
+            log_msg = _("Passkey register_begin failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':f'Failed to start passkey registration: {e}', 'status':False})
+        passkey_reg_state = _serialize_fido2_state(reg_state)
+        # device_name and the sanitized token_name flow through complete
+        # so we don't have to re-sanitize there.
+        return self.build_response(True, {
+                    'create_options'        : dict(create_options),
+                    'passkey_reg_state'     : passkey_reg_state,
+                    'device_name'           : device_name,
+                    'token_name'            : token_name,
+                })
+
+    def passkey_register_complete(self, username, sso_jwt, command_args):
+        """ Verify the WebAuthn registration response and create the
+        passkey token slot. The slot is born already deployed -- we
+        don't allow an empty passkey slot to exist. """
+        try:
+            rp_id = command_args['rp_id']
+            reg_state = command_args['passkey_reg_state']
+            registration_data = command_args['registration_data']
+            device_name = command_args['device_name']
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="passkey_register_complete",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not user.get_config_parameter("sso_allow_passkeys"):
+            return self.build_response(False, {'message':'Passkeys are not enabled.', 'status':False})
+        if user.token(token_name):
+            return self.build_response(False, {'message':'A passkey with this name already exists.', 'status':False})
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        fido2_server = Fido2Server(rp_data, attestation="none")
+        try:
+            auth_data = fido2_server.register_complete(
+                            _deserialize_fido2_state(reg_state),
+                            registration_data)
+        except Exception as e:
+            log_msg = _("Passkey registration failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':'REGISTRATION_FAILED', 'status':False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.add_token(token_name=token_name,
+                            token_type="passkey",
+                            no_token_infos=True,
+                            gen_qrcode=False,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to add passkey token: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':f'Failed to create passkey token: {e}', 'status':False})
+        token = user.token(token_name)
+        if not token:
+            return self.build_response(False, {'message':'Failed to create passkey token.', 'status':False})
+        token.credential_data = encode(auth_data.credential_data, "hex")
+        token.description = device_name
+        token.update_index('description', token.description)
+        token._write(callback=callback)
+        # A passkey is meant to be a peer of the login token: same
+        # authorization, just a different factor on a different device.
+        # Copy role + direct AG + direct group memberships from the
+        # token the user actually presented in the current SSO JWT
+        # (config.auth_token, set by verify_sso_jwt) -- that's the real
+        # "login token" for this session, not necessarily
+        # user.default_token. Otherwise login with the passkey fails
+        # with "token is not valid for accessgroup 'SSO'".
+        #
+        # Cross-site memberships are deliberately skipped: writing them
+        # would require an ssod->ssod fan-out to each remote site, which
+        # is not built yet. The user can re-run the add on the other
+        # site if they need cross-site coverage.
+        login_token = config.auth_token
+        if login_token is not None:
+            token_path = f"{user.name}/{token.name}"
+            for role in login_token.get_roles(return_type="instance"):
+                if role.site != config.site:
+                    continue
+                try:
+                    role.add_token(token_path=token_path,
+                                    verify_acls=False,
+                                    run_policies=False,
+                                    callback=callback)
+                    role._write(callback=callback)
+                except Exception as e:
+                    log_msg = _("Passkey: failed to mirror role '{role}' onto '{token}': {e}", log=True)[1]
+                    log_msg = log_msg.format(role=role.name,
+                                            token=token.rel_path, e=e)
+                    self.logger.warning(log_msg)
+            for ag in login_token.get_access_groups(include_roles=False,
+                                                    return_type="instance"):
+                if ag.site != config.site:
+                    continue
+                try:
+                    ag.add_token(token_path=token_path,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
+                    ag._write(callback=callback)
+                except Exception as e:
+                    log_msg = _("Passkey: failed to mirror access group '{ag}' onto '{token}': {e}", log=True)[1]
+                    log_msg = log_msg.format(ag=ag.name,
+                                            token=token.rel_path, e=e)
+                    self.logger.warning(log_msg)
+            for grp in login_token.get_groups(include_roles=False,
+                                                return_type="instance"):
+                if grp.site != config.site:
+                    continue
+                try:
+                    grp.add_token(token_path=token_path,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
+                    grp._write(callback=callback)
+                except Exception as e:
+                    log_msg = _("Passkey: failed to mirror group '{grp}' onto '{token}': {e}", log=True)[1]
+                    log_msg = log_msg.format(grp=grp.name,
+                                            token=token.rel_path, e=e)
+                    self.logger.warning(log_msg)
+        cred_hash = hashlib.sha256(auth_data.credential_data).hexdigest()[:16]
+        emit_audit("Crypto", "passkey_credential_added",
+                        user=user.name,
+                        token=token.rel_path,
+                        credential_fingerprint=cred_hash)
+        log_msg = _("Passkey '{token}' registered for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {
+                    'status'        : True,
+                    'name'          : token.name,
+                    'device_name'   : token.description,
+                })
+
+    def del_passkey(self, username, sso_jwt, command_args):
+        """ Delete one of the user's own passkey tokens. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="del_passkey",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        token = user.token(token_name)
+        if not token or token.owner_uuid != user.uuid:
+            return self.build_response(False, {'message':'UNKNOWN_TOKEN', 'status':False})
+        if token.token_type != "passkey":
+            return self.build_response(False, {'message':'Not a passkey token.', 'status':False})
+        # Refuse to delete the token of the current session. The JWT
+        # would still carry its UUID and the next request's
+        # verify_sso_jwt would fail to load config.auth_token -- the
+        # user would be locked out instead of getting a clean re-auth
+        # prompt. Force them to sign in with another factor first.
+        if config.auth_token is not None and config.auth_token.uuid == token.uuid:
+            return self.build_response(False, {
+                'message': 'Cannot delete the passkey you are currently '
+                           'signed in with. Sign in with another factor first.',
+                'status': False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.del_token(token_name=token_name,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to delete passkey '{token}' for user '{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {'message':'Failed to delete passkey.', 'status':False})
+        log_msg = _("Passkey '{token}' deleted for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token_name, user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {'status': True})
 
     def change_language(self, username, sso_jwt, command_args):
         """ Persist the user's preferred UI language on the User object.
@@ -676,7 +1019,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False,
-                    {'message': 'AUTH_FAILED', 'status': False})
+                    {'message': 'JWT_INVALID', 'status': False})
         # Cross-site: user lives on a different site; the object
         # write must happen there.
         if user.site != config.site:
@@ -691,8 +1034,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                  verify_acls=False,
                                  callback=callback)
         except Exception as e:
-            message, log_msg = _("Language change failed for user "
-                                 "'{user_name}': {e}", log=True)
+            message, log_msg = _("Language change failed for user '{user_name}': {e}", log=True)
             log_msg = log_msg.format(user_name=user.name, e=e)
             self.logger.warning(log_msg)
             message = message.format(user_name=user.name, e=e)
@@ -728,7 +1070,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             status = False
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
         # Check for command redirection.
         if user.site != config.site:
@@ -786,7 +1128,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             status = False
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
         # Check for command redirection.
         if user.site != config.site:
@@ -831,67 +1173,77 @@ class OTPmeSsoP1(OTPmeServer1):
         message = _("Token PIN changed successfully.")
         return self.build_response(True, message)
 
-    def _get_sso_token_role(self, user):
-        """ Resolve the sso_token_role config parameter to a role instance.
-        `user.get_config_parameter` walks user → unit(s) → site and applies
-        the registered getter which returns a "<site>/<role>" path. Must
-        be called on the user's home site. """
+    def _get_sso_token_roles(self, user):
+        """ Resolve the sso_token_roles config parameter to a list of role
+        instances. `user.get_config_parameter` walks user → unit(s) →
+        site and applies the registered getter which returns a list of
+        "<site>/<role>" paths (bare names default to the local site).
+        Unknown roles are silently skipped. Must be called on the
+        user's home site. """
         try:
-            role_path = user.get_config_parameter("sso_token_role")
+            role_paths = user.get_config_parameter("sso_token_roles")
         except Exception as e:
-            log_msg = _("Failed to read sso_token_role: {e}", log=True)[1]
+            log_msg = _("Failed to read sso_token_roles: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            return None
-        if not role_path:
-            return None
-        if "/" in role_path:
-            role_site, role_name = role_path.split("/", 1)
-        else:
-            role_site = config.site
-            role_name = role_path
-        result = backend.search(object_type="role",
-                                attribute="name",
-                                value=role_name,
-                                realm=config.realm,
-                                site=role_site,
-                                return_type="instance")
-        if not result:
-            return None
-        return result[0]
+            return []
+        if not role_paths:
+            return []
+        roles = []
+        for role_path in role_paths:
+            if "/" in role_path:
+                role_site, role_name = role_path.split("/", 1)
+            else:
+                role_site = config.site
+                role_name = role_path
+            result = backend.search(object_type="role",
+                                    attribute="name",
+                                    value=role_name,
+                                    realm=config.realm,
+                                    site=role_site,
+                                    return_type="instance")
+            if not result:
+                continue
+            roles.append(result[0])
+        return roles
 
-    def _resolve_sso_token_role(self, user, command_args):
-        """ Resolve sso_token_role to a role instance. Cross-site users go
-        through their home site's ssod to obtain the role UUID, then the
-        role object is loaded locally via cluster-synced backend. """
+    def _resolve_sso_token_roles(self, user, command_args):
+        """ Resolve sso_token_roles to a list of role instances. Cross-site
+        users go through their home site's ssod to obtain the list of
+        role UUIDs; the role objects themselves are then loaded locally
+        via the cluster-synced backend. """
         if user.site == config.site:
-            return self._get_sso_token_role(user)
+            return self._get_sso_token_roles(user)
         status, resp = self._remote_ssod_call(user=user,
-                                            command="sso_get_device_token_role_uuid",
+                                            command="sso_get_device_token_role_uuids",
                                             extra_args=command_args)
         if not status or not isinstance(resp, dict):
-            return None
-        role_uuid = resp.get('role_uuid')
-        if not role_uuid:
-            return None
-        return backend.get_object(object_type="role", uuid=role_uuid)
+            return []
+        role_uuids = resp.get('role_uuids') or []
+        roles = []
+        for role_uuid in role_uuids:
+            role = backend.get_object(object_type="role", uuid=role_uuid)
+            if role is None:
+                continue
+            roles.append(role)
+        return roles
 
-    def sso_get_device_token_role_uuid(self, username, sso_jwt, command_args):
-        """ Internal cross-site command: resolve sso_token_role on the
-        user's home site and return its UUID. """
+    def sso_get_device_token_role_uuids(self, username, sso_jwt, command_args):
+        """ Internal cross-site command: resolve sso_token_roles on the
+        user's home site and return the list of role UUIDs. The caller
+        loads the role objects locally (cluster-synced). """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            return self.build_response(False, {'message':'AUTH_FAILED', 'status':False})
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
-        role = self._get_sso_token_role(user)
-        if not role:
-            return self.build_response(False, {'message':'sso_token_role is not configured.', 'status':False})
-        return self.build_response(True, {'role_uuid': role.uuid, 'status': True})
+        roles = self._get_sso_token_roles(user)
+        role_uuids = [role.uuid for role in roles]
+        return self.build_response(True, {'role_uuids': role_uuids, 'status': True})
 
     def _localized_info(self, obj, language, fallback="en"):
         """ Read an object's localized info field. OTPmeObject.info is a
@@ -940,15 +1292,20 @@ class OTPmeSsoP1(OTPmeServer1):
         return "en"
 
     def _sanitize_device_token_name(self, device_name):
-        """ Build a valid token name from a user-supplied device name. """
+        """ Build a valid token name from a user-supplied device name.
+
+        Restricted to ``[a-z0-9-]`` so the resulting OTPme token name
+        survives every code path (LDAP, file system, URL paths, ...)
+        without surprises. The web layer enforces the same alphabet
+        on input; this is the defensive copy. """
         name = device_name.strip().lower()
         out = []
         for ch in name:
-            if ch.isalnum() or ch in "_.-:":
+            if ch.isalnum() and ch.isascii():
                 out.append(ch)
-            elif ch == " ":
+            elif ch in " _":
                 out.append("-")
-        sanitized = "".join(out).strip("-._:")
+        sanitized = "".join(out).strip("-")
         if not sanitized:
             return None
         return f"device-{sanitized}"
@@ -964,7 +1321,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {
-                'message': 'AUTH_FAILED', 'status': False,
+                'message': 'JWT_INVALID', 'status': False,
             })
         consents = []
         for cid, rec in user.list_oidc_consents().items():
@@ -1004,7 +1361,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {
-                'message': 'AUTH_FAILED', 'status': False,
+                'message': 'JWT_INVALID', 'status': False,
             })
         client_uuid = command_args.get('client_uuid')
         if not client_uuid:
@@ -1016,8 +1373,7 @@ class OTPmeSsoP1(OTPmeServer1):
             try:
                 user._write(callback=self.get_callback())
             except Exception as e:
-                log_msg = _("Failed to persist OIDC consent revocation "
-                            "for user '{user}': {err}", log=True)[1]
+                log_msg = _("Failed to persist OIDC consent revocation for user '{user}': {err}", log=True)[1]
                 log_msg = log_msg.format(user=user.name, err=e)
                 self.logger.warning(log_msg)
         # Kill live OIDC sessions for this (user, client) tuple. The
@@ -1036,8 +1392,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 sess.delete(force=True, verify_acls=False)
                 killed += 1
             except Exception as e:
-                log_msg = _("Failed to terminate OIDC session '{sid}' "
-                            "during consent revocation: {err}",
+                log_msg = _("Failed to terminate OIDC session '{sid}' during consent revocation: {err}",
                             log=True)[1]
                 log_msg = log_msg.format(sid=sess.session_id, err=e)
                 self.logger.warning(log_msg)
@@ -1051,39 +1406,53 @@ class OTPmeSsoP1(OTPmeServer1):
                                           'sessions_killed': killed})
 
     def list_device_tokens(self, username, sso_jwt, command_args):
-        # Verify SSO jwt.
+        # Verify SSO jwt. Use JWT_INVALID so the Flask wrapper redirects
+        # to /login on expiry instead of returning a generic 400.
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
         # Check for command redirection.
         if user.site != config.site:
             return self.ssod_redirect_command(command="list_device_tokens",
                                             user=user,
                                             command_args=command_args)
-        # The role UUID must come from the user's home site (config walks
-        # up the user hierarchy), but the role object itself is
+        # The role UUIDs must come from the user's home site (config walks
+        # up the user hierarchy); the role objects themselves are
         # cluster-synced and loaded locally.
-        role = self._resolve_sso_token_role(user, command_args)
-        if not role:
-            # Report this as a successful response with role_configured=False
-            # so the frontend can disable the add form instead of showing a
-            # load error to the user.
+        roles = self._resolve_sso_token_roles(user, command_args)
+        # Roles without a device_token_suffix have no way to render a
+        # usable token name and are therefore hidden from the portal.
+        roles = [r for r in roles if r.get_config_parameter("device_token_suffix")]
+        if not roles:
+            # Report this as a successful response with roles_configured=False
+            # so the frontend can show a single disabled hint instead of an
+            # empty list and a load error.
             response = {
-                        'device_tokens'     : [],
-                        'role_configured'   : False,
-                        'role_info'         : "",
+                        'roles'             : [],
+                        'roles_configured'  : False,
                         'status'            : True,
                     }
             return self.build_response(True, response)
+        language = self._resolve_language(user, command_args)
+        # Build one group per configured role, keyed by role UUID so we
+        # can assign each user-owned token to the matching group(s) in a
+        # single pass over user.tokens.
+        role_groups = {}
+        for role in roles:
+            role_groups[role.uuid] = {
+                        'role_uuid'         : role.uuid,
+                        'role_name'         : role.name,
+                        'role_info'         : self._localized_info(role, language),
+                        'device_tokens'     : [],
+                    }
         # Iterate the user's own tokens and check role membership on each.
-        # This is cheaper than walking role.tokens when the role holds many
-        # tokens (e.g. lots of users sharing the same sso_token_role).
-        device_tokens = []
+        # This is cheaper than walking role.tokens when a role holds many
+        # tokens (e.g. lots of users sharing the same sso_token_roles entry).
         for token_uuid in user.tokens:
             try:
                 token = backend.get_object(object_type="token", uuid=token_uuid)
@@ -1096,18 +1465,18 @@ class OTPmeSsoP1(OTPmeServer1):
                 continue
             if token.token_type != "password":
                 continue
-            token_role_uuids = token.get_roles(return_type="uuid")
-            if role.uuid not in token_role_uuids:
-                continue
-            device_tokens.append({
+            entry = {
                         'name'          : token.name,
-                        'device_name'   : token.name,
-                    })
-        language = self._resolve_language(user, command_args)
+                        'device_name'   : token.description or token.name,
+                    }
+            for role_uuid in token.get_roles(return_type="uuid"):
+                group = role_groups.get(role_uuid)
+                if group is None:
+                    continue
+                group['device_tokens'].append(entry)
         response = {
-                    'device_tokens'     : device_tokens,
-                    'role_configured'   : True,
-                    'role_info'         : self._localized_info(role, language),
+                    'roles'             : list(role_groups.values()),
+                    'roles_configured'  : True,
                     'status'            : True,
                 }
         return self.build_response(True, response)
@@ -1134,14 +1503,18 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def sso_create_device_token(self, username, sso_jwt, command_args):
         """ Internal cross-site command: create a password device token on
-        the user's home site and return the token's OID/OC together with
-        the sso_token_role UUID (which must be resolved here, on the user's
-        home site, since the config parameter walks up the user hierarchy).
-        The calling site mirrors the token OC locally and then adds the
-        token to the role. """
+        the user's home site and add it to the requested role. The
+        caller passes the target role_uuid (chosen from the per-role
+        section in the SSO portal); we re-validate it against the
+        user's sso_token_roles here and derive the final token name
+        from the role's device_token_suffix. The home site is the
+        authoritative location for both: sso_token_roles walks up the
+        user hierarchy, and we don't want callers to pick the token
+        name freely. The token OID/OC is returned so the calling site
+        can mirror the token locally without waiting for cluster sync. """
         try:
-            token_name = command_args['token_name']
             device_name = command_args['device_name']
+            role_uuid = command_args['role_uuid']
         except KeyError:
             return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
         try:
@@ -1150,15 +1523,26 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            return self.build_response(False, {'message':'AUTH_FAILED', 'status':False})
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
-        # Resolve the sso_token_role on the user's home site — this is the
-        # authoritative location since the config parameter walks up the
-        # user's parent hierarchy.
-        role = self._get_sso_token_role(user)
+        # Validate the requested role_uuid against the configured list.
+        # Prevents a malicious or stale caller from depositing tokens
+        # into an arbitrary role.
+        role = None
+        for candidate in self._get_sso_token_roles(user):
+            if candidate.uuid == role_uuid:
+                role = candidate
+                break
         if not role:
-            return self.build_response(False, {'message':'sso_token_role is not configured.', 'status':False})
+            return self.build_response(False, {'message':'Invalid role.', 'status':False})
+        suffix = role.get_config_parameter("device_token_suffix")
+        if not suffix:
+            return self.build_response(False, {'message':'Role has no device_token_suffix configured.', 'status':False})
+        sanitized = self._sanitize_device_token_name(device_name)
+        if not sanitized:
+            return self.build_response(False, {'message':'Invalid device name.', 'status':False})
+        token_name = f"{sanitized}-{suffix}"
         if user.token(token_name):
             return self.build_response(False, {'message':'A device with this name already exists.', 'status':False})
         callback = self.get_callback()
@@ -1221,7 +1605,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            return self.build_response(False, {'message':'AUTH_FAILED', 'status':False})
+            return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
         callback = self.get_callback()
@@ -1272,6 +1656,7 @@ class OTPmeSsoP1(OTPmeServer1):
     def add_device_token(self, username, sso_jwt, command_args):
         try:
             device_name = command_args['device_name']
+            role_uuid = command_args['role_uuid']
         except Exception:
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(False, message)
@@ -1286,24 +1671,28 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        token_name = self._sanitize_device_token_name(device_name)
-        if not token_name:
+        sanitized = self._sanitize_device_token_name(device_name)
+        if not sanitized:
             response = {'message':'Invalid device name.', 'status':False}
             return self.build_response(False, response)
         callback = self.get_callback()
         callback.raise_exception = True
         new_password = None
         role = None
+        token_name = None
         if user.site != config.site:
             # Token creation must happen on the user's home site (authoritative
-            # write). The remote ssod also resolves the sso_token_role UUID —
-            # that parameter walks up the user hierarchy so the canonical
-            # value lives on the user's home site.
+            # write). The remote ssod re-validates role_uuid against the
+            # user's sso_token_roles and appends the role's
+            # device_token_suffix to build the final token name.
             remote_args = dict(command_args)
-            remote_args['token_name'] = token_name
             remote_args['device_name'] = device_name
+            remote_args['role_uuid'] = role_uuid
+            # Drop any caller-supplied token_name — the remote derives
+            # it authoritatively from the role's suffix.
+            remote_args.pop('token_name', None)
             status, remote_resp = self._remote_ssod_call(user=user,
                                                     command="sso_create_device_token",
                                                     extra_args=remote_args,
@@ -1313,8 +1702,8 @@ class OTPmeSsoP1(OTPmeServer1):
             new_password = remote_resp.get('password')
             token_full_oid = remote_resp.get('token_full_oid')
             token_oc = remote_resp.get('token_oc')
-            role_uuid = remote_resp.get('role_uuid')
-            if not token_full_oid or not token_oc or not role_uuid:
+            confirmed_role_uuid = remote_resp.get('role_uuid')
+            if not token_full_oid or not token_oc or not confirmed_role_uuid:
                 return self.build_response(False, {'message':'Invalid remote response.', 'status':False})
             # Mirror the remote token object locally so list_device_tokens
             # and the role.add_token call below find it without waiting for
@@ -1334,6 +1723,9 @@ class OTPmeSsoP1(OTPmeServer1):
             # Get token from backend add add it to local user to make auth possible
             # even if sync was not done yet.
             token = backend.get_object(token_oid)
+            # Final name (incl. suffix) comes from the mirrored object —
+            # the remote is authoritative.
+            token_name = token.name
             user.add_token(new_token=token,
                         no_token_infos=True,
                         force=True,
@@ -1341,16 +1733,31 @@ class OTPmeSsoP1(OTPmeServer1):
                         run_policies=True,
                         callback=callback)
             user._write(callback=callback)
-            # Load the role (by UUID returned from remote) for the local
+            # Load the role (UUID confirmed by remote) for the local
             # add-to-role step.
-            role = backend.get_object(object_type="role", uuid=role_uuid)
+            role = backend.get_object(object_type="role", uuid=confirmed_role_uuid)
             if not role:
-                return self.build_response(False, {'message':'sso_token_role not found locally.', 'status':False})
+                return self.build_response(False, {'message':'sso_token_roles role not found locally.', 'status':False})
         else:
-            role = self._get_sso_token_role(user)
+            # Validate the requested role_uuid against the configured list.
+            for candidate in self._get_sso_token_roles(user):
+                if candidate.uuid == role_uuid:
+                    role = candidate
+                    break
             if not role:
-                response = {'message':'sso_token_role is not configured.', 'status':False}
+                response = {'message':'Invalid role.', 'status':False}
                 return self.build_response(False, response)
+            # Append the role's device_token_suffix to disambiguate
+            # tokens that belong to different sso_token_roles (e.g.
+            # "device-iphone-wlan" vs "device-iphone-vpn"). Roles
+            # without a suffix are hidden from list_device_tokens, so
+            # a missing suffix here means a race against an admin
+            # config change — surface it as a hard error.
+            suffix = role.get_config_parameter("device_token_suffix")
+            if not suffix:
+                response = {'message':'Role has no device_token_suffix configured.', 'status':False}
+                return self.build_response(False, response)
+            token_name = f"{sanitized}-{suffix}"
             if user.token(token_name):
                 response = {'message':'A device with this name already exists.', 'status':False}
                 return self.build_response(False, response)
@@ -1365,7 +1772,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 response = {'message':f'Failed to add device token: {e}', 'status':False}
                 return self.build_response(False, response)
-        # Add the token to the sso_token_role on this node. role._write()
+        # Add the token to the chosen role on this node. role._write()
         # propagates the change back to the role's home site via the cluster.
         token_path = f"{user.name}/{token_name}"
         try:
@@ -1421,11 +1828,11 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            auth_response = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        role = self._resolve_sso_token_role(user, command_args)
-        if not role:
-            response = {'message':'sso_token_role is not configured.', 'status':False}
+        roles = self._resolve_sso_token_roles(user, command_args)
+        if not roles:
+            response = {'message':'sso_token_roles is not configured.', 'status':False}
             return self.build_response(False, response)
         token = user.token(token_name)
         if not token:
@@ -1434,8 +1841,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if token.owner_uuid != user.uuid:
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
-        # Only allow deletion of tokens that are part of the sso_token_role.
-        if token.uuid not in role.tokens:
+        # Only allow deletion of tokens that are part of any configured
+        # sso_token_roles role.
+        if not any(token.uuid in role.tokens for role in roles):
             response = {'message':'Not a device token.', 'status':False}
             return self.build_response(False, response)
         callback = self.get_callback()
@@ -1700,9 +2108,7 @@ class OTPmeSsoP1(OTPmeServer1):
         import hashlib
         pw_secret = getattr(site, 'oidc_pairwise_secret', None)
         if not pw_secret:
-            msg = _("Site '{site}' has no oidc_pairwise_secret. "
-                    "Run 'otpme-site change_oidc_pairwise_secret' "
-                    "or re-run enable_oidc.")
+            msg = _("Site '{site}' has no oidc_pairwise_secret. Run 'otpme-site change_oidc_pairwise_secret' or re-run enable_oidc.")
             msg = msg.format(site=getattr(site, 'name', '?'))
             raise OTPmeException(msg)
         if isinstance(pw_secret, str):
@@ -2066,9 +2472,7 @@ class OTPmeSsoP1(OTPmeServer1):
                         replayed_session.delete(force=True,
                                                  verify_acls=False)
                     except Exception as e:
-                        log_msg = _("Failed to invalidate OIDC "
-                                    "session '{sid}' on code "
-                                    "replay: {err}", log=True)[1]
+                        log_msg = _("Failed to invalidate OIDC session '{sid}' on code replay: {err}", log=True)[1]
                         log_msg = log_msg.format(sid=sid, err=e)
                         self.logger.warning(log_msg)
                     emit_audit("OIDC", 'authcode_replay_detected',
@@ -2280,8 +2684,7 @@ class OTPmeSsoP1(OTPmeServer1):
                         replayed_session.delete(force=True,
                                                  verify_acls=False)
                     except Exception as e:
-                        log_msg = _("Failed to invalidate replayed OIDC "
-                                    "session '{sid}': {err}", log=True)[1]
+                        log_msg = _("Failed to invalidate replayed OIDC session '{sid}': {err}", log=True)[1]
                         log_msg = log_msg.format(sid=sid, err=e)
                         self.logger.warning(log_msg)
                     emit_audit("OIDC", 'token_refresh_replay_detected',
@@ -2354,8 +2757,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             site=site,
                             claims=id_claims)
         except Exception as e:
-            log_msg = _("Failed to issue tokens / build ID Token (refresh): "
-                        "{err}", log=True)[1]
+            log_msg = _("Failed to issue tokens / build ID Token (refresh): {err}", log=True)[1]
             log_msg = log_msg.format(err=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {
@@ -3103,8 +3505,7 @@ class OTPmeSsoP1(OTPmeServer1):
                          or getattr(session, 'creation_time', None))
             now = time.time()
             if auth_time is None or (now - int(auth_time)) > max_age:
-                log_msg = _("max_age={ma}s exceeded for session '{sid}' "
-                            "(age={age}s); requesting reauth.",
+                log_msg = _("max_age={ma}s exceeded for session '{sid}' (age={age}s); requesting reauth.",
                             log=True)[1]
                 log_msg = log_msg.format(
                             ma=max_age,
@@ -3304,8 +3705,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     claims_preview = self._get_user_claims(user, scope,
                                                             client=client) or {}
                 except Exception as e:
-                    log_msg = _("Failed to compute claims preview for "
-                                "consent screen: {err}", log=True)[1]
+                    log_msg = _("Failed to compute claims preview for consent screen: {err}", log=True)[1]
                     log_msg = log_msg.format(err=e)
                     self.logger.warning(log_msg)
                     claims_preview = {}
@@ -3327,9 +3727,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 try:
                     user._write(callback=self.get_callback())
                 except Exception as e:
-                    log_msg = _("Failed to persist OIDC consent for "
-                                "user '{user}' / client '{cid}': "
-                                "{err}", log=True)[1]
+                    log_msg = _("Failed to persist OIDC consent for user '{user}' / client '{cid}': {err}", log=True)[1]
                     log_msg = log_msg.format(user=user.name,
                                               cid=client_id, err=e)
                     self.logger.warning(log_msg)
@@ -3758,12 +4156,16 @@ class OTPmeSsoP1(OTPmeServer1):
                             "change_language",
                             "fido2_register_begin",
                             "fido2_register_complete",
+                            "list_passkeys",
+                            "passkey_register_begin",
+                            "passkey_register_complete",
+                            "del_passkey",
                             "list_device_tokens",
                             "add_device_token",
                             "del_device_token",
                             "sso_create_device_token",
                             "sso_delete_device_token",
-                            "sso_get_device_token_role_uuid",
+                            "sso_get_device_token_role_uuids",
                             "oidc_token",
                             "oidc_userinfo",
                             "oidc_introspect",
@@ -3914,10 +4316,30 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.info(log_msg)
             return self.sso_delete_device_token(username, sso_jwt, command_args)
 
-        if command == "sso_get_device_token_role_uuid":
-            log_msg = _("Processing command sso_get_device_token_role_uuid.", log=True)[1]
+        if command == "sso_get_device_token_role_uuids":
+            log_msg = _("Processing command sso_get_device_token_role_uuids.", log=True)[1]
             self.logger.info(log_msg)
-            return self.sso_get_device_token_role_uuid(username, sso_jwt, command_args)
+            return self.sso_get_device_token_role_uuids(username, sso_jwt, command_args)
+
+        if command == "list_passkeys":
+            log_msg = _("Processing command list_passkeys.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.list_passkeys(username, sso_jwt, command_args)
+
+        if command == "passkey_register_begin":
+            log_msg = _("Processing command passkey_register_begin.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.passkey_register_begin(username, sso_jwt, command_args)
+
+        if command == "passkey_register_complete":
+            log_msg = _("Processing command passkey_register_complete.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.passkey_register_complete(username, sso_jwt, command_args)
+
+        if command == "del_passkey":
+            log_msg = _("Processing command del_passkey.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.del_passkey(username, sso_jwt, command_args)
 
         if command == "oidc_authorize_validate":
             log_msg = _("Processing command oidc_authorize_validate.", log=True)[1]

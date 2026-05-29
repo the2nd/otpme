@@ -6,7 +6,11 @@
      data-url-change-language="{{ url_for('change_language', _external=True, _scheme='https') }}"
      data-url-list-device-tokens="{{ url_for('list_device_tokens', _external=True, _scheme='https') }}"
      data-url-add-device-token="{{ url_for('add_device_token', _external=True, _scheme='https') }}"
-     data-url-del-device-token="{{ url_for('del_device_token', _external=True, _scheme='https') }}"></div>
+     data-url-del-device-token="{{ url_for('del_device_token', _external=True, _scheme='https') }}"
+     data-url-list-passkeys="{{ url_for('list_passkeys', _external=True, _scheme='https') }}"
+     data-url-passkey-register-begin="{{ url_for('passkey_register_begin', _external=True, _scheme='https') }}"
+     data-url-passkey-register-complete="{{ url_for('passkey_register_complete', _external=True, _scheme='https') }}"
+     data-url-del-passkey="{{ url_for('del_passkey', _external=True, _scheme='https') }}"></div>
 <div class="portal-wrapper">
     <h2>{{ gettext("Settings") }}</h2>
 
@@ -53,11 +57,13 @@
     {% endif %}
 
     <!-- Login Token Re-Deploy -->
+    {% if show_redeploy %}
     <div class="settings-card">
         <h3>{{ gettext("Login Token") }}</h3>
         <p class="settings-desc">{{ gettext("Re-deploy your login token. This will replace your current login token with a new one.") }}</p>
         <a href="{{ url_for('settings_redeploy', _external=True, _scheme='https') }}" class="btn btn-secondary btn-small">{{ gettext("Re-deploy Login Token") }}</a>
     </div>
+    {% endif %}
 
     <!-- Language -->
     <div class="settings-card">
@@ -77,30 +83,42 @@
         </div>
     </div>
 
-    <!-- Device Tokens -->
-    <div class="settings-card">
+    <!-- Device Tokens (one card per configured sso_token_roles role) -->
+    <div id="deviceRolesContainer"></div>
+    <div class="settings-card device-disabled-hint" id="deviceDisabledHint" style="display:none;">
         <h3>{{ gettext("Device Tokens") }}</h3>
-        <p class="settings-desc" id="deviceRoleInfo"></p>
-        <p class="settings-desc device-disabled-hint" id="deviceDisabledHint" style="display:none;">
-            {{ gettext("Device tokens are not available:") }} <code>sso_token_role</code> {{ gettext("is not configured.") }}
+        <p class="settings-desc">
+            {{ gettext("Device tokens are not available:") }} <code>sso_token_roles</code> {{ gettext("is not configured.") }}
         </p>
-        <div class="settings-form" id="deviceAddForm">
-            <label for="deviceName">{{ gettext("Device Name") }}</label>
-            <input type="text" id="deviceName" placeholder="{{ gettext('e.g. my-phone') }}" autocomplete="off">
-            <button type="button" id="addDeviceBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Add Device Token") }}</button>
-            <div class="status-msg" id="deviceStatus"></div>
-            <div class="error-msg" id="deviceError"></div>
+    </div>
+    <div id="deviceI18n"
+         data-label-device-tokens="{{ gettext('Device Tokens') }}"
+         data-label-device-name="{{ gettext('Device Name') }}"
+         data-label-device-name-placeholder="{{ gettext('e.g. my-phone') }}"
+         data-label-add-device-token="{{ gettext('Add Device Token') }}"
+         data-label-existing-device-tokens="{{ gettext('Existing Device Tokens') }}"
+         data-label-no-device-tokens="{{ gettext('No device tokens yet.') }}"
+         data-label-new-password="{{ gettext('New password:') }}"
+         data-label-copy="{{ gettext('Copy') }}"
+         data-label-shown-once="{{ gettext('This password is shown only once. Copy it now.') }}"
+         data-label-delete="{{ gettext('Delete') }}"
+         style="display:none;"></div>
+
+    <!-- Passkeys (WebAuthn discoverable credentials).
+         Hidden by default; revealed by loadPasskeys() when the server
+         reports allowed=true (sso_allow_passkeys config parameter). -->
+    <div class="settings-card" id="passkeyCard" style="display:none;">
+        <h3>{{ gettext("Passkeys") }}</h3>
+        <p class="settings-desc">{{ gettext("Sign in without a password using a passkey on this device or a synced credential provider (iCloud Keychain, Google Password Manager, 1Password, ...).") }}</p>
+        <div class="settings-form" id="passkeyAddForm">
+            <label for="passkeyName">{{ gettext("Passkey Name") }}</label>
+            <input type="text" id="passkeyName" placeholder="{{ gettext('e.g. iphone, laptop, work-pc') }}" autocomplete="off">
+            <button type="button" id="addPasskeyBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Add Passkey") }}</button>
+            <div class="status-msg" id="passkeyStatus"></div>
+            <div class="error-msg" id="passkeyError"></div>
         </div>
-        <div id="deviceResult" class="device-token-reveal" style="display:none;">
-            <div>
-                <strong>{{ gettext("New password:") }}</strong>
-                <code id="devicePassword"></code>
-                <button type="button" id="copyDevicePwBtn" class="btn btn-secondary btn-small" style="margin-left:8px;">{{ gettext("Copy") }}</button>
-            </div>
-            <span class="hint">{{ gettext("This password is shown only once. Copy it now.") }}</span>
-        </div>
-        <h4>{{ gettext("Existing Device Tokens") }}</h4>
-        <ul id="deviceTokenList" class="device-token-list"></ul>
+        <h4>{{ gettext("Existing Passkeys") }}</h4>
+        <ul id="passkeyList" class="device-token-list"></ul>
     </div>
 
     <!-- Connected applications (OIDC consents) -->

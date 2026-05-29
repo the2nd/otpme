@@ -2992,7 +2992,13 @@ class AuthHandler(object):
             login_token_pass_type = None
             login_token_sso_deploy = None
             if self.auth_token:
-                login_token_type = self.auth_token.type
+                # ``.type`` resolves to the generic OTPmeObject type
+                # ("token"); the specific token type ("fido2", "passkey",
+                # "totp", ...) lives in ``.token_type`` and is what
+                # consumers actually compare against (see pam.py,
+                # otpme_server.py). Anything else here would silently
+                # report every login token as the literal string "token".
+                login_token_type = self.auth_token.token_type
                 login_token_uuid = self.auth_token.uuid
                 login_token_rel_path = self.auth_token.rel_path
                 login_token_pass_type = self.auth_token.pass_type

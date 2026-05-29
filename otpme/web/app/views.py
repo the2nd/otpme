@@ -205,8 +205,13 @@ def settings():
     if not g.user.is_authenticated:
         return redirect(url_for('login', _external=True, _scheme='https'))
     login_token_pass_type = flask_session.get('login_token_pass_type')
+    login_token_type = flask_session.get('login_token_type')
     show_password_change = (login_token_pass_type == "static")
     show_pin_change = (login_token_pass_type == "otp")
+    # Re-deploy hidden when the user logged in with a passkey: passkeys
+    # are web-only (no CLI/QR enrollment flow), so the existing
+    # settings_redeploy → /deploy path doesn't apply.
+    show_redeploy = (login_token_type != "passkey")
     from otpme.web.app import SUPPORTED_LOCALES
     # Stashed value reflects user.language only when language_set=True;
     # the "default" sentinel is what we POST back to clear it.
@@ -225,6 +230,7 @@ def settings():
     return render_template("settings.html", title=gettext('Settings'),
                            show_password_change=show_password_change,
                            show_pin_change=show_pin_change,
+                           show_redeploy=show_redeploy,
                            locale_choices=locale_choices,
                            current_language=current_language)
 
@@ -318,17 +324,14 @@ def list_device_tokens():
         return jsonify({"error": gettext("Failed to list device tokens.")}), 500
     if error:
         return error
-    device_tokens = []
-    role_info = ""
-    role_configured = False
+    roles = []
+    roles_configured = False
     if isinstance(response, dict):
-        device_tokens = response.get('device_tokens', [])
-        role_info = response.get('role_info', "") or ""
-        role_configured = bool(response.get('role_configured', False))
+        roles = response.get('roles', []) or []
+        roles_configured = bool(response.get('roles_configured', False))
     return jsonify({
-                "device_tokens"     : device_tokens,
-                "role_info"         : role_info,
-                "role_configured"   : role_configured,
+                "roles"             : roles,
+                "roles_configured"  : roles_configured,
             })
 
 @app.route('/settings/device_tokens', methods=['POST'])
@@ -338,10 +341,14 @@ def add_device_token():
         return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     device_name = data.get('device_name', '').strip()
+    role_uuid = (data.get('role_uuid') or '').strip()
     if not device_name:
         return jsonify({"error": gettext("Device name is required.")}), 400
+    if not role_uuid:
+        return jsonify({"error": gettext("Role is required.")}), 400
     response, error = _send_ssod_command(command="add_device_token",
-                                        extra_args={'device_name': device_name},
+                                        extra_args={'device_name': device_name,
+                                                    'role_uuid':   role_uuid},
                                         default_error=gettext("Failed to add device token."),
                                         mgmt=True)
     if error:
@@ -369,6 +376,106 @@ def del_device_token():
     if error:
         return error
     return jsonify({"status": "ok", "message": "Device token deleted."})
+
+@app.route('/settings/passkeys', methods=['GET'])
+@login_required
+def list_passkeys():
+    if not g.user.is_authenticated:
+        return jsonify({"error": gettext("Not authenticated")}), 401
+    try:
+        response, error = _send_ssod_command(
+                command="list_passkeys",
+                default_error=gettext("Failed to list passkeys."))
+    except Exception as e:
+        logger.critical(f"list_passkeys failed: {e}")
+        return jsonify({"error": gettext("Failed to list passkeys.")}), 500
+    if error:
+        return error
+    passkeys = []
+    if isinstance(response, dict):
+        passkeys = response.get('passkeys', []) or []
+    return jsonify({"passkeys": passkeys})
+
+@app.route('/settings/passkeys/register/begin', methods=['POST'])
+@login_required
+def passkey_register_begin():
+    """ Start passkey enrollment.
+
+    Returns the WebAuthn ``create_options`` for the browser, and stashes
+    the reg_state + sanitized token_name + display name in the Flask
+    session so ``complete`` can verify them server-side without
+    trusting client-supplied values. """
+    if not g.user.is_authenticated:
+        return jsonify({"error": gettext("Not authenticated")}), 401
+    data = request.json or {}
+    device_name = (data.get('device_name') or '').strip()
+    if not device_name:
+        return jsonify({"error": gettext("Device name is required.")}), 400
+    rp_id = _get_fido2_rp_id()
+    response, error = _send_ssod_command(
+            command="passkey_register_begin",
+            extra_args={'device_name': device_name, 'rp_id': rp_id},
+            default_error=gettext("Failed to start passkey registration."),
+            mgmt=True)
+    if error:
+        return error
+    if not isinstance(response, dict):
+        return jsonify({"error": gettext("Failed to start passkey registration.")}), 500
+    flask_session['passkey_reg_state'] = response.get('passkey_reg_state')
+    flask_session['passkey_reg_device_name'] = response.get('device_name')
+    flask_session['passkey_reg_token_name'] = response.get('token_name')
+    return jsonify(response.get('create_options', {}))
+
+@app.route('/settings/passkeys/register/complete', methods=['POST'])
+@login_required
+def passkey_register_complete():
+    if not g.user.is_authenticated:
+        return jsonify({"error": gettext("Not authenticated")}), 401
+    reg_state = flask_session.pop('passkey_reg_state', None)
+    device_name = flask_session.pop('passkey_reg_device_name', None)
+    token_name = flask_session.pop('passkey_reg_token_name', None)
+    if not reg_state or not device_name or not token_name:
+        return jsonify({"error": gettext("No passkey registration in progress")}), 400
+    registration_data = request.json
+    if not registration_data:
+        return jsonify({"error": gettext("Missing registration data")}), 400
+    rp_id = _get_fido2_rp_id()
+    response, error = _send_ssod_command(
+            command="passkey_register_complete",
+            extra_args={
+                'rp_id'             : rp_id,
+                'passkey_reg_state' : reg_state,
+                'registration_data' : registration_data,
+                'device_name'       : device_name,
+                'token_name'        : token_name,
+            },
+            default_error=gettext("Failed to complete passkey registration."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({
+                "status"        : "ok",
+                "name"          : response.get('name'),
+                "device_name"   : response.get('device_name'),
+            })
+
+@app.route('/settings/passkeys/delete', methods=['POST'])
+@login_required
+def del_passkey():
+    if not g.user.is_authenticated:
+        return jsonify({"error": gettext("Not authenticated")}), 401
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    response, error = _send_ssod_command(
+            command="del_passkey",
+            extra_args={'token_name': token_name},
+            default_error=gettext("Failed to delete passkey."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok", "message": "Passkey deleted."})
 
 @app.route('/settings/oidc_consents', methods=['GET'])
 @login_required
@@ -794,6 +901,7 @@ def login():
         return redirect(url_for('login', _external=True, _scheme='https'))
     try:
         login_token_pass_type = auth_response['login_token_pass_type']
+        login_token_type = auth_response['login_token_type']
         login_token_deploy = auth_response['login_token_sso_deploy']
         session_uuid = auth_response['session']
         login_user_uuid = auth_response['login_user_uuid']
@@ -833,6 +941,7 @@ def login():
     flask_session['otpme_username'] = username
     flask_session['sso_deploy'] = login_token_deploy
     flask_session['login_token_pass_type'] = login_token_pass_type
+    flask_session['login_token_type'] = login_token_type
     _stash_user_language(auth_response.get('login_user_language'))
     web_user = WebUser(uuid=login_user_uuid, name=username)
     resp = make_response(redirect(redirect_target))
@@ -1218,6 +1327,7 @@ def fido2_auth_complete():
         return jsonify({"status": "ok", "redirect": redirect_target})
     try:
         login_token_pass_type = auth_response['login_token_pass_type']
+        login_token_type = auth_response['login_token_type']
         login_token_deploy = auth_response['login_token_sso_deploy']
         session_uuid = auth_response['session']
         login_user_uuid = auth_response['login_user_uuid']
@@ -1245,6 +1355,7 @@ def fido2_auth_complete():
     flask_session['otpme_username'] = username
     flask_session['sso_deploy'] = login_token_deploy
     flask_session['login_token_pass_type'] = login_token_pass_type
+    flask_session['login_token_type'] = login_token_type
     _stash_user_language(auth_response.get('login_user_language'))
     # Same redirect-priority as the form-based login flow: forced
     # enrollment beats next=, otherwise honor a stashed next= URL,
