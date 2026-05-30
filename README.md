@@ -37,21 +37,19 @@ python3 -m venv /opt/otpme
 pip3 install cython  
 pip3 install otpme
 
-OTPme ships with optional pip *extras* for the per-role server install
-variants. Pick the one matching the role of this machine:
+OTPme ships with optional pip *extras* for the per-role install variants.
+Pick the one matching what this machine should do:
 
 | Command | Role |
 |---|---|
-| `pip3 install otpme` | **host** — client + otpme-agent + PAM + nsscache + offline_token + local-backup client. Default. |
-| `pip3 install 'otpme[backuphost]'` | **backuphost** — host + the backup daemon (`backupd`). Pulls `rbloom` for dedup. |
-| `pip3 install 'otpme[ssohost]'` | **ssohost** — host + the SSO web portal (`ssod`+`httpd`). Pulls Flask, gunicorn, joserfc. |
-| `pip3 install 'otpme[node]'` | **node** — full server install. Implies `[backuphost]` and `[ssohost]` and additionally pulls Twisted/ldaptor (LDAPd), pyrad (FreeRADIUS plugin), arprequest/scapy (cluster ARP), service_identity. |
+| `pip3 install otpme` | **host** — client + otpme-agent + PAM + nsscache + offline login. Default. |
+| `pip3 install 'otpme[backuphost]'` | **backup host** — backup server for nodes, shares and hosts. |
+| `pip3 install 'otpme[ssohost]'` | **SSO portal host** — front-end for the SSO/OIDC web portal. Holds no backend secrets, so it can be deployed into the DMZ. |
+| `pip3 install 'otpme[node]'` | **node** — full server install, all features. |
 | `pip3 install 'otpme[node,dev]'` | full server + dev tools (`pytest`, `coverage`, `ruff`). |
 
-The role-aware extras correspond to the `SSO_SERVER` and `BACKUP_SERVER`
-flags in `/etc/otpme/otpme.conf` (and to the full-node role). Installing
-without extras keeps the dependency footprint minimal for plain host
-machines.
+The `backuphost` and `ssohost` roles are activated by setting
+`BACKUP_SERVER` resp. `SSO_SERVER` to `True` in `/etc/otpme/otpme.conf`.
 
 ## Copy configuration files
 cp -a /opt/otpme/lib/python3.11/site-packages/etc/otpme /etc/  
