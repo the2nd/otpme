@@ -135,6 +135,13 @@ class OTPmeDaemon(object):
             try:
                 importlib.import_module(m)
                 count += 1
+            except ImportError as e:
+                # Optional role-specific dependency not installed
+                # (e.g. ldaptor/Twisted on a pure host install).
+                if config.host_type != "host":
+                    log_msg = _("Skipping preload of {module}: {error}", log=True)[1]
+                    log_msg = log_msg.format(module=m, error=e)
+                    self.logger.warning(log_msg)
             except Exception as e:
                 log_msg = _("Failed to preload module: {module}: {error}", log=True)[1]
                 log_msg = log_msg.format(module=m, error=e)

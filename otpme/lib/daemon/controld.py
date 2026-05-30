@@ -26,23 +26,10 @@ from otpme.lib import multiprocessing
 from otpme.lib.messages import error_message
 from otpme.lib.register import register_modules
 
-from otpme.lib.daemon.fsd import FsDaemon
-from otpme.lib.daemon.ssod import SSODaemon
-from otpme.lib.daemon.authd import AuthDaemon
-from otpme.lib.daemon.mgmtd import MgmtDaemon
-from otpme.lib.daemon.syncd import SyncDaemon
-from otpme.lib.daemon.hostd import HostDaemon
-from otpme.lib.daemon.joind import JoinDaemon
-from otpme.lib.daemon.httpd import HttpDaemon
-from otpme.lib.daemon.scriptd import ScriptDaemon
-from otpme.lib.daemon.backupd import BackupDaemon
-from otpme.lib.daemon.clusterd import ClusterDaemon
 from otpme.lib.daemon.unix_daemon import UnixDaemon
 #from otpme.lib.multiprocessing import handle_exit
 
 from otpme.lib.exceptions import *
-
-from otpme.lib.daemon.ldapd import LdapDaemon
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
@@ -538,14 +525,12 @@ class ControlDaemon(UnixDaemon):
             # Daemons we have to handle and its start order.
             self.daemons = [ 'hostd' ]
             if config.sso_server:
-                self.daemons.append("ssod")
                 self.daemons.append("httpd")
             if config.backup_server:
                 self.daemons.append("backupd")
             # Set child daemons.
             child_daemons['hostd'] = ""
             if config.sso_server:
-                child_daemons["ssod"] = {}
                 child_daemons["httpd"] = {}
             if config.backup_server:
                 child_daemons["backupd"] = {}
@@ -1073,6 +1058,24 @@ class ControlDaemon(UnixDaemon):
 
     def start_daemon(self, daemon_name, reload=False, master_node=False):
         """ Start child daemon by name. """
+        from otpme.lib.daemon.hostd import HostDaemon
+        if config.host_data['type'] == "node":
+            from otpme.lib.daemon.fsd import FsDaemon
+            from otpme.lib.daemon.ssod import SSODaemon
+            from otpme.lib.daemon.httpd import HttpDaemon
+            from otpme.lib.daemon.authd import AuthDaemon
+            from otpme.lib.daemon.mgmtd import MgmtDaemon
+            from otpme.lib.daemon.syncd import SyncDaemon
+            from otpme.lib.daemon.joind import JoinDaemon
+            from otpme.lib.daemon.ldapd import LdapDaemon
+            from otpme.lib.daemon.scriptd import ScriptDaemon
+            from otpme.lib.daemon.backupd import BackupDaemon
+            from otpme.lib.daemon.clusterd import ClusterDaemon
+        if config.backup_server:
+            from otpme.lib.daemon.backupd import BackupDaemon
+        if config.sso_server:
+            from otpme.lib.daemon.httpd import HttpDaemon
+
         # Set daemon user/group.
         daemon_user = config.user
         daemon_group = config.group

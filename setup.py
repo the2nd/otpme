@@ -293,7 +293,10 @@ setup(
     #install_requires=install_requires,
     include_package_data=True,
 	package_data={
-			'otpme': ['otpme/web/app/static/*', 'otpme/web/app/templates/*'],
+			'otpme': ['otpme/web/app/static/*',
+					  'otpme/web/app/templates/*',
+					  'otpme/web/app/translations/*/LC_MESSAGES/*.mo',
+					  'otpme/web/app/translations/*/LC_MESSAGES/*.po'],
 		},
     zip_safe=False,
     #long_description=read_file('README.rst')

@@ -11,7 +11,7 @@ otpme-install-manpages
 ```
 
 ## Install debian dependencies
-apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius freeradius-python3 libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools libpcsclite-dev ykcs11 fuse3 libpam-python liblmdb0
+apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius freeradius-python3 libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools libpcsclite-dev ykcs11 fuse3 libpam-python
 
 ### Disable installed services
 systemctl stop redis  
@@ -36,6 +36,22 @@ python3 -m venv /opt/otpme
 ### Install otpme and dependencies
 pip3 install cython  
 pip3 install otpme
+
+OTPme ships with optional pip *extras* for the per-role server install
+variants. Pick the one matching the role of this machine:
+
+| Command | Role |
+|---|---|
+| `pip3 install otpme` | **host** — client + otpme-agent + PAM + nsscache + offline_token + local-backup client. Default. |
+| `pip3 install 'otpme[backuphost]'` | **backuphost** — host + the backup daemon (`backupd`). Pulls `rbloom` for dedup. |
+| `pip3 install 'otpme[ssohost]'` | **ssohost** — host + the SSO web portal (`ssod`+`httpd`). Pulls Flask, gunicorn, joserfc. |
+| `pip3 install 'otpme[node]'` | **node** — full server install. Implies `[backuphost]` and `[ssohost]` and additionally pulls Twisted/ldaptor (LDAPd), pyrad (FreeRADIUS plugin), arprequest/scapy (cluster ARP), service_identity. |
+| `pip3 install 'otpme[node,dev]'` | full server + dev tools (`pytest`, `coverage`, `ruff`). |
+
+The role-aware extras correspond to the `SSO_SERVER` and `BACKUP_SERVER`
+flags in `/etc/otpme/otpme.conf` (and to the full-node role). Installing
+without extras keeps the dependency footprint minimal for plain host
+machines.
 
 ## Copy configuration files
 cp -a /opt/otpme/lib/python3.11/site-packages/etc/otpme /etc/  

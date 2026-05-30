@@ -63,8 +63,24 @@ except (AttributeError, OSError):
 #from cryptography.hazmat.backends.openssl import backend
 #backend._rsa_skip_check_key = True
 
+# Commands that only make sense on a full node install (otpme[node]).
+# Detection: probe a marker module that is exclusive to the [node] extra
+# (Twisted, only pulled in by [node]). Avoids relying on OTPme runtime
+# state (config.host_data is populated late, during command handler init).
+NODE_ONLY_COMMANDS = {"otpme-cluster"}
+
+def _has_node_extra():
+    import importlib.util
+    return importlib.util.find_spec("twisted") is not None
+
 def otpme_commands(no_debug=False):
     """ Handles OTPme command line tools. """
+    if tool_name in NODE_ONLY_COMMANDS and not _has_node_extra():
+        sys.stderr.write(
+            f"Error: '{tool_name}' requires a node install "
+            f"(pip install 'otpme[node]').\n"
+        )
+        sys.exit(1)
     from otpme.lib.classes.command_handler import CommandHandler
     command_handler = CommandHandler(interactive=True)
 

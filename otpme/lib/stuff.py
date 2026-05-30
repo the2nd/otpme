@@ -2335,7 +2335,11 @@ def add_decorators(decorator, blacklist_functions=None,
     for x in preload.preload_modules:
         if x == __name__:
             continue
-        module = importlib.import_module(x)
+        try:
+            module = importlib.import_module(x)
+        except ImportError:
+            # Optional role-specific dep not installed; skip decorating.
+            continue
         add_decorator(decorator, module,
                     blacklist_functions,
                     blacklist_methods,

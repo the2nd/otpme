@@ -77,11 +77,23 @@ def load_mod_files():
     return module_list
 
 def get_mod_deps(mod):
+    from otpme.lib import config
     try:
         return _mod_deps_cache[mod]
     except KeyError:
         pass
-    x_module = importlib.import_module(mod)
+    try:
+        x_module = importlib.import_module(mod)
+    except ModuleNotFoundError as e:
+        log_msg = _("Not registering module: {mod}: {e}", log=True)[1]
+        log_msg = log_msg.format(mod=mod, e=e)
+        try:
+            logger = config.logger
+            logger.debug(log_msg)
+        except Exception:
+            print(log_msg)
+        _mod_deps_cache[mod] = ([], [])
+        return [], []
     REGISTER_BEFORE = "REGISTER_BEFORE"
     REGISTER_AFTER = "REGISTER_AFTER"
     try:
@@ -199,11 +211,21 @@ def _register_module(mod):
             logger = config.logger
             logger.debug(log_msg)
         except Exception:
-            print(msg)
+            print(log_msg)
     #register_str = f"from {mod} import register;register()"
     #code = compile(register_str, '<string>', 'exec')
     #exec code
-    x_module = importlib.import_module(mod)
+    try:
+        x_module = importlib.import_module(mod)
+    except ModuleNotFoundError as e:
+        log_msg = _("Not registering module: {mod}: {e}", log=True)[1]
+        log_msg = log_msg.format(mod=mod, e=e)
+        try:
+            logger = config.logger
+            logger.debug(log_msg)
+        except Exception:
+            print(log_msg)
+        return
     remember_module(x_module.__name__)
     try:
         x_method = getattr(x_module, "register")

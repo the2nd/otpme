@@ -15,6 +15,7 @@ recursive-include deploy/schema *
 recursive-include otpme/lib/dicts *
 recursive-include otpme/web/app/templates *
 recursive-include otpme/web/app/static *
+recursive-include otpme/web/app/translations *.po *.mo
 
 # Include manpages.
 recursive-include otpme/man *.1 *.7

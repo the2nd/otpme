@@ -29,7 +29,115 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 #version = "0.3.0a69"
-dynamic = ["version", "dependencies"]
+dynamic = ["version"]
+
+# Base install = host role: hostd + otpme-agent + PAM + nsscache +
+# offline_token + CLI client + local-backup client. Mirrors what
+# controld starts when host_type == "host" (no sso_server, no
+# backup_server) plus client-side smartcard/PIV/GPG/FIDO support.
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "binaryornot>=0.4.4",
+    "bson>=0.5.10",
+    "cachetools==5.3.1",
+    "chardet>=3.0.4",
+    "colorlog>=4.1.0",
+    "cryptography>=44.0.0",
+    "Cython>=0.29.36",
+    "cymysql>=1.0.1",
+    "daemonize>=2.4.7",
+    "dnspython>=1.15.0",
+    "dogpile.cache>=0.9.0",
+    "ecdsa>=0.19.2",
+    "faust-cchardet>=2.1.19",
+    "fido2>=2.2.0",
+    "future>=0.15.2",
+    "humanize>=0.5.1",
+    "importlib-metadata",
+    "ipaddr>=2.1.10",
+    "ldap3>=2.4.1",
+    "lz4>=4.3.2",
+    "mfusepy>=3.0.0",
+    "netifaces>=0.8",
+    "orjson>=3.11.0",
+    "paramiko>=3.5.0",
+    "passlib>=1.7.2",
+    "pexpect>=4.6.0",
+    "posix-ipc>=1.0.5",
+    "prettytable>=0.7.2",
+    "progressbar>=2.3",
+    "psutil>=5.5.1",
+    "psycopg2>=2.8.6",
+    "pycryptodomex>=3.7.3",
+    "PyJWT>=2.8.0",
+    "pylibacl>=0.5.1",
+    "pylibmc>=1.6.3",
+    "pyOpenSSL>=24.3.0",
+    "pyotp>=2.8.0",
+    "PyQRCode>=1.2.1",
+    "pyre2>=0.3.6",
+    "pyscard>=2.2.0",
+    "pysimdjson>=6.0.2",
+    "pysodium>=0.7.10",
+    "python-gnupg>=0.4.9",
+    "python-magic>=0.4.15",
+    "pytz>=2019.3",
+    "qrcode>=5.1",
+    # redis-py 8.x enables maintenance notifications by default and crashes
+    # on UnixDomainSocketConnection (no `host` attribute).
+    # See https://github.com/redis/redis-py/issues/4086 — lift cap once fixed.
+    "redis>=3.3.11,<8.0",
+    "relppy>=0.4",
+    "setproctitle>=1.1.10",
+    "SQLAlchemy>=2.0.15",
+    "SQLAlchemy-Utils>=0.36.8",
+    "strongtyping",
+    "termcolor>=1.1.0",
+    "tlssysloghandler>=1.0.3",
+    "ujson>=5.7.0",
+    "xattr>=1.2.0",
+    "yubikey-manager>=5.9.1",
+	"systemd>=0.16.1",
+]
+
+[project.optional-dependencies]
+# backuphost = host + backupd (config.backup_server == True).
+# Adds rbloom for BackupServer dedup (classes/backup.py:1905).
+backuphost = [
+    "rbloom>=1.5.4",
+]
+
+# ssohost = host + ssod + httpd (config.sso_server == True).
+# Flask web portal + gunicorn + joserfc (OIDC JWK signing).
+ssohost = [
+    "Flask>=3.0.3",
+    "Flask-Babel>=4.0.0",
+    "Flask-Login>=0.6.3",
+    "Flask-WTF>=1.2.1",
+    "gunicorn>=23.0.0",
+    "joserfc>=1.0.0",
+]
+
+# Full server = host + backuphost + ssohost + node-only daemons:
+# LDAPd (Twisted/ldaptor), FreeRADIUS plugin (pyrad), cluster ARP
+# (arprequest/scapy).
+node = [
+    "otpme[backuphost]",
+    "otpme[ssohost]",
+    "arprequest>=0.3",
+    "ldaptor>=21.2.0",
+    "pyrad>=2.4",
+    "radius-eap-mschapv2-client>=1.0.6",
+    "scapy>=2.4.4",
+    "service_identity",
+    "Twisted>=24.3.0",
+]
+
+dev = [
+    "coverage",
+    "pytest",
+    "ruff",
+]
 
 [project.urls]
 Homepage = "https://github.com/the2nd/otpme"
@@ -59,6 +167,7 @@ otpme-tool = "otpme.bin.command:otpme_commands"
 otpme-trash = "otpme.bin.command:otpme_commands"
 otpme-unit = "otpme.bin.command:otpme_commands"
 otpme-user = "otpme.bin.command:otpme_commands"
+otpme-scope = "otpme.bin.command:otpme_commands"
 otpme-script = "otpme.bin.command:otpme_commands"
 otpme-policy = "otpme.bin.command:otpme_commands"
 otpme-dictionary = "otpme.bin.command:otpme_commands"
@@ -78,7 +187,6 @@ otpme-yk-piv = "otpme.bin.yk_piv:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "otpme.__version__"}
-dependencies = {file = ["requirements.txt"]}
 #readme = {file = ["README.md"]}
 
 [tool.setuptools.package-data]
@@ -91,6 +199,15 @@ otpme = [
     "man/*.5",
     "man/*.7"
 ]
+
+[tool.pytest.ini_options]
+# Unit tests live under tests/unit/. The shell-script integration tests
+# (tests/*.sh) and the pre-existing 999-test_backup.py are not picked
+# up by pytest because they don't match python_files below and aren't
+# under testpaths.
+testpaths = ["tests/unit"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
 
 [tool.ruff]
 # Vendored upstream code — do not lint.

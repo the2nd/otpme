@@ -676,7 +676,7 @@ class ObjectConfig(object):
             object_config = stuff.copy_object(self.encrypted_config)
         else:
             object_config = stuff.copy_object(self.decrypted_config)
-        # Add modifified objects to be used by TinyDB on write.
+        # Add modifified objects to be used on write.
         if self.modified_attributes:
             self.modified_attributes.append("SALT")
             self.modified_attributes.append("CHECKSUM")

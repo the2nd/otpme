@@ -1793,6 +1793,7 @@ class HostDaemon(OTPmeDaemon):
             log_msg = _("Failed to get shared list: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
+            #config.raise_exception()
 
         # Per realm/site/node last sync notify timestamps.
         try:

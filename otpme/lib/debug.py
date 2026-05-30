@@ -483,7 +483,11 @@ def add_debug_decorators():
                     continue
                 msg = _("Adding debug decorators: {x}")
                 msg = msg.format(x=x)
-                module = importlib.import_module(x)
+                try:
+                    module = importlib.import_module(x)
+                except ImportError:
+                    # Optional role-specific dep not installed; skip.
+                    continue
                 message(msg)
                 add_decorator(module)
     finally:
