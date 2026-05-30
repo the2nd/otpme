@@ -34,11 +34,9 @@ python3 -m venv /opt/otpme
 . /opt/otpme/bin/activate
 
 ### Install otpme and dependencies
-pip3 install cython  
-pip3 install otpme
+pip3 install cython
 
-OTPme ships with optional pip *extras* for the per-role install variants.
-Pick the one matching what this machine should do:
+Pick the install variant matching what this machine should do:
 
 | Command | Role |
 |---|---|
