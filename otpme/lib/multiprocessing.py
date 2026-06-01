@@ -208,7 +208,13 @@ def atfork(keep_locks=False, quiet=True,
     if proc_type != "process":
         msg = _("Cannot run this method from within a thread.")
         raise OTPmeException(msg)
-    # Make sure we use new DB connections.
+    # Make sure we use new DB connections. config.session may have been
+    # set by the parent with a checked-out connection still bound to the
+    # parent's psycopg2 socket -- using it in the child would interleave
+    # protocol bytes with the parent and PG kills the connection. Drop
+    # the reference; transaction.handle_transaction will lazily obtain a
+    # fresh session on next use.
+    config.session = None
     backend.atfork()
     _index = config.get_index_module()
     _index.atfork()

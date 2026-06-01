@@ -730,6 +730,7 @@ def get_recursive_default_acls(**kwargs):
 
 def register():
     register_oid()
+    register_hooks()
     register_config()
     register_backend()
     register_scripts()
@@ -747,6 +748,9 @@ def register():
     config.register_auth_on_action_hook("share", "disable_mount_script")
     config.register_auth_on_action_hook("share", "change_mount_script")
     config.register_auth_on_action_hook("share", "show_config_parameters")
+
+def register_hooks():
+    config.register_auth_on_action_hook("share", "set_config_parameter")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -1700,7 +1704,7 @@ class Share(OTPmeObject):
                                 verify_acls=False)
 
         return super().remove_token(token_path=token_path,
-                                            callback=callback, **kwargs)
+                                    callback=callback, **kwargs)
 
     @object_lock()
     @audit_log()

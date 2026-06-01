@@ -2484,20 +2484,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.build_response(True, shares)
 
     def _cmd_get_shares(self, subcommand, command_args):
-        search_attrs = {
-                        'token' : {'value':config.auth_token.uuid},
-                    }
-        user_shares = backend.search(object_type="share",
-                                    attributes=search_attrs,
-                                    return_type="instance")
-        token_roles = config.auth_token.get_roles(return_type="uuid", recursive=True)
-        if token_roles:
-            search_attrs = {
-                            'role' : {'values':token_roles},
-                        }
-            user_shares += backend.search(object_type="share",
-                                        attributes=search_attrs,
-                                        return_type="instance")
+        user_shares = config.auth_token.get_shares(skip_disabled=True)
         shares = {}
         for share in user_shares:
             share_nodes = share.get_nodes(include_pools=True,

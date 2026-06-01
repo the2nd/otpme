@@ -3464,6 +3464,34 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    def get_role_uuid(
+        self,
+        role_name: str,
+        callback: JobCallback=default_callback,
+        ):
+        if "/" in role_name:
+            search_attribute = "name"
+            search_site = role_name.split("/")[0]
+            role_name = role_name.split("/")[1]
+        else:
+            search_attribute = "name"
+            search_site = self.site
+
+        result = backend.search(object_type="role",
+                                attribute=search_attribute,
+                                value=role_name,
+                                return_type="uuid",
+                                realm=self.realm,
+                                site=search_site)
+        if not result:
+            msg = _("Unknown role: {site}/{role}")
+            msg = msg.format(site=search_site, role=role_name)
+            return callback.error(msg)
+
+        role_uuid = result[0]
+
+        return role_uuid
+
     @object_lock()
     @cli.check_rapi_opts()
     @check_acls(['add:role'])
@@ -3492,27 +3520,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg, exception=PermissionDenied)
 
         if role_name:
-            if "/" in role_name:
-                search_attribute = "name"
-                search_site = role_name.split("/")[0]
-                role_name = role_name.split("/")[1]
-            else:
-                search_attribute = "name"
-                search_site = self.site
-
-            result = backend.search(object_type="role",
-                                    attribute=search_attribute,
-                                    value=role_name,
-                                    return_type="uuid",
-                                    realm=self.realm,
-                                    site=search_site)
-            if not result:
-                msg = _("Unknown role: {site}/{role}")
-                msg = msg.format(site=search_site, role=role_name)
-                return callback.error(msg)
-
-            role_uuid = result[0]
-
+            role_uuid = self.get_role_uuid(role_name, callback=callback)
         elif not role_uuid:
             msg = "Need <role_name> or <role_uuid>."
             raise OTPmeException(msg)
@@ -5750,7 +5758,8 @@ class OTPmeObject(OTPmeBaseObject):
             extension.del_attribute(self, attribute, value,
                                     ignore_ro=ignore_ro,
                                     ignore_missing=ignore_missing,
-                                    verbose_level=verbose_level)
+                                    verbose_level=verbose_level,
+                                    callback=callback)
         except MandatoryAttribute as e:
             msg = _("Unable to delete mandatory attribute: {exception}")
             msg = msg.format(exception=e)
@@ -9280,6 +9289,8 @@ class OTPmeObject(OTPmeBaseObject):
         delete: bool=False,
         append: bool=False,
         force: bool=False,
+        _caller: str="API",
+        run_policies: bool=True,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -9294,6 +9305,14 @@ class OTPmeObject(OTPmeBaseObject):
         if not self.verify_acl(f'edit:config:{parameter}'):
             msg = _("Permission denied.")
             return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("set_config_parameter",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         # Get value type.
         value_type = para_data['type']
         try:

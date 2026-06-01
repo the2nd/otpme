@@ -71,6 +71,7 @@ read_value_acls = {
                         "accessgroups",
                         "groups",
                         "roles",
+                        "shares",
                         "pin",
                         "pin_status",
                         "used_otp_salt",
@@ -478,6 +479,16 @@ commands = {
                     },
                 },
             },
+    'list_shares'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_shares',
+                    'job_type'          : 'thread',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'path', 'skip_disabled':False},
+                    },
+                },
+            },
     'description'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -721,6 +732,7 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "change_otp_format")
     config.register_auth_on_action_hook("token", "add_dynamic_group")
     config.register_auth_on_action_hook("token", "remove_dynamic_group")
+    config.register_auth_on_action_hook("token", "set_config_parameter")
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'user', 'name' ]
@@ -1530,6 +1542,63 @@ class Token(OTPmeObject):
         response = mschap_util.generate(self.name, password_hash)
         return_msg = f"{return_msg}NT_KEY: {nt_key}\nMSCHAP_CHALLENGE: {challenge}\nMSCHAP_RESPONSE: {response}"
         return callback.ok(return_msg)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:shares'])
+    def list_shares(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all shares this token has accces to. """
+        return self.get_shares(**kwargs)
+
+    def get_shares(
+        self,
+        return_type: str="path",
+        skip_disabled: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        search_attrs = {
+                        'token' : {'value':self.uuid},
+                    }
+        token_shares = backend.search(object_type="share",
+                                    attributes=search_attrs,
+                                    return_type="instance")
+        token_roles = self.get_roles(return_type="uuid", recursive=True)
+        if token_roles:
+            search_attrs = {
+                            'role' : {'values':token_roles},
+                        }
+            token_shares += backend.search(object_type="share",
+                                        attributes=search_attrs,
+                                        return_type="instance")
+        result = []
+        for share in token_shares:
+            if skip_disabled:
+                if not share.enabled:
+                    continue
+            if return_type == "instance":
+                result.append(share)
+            elif return_type == "read_oid":
+                result.append(share.oid.read_oid)
+            elif return_type == "full_oid":
+                result.append(share.oid.full_oid)
+            elif return_type == "uuid":
+                result.append(share.uuid)
+            elif return_type == "path":
+                share_id = f"{share.site}/{share.name}"
+                result.append(share_id)
+            else:
+                msg = _("Invalid resturn type: {return_type}")
+                msg = msg.format(return_type=return_type)
+                if _caller == "API":
+                    raise OTPmeException(msg)
+                return callback.error(msg)
+        if _caller == "API":
+            return result
+        return callback.ok("\n".join(result))
 
     @cli.check_rapi_opts()
     @check_acls(acls=['view:hosts'])

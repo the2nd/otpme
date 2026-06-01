@@ -14,7 +14,9 @@
 
     <!-- Step 1: Choose token type and start -->
     <div id="step-start">
-      {% if deploy_token_types|length > 1 %}
+      {% if deploy_token_types|length == 0 %}
+      <p class="deploy-hint">{{ gettext("Token enrollment is currently disabled. Please contact your administrator.") }}</p>
+      {% elif deploy_token_types|length > 1 %}
       <p class="deploy-hint" style="margin-bottom:14px;">{{ gettext("Choose your preferred authentication method:") }}</p>
       <div class="token-choice">
         {% for tt in deploy_token_types %}

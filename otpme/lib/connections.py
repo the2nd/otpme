@@ -117,7 +117,7 @@ def get_connection(**kwargs):
         raise ConnectionError(msg)
     return daemon_conn
 
-def get(daemon, mgmt=False, ping=True, **kwargs):
+def get(daemon, mgmt=None, ping=True, **kwargs):
     """ Get connection to OTPme daemons. """
     from otpme.lib import net
     global connections
@@ -302,6 +302,9 @@ def get(daemon, mgmt=False, ping=True, **kwargs):
     # Connections to backupd work independently of the agent
     if daemon == "backupd":
         use_agent = False
+    # Connections to idled work independently of the agent
+    if daemon == "idled":
+        use_agent = False
 
     if node and not socket_uri:
         try:
@@ -453,9 +456,18 @@ def get(daemon, mgmt=False, ping=True, **kwargs):
         raise OTPmeException(msg)
 
     if daemon == "mgmtd":
-        mgmt = True
+        if mgmt is None:
+            mgmt = True
     if daemon == "syncd":
-        mgmt = True
+        if mgmt is None:
+            mgmt = True
+    if daemon == "idled":
+        if mgmt is None:
+            mgmt = True
+    if daemon == "clusterd":
+        if mgmt is None:
+            mgmt = True
+
     if realm and site:
         try:
             site_fqdn = stuff.get_site_fqdn(realm, site, mgmt=mgmt)
@@ -484,7 +496,7 @@ def get(daemon, mgmt=False, ping=True, **kwargs):
                 raise ConnectionError(msg) from e
             connect_addresses = [site_address]
     else:
-        if daemon == "mgmtd" or daemon == "clusterd":
+        if mgmt:
             site_fqdn = config.site_mgmt_fqdn
         else:
             site_fqdn = config.site_auth_fqdn

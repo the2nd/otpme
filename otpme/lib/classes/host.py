@@ -893,6 +893,7 @@ def register_hooks():
     config.register_auth_on_action_hook("host", "disable_jotp_rejoin")
     config.register_auth_on_action_hook("host", "add_dynamic_group")
     config.register_auth_on_action_hook("host", "remove_dynamic_group")
+    config.register_auth_on_action_hook("host", "set_config_parameter")
 
 def register_backend():
     """ Register object for the file backend. """

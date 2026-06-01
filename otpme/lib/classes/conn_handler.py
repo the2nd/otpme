@@ -22,9 +22,10 @@ class ConnHandler(object):
     Class to handle connections and
     start the needed protocol handlers.
     """
-    def __init__(self, protocols, connection=None,
+    def __init__(self, name, protocols, connection=None,
         client=None, peer_cert=None, logger=None,
         **handler_args):
+        self.name = name
         self.connection = connection
         self.client = client
         self.peer_cert = peer_cert

@@ -32,7 +32,8 @@ class ListenSocket(object):
         timeout=1, banner=None, socket_handler=None, user=None,
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
-        proctitle=None, logger=None, max_conn=100, worker_count=0):
+        proctitle=None, logger=None, max_conn=100, conn_handling="multiprocessing",
+        worker_count=0):
         # Check if we got all required paramters.
         if use_ssl:
             if not ssl_cert:
@@ -89,6 +90,7 @@ class ListenSocket(object):
         self.ca_data_file = None
         self.listen_process = None
         self._shutdown = None
+        self.conn_handling = conn_handling
         self.worker_count = worker_count
         self.worker_procs = []
 
@@ -231,7 +233,10 @@ class ListenSocket(object):
                 proc.join()
                 # Prevent exception on daemon shutdown.
                 if not self.shutdown:
-                    proc.close()
+                    if self.conn_handling == "multiprocessing":
+                        proc.close()
+                    else:
+                        proc.join()
                 try:
                     self.connections.pop(client)
                 except KeyError:
@@ -449,9 +454,13 @@ class ListenSocket(object):
                 p.join(timeout=5)
         else:
             # Legacy fork-per-connection mode.
-            # Start thread to handle connection procs.
+            # Start thread to handle connection procs. Marked as daemon so
+            # threading._shutdown() does not block on its infinite poll
+            # loop when worker threads (daemon, may be blocked in long
+            # polls) outlive the accept loop.
             multiprocessing.start_thread(name=self.name,
-                                target=self.close_conn_procs)
+                                target=self.close_conn_procs,
+                                daemon=True)
             self._accept_loop()
 
         log_msg = _("Stopped listening on '{uri}'", log=True)[1]
@@ -477,10 +486,16 @@ class ListenSocket(object):
             # Disable Nagle's algorithm on accepted connection.
             if self.protocol == "tcp":
                 new_connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            # Perform SSL handshake manually to catch errors with client info
+            # Perform SSL handshake manually to catch errors with client info.
+            # Without an explicit timeout the handshake blocks forever on a
+            # client that connects but never speaks TLS, which prevents the
+            # accept loop from observing self.shutdown.
             if self.use_ssl:
+                handshake_timeout = self.timeout if self.timeout > 0 else 10
                 try:
+                    new_connection.settimeout(handshake_timeout)
                     new_connection.do_handshake()
+                    new_connection.settimeout(None)
                 except Exception as ssl_error:
                     # We have client info now, so log it with the error
                     if self.protocol == "tcp":
@@ -624,32 +639,48 @@ class ListenSocket(object):
                 self.logger.debug(log_msg)
 
             # Start child process to handle new connection.
-            try:
-                p = multiprocessing.start_process(name=self.name,
-                                target=self.handle_connection,
-                                target_args=(new_connection,
-                                            client,
-                                            self.connection_handler),
-                                join=False)
-            except Exception as e:
-                log_msg = _("Failed to start connection handler: {e}", log=True)[1]
-                self.logger.warning(log_msg)
+            if self.conn_handling == "multiprocessing":
+                try:
+                    p = multiprocessing.start_process(name=self.name,
+                                    target=self.handle_connection,
+                                    target_args=(new_connection,
+                                                client,
+                                                self.connection_handler),
+                                    join=False)
+                except Exception as e:
+                    log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                    self.logger.warning(log_msg)
+                else:
+                    # Add process to dict.
+                    self.add_connection_proc(client, p)
+                # Close connection in parent process to avoid file descriptor leak.
+                new_connection.close()
             else:
-                # Add process to dict.
-                self.add_connection_proc(client, p)
-            # Close connection in parent process to avoid file descriptor leak.
-            new_connection.close()
+                try:
+                    p = multiprocessing.start_thread(name=self.name,
+                                    target=self.handle_connection,
+                                    target_args=(new_connection,
+                                                client,
+                                                self.connection_handler),
+                                    daemon=True)
+                except Exception as e:
+                    log_msg = _("Failed to start connection handler: {e}", log=True)[1]
+                    self.logger.warning(log_msg)
+                else:
+                    # Add process to dict.
+                    self.add_connection_proc(client, p)
 
     def handle_connection(self, client_conn, client, handler,
         _from_worker=False):
         """ Handle a connection. """
-        if not _from_worker:
-            # Fork-per-connection mode: setup process.
-            multiprocessing.atfork(quiet=True)
-            if not self.got_logger:
-                self.logger = log.setup_logger(pid=os.getpid())
-            new_proctitle = f"{self.proctitle} Client: {client}"
-            setproctitle.setproctitle(new_proctitle)
+        if self.conn_handling == "multiprocessing":
+            if not _from_worker:
+                # Fork-per-connection mode: setup process.
+                multiprocessing.atfork(quiet=True)
+                if not self.got_logger:
+                    self.logger = log.setup_logger(pid=os.getpid())
+                new_proctitle = f"{self.proctitle} Client: {client}"
+                setproctitle.setproctitle(new_proctitle)
 
         # Helper variables.
         peer_cert = None
@@ -684,7 +715,8 @@ class ListenSocket(object):
         # Check if we got a handler to handle this connection.
         if handler:
             # Create child handler for this connection.
-            conn_handler = handler.__class__(connection=connection,
+            conn_handler = handler.__class__(name=handler.name,
+                                            connection=connection,
                                             protocols=handler.protocols,
                                             client=client,
                                             peer_cert=peer_cert,
@@ -737,9 +769,10 @@ class ListenSocket(object):
         except Exception:
             pass
 
-        if not _from_worker:
-            # Fork-per-connection mode: full cleanup and notify.
-            multiprocessing.cleanup(keep_queues=True)
+        if self.conn_handling == "multiprocessing":
+            if not _from_worker:
+                # Fork-per-connection mode: full cleanup and notify.
+                multiprocessing.cleanup(keep_queues=True)
 
         return True
 

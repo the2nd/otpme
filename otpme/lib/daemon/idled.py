@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import queue
+import threading
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -23,12 +25,48 @@ REGISTER_AFTER = []
 
 def register():
     """ Register OTPme daemon. """
-    config.register_otpme_daemon("ssod")
+    config.register_otpme_daemon("idled")
 
-class SSODaemon(OTPmeDaemon):
-    """ SSODaemon """
+class _IdleDispatcher:
+    """ Per-process subscriber registry: keeps a queue per active idled
+    connection, fans out published events to all queues of a given user.
+    All idled threads in one process share the module-level singleton."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.subscribers = {}
+
+    def subscribe(self, username):
+        q = queue.Queue()
+        with self.lock:
+            self.subscribers.setdefault(username, []).append(q)
+        return q
+
+    def unsubscribe(self, username, q):
+        with self.lock:
+            try:
+                self.subscribers[username].remove(q)
+                if not self.subscribers[username]:
+                    del self.subscribers[username]
+            except (KeyError, ValueError):
+                pass
+
+    def publish(self, username, event):
+        with self.lock:
+            queues = list(self.subscribers.get(username, ()))
+        for q in queues:
+            try:
+                q.put_nowait(event)
+            except Exception:
+                pass
+
+class IdleDaemon(OTPmeDaemon):
+    """ IdleDaemon """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Handle new connections in process.
+        self.conn_handling = "threading"
+        self.dispatcher = _IdleDispatcher()
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
@@ -49,30 +87,9 @@ class SSODaemon(OTPmeDaemon):
         if "interactive" not in config.ignore_policy_tags:
             config.ignore_policy_tags.append("interactive")
 
-        # Add default connection handler.
-        try:
-            self.set_connection_handler()
-        except Exception as e:
-            log_msg = _("Failed to set connection handler: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
-
-        # Add ssod unix socket.
-        self.socket_path = config.ssod_socket_path
-        try:
-            self.add_socket(self.socket_path,
-                            handler=self.conn_handler,
-                            banner=self.socket_banner,
-                            user=self.user,
-                            group=self.group,
-                            mode=0o666)
-        except Exception as e:
-            log_msg = _("Failed to add unix socket: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
-
         # Do default startup (e.g. drop privileges, listen on sockets etc.).
-        self.default_startup()
+        handler_args = {'dispatcher':self.dispatcher}
+        self.default_startup(handler_args=handler_args)
 
         # Run in loop unitl we get a signal.
         while True:
@@ -112,6 +129,6 @@ class SSODaemon(OTPmeDaemon):
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
-                log_msg = _("Unhandled error in ssod: {error}", log=True)[1]
+                log_msg = _("Unhandled error in idled: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)

@@ -1419,6 +1419,8 @@ class HostDaemon(OTPmeDaemon):
 
     def _process_auto_disabled(self):
         """ Update auto disabled objects. """
+        # Handle multiprocessing stuff.
+        multiprocessing.atfork(exit_on_signal=True)
         # Check object auto disable stuff.
         search_attributes = {
                             'enabled'       : {'value':True},

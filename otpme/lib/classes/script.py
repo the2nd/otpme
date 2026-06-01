@@ -502,6 +502,7 @@ def register_hooks():
     config.register_auth_on_action_hook("script", "add_sign")
     config.register_auth_on_action_hook("script", "del_sign")
     config.register_auth_on_action_hook("script", "show_config_parameters")
+    config.register_auth_on_action_hook("script", "set_config_parameter")
 
 def register_backend():
     """ Register object for the file backend. """

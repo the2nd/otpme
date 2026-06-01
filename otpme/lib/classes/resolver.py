@@ -486,6 +486,7 @@ def register_hooks():
     config.register_auth_on_action_hook("resolver", "change_key_attribute")
     config.register_auth_on_action_hook("resolver", "get_resolver_objects")
     config.register_auth_on_action_hook("resolver", "show_config_parameters")
+    config.register_auth_on_action_hook("resolver", "set_config_parameter")
 
 def register_object_unit():
     """ Register default unit for this object type. """

@@ -441,6 +441,18 @@ cmd_help = {
                                 },
                 },
 
+    'list_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token list_shares {token}'),
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['path', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('List shares this token has access to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+
     'enable_auth_script'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token enable_auth_script {token}'),
                     'cmd'   :   '<|object|>',

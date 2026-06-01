@@ -204,8 +204,34 @@ def cleanup():
     Session = None
 
 def atfork():
+    # https://docs.sqlalchemy.org/en/20/core/pooling.html#using-connection-pools-with-multiprocessing-or-os-fork
     global engine
     global Session
+    # Release any per-thread session bindings the parent had set up so
+    # the next operation in the child triggers a fresh pool checkout
+    # (the pid-check event listener can only reject inherited
+    # connections when they go through checkout).
+    if Session is not None:
+        try:
+            Session.remove()
+        except Exception:
+            pass
+    # Drop the pool's references to inherited psycopg2 connections.
+    # close=False is critical post-fork: it tells SQLAlchemy not to
+    # actually close the underlying sockets -- those are still owned
+    # by the parent, and closing them here would corrupt the parent's
+    # protocol state.
+    if engine is not None:
+        try:
+            engine.dispose(close=False)
+        except TypeError:
+            # SQLAlchemy < 1.4 doesn't accept close=.
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+        except Exception:
+            pass
     engine = None
     Session = None
 

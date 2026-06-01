@@ -238,8 +238,10 @@ class OTPmeServer1(object):
         """ Init the server (e.g. verify client certificate). """
         # Set our signal handler before pre init to allow the
         # protocol handler to set its own.
-        signal.signal(signal.SIGTERM, self.signal_handler)
-        signal.signal(signal.SIGINT, self.signal_handler)
+        proc_type = multiprocessing.get_proc_type()
+        if proc_type == "process":
+            signal.signal(signal.SIGTERM, self.signal_handler)
+            signal.signal(signal.SIGINT, self.signal_handler)
         # Call child class method.
         self._pre_init()
 

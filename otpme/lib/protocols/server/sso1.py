@@ -364,6 +364,18 @@ class OTPmeSsoP1(OTPmeServer1):
                                             user=user,
                                             command_args=command_args,
                                             mgmt=True)
+        # Gate per-type deploy via config parameters (site/unit/user/token
+        # walk). Default True keeps legacy behaviour; unknown token_type
+        # falls through and is rejected later by add_token().
+        allow_param = {
+            "totp":  "sso_allow_totp_deploy",
+            "fido2": "sso_allow_fido2_deploy",
+        }.get(token_type)
+        if allow_param is not None \
+        and not user.get_config_parameter(allow_param):
+            msg = _("Deploy of token type '{tt}' is not allowed.")
+            msg = msg.format(tt=token_type)
+            return self.build_response(False, {'message': msg, 'status': False})
         # Prepare deploy.
         login_token = config.auth_token
         login_token_name = login_token.name
@@ -434,6 +446,32 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = log_msg.format(user_name=user.name, token_type=token_type)
         self.logger.info(log_msg)
         return self.build_response(True, response)
+
+    def get_allowed_deploy_token_types(self, username, sso_jwt, command_args):
+        """ Return the token types this user is allowed to deploy in the
+        SSO portal. Drives the deploy page UI so disabled types are not
+        even rendered as buttons; ``deploy_begin`` enforces the same
+        check authoritatively. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(
+                                    command="get_allowed_deploy_token_types",
+                                    user=user,
+                                    command_args=command_args,
+                                    mgmt=True)
+        gates = (("totp",  "sso_allow_totp_deploy"),
+                 ("fido2", "sso_allow_fido2_deploy"))
+        allowed = [tt for tt, param in gates
+                   if user.get_config_parameter(param)]
+        return self.build_response(True,
+                            {'token_types': allowed, 'status': True})
 
     def deploy_verify(self, username, sso_jwt, command_args):
         try:
@@ -4151,6 +4189,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "get_sotp",
                             "deploy_begin",
                             "deploy_verify",
+                            "get_allowed_deploy_token_types",
                             "change_password",
                             "change_pin",
                             "change_language",
@@ -4260,6 +4299,11 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command deploy_begin.", log=True)[1]
             self.logger.info(log_msg)
             return self.deploy_begin(username, sso_jwt, command_args)
+
+        if command == "get_allowed_deploy_token_types":
+            log_msg = _("Processing command get_allowed_deploy_token_types.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.get_allowed_deploy_token_types(username, sso_jwt, command_args)
 
         if command == "deploy_verify":
             log_msg = _("Processing command deploy_verify.", log=True)[1]

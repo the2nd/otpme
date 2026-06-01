@@ -683,6 +683,18 @@ def deploy():
         deploy_token_types = [sso_deploy]
     else:
         deploy_token_types = ["totp", "fido2"]
+        # Filter by per-user/unit/site config (sso_allow_totp_deploy,
+        # sso_allow_fido2_deploy). Best-effort: if the query fails, fall
+        # back to the full list — deploy_begin enforces the same gate
+        # authoritatively, so the worst case is a button that errors out.
+        response, _err = _send_ssod_command(
+                command="get_allowed_deploy_token_types",
+                default_error=None, mgmt=True)
+        if isinstance(response, dict):
+            ssod_types = response.get('token_types')
+            if isinstance(ssod_types, list):
+                deploy_token_types = [tt for tt in deploy_token_types
+                                      if tt in ssod_types]
     deploy_optional = bool(flask_session.get('sso_deploy_optional'))
     return render_template("deploy.html",
                            title=gettext('Token Enrollment'),

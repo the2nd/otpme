@@ -1640,6 +1640,16 @@ def register_config():
                                     ctype=bool,
                                     default_value=False,
                                     object_types=['site', 'unit', 'client'])
+    # Allow fido2 token deploy in SSO portal.
+    config.register_config_parameter(name="sso_allow_fido2_deploy",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=['site', 'unit', 'user', 'token'])
+    # Allow fido2 token deploy in SSO portal.
+    config.register_config_parameter(name="sso_allow_totp_deploy",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=['site', 'unit', 'user', 'token'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -1656,6 +1666,7 @@ def register_hooks():
     config.register_auth_on_action_hook("site", "add_sso_host")
     config.register_auth_on_action_hook("site", "del_sso_host")
     config.register_auth_on_action_hook("site", "show_config_parameters")
+    config.register_auth_on_action_hook("site", "set_config_parameter")
 
 def register_oid():
     full_oid_schema = [ 'realm', 'name' ]
@@ -3643,6 +3654,8 @@ class Site(OTPmeObject):
         # Add default config parameters.
         for parameter in config.valid_config_params:
             default_value = config.valid_config_params[parameter]['default']
+            if default_value is None:
+                continue
             self.set_config_param(parameter, default_value)
 
         config.site_init = False

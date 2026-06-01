@@ -662,6 +662,7 @@ def register_hooks():
     config.register_auth_on_action_hook("scope", "remove_client")
     config.register_auth_on_action_hook("scope", "add_group")
     config.register_auth_on_action_hook("scope", "remove_group")
+    config.register_auth_on_action_hook("scope", "set_config_parameter")
 
 def register_object_unit():
     """ Register default unit for this object type. """

@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
@@ -2157,6 +2158,17 @@ def prepare_mount_point(username, share_site, share):
         pass
     finally:
         os.umask(old_usmask)
+    counter = 0
+    found_start = False
+    mount_point_split = mount_point.split("/")
+    for x_dir in mount_point_split:
+        counter += 1
+        if x_dir == username:
+            found_start = True
+        if not found_start:
+            continue
+        path = "/".join(mount_point_split[0:counter])
+        filetools.set_fs_ownership(path=path, user=username, group=True)
     return mount_point
 
 def remove_mount_dirs(mountpoints):
@@ -2184,7 +2196,6 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
     logger = config.logger
     new_proctitle = f"otpme-mount {share_site}/{share} {mount}"
     setproctitle.setproctitle(new_proctitle)
-    #mount_share(share, share_site, mount, nodes, encrypted, **kwargs)
     mount_proc = multiprocessing.start_process(name="mount",
                                             target=mount_share,
                                             target_args=(share,
@@ -2194,7 +2205,7 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
                                                         encrypted),
                                             target_kwargs=kwargs,
                                             daemon=False,
-                                            join=True)
+                                            join=False)
     mount_proc.join()
     if mount_proc.exitcode != 0:
         log_msg = _("Failed to mount share: {share}", log=True)[1]
@@ -2216,30 +2227,36 @@ def mount_share(share, share_site, mount, nodes, encrypted=False,
         raise OTPmeException(msg)
     #if config.debug_enabled:
     #    logging.basicConfig(level=logging.DEBUG)
-    fsname = f"OTPmeFS:/{share_site}/{share}"
-    if logger is None:
-        logger = config.logger
-    msg = _("Got nodes: {share}: {nodes}")
-    msg = msg.format(share=share, nodes=nodes)
-    print(msg)
-    logger.info(msg)
-    if encrypted:
-        fuse.FUSE(EncryptedFS(share,
-                            share_site,
-                            logger,
-                            nodes,
-                            hard=hard,
-                            master_password=master_password,
-                            add_share_key=add_share_key),
-                        mount,
-                        foreground=foreground,
-                        nothreads=True,
-                        fsname=fsname,
-                        )
-    else:
-        fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard),
-                        mount,
-                        foreground=foreground,
-                        nothreads=True,
-                        fsname=fsname,
-                        )
+    try:
+        fsname = f"OTPmeFS:/{share_site}/{share}"
+        if logger is None:
+            logger = config.logger
+        msg = _("Got nodes: {share}: {nodes}")
+        msg = msg.format(share=share, nodes=nodes)
+        logger.info(msg)
+        if encrypted:
+            fuse.FUSE(EncryptedFS(share,
+                                share_site,
+                                logger,
+                                nodes,
+                                hard=hard,
+                                master_password=master_password,
+                                add_share_key=add_share_key),
+                            mount,
+                            foreground=foreground,
+                            nothreads=True,
+                            fsname=fsname,
+                            )
+        else:
+            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard),
+                            mount,
+                            foreground=foreground,
+                            nothreads=True,
+                            fsname=fsname,
+                            )
+    except Exception as e:
+        log_msg = _("Failed to mount share: {share}: {error}", log=True)[1]
+        log_msg = log_msg.format(share=share, error=e)
+        logger.warning(log_msg)
+        return False
+    return True

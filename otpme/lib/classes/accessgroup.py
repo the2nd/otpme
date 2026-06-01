@@ -835,6 +835,7 @@ def register_hooks():
     config.register_auth_on_action_hook("accessgroup", "disable_sessions")
     config.register_auth_on_action_hook("accessgroup", "enable_timeout_pass_on")
     config.register_auth_on_action_hook("accessgroup", "disable_timeout_pass_on")
+    config.register_auth_on_action_hook("accessgroup", "set_config_parameter")
 
 def register_backend():
     """ Register object for the file backend. """

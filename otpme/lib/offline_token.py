@@ -918,6 +918,41 @@ class OfflineToken(object):
             raise OTPmeException(msg) from e
         return True
 
+    def save_shares(self, session_id, shares, realm, site):
+        """ Save shares to session file. """
+        session_file = self.get_session_file(realm, site, session_id)
+        if not os.path.exists(session_file):
+            return
+
+        try:
+            session_config = filetools.read_data_file(session_file)
+        except Exception as e:
+            msg = _("Error reading session file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+
+        log_msg = _("Updating shares in session file...", log=True)[1]
+        self.logger.debug(log_msg)
+
+        session_config['UPDATE'] = time.time()
+        session_config['SHARES'] = shares
+        # Try to write session file.
+        try:
+            filetools.write_data_file(session_file,
+                                    session_config,
+                                    full_data_update=True,
+                                    user=self.username,
+                                    mode=0o600,
+                                    user_acls=self.file_acls)
+            log_msg = _("Updated shares in file: {session_file}", log=True)[1]
+            log_msg = log_msg.format(session_file=session_file)
+            self.logger.debug(log_msg)
+        except Exception as e:
+            msg = _("Error writing session file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        return True
+
     def get_offline_sessions(self, object_id):
         """ Get RSPs of latest offline session via session key of login token. """
         # Remove outdated sessions.

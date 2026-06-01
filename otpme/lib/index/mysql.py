@@ -146,8 +146,28 @@ def cleanup():
         Session.remove()
 
 def atfork():
+    # https://docs.sqlalchemy.org/en/20/core/pooling.html#using-connection-pools-with-multiprocessing-or-os-fork
     global engine
     global Session
+    # Release per-thread session bindings + drop pool references to
+    # inherited cymysql connections without closing the underlying
+    # sockets (those still belong to the parent). See postgres.atfork()
+    # for the rationale.
+    if Session is not None:
+        try:
+            Session.remove()
+        except Exception:
+            pass
+    if engine is not None:
+        try:
+            engine.dispose(close=False)
+        except TypeError:
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+        except Exception:
+            pass
     engine = None
     Session = None
 

@@ -807,6 +807,7 @@ def register_hooks():
     config.register_auth_on_action_hook("node", "disable_jotp_rejoin")
     config.register_auth_on_action_hook("node", "add_dynamic_group")
     config.register_auth_on_action_hook("node", "remove_dynamic_group")
+    config.register_auth_on_action_hook("node", "set_config_parameter")
 
 def register_backend():
     """ Register object for the file backend. """

@@ -598,6 +598,7 @@ def register_dn():
 
 def register_hooks():
     config.register_auth_on_action_hook("unit", "pre_add_role")
+    config.register_auth_on_action_hook("unit", "set_config_parameter")
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'rel_path' ]

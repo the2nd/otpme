@@ -4,7 +4,6 @@ import os
 import time
 import psutil
 import signal
-import subprocess
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -23,13 +22,12 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import otpme_pass
 from otpme.lib import multiprocessing
-from otpme.lib.fuse import get_mount_point
-from otpme.lib.fuse import mount_share_proc
 #from otpme.lib.encoding.base import encode
 #from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
 from otpme.lib.fuse import remove_mount_dirs
-from otpme.lib.fuse import prepare_mount_point
+from otpme.lib.classes.otpme_agent import mount_share
+from otpme.lib.classes.otpme_agent import umount_share
 from otpme.lib.protocols.request import decode_request
 from otpme.lib.protocols.response import build_response
 
@@ -548,34 +546,21 @@ class OTPmeAgentP1(object):
                     share_nodes = shares[share_id]['nodes']
                     share_encrypted = shares[share_id]['encrypted']
                     try:
-                        mount_point = prepare_mount_point(login_user, share_site, share_name)
+                        mount_share(username=login_user,
+                                    share_id=share_id,
+                                    share_site=share_site,
+                                    share_name=share_name,
+                                    share_nodes=share_nodes,
+                                    encrypted=share_encrypted,
+                                    session_id=self.session_id,
+                                    logger=self.logger)
                     except Exception as e:
-                        log_msg = _("Failed to prepare mountpoint: {error}", log=True)[1]
-                        log_msg = log_msg.format(error=e)
-                        self.logger.warning(log_msg)
-                        continue
-                    if stuff.is_mounted(mount_point):
-                        status = False
-                        msg, log_msg = _("Share already mounted: {share_id}: {mount_point}", log=True)
-                        msg = msg.format(share_id=share_id, mount_point=mount_point)
-                        log_msg = log_msg.format(share_id=share_id, mount_point=mount_point)
+                        log_msg = _("Failed to mount share: {share_id}: {error}", log=True)[1]
+                        log_msg = log_msg.format(share_id=share_id, error=e)
                         self.logger.info(log_msg)
-                        messages.append(msg)
+                        messages.append(str(e))
+                        config.raise_exception()
                         continue
-                    os.environ['OTPME_LOGIN_SESSION'] = self.session_id
-                    multiprocessing.start_process(name="mount",
-                                                target=mount_share_proc,
-                                                target_args=(share_name,
-                                                            share_site,
-                                                            mount_point,
-                                                            share_nodes,
-                                                            share_encrypted),
-                                                target_kwargs={
-                                                                'logger'    :self.logger,
-                                                                'foreground':False,
-                                                            },
-                                                daemon=False,
-                                                join=True)
                     new_mounts[share_id] = shares[share_id]
                 try:
                     mounted_shares = self.session['mounted_shares']
@@ -618,27 +603,18 @@ class OTPmeAgentP1(object):
                         continue
                     share_site = shares[share_id]['site']
                     share_name = shares[share_id]['name']
-                    mount_point = get_mount_point(login_user, share_site, share_name)
                     try:
-                        subprocess.run(["fusermount", "-u", mount_point])
+                        umount_share(username=login_user,
+                                    share_site=share_site,
+                                    share_name=share_name,
+                                    logger=self.logger)
                     except Exception as e:
-                        try:
-                            subprocess.run(["fusermount", "-z", "-u", mount_point])
-                        except Exception as e:
-                            msg, log_msg = _("Failed to unmount share: {mount_point}: {error}", log=True)
-                            msg = msg.format(mount_point=mount_point, error=e)
-                            log_msg = log_msg.format(mount_point=mount_point, error=e)
-                            self.logger.warning(log_msg)
-                            messages.append(msg)
-                            continue
-                    if not os.path.exists(mount_point):
+                        log_msg = _("Failed to mount share: {share_id}: {error}", log=True)[1]
+                        log_msg = log_msg.format(share_id=share_id, error=e)
+                        self.logger.info(log_msg)
+                        messages.append(str(e))
+                        config.raise_exception()
                         continue
-                    try:
-                        os.rmdir(mount_point)
-                    except Exception as e:
-                        log_msg = _("Failed to rmdir mountpoint: {mount_point}: {error}", log=True)[1]
-                        log_msg = log_msg.format(mount_point=mount_point, error=e)
-                        self.logger.warning(log_msg)
                     umounted_shares.append(share_id)
                     mountpoints.append(mount_point)
                 # Remove mountpoints etc.
@@ -1050,8 +1026,8 @@ class OTPmeAgentP1(object):
                 # Send command to agent parent process.
                 add_request = {
                             'login_pid' : self.login_pid,
-                            'realm'     : self.realm,
-                            'site'      : self.site,
+                            'realm'     : realm,
+                            'site'      : site,
                             'daemon'    : 'agent',
                             }
                 try:

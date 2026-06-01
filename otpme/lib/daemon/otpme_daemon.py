@@ -47,6 +47,8 @@ class OTPmeDaemon(object):
         self.comm_handler = None
         # Will hold our listen addresses.
         self.listen_sockets = []
+        # Handle new connections in process.
+        self.conn_handling = "multiprocessing"
         # Will hold our cert and private key.
         self.cert = None
         self.key = None
@@ -320,8 +322,9 @@ class OTPmeDaemon(object):
         comm_handler = self.comm_handler.get_child(child_name)
         handler_args['comm_handler'] = comm_handler
         # Create handler for the new socket.
-        self.conn_handler = ConnHandler(protocols=self.protocols,
-                                            **handler_args)
+        self.conn_handler = ConnHandler(name=self.name,
+                                        protocols=self.protocols,
+                                        **handler_args)
 
     def setup_sockets(self, use_ssl=True, ssl_verify_client=True):
         """ Setup sockets. """
@@ -461,6 +464,7 @@ class OTPmeDaemon(object):
                                 socket_uri=socket_uri,
                                 connection_handler=handler,
                                 socket_handler=SocketProtoHandler,
+                                conn_handling=self.conn_handling,
                                 **kwargs)
         # Append new socket to list of daemon sockets.
         try:

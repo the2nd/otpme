@@ -1068,6 +1068,7 @@ def register_hooks():
     config.register_auth_on_action_hook("user", "add_photo")
     config.register_auth_on_action_hook("user", "del_photo")
     config.register_auth_on_action_hook("user", "dump_photo")
+    config.register_auth_on_action_hook("user", "set_config_parameter")
 
 def register_user_scripts():
     """ Registger user scripts. """

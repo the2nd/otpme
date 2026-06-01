@@ -25,9 +25,14 @@ from otpme.lib import filetools
 from otpme.lib import otpme_pass
 from otpme.lib import init_otpme
 from otpme.lib import connections
+from otpme.lib import desktop_notify
 from otpme.lib import multiprocessing
+from otpme.lib.fuse import get_mount_point
+from otpme.lib.fuse import mount_share_proc
+from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.protocols import status_codes
 #from otpme.lib.messages import error_message
+from otpme.lib.fuse import prepare_mount_point
 from otpme.lib.register import register_module
 from otpme.lib.socket.listen import ListenSocket
 from otpme.lib.offline_token import OfflineToken
@@ -67,6 +72,60 @@ def _load_piv():
     piv_decrypt = _pd
     piv_get_public_key = _pgpk
     piv_derive_password = _pdp
+
+def mount_share(username, share_id, share_site, share_name,
+    share_nodes, encrypted, session_id, logger):
+    try:
+        mount_point = prepare_mount_point(username, share_site, share_name)
+    except Exception as e:
+        msg, log_msg = _("Failed to prepare mountpoint: {error}", log=True)
+        msg = msg.format(error=e)
+        log_msg = log_msg.format(error=e)
+        logger.info(log_msg)
+        raise OTPmeException(msg)
+    if stuff.is_mounted(mount_point):
+        msg, log_msg = _("Share already mounted: {share_id}: {mount_point}", log=True)
+        msg = msg.format(share_id=share_id, mount_point=mount_point)
+        log_msg = log_msg.format(share_id=share_id, mount_point=mount_point)
+        logger.info(log_msg)
+        raise AlreadyMounted(msg)
+    os.environ['OTPME_LOGIN_SESSION'] = session_id
+    multiprocessing.start_process(name="mount",
+                                target=mount_share_proc,
+                                target_args=(share_name,
+                                            share_site,
+                                            mount_point,
+                                            share_nodes,
+                                            encrypted),
+                                target_kwargs={
+                                                'logger'    :logger,
+                                                'foreground':False,
+                                            },
+                                daemon=False,
+                                join=True)
+    return mount_point
+
+def umount_share(username, share_site, share_name, logger):
+    mount_point = get_mount_point(username, share_site, share_name)
+    try:
+        subprocess.run(["fusermount", "-z", "-u", mount_point])
+    except Exception as e:
+        msg, log_msg = _("Failed to unmount share: {mount_point}: {error}", log=True)
+        msg = msg.format(mount_point=mount_point, error=e)
+        log_msg = log_msg.format(mount_point=mount_point, error=e)
+        logger.warning(log_msg)
+        raise OTPmeException(msg)
+    if not os.path.exists(mount_point):
+        return
+    try:
+        os.rmdir(mount_point)
+    except Exception as e:
+        msg, log_msg = _("Failed to rmdir mountpoint: {mount_point}: {error}", log=True)
+        msg = msg.format(mount_point=mount_point, error=e)
+        log_msg = log_msg.format(mount_point=mount_point, error=e)
+        logger.warning(log_msg)
+        raise OTPmeException(msg)
+    return mount_point
 
 multiprocessing.register()
 locking.register_lock_type(CONN_LOCK_TYPE, module=__file__)
@@ -382,6 +441,237 @@ class OTPmeAgent(UnixDaemon):
         except Exception:
             pass
 
+    def check_idled(self, login_pid, login_user, realm, site):
+        """ Wait for events from idled. """
+        log_msg = _("Connecting to idled: {login_user}", log=True)[1]
+        log_msg = log_msg.format(login_user=login_user)
+        self.logger.debug(log_msg)
+        login_token = self.login_sessions[login_pid]['login_token']
+        idled_conn = None
+        while not self.shutdown:
+            try:
+                idled_conn = connections.get(daemon="idled", realm=realm, site=site,
+                                            connect_timeout=self.connect_timeout,
+                                            timeout=0, endpoint=False, encrypt_session=False,
+                                            use_agent=False, autoconnect=True,
+                                            auto_auth=False, auto_preauth=False)
+            except Exception as e:
+                log_msg = _("Error getting idled connection: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                time.sleep(1)
+                continue
+
+            # Send wait command.
+            while not self.shutdown:
+                if self.shutdown:
+                    break
+                command_args = {'username':login_user}
+                try:
+                    status, \
+                    status_code, \
+                    response, \
+                    binary_data = idled_conn.send(command="wait", command_args=command_args)
+                except Exception as e:
+                    try:
+                        idled_conn.close()
+                    except Exception:
+                        pass
+                    if self.shutdown:
+                        break
+                    log_msg = _("Error send wait command: {e}")
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
+                    idled_conn = None
+                    time.sleep(1)
+                    break
+
+                if not status:
+                    continue
+
+                try:
+                    event_type = response['event_type']
+                except KeyError:
+                    continue
+
+                try:
+                    data = response['data']
+                except KeyError:
+                    continue
+
+                if event_type == "share_mount":
+                    for share_id in data:
+                        try:
+                            tokens = data[share_id]['tokens']
+                        except KeyError:
+                            continue
+                        try:
+                            persist = data[share_id]['persist']
+                        except KeyError:
+                            persist = False
+                        if login_token not in tokens:
+                            continue
+                        try:
+                            share_site = data[share_id]['site']
+                            share_name = data[share_id]['name']
+                            share_nodes = data[share_id]['nodes']
+                            encrypted = data[share_id]['encrypted']
+                        except KeyError:
+                            log_msg = _("Got invalid share data: {share_id}", log=True)[1]
+                            log_msg = log_msg.format(share_id=share_id)
+                            self.logger.info(log_msg)
+                            continue
+                        try:
+                            session = self.login_sessions[login_pid]
+                            session_id = session['session_id']
+                        except Exception:
+                            continue
+                        try:
+                            mount_point = mount_share(username=login_user,
+                                                    share_id=share_id,
+                                                    share_site=share_site,
+                                                    share_name=share_name,
+                                                    share_nodes=share_nodes,
+                                                    encrypted=encrypted,
+                                                    session_id=session_id,
+                                                    logger=self.logger)
+                        except AlreadyMounted:
+                            continue
+                        except Exception as e:
+                            log_msg = _("Failed to mount share: {share_id}: {error}", log=True)[1]
+                            log_msg = log_msg.format(share_id=share_id, error=e)
+                            self.logger.info(log_msg)
+                            continue
+
+                        msg = _("{share_id} now available at {mount_point}")
+                        msg = msg.format(share_id=share_id, mount_point=mount_point)
+                        try:
+                            desktop_notify.notify(
+                              summary="Share mounted",
+                              body=msg,
+                              icon="folder-remote",
+                              urgency="normal",
+                              user=login_user,
+                              timeout_ms=5000,
+                            )
+                        except Exception as e:
+                            log_msg = _("Failed to send desktop notification: {e}", log=True)[1]
+                            log_msg = log_msg.format(e=e)
+                            self.logger.warning(log_msg)
+
+                        try:
+                            shares = session['mounted_shares']
+                        except KeyError:
+                            shares = {}
+                        shares[share_id] = data[share_id]
+                        session['mounted_shares'] = shares
+                        self.login_sessions[login_pid] = session
+
+                        if not persist:
+                            continue
+
+                        # Save shares to offline session.
+                        try:
+                            # Get offline token handler.
+                            offline_token = OfflineToken()
+                            # Set user.
+                            offline_token.set_user(login_user)
+                            # Acquire offline token lock.
+                            offline_token.lock()
+                            # Save shares.
+                            offline_token.save_shares(session_id, shares, realm, site)
+                        except Exception as e:
+                            log_msg = _("Error saving shares: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.critical(log_msg)
+                        finally:
+                            # Release offline token lock.
+                            offline_token.unlock()
+
+                if event_type == "share_unmount":
+                    for share_id in data:
+                        try:
+                            tokens = data[share_id]['tokens']
+                        except KeyError:
+                            continue
+                        try:
+                            persist = data[share_id]['persist']
+                        except KeyError:
+                            persist = False
+                        if login_token not in tokens:
+                            continue
+                        try:
+                            share_site = data[share_id]['site']
+                            share_name = data[share_id]['name']
+                        except KeyError:
+                            log_msg = _("Got invalid share data: {share_id}", log=True)[1]
+                            log_msg = log_msg.format(share_id=share_id)
+                            self.logger.info(log_msg)
+                            continue
+                        try:
+                            session = self.login_sessions[login_pid]
+                            session_id = session['session_id']
+                        except Exception:
+                            continue
+
+                        try:
+                            mount_point = umount_share(username=login_user,
+                                                    share_site=share_site,
+                                                    share_name=share_name,
+                                                    logger=self.logger)
+                        except Exception as e:
+                            log_msg = _("Failed to umount share: {share_id}: {error}", log=True)[1]
+                            log_msg = log_msg.format(share_id=share_id, error=e)
+                            self.logger.info(log_msg)
+                        else:
+                            msg = _("{share_id} {mount_point} unmounted on server request.")
+                            msg = msg.format(share_id=share_id, mount_point=mount_point)
+                            try:
+                                desktop_notify.notify(
+                                  summary="Share unmounted",
+                                  body=msg,
+                                  icon="folder-remote",
+                                  urgency="normal",
+                                  user=login_user,
+                                  timeout_ms=5000,
+                                )
+                            except Exception as e:
+                                log_msg = _("Failed to send desktop notification: {e}", log=True)[1]
+                                log_msg = log_msg.format(e=e)
+                                self.logger.warning(log_msg)
+
+                        try:
+                            shares = session['mounted_shares']
+                        except KeyError:
+                            shares = {}
+                        try:
+                            shares.pop(share_id)
+                        except KeyError:
+                            pass
+                        session['mounted_shares'] = shares
+                        self.login_sessions[login_pid] = session
+
+                        if not persist:
+                            continue
+
+                        # Save shares to offline session.
+                        try:
+                            # Get offline token handler.
+                            offline_token = OfflineToken()
+                            # Set user.
+                            offline_token.set_user(login_user)
+                            # Acquire offline token lock.
+                            offline_token.lock()
+                            # Save shares.
+                            offline_token.save_shares(session_id, shares, realm, site)
+                        except Exception as e:
+                            log_msg = _("Error saving shares: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.critical(log_msg)
+                        finally:
+                            # Release offline token lock.
+                            offline_token.unlock()
+
     def remove_offline_rsp(self, login_user, session_id):
         """ Try to remove offline RSP. """
         # If this session is not from the current system
@@ -482,12 +772,10 @@ class OTPmeAgent(UnixDaemon):
             try:
                 shares = session['mounted_shares']
             except KeyError:
-                shares = []
+                continue
             messages = []
             mountpoints = []
             umounted_shares = []
-            from otpme.lib.fuse import get_mount_point
-            from otpme.lib.fuse import remove_mount_dirs
             for share_id in shares:
                 share_name = shares[share_id]['name']
                 share_site = shares[share_id]['site']
@@ -1501,6 +1789,24 @@ class OTPmeAgent(UnixDaemon):
                         message = _("Failed to add RSP: {e}")
                         message = message.format(e=e)
                         status_code = status_codes.ERR
+                    try:
+                        login_pid = request['login_pid']
+                        login_user = self.login_sessions[login_pid]['login_user']
+                        realm = request['realm']
+                        site = request['site']
+                    except KeyError:
+                        pass
+                    else:
+                        # Start new thread that will connect to idld.
+                        try:
+                            start_thread(name=self.full_name,
+                                        target=self.check_idled,
+                                        target_args=(login_pid, login_user,realm,site,),
+                                        daemon=True)
+                        except Exception as e:
+                            log_msg = _("Failed to start idled connection: {e}", log=True)[1]
+                            log_msg = log_msg.format(e=e)
+                            self.logger.warning(log_msg)
 
                 elif command == "reneg":
                     # Try to renegotiate realm login session.
@@ -1891,7 +2197,8 @@ class OTPmeAgent(UnixDaemon):
         start_thread(name=self.full_name, target=self._conn_proxy, daemon=True)
 
         # Create handler for the new socket.
-        conn_handler = ConnHandler(protocols=self.protocols,
+        conn_handler = ConnHandler(name=self.name,
+                                protocols=self.protocols,
                                 logger=self.logger,
                                 **handler_args)
 

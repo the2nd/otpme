@@ -681,6 +681,7 @@ def register_hooks():
     config.register_auth_on_action_hook("ca", "create_client_cert")
     config.register_auth_on_action_hook("ca", "update_crl")
     config.register_auth_on_action_hook("ca", "revoke_cert")
+    config.register_auth_on_action_hook("ca", "set_config_parameter")
 
 def register_backend():
     """ Register object for the file backend. """

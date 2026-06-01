@@ -665,6 +665,7 @@ def register_hooks():
     config.register_auth_on_action_hook("group", "remove_role")
     config.register_auth_on_action_hook("group", "add_token")
     config.register_auth_on_action_hook("group", "remove_token")
+    config.register_auth_on_action_hook("group", "set_config_parameter")
 
 def register_backend():
     """ Register object for the file backend. """

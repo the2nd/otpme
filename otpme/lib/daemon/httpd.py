@@ -45,9 +45,16 @@ class HttpDaemon(OTPmeDaemon):
         if _signal != 15:
             if _signal != 2:
                 return
-        # Stop gunicorn.
+        # Stop gunicorn. terminate() sends SIGTERM (graceful). If gunicorn
+        # doesn't exit within the timeout (stuck greenlet, hung worker),
+        # fall back to SIGKILL so daemon shutdown can't hang forever.
         self.gunicorn_child.terminate()
-        self.gunicorn_child.join()
+        self.gunicorn_child.join(timeout=35)
+        if self.gunicorn_child.is_alive():
+            log_msg = _("gunicorn did not exit gracefully within 35s; sending SIGKILL", log=True)[1]
+            self.logger.warning(log_msg)
+            self.gunicorn_child.kill()
+            self.gunicorn_child.join(timeout=5)
         self.gunicorn_child.close()
         # Remove cert/key files.
         if os.path.exists(self.cert_file):

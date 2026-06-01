@@ -12,6 +12,7 @@ REGISTER_AFTER = [
 # Protocol modules to register.
 modules = [
             'otpme.lib.protocols.server.fs1',
+            'otpme.lib.protocols.server.idle1',
             'otpme.lib.protocols.server.join1',
             'otpme.lib.protocols.server.host1',
             'otpme.lib.protocols.server.mgmt1',

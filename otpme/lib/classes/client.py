@@ -1082,6 +1082,7 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "show_secret")
     config.register_auth_on_action_hook("client", "limit_logins")
     config.register_auth_on_action_hook("client", "unlimit_logins")
+    config.register_auth_on_action_hook("client", "set_config_parameter")
 
 def register_object_unit():
     """ Register default unit for this object type. """

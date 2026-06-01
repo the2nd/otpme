@@ -101,6 +101,8 @@ class JobCallback(object):
         self.locked_objects = []
         # Indicates that a job should stop.
         self.stop_job = False
+        # Post methods to run afer job succeeded.
+        self.post_methods = []
         # Get logger.
         self.logger = config.logger
         # Time the callback was last used.

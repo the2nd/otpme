@@ -507,5 +507,13 @@ cmd_help = {
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
-
+    'list_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_shares {role}'),
+                    'cmd'   :   '-r :recursive=True: --return-type :return_type: [|object|]',
+                    '_help' :   {
+                                    'cmd'                       : _('List users.'),
+                                    '-r'                        : _('List shares recursive.'),
+                                    '--return-type'             : _('Attribute to return.'),
+                                },
+                },
     }

@@ -255,6 +255,14 @@ class OTPmeJob(object):
             # other changed (cached) objects.
             if objects_written:
                 cache.flush()
+            if self.callback.post_methods:
+                for post_method in self.callback.post_methods:
+                    try:
+                        post_method()
+                    except Exception as e:
+                        log_msg = _("Job post method failed: {post_method}", log=True)[1]
+                        log_msg = log_msg.format(post_method=post_method)
+                        self.logger.debug(log_msg)
         else:
             # Make sure all locks are released.
             self.callback.release_cache_locks()

@@ -505,6 +505,7 @@ class ControlDaemon(UnixDaemon):
                     'httpd',
                     'fsd',
                     'backupd',
+                    'idled',
                     ]
 
             # Set child daemons.
@@ -520,6 +521,7 @@ class ControlDaemon(UnixDaemon):
             child_daemons["ssod"] = {}
             child_daemons["clusterd"] = {}
             child_daemons["backupd"] = {}
+            child_daemons["idled"] = {}
 
         if config.host_data['type'] == "host":
             # Daemons we have to handle and its start order.
@@ -1062,6 +1064,7 @@ class ControlDaemon(UnixDaemon):
         if config.host_data['type'] == "node":
             from otpme.lib.daemon.fsd import FsDaemon
             from otpme.lib.daemon.ssod import SSODaemon
+            from otpme.lib.daemon.idled import IdleDaemon
             from otpme.lib.daemon.httpd import HttpDaemon
             from otpme.lib.daemon.authd import AuthDaemon
             from otpme.lib.daemon.mgmtd import MgmtDaemon
@@ -1071,10 +1074,11 @@ class ControlDaemon(UnixDaemon):
             from otpme.lib.daemon.scriptd import ScriptDaemon
             from otpme.lib.daemon.backupd import BackupDaemon
             from otpme.lib.daemon.clusterd import ClusterDaemon
-        if config.backup_server:
-            from otpme.lib.daemon.backupd import BackupDaemon
-        if config.sso_server:
-            from otpme.lib.daemon.httpd import HttpDaemon
+        else:
+            if config.backup_server:
+                from otpme.lib.daemon.backupd import BackupDaemon
+            if config.sso_server:
+                from otpme.lib.daemon.httpd import HttpDaemon
 
         # Set daemon user/group.
         daemon_user = config.user
@@ -1098,6 +1102,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = ScriptDaemon
         elif daemon_name == "ssod":
             daemon_class = SSODaemon
+        elif daemon_name == "idled":
+            daemon_class = IdleDaemon
         elif daemon_name == "fsd":
             daemon_class = FsDaemon
         elif daemon_name == "backupd":

@@ -37,6 +37,9 @@ class AlreadyRunning(OTPmeException):
 class AlreadyMaster(OTPmeException):
     pass
 
+class AlreadyMounted(OTPmeException):
+    pass
+
 class NotConfigured(OTPmeException):
     pass
 

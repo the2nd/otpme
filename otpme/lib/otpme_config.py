@@ -697,6 +697,7 @@ class OTPmeConfig(object):
                     'fsd'       : '2027',
                     'backupd'   : '2028',
                     'ssod'      : '2029',
+                    'idled'     : '2030',
                     }
         self.register_config_var("default_ports", dict, default_ports)
 
@@ -711,6 +712,7 @@ class OTPmeConfig(object):
                     'fsd'       : '2027',
                     'backupd'   : '2028',
                     'ssod'      : '2029',
+                    'idled'     : '2030',
                     }
         self.register_config_var("default_listen_ports", dict, default_listen_ports)
 

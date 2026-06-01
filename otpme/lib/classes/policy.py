@@ -395,6 +395,7 @@ REGISTER_AFTER = [
 
 def register():
     register_oid()
+    register_hooks()
     register_backend()
     register_object_unit()
     register_sync_settings()
@@ -402,6 +403,9 @@ def register():
     config.register_recursive_default_acl("site", "+policy")
     config.register_default_acl("unit", "+policy")
     config.register_recursive_default_acl("unit", "+policy")
+
+def register_hooks():
+    config.register_auth_on_action_hook("policy", "set_config_parameter")
 
 def register_object_unit():
     """ Register default unit for this object type. """
