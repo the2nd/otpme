@@ -69,12 +69,17 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, script_order, script_data, acls,
-    acl_checker=None, output_fields=None, max_policies=5,
+    limit=None, acl_checker=None, output_fields=None, max_policies=5,
     callback=default_callback, **kwargs):
     """ Build table rows for scripts. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(script_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for script_uuid in script_order:
         row = []
         script_name = script_data[script_uuid]['name']

@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-token show [--policy-limit <limit>] [--role-limit <limit>] {--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]'),
-                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --scope-limit :max_scopes: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --scope-limit :max_scopes: --limit :limit: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show token(s).'),
                                     '-a'                    : _('Show all tokens.'),
@@ -31,6 +31,7 @@ cmd_help = {
                                     '--role-limit <limit>'  : _('Output max roles.'),
                                     '--scope-limit <limit>' : _('Output max scopes.'),
                                     '--policy-limit <limit>': _('Output max policies.'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                 },
                 },
 

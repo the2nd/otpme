@@ -11,6 +11,52 @@
      data-url-passkey-register-begin="{{ url_for('passkey_register_begin', _external=True, _scheme='https') }}"
      data-url-passkey-register-complete="{{ url_for('passkey_register_complete', _external=True, _scheme='https') }}"
      data-url-del-passkey="{{ url_for('del_passkey', _external=True, _scheme='https') }}"></div>
+<div id="page-i18n"
+     data-label-changing-password="{{ gettext('Changing password...') }}"
+     data-label-password-failed="{{ gettext('Password change failed.') }}"
+     data-label-password-success="{{ gettext('Password changed successfully.') }}"
+     data-label-all-fields-required="{{ gettext('All fields are required.') }}"
+     data-label-new-passwords-mismatch="{{ gettext('New passwords do not match.') }}"
+     data-label-changing-pin="{{ gettext('Changing PIN...') }}"
+     data-label-pin-failed="{{ gettext('PIN change failed.') }}"
+     data-label-pin-success="{{ gettext('PIN changed successfully.') }}"
+     data-label-new-pins-mismatch="{{ gettext('New PINs do not match.') }}"
+     data-label-saving="{{ gettext('Saving...') }}"
+     data-label-failed-save-language="{{ gettext('Failed to save language.') }}"
+     data-label-failed-load-device-tokens="{{ gettext('Failed to load device tokens.') }}"
+     data-label-failed-add-device-token="{{ gettext('Failed to add device token.') }}"
+     data-label-failed-delete-device-token="{{ gettext('Failed to delete device token.') }}"
+     data-label-device-name-required="{{ gettext('Device name is required.') }}"
+     data-label-adding-device-token="{{ gettext('Adding device token...') }}"
+     data-label-device-token-created="{{ gettext('Device token created.') }}"
+     data-label-confirm-delete-device-token="{{ gettext('Delete device token \"{name}\"?') }}"
+     data-label-password-copied="{{ gettext('Password copied to clipboard.') }}"
+     data-label-failed-copy-password="{{ gettext('Failed to copy password.') }}"
+     data-label-failed-load-passkeys="{{ gettext('Failed to load passkeys.') }}"
+     data-label-no-passkeys="{{ gettext('No passkeys yet.') }}"
+     data-label-delete-btn="{{ gettext('Delete') }}"
+     data-label-passkey-name-required="{{ gettext('Passkey name is required.') }}"
+     data-label-https-required="{{ gettext('WebAuthn requires HTTPS.') }}"
+     data-label-webauthn-unsupported="{{ gettext('WebAuthn is not supported in this browser.') }}"
+     data-label-preparing-passkey="{{ gettext('Preparing passkey registration...') }}"
+     data-label-failed-start-passkey="{{ gettext('Failed to start passkey registration.') }}"
+     data-label-confirm-passkey="{{ gettext('Confirm on your device to create the passkey...') }}"
+     data-label-completing-passkey="{{ gettext('Completing registration...') }}"
+     data-label-passkey-reg-failed="{{ gettext('Passkey registration failed.') }}"
+     data-label-passkey-added="{{ gettext('Passkey added.') }}"
+     data-label-failed-add-passkey="{{ gettext('Failed to add passkey.') }}"
+     data-label-confirm-delete-passkey="{{ gettext('Delete passkey \"{name}\"?') }}"
+     data-label-failed-delete-passkey="{{ gettext('Failed to delete passkey.') }}"
+     data-label-passkey-deleted="{{ gettext('Passkey deleted.') }}"
+     data-label-failed-load-consents="{{ gettext('Failed to load consents.') }}"
+     data-label-no-connected-apps="{{ gettext('No connected applications.') }}"
+     data-label-scopes-prefix="{{ gettext('Scopes:') }}"
+     data-label-granted-prefix="{{ gettext('Granted:') }}"
+     data-label-disconnect-btn="{{ gettext('Disconnect') }}"
+     data-label-confirm-revoke="{{ gettext('Disconnect \"{name}\"? Active sessions for this application will be terminated.') }}"
+     data-label-failed-revoke="{{ gettext('Failed to revoke consent.') }}"
+     data-label-disconnected="{{ gettext('Disconnected.') }}"
+     class="is-hidden"></div>
 <div class="portal-wrapper">
     <h2>{{ gettext("Settings") }}</h2>
 
@@ -28,7 +74,7 @@
             <label for="confirmPassword">{{ gettext("Confirm New Password") }}</label>
             <input type="password" id="confirmPassword" autocomplete="new-password">
 
-            <button type="button" id="changePwBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Change Password") }}</button>
+            <button type="button" id="changePwBtn" class="btn btn-primary mt-8">{{ gettext("Change Password") }}</button>
             <div class="status-msg" id="pwStatus"></div>
             <div class="error-msg" id="pwError"></div>
         </div>
@@ -49,7 +95,7 @@
             <label for="confirmPin">{{ gettext("Confirm New PIN") }}</label>
             <input type="password" id="confirmPin" autocomplete="new-password" inputmode="numeric">
 
-            <button type="button" id="changePinBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Change PIN") }}</button>
+            <button type="button" id="changePinBtn" class="btn btn-primary mt-8">{{ gettext("Change PIN") }}</button>
             <div class="status-msg" id="pinStatus"></div>
             <div class="error-msg" id="pinError"></div>
         </div>
@@ -77,7 +123,7 @@
                 <option value="{{ loc.code }}" {% if current_language == loc.code %}selected{% endif %}>{{ loc.label }}</option>
                 {% endfor %}
             </select>
-            <button type="button" id="saveLanguageBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Save") }}</button>
+            <button type="button" id="saveLanguageBtn" class="btn btn-primary mt-8">{{ gettext("Save") }}</button>
             <div class="status-msg" id="languageStatus"></div>
             <div class="error-msg" id="languageError"></div>
         </div>
@@ -85,7 +131,7 @@
 
     <!-- Device Tokens (one card per configured sso_token_roles role) -->
     <div id="deviceRolesContainer"></div>
-    <div class="settings-card device-disabled-hint" id="deviceDisabledHint" style="display:none;">
+    <div class="settings-card device-disabled-hint is-hidden" id="deviceDisabledHint">
         <h3>{{ gettext("Device Tokens") }}</h3>
         <p class="settings-desc">
             {{ gettext("Device tokens are not available:") }} <code>sso_token_roles</code> {{ gettext("is not configured.") }}
@@ -102,18 +148,18 @@
          data-label-copy="{{ gettext('Copy') }}"
          data-label-shown-once="{{ gettext('This password is shown only once. Copy it now.') }}"
          data-label-delete="{{ gettext('Delete') }}"
-         style="display:none;"></div>
+         class="is-hidden"></div>
 
     <!-- Passkeys (WebAuthn discoverable credentials).
          Hidden by default; revealed by loadPasskeys() when the server
          reports allowed=true (sso_allow_passkeys config parameter). -->
-    <div class="settings-card" id="passkeyCard" style="display:none;">
+    <div class="settings-card is-hidden" id="passkeyCard">
         <h3>{{ gettext("Passkeys") }}</h3>
         <p class="settings-desc">{{ gettext("Sign in without a password using a passkey on this device or a synced credential provider (iCloud Keychain, Google Password Manager, 1Password, ...).") }}</p>
         <div class="settings-form" id="passkeyAddForm">
             <label for="passkeyName">{{ gettext("Passkey Name") }}</label>
             <input type="text" id="passkeyName" placeholder="{{ gettext('e.g. iphone, laptop, work-pc') }}" autocomplete="off">
-            <button type="button" id="addPasskeyBtn" class="btn btn-primary" style="margin-top:8px;">{{ gettext("Add Passkey") }}</button>
+            <button type="button" id="addPasskeyBtn" class="btn btn-primary mt-8">{{ gettext("Add Passkey") }}</button>
             <div class="status-msg" id="passkeyStatus"></div>
             <div class="error-msg" id="passkeyError"></div>
         </div>
@@ -136,7 +182,7 @@
 <div id="oidc-consent-urls"
      data-url-list="{{ url_for('list_oidc_consents', _external=True, _scheme='https') }}"
      data-url-revoke="{{ url_for('revoke_oidc_consent', _external=True, _scheme='https') }}"
-     style="display:none;"></div>
+     class="is-hidden"></div>
 
 <script src="{{ url_for('static', filename='settings.js') }}"></script>
 {% endblock %}

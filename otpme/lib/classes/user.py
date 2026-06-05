@@ -36,12 +36,14 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.cache import user_tokens_cache
+from otpme.lib.idle import notify
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
 from otpme.lib.typing import match_class_typing
 from otpme.lib.policy import one_time_policy_run
 from otpme.lib.otpme_acl import check_special_user
+from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.auth_handler import AuthHandler
 from otpme.lib.protocols.utils import register_commands
@@ -213,6 +215,7 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -5245,6 +5248,115 @@ class User(OTPmeObject):
                         script_options_var='auth_script_options',
                         script_options=script_options,
                         script=auth_script, callback=callback)
+
+    def _shares_data_for_notify(self):
+        """ Build the per-share notify dict covering every share this
+        user's tokens reach (directly or via roles). Returns {} if the
+        user has no reachable share. Shape matches the dict produced
+        by role.add_role / share helpers.
+
+        skip_disabled=False on purpose for both tokens and shares: a
+        token or share may have been disabled WHILE the user was still
+        logged in and the agent already had the share mounted. The
+        user.enable/disable notify is our chance to push a cleanup
+        even if the upstream token.disable / share.disable handlers
+        missed it (or weren't there yet). """
+        tokens_per_share = {}
+        for token_uuid in self.tokens:
+            token = backend.get_object(uuid=token_uuid)
+            if not token:
+                continue
+            for share in token.get_shares(skip_disabled=False,
+                                          return_type="instance"):
+                tokens_per_share.setdefault(share, []).append(token.rel_path)
+        shares_data = {}
+        for share, token_paths in tokens_per_share.items():
+            share_nodes = share.get_nodes(include_pools=True,
+                                          return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=share.realm,
+                                            site=share.site,
+                                            return_type="instance")
+            if not share_nodes:
+                continue
+            node_fqdns = [node.fqdn for node in share_nodes]
+            share_hosts = []
+            if share.limit_by_hosts:
+                share_hosts = share.get_hosts(include_groups=True,
+                                              return_type="name")
+            share_id = share.share_id
+            shares_data[share_id] = {
+                'name': share.name,
+                'site': share.site,
+                'nodes': node_fqdns,
+                'limit_hosts': share.limit_by_hosts,
+                'hosts': share_hosts,
+                'encrypted': share.encrypted,
+                'tokens': sorted(token_paths),
+                'persist': True,
+            }
+        return shares_data
+
+    @check_acls(['enable:object'])
+    @object_lock()
+    def enable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Send share_mount notifications on enable.
+
+        The data model (share.get_tokens / token.enabled) doesn't track
+        the owning user's enabled state, so toggling user.enabled
+        doesn't change which tokens shares reach. We still notify the
+        user's agent so it (re)mounts everything the user is entitled
+        to once their account is active again. """
+        if self.name == ADMIN_USER:
+            return super().enable(*args, callback=callback, **kwargs)
+        shares_data = self._shares_data_for_notify()
+        result = super().enable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+        if shares_data:
+            def post_method():
+                notify(username=self.name,
+                       event_type="share_mount",
+                       data=shares_data)
+            callback.post_methods.append(post_method)
+        return result
+
+    @check_acls(['disable:object'])
+    @object_lock()
+    def disable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Send share_unmount notifications on disable.
+
+        The user can no longer authenticate, so any share mounts on
+        the agent's side are effectively dead. Tell the agent to
+        unmount everything the user had access to (including via
+        already-disabled tokens or shares -- see
+        _shares_data_for_notify for the rationale). """
+        if self.name == ADMIN_USER:
+            return super().disable(*args, callback=callback, **kwargs)
+        shares_data = self._shares_data_for_notify()
+        result = super().disable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+        if shares_data:
+            def post_method():
+                notify(username=self.name,
+                       event_type="share_unmount",
+                       data=shares_data)
+            callback.post_methods.append(post_method)
+        return result
 
     @check_special_user()
     @object_lock(full_lock=True)

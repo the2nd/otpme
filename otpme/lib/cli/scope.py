@@ -70,13 +70,23 @@ def register():
                 read_acls=read_acls,
                 max_len=10)
 
-def row_getter(realm, site, scope_order, scope_data, acls, max_scopes=5,
-    max_tokens=5, max_roles=5, max_policies=5, max_clients=5, max_groups=5,
-    output_fields=None, acl_checker=None, **kwargs):
+def row_getter(realm, site, scope_order, scope_data, acls,
+    limit=None, max_scopes=5, max_tokens=5, max_roles=5, max_policies=5,
+    max_clients=5, max_groups=5, output_fields=None, acl_checker=None,
+    **kwargs):
     """ Build table rows for scopes. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(scope_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_tokens = limit
+        max_roles = limit
+        max_policies = limit
+        max_clients = limit
+        max_groups = limit
     for scope_uuid in scope_order:
         row = []
         scope_name = scope_data[scope_uuid]['name']

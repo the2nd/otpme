@@ -322,6 +322,13 @@ def init_otpme(use_backend=None, load_host_data=True):
     # Set config parameter.
     config.use_backend = use_backend
 
+    # Set terminal size.
+    try:
+        size = os.get_terminal_size()
+        config.term_size = {'columns':size.columns, 'lines':size.lines}
+    except OSError:
+        pass
+
     # Handle API mode stuff.
     if config.use_api:
         config.use_backend = True

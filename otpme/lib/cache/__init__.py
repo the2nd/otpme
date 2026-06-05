@@ -113,7 +113,7 @@ object_list_cache = FuncCache(name="object_list_cache",
 assigned_host_cache = FuncCache(name="assigned_host",
                             shared=True,
                             default_cache="default",
-                            clear_on_object_types=['host', 'role', 'accessgroup'])
+                            clear_on_object_types=['host', 'role', 'group', 'accessgroup'])
 assigned_role_cache = FuncCache(name="assigned_role",
                             shared=True,
                             default_cache="default",
@@ -318,8 +318,10 @@ def init():
             index_search_cache,
             unit_members_cache,
             oid_from_path_cache,
+            assigned_host_cache,
             assigned_role_cache,
             assigned_token_cache,
+            assigned_device_cache,
             supported_acls_cache,
             ]
 

@@ -22,13 +22,14 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-script show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [script]'),
-                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show script(s)'),
                                     '-a'                    : _('Show all scripts.'),
                                     '-z <limit>'            : _('Limit output size'),
                                     '--fields f1,f2,f3'     : _('Output only given fields'),
                                     '--policy-limit <limit>': _('Output max policies.'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--reverse'             : _('Reverse the output order.'),
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),

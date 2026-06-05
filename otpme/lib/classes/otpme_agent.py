@@ -230,6 +230,9 @@ class OTPmeAgent(UnixDaemon):
         log_msg = _("Received quit, terminating.", log=True)[1]
         self.logger.info(log_msg)
 
+        # Set shutdown.
+        self.shutdown = True
+
         # Get user sessions.
         try:
             sessions = dict(self.login_sessions)
@@ -446,7 +449,6 @@ class OTPmeAgent(UnixDaemon):
         log_msg = _("Connecting to idled: {login_user}", log=True)[1]
         log_msg = log_msg.format(login_user=login_user)
         self.logger.debug(log_msg)
-        login_token = self.login_sessions[login_pid]['login_token']
         idled_conn = None
         while not self.shutdown:
             try:
@@ -466,12 +468,31 @@ class OTPmeAgent(UnixDaemon):
             while not self.shutdown:
                 if self.shutdown:
                     break
-                command_args = {'username':login_user}
+                try:
+                    login_token = self.login_sessions[login_pid]['login_token']
+                except Exception:
+                    try:
+                        idled_conn.close()
+                    except Exception:
+                        pass
+                    return
+                try:
+                    login_time = self.login_sessions[login_pid]['server_sessions'][realm][site]['login_time']
+                except Exception as e:
+                    login_time = None
+
+                command_args = {
+                                'username'      : login_user,
+                                'login_token'   : login_token,
+                                'login_time'    : login_time,
+                                }
                 try:
                     status, \
                     status_code, \
                     response, \
-                    binary_data = idled_conn.send(command="wait", command_args=command_args)
+                    binary_data = idled_conn.send(command="wait",
+                                                command_args=command_args,
+                                                timeout=10)
                 except Exception as e:
                     try:
                         idled_conn.close()
@@ -978,6 +999,7 @@ class OTPmeAgent(UnixDaemon):
         login_time = session['login_time']
         rsp = session['rsp']
         slp = session['slp']
+        session_uuid = session['session_uuid']
         session_age = time.time() - login_time
         session_timeout = session['session_timeout']
         session_unused_timeout = session['session_unused_timeout']
@@ -995,7 +1017,7 @@ class OTPmeAgent(UnixDaemon):
                                         use_agent=False, username=login_user,
                                         autoconnect=True, auto_auth=False,
                                         allow_untrusted=True, sync_token_data=False,
-                                        reneg=True, rsp=rsp)
+                                        reneg=True, session_uuid=session_uuid, rsp=rsp)
         except Exception as e:
             log_msg = _("Error getting daemon connection for session renegotiation: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -1411,6 +1433,7 @@ class OTPmeAgent(UnixDaemon):
         timeout = auth_response['timeout']
         unused_timeout = auth_response['unused_timeout']
         _slp = auth_response['slp']
+        session_uuid = auth_response['session']
 
         # Build session dict.
         session = {}
@@ -1433,6 +1456,7 @@ class OTPmeAgent(UnixDaemon):
         session['last_reneg'] = time.time()
         session['last_failed_reneg'] = None
         # Set server session timeout stuff.
+        session['session_uuid'] = session_uuid
         session['session_timeout'] = timeout
         session['session_unused_timeout'] = unused_timeout
         # Update login session.
@@ -1454,8 +1478,6 @@ class OTPmeAgent(UnixDaemon):
         # we can try to update the login session file.
         if offline and login_user == config.system_user():
             session_id = self.login_sessions[login_pid]['session_id']
-            session_uuid = auth_response['session']
-            session_id = self.login_sessions[login_pid]['session_id']
             try:
                 try:
                     shares = session['mounted_shares']
@@ -1465,6 +1487,8 @@ class OTPmeAgent(UnixDaemon):
                 offline_token = OfflineToken()
                 # Set user.
                 offline_token.set_user(login_user)
+                # Load offline tokens. This is needed because need_encryption must be set.
+                offline_token.load()
                 # Acquire offline token lock.
                 offline_token.lock()
                 # Save RSP.
@@ -1487,6 +1511,17 @@ class OTPmeAgent(UnixDaemon):
             finally:
                 # Release offline token lock.
                 offline_token.unlock()
+
+        # Start new thread that will connect to idld.
+        try:
+            start_thread(name=self.full_name,
+                        target=self.check_idled,
+                        target_args=(login_pid, login_user,realm,site,),
+                        daemon=True)
+        except Exception as e:
+            log_msg = _("Failed to start idled connection: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
 
     def get_daemon_conn(self, realm, site, daemon,
         login_pid, keepalive=False, use_dns=None):

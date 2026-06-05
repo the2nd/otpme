@@ -34,6 +34,8 @@ from otpme.lib.exceptions import *
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
+CONTROLD_QUEUE_NAME = "otpme-controld-commq"
+
 def register():
     """ Register daemon stuff. """
     # Register daemon status stuff.
@@ -238,6 +240,13 @@ def register():
     multiprocessing.register_shared_dict("sync_status", clear=True)
     # Auto disable times for hostd.
     multiprocessing.register_shared_dict("auto_disable_times")
+
+def send_daemon_command(daemon, command):
+    comm_queue = multiprocessing.InterProcessQueue(CONTROLD_QUEUE_NAME)
+    comm_handler = comm_queue.get_handler("cli")
+    comm_handler.send(recipient="controld",
+                    command=command,
+                    data={'daemon':daemon})
 
 class ControlDaemon(UnixDaemon):
     """
@@ -505,7 +514,7 @@ class ControlDaemon(UnixDaemon):
                     'httpd',
                     'fsd',
                     'backupd',
-                    'idled',
+                    #'idled',
                     ]
 
             # Set child daemons.
@@ -521,7 +530,7 @@ class ControlDaemon(UnixDaemon):
             child_daemons["ssod"] = {}
             child_daemons["clusterd"] = {}
             child_daemons["backupd"] = {}
-            child_daemons["idled"] = {}
+            #child_daemons["idled"] = {}
 
         if config.host_data['type'] == "host":
             # Daemons we have to handle and its start order.
@@ -770,7 +779,7 @@ class ControlDaemon(UnixDaemon):
 
         # Interprocess communication queue.
         try:
-            self.comm_queue = multiprocessing.InterProcessQueue("otpme-controld-commq")
+            self.comm_queue = multiprocessing.InterProcessQueue(CONTROLD_QUEUE_NAME)
         except Exception as e:
             log_msg = _("Failed to init interprocess queue: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -982,6 +991,18 @@ class ControlDaemon(UnixDaemon):
                     continue
                 self.stop_child(daemon_name)
                 self.start_daemon(daemon_name)
+            elif command == "start":
+                try:
+                    daemon_name = data['daemon']
+                except Exception:
+                    continue
+                self.start_daemon(daemon_name)
+            elif command == "stop":
+                try:
+                    daemon_name = data['daemon']
+                except Exception:
+                    continue
+                self.stop_child(daemon_name)
             else:
                 log_msg = _("Unknown daemon command: {command}", log=True)[1]
                 log_msg = log_msg.format(command=command)

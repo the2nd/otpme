@@ -288,16 +288,19 @@ class JobCallback(object):
         return True
 
     @handle_exception
-    def ok(self, message='\0OTPME_NULL\0', timeout=1):
+    def ok(self, message='\0OTPME_NULL\0', return_value=False, timeout=1):
         """ Return given message or just True. """
         if message != '\0OTPME_NULL\0':
-            if self.job._caller == "CLIENT":
-                return self.send(message, timeout=timeout)
-            # For API/RAPI calls we have to set the return value.
-            if self.job._caller == "RAPI":
+            if return_value:
                 self.job.return_value = message
-                return True
-            return message
+            else:
+                if self.job._caller == "CLIENT":
+                    return self.send(message, timeout=timeout)
+                # For API/RAPI calls we have to set the return value.
+                if self.job._caller == "RAPI":
+                    self.job.return_value = message
+                    return True
+                return message
         return True
 
     @handle_exception
@@ -689,7 +692,7 @@ class JobCallback(object):
         self.last_used = time.time()
 
     @handle_exception
-    def stop(self, status, message="", timeout=1,
+    def stop(self, status, message=None, timeout=1,
         raise_exception=True, exception=None):
         """ Set exit code and message that should be sent to the user. """
         if message is None:

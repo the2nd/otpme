@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import copy
 import time
 import queue
 import threading
@@ -35,14 +36,17 @@ class _IdleDispatcher:
     def __init__(self):
         self.lock = threading.Lock()
         self.subscribers = {}
+        self.login_data = {}
 
-    def subscribe(self, username):
+    def subscribe(self, username, host, login_data):
         q = queue.Queue()
         with self.lock:
             self.subscribers.setdefault(username, []).append(q)
+            #self.login_data[username] = login_data
+            self.login_data.setdefault(username, {}).setdefault(host, login_data)
         return q
 
-    def unsubscribe(self, username, q):
+    def unsubscribe(self, username, q, host):
         with self.lock:
             try:
                 self.subscribers[username].remove(q)
@@ -50,15 +54,31 @@ class _IdleDispatcher:
                     del self.subscribers[username]
             except (KeyError, ValueError):
                 pass
+            try:
+                self.login_data[username].pop(host)
+                if not self.login_data[username]:
+                    self.login_data[username].pop(username)
+            except (KeyError, ValueError):
+                pass
 
     def publish(self, username, event):
+        # Deep-copy per subscriber: publish puts a separate object into
+        # each queue so consumers can mutate their copy (the agent-side
+        # share-handler pops fields like host_uuid as it processes)
+        # without poisoning what the next consumer sees. With shared
+        # references, a second wait for the same user would observe
+        # the already-iterated-and-stripped dict.
         with self.lock:
             queues = list(self.subscribers.get(username, ()))
         for q in queues:
             try:
-                q.put_nowait(event)
+                q.put_nowait(copy.deepcopy(event))
             except Exception:
                 pass
+
+    def get_login_data(self):
+        with self.lock:
+            return copy.deepcopy(self.login_data)
 
 class IdleDaemon(OTPmeDaemon):
     """ IdleDaemon """

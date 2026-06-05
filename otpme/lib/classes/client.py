@@ -178,6 +178,7 @@ commands = {
                                         'output_fields',
                                         'max_policies',
                                         'max_scopes',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',

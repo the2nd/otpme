@@ -77,12 +77,16 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, group_order, group_data, acls, table=None,
-    max_roles=5, max_tokens=5, max_policies=5, output_fields=None,
-    acl_checker=None, **kwargs):
+    limit=None, max_policies=5, output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for accessgroups. """
     # Align table headers.
     if output_fields is None:
         output_fields = []
+    if limit is None:
+        if len(group_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     if table:
         table.align["maxfail"] = "c"
         table.align["reset"] = "c"

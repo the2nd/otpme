@@ -21,6 +21,7 @@ from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.register import register_module
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -131,6 +132,7 @@ commands = {
                                         'max_groups',
                                         'max_scopes',
                                         'max_policies',
+                                        'limit',
                                         ],
                     'job_type'          : 'thread',
                     },
@@ -1219,8 +1221,7 @@ class Role(OTPmeObject):
             elif return_type == "uuid":
                 result.append(share.uuid)
             elif return_type == "path":
-                share_id = f"{share.site}/{share.name}"
-                result.append(share_id)
+                result.append(share.share_id)
             else:
                 msg = _("Invalid resturn type: {return_type}")
                 msg = msg.format(return_type=return_type)
@@ -1231,12 +1232,140 @@ class Role(OTPmeObject):
             return result
         return callback.ok("\n".join(result))
 
+    @check_acls(['add:token'])
+    @object_lock()
+    def add_token(
+        self,
+        token_path: str,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Check if token add will add new share permissions. """
+        # Try to add token by parent class.
+        result = super().add_token(*args, token_path=token_path,
+                                    callback=callback, **kwargs)
+        if not result:
+            return result
+
+        username = token_path.split("/")[0]
+        if username == ADMIN_USER:
+            return result
+
+        role_shares = self.get_shares(recursive=True,
+                                    skip_disabled=False,
+                                    return_type="instance")
+        if not role_shares:
+            return result
+
+        def post_method():
+            shares = {}
+            for share in role_shares:
+                # Get share nodes.
+                share_nodes = share.get_nodes(include_pools=True,
+                                            return_type="instance")
+                if not share_nodes:
+                    share_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=share.realm,
+                                                site=share.site,
+                                                return_type="instance")
+                node_fqdns = []
+                for node in share_nodes:
+                    node_fqdns.append(node.fqdn)
+                share_hosts = []
+                if share.limit_by_hosts:
+                    share_hosts = share.get_hosts(include_groups=True,
+                                                return_type="name")
+                share_id = share.share_id
+                shares[share_id] = {}
+                shares[share_id]['name'] = share.name
+                shares[share_id]['site'] = share.site
+                shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['limit_hosts'] = share.limit_by_hosts
+                shares[share_id]['hosts'] = share_hosts
+                shares[share_id]['encrypted'] = share.encrypted
+                shares[share_id]['tokens'] = [token_path]
+                shares[share_id]['persist'] = True
+
+            notify(username=username, event_type="share_mount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
+
+    @object_lock()
+    @check_acls(['remove:token'])
+    def remove_token(
+        self,
+        token_path: str,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Check if token remove will remove share permissions. """
+        # Remove token by parent class.
+        result = super().remove_token(*args, token_path=token_path,
+                                    callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        username = token_path.split("/")[0]
+        if username == ADMIN_USER:
+            return result
+
+        # Get shares of this role.
+        role_shares = set(self.get_shares(recursive=True,
+                                          skip_disabled=False,
+                                          return_type="instance"))
+
+        def post_method():
+            shares = {}
+            for share in role_shares:
+                share_tokens = share.get_tokens(skip_disabled=False,
+                                              include_roles=True,
+                                              return_type="rel_path")
+                # If token is still valid for the share skip notification.
+                if token_path in share_tokens:
+                    continue
+                share_nodes = share.get_nodes(include_pools=True,
+                                              return_type="instance")
+                if not share_nodes:
+                    share_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=share.realm,
+                                                site=share.site,
+                                                return_type="instance")
+                node_fqdns = []
+                for node in share_nodes:
+                    node_fqdns.append(node.fqdn)
+
+                share_id = share.share_id
+                shares[share_id] = {}
+                shares[share_id]['name'] = share.name
+                shares[share_id]['site'] = share.site
+                shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['encrypted'] = share.encrypted
+                shares[share_id]['tokens'] = [token_path]
+                shares[share_id]['persist'] = True
+
+            # Send notification to idled.
+            notify(username=username, event_type="share_unmount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
+
     @check_acls(['add:role'])
+    @object_lock()
     def add_role(
         self,
-        *args,
         role_name: str=None,
         role_uuid: str=None,
+        *args,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1251,83 +1380,95 @@ class Role(OTPmeObject):
         role_shares = self.get_shares(recursive=True,
                                     skip_disabled=False,
                                     return_type="instance")
-        role_to_add = backend.get_object(uuid=_role_uuid)
-        role_to_add_shares = role_to_add.get_shares(recursive=True,
-                                                    skip_disabled=False,
-                                                    return_type="instance")
-        role_to_add_tokens = role_to_add.get_tokens(skip_disabled=False,
-                                                    include_roles=True,
-                                                    return_type="rel_path")
+        if role_shares:
+            role_to_add = backend.get_object(uuid=_role_uuid)
+            role_to_add_shares = role_to_add.get_shares(recursive=True,
+                                                        skip_disabled=False,
+                                                        return_type="instance")
+            role_to_add_tokens = role_to_add.get_tokens(skip_disabled=False,
+                                                        include_roles=True,
+                                                        return_type="rel_path")
 
-        notifys = []
-        user_shares = {}
-        new_shares = set(role_shares) - set(role_to_add_shares)
-        for share in new_shares:
-            share_tokens = share.get_tokens(skip_disabled=False,
-                                            include_roles=True,
-                                            return_type="rel_path")
-            notify_tokens = set(list(set(role_to_add_tokens) - set(share_tokens)))
-            # Get share nodes.
-            share_nodes = share.get_nodes(include_pools=True,
-                                        return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
+            notifys = []
+            user_shares = {}
+            new_shares = set(role_shares) - set(role_to_add_shares)
+            for share in new_shares:
+                share_tokens = share.get_tokens(skip_disabled=False,
+                                                include_roles=True,
+                                                return_type="rel_path")
+                notify_tokens = set(list(set(role_to_add_tokens) - set(share_tokens)))
+                # Get share nodes.
+                share_nodes = share.get_nodes(include_pools=True,
                                             return_type="instance")
-            if share_nodes:
+                if not share_nodes:
+                    share_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=share.realm,
+                                                site=share.site,
+                                                return_type="instance")
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
-                share_id = f"{share.site}/{share.name}"
+                share_hosts = []
+                if share.limit_by_hosts:
+                    share_hosts = share.get_hosts(include_groups=True,
+                                                return_type="name")
                 shares = {}
+                share_id = share.share_id
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['limit_hosts'] = share.limit_by_hosts
+                shares[share_id]['hosts'] = share_hosts
                 shares[share_id]['encrypted'] = share.encrypted
-            # Send notifications.
-            already_sent = []
-            for token_path in notify_tokens:
-                username = token_path.split("/")[0]
-                if token_path in already_sent:
-                    continue
-                try:
-                    x_shares = user_shares[username]
-                except KeyError:
-                    x_shares = {}
-                try:
-                    tokens = x_shares[share_id]['tokens']
-                except KeyError:
-                    tokens = []
-                tokens.append(token_path)
-                share_data = stuff.copy_object(shares)
-                x_shares.update(share_data)
-                x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = True
-                user_shares[username] = x_shares
-                already_sent.append(token_path)
+
+                # Collect notifications.
+                already_processed = []
+                for token_path in notify_tokens:
+                    username = token_path.split("/")[0]
+                    if username == ADMIN_USER:
+                        continue
+                    if token_path in already_processed:
+                        continue
+                    try:
+                        x_shares = user_shares[username]
+                    except KeyError:
+                        x_shares = {}
+                    try:
+                        tokens = x_shares[share_id]['tokens']
+                    except KeyError:
+                        tokens = []
+                    tokens.append(token_path)
+                    share_data = stuff.copy_object(shares)
+                    x_shares.update(share_data)
+                    x_shares[share_id]['tokens'] = tokens
+                    x_shares[share_id]['persist'] = True
+                    user_shares[username] = x_shares
+                    already_processed.append(token_path)
+
             for username in user_shares:
                 shares = user_shares[username]
                 notifys.append((username, "share_mount", shares))
 
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
+            def post_method():
+                for x in notifys:
+                    notify(username=x[0], event_type=x[1], data=x[2])
+            callback.post_methods.append(post_method)
 
         result = super().add_role(*args, role_name=role_name,
                                 role_uuid=role_uuid,
                                 callback=callback, **kwargs)
-        callback.post_methods.append(post_method)
         return result
 
     @check_acls(['remove:role'])
+    @object_lock()
     def remove_role(
         self,
         role_name: str=None,
         role_uuid: str=None,
+        *args,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1342,22 +1483,19 @@ class Role(OTPmeObject):
             msg = "Need <role_name> or <role_uuid>."
             raise OTPmeException(msg)
 
-        role_to_remove = backend.get_object(uuid=_role_uuid)
-        if role_to_remove is None:
-            return super().remove_role(role_name=role_name or _role_uuid,
-                                       callback=callback, **kwargs)
-
         # Snapshot pre-removal state so we can diff which shares the role
         # loses access to once the parent link is gone.
+        role_to_remove = backend.get_object(uuid=_role_uuid)
         shares_before = set(role_to_remove.get_shares(recursive=True,
                                                       skip_disabled=False,
                                                       return_type="instance"))
-        role_to_remove_tokens = role_to_remove.get_tokens(skip_disabled=False,
-                                                          include_roles=True,
-                                                          return_type="rel_path")
+        if shares_before:
+            role_to_remove_tokens = role_to_remove.get_tokens(skip_disabled=False,
+                                                              include_roles=True,
+                                                              return_type="rel_path")
 
-        result = super().remove_role(role_name=role_name or _role_uuid,
-                                     callback=callback, **kwargs)
+        result = super().remove_role(*args, role_name=role_name or _role_uuid,
+                                        callback=callback, **kwargs)
 
         def post_method():
             shares_after = set(role_to_remove.get_shares(recursive=True,
@@ -1389,17 +1527,19 @@ class Role(OTPmeObject):
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
-                share_id = f"{share.site}/{share.name}"
+                share_id = share.share_id
                 shares = {}
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['encrypted'] = share.encrypted
-                already_sent = []
+                already_processed = []
                 for token_path in notify_tokens:
                     username = token_path.split("/")[0]
-                    if token_path in already_sent:
+                    if username == ADMIN_USER:
+                        continue
+                    if token_path in already_processed:
                         continue
                     try:
                         x_shares = user_shares[username]
@@ -1415,11 +1555,205 @@ class Role(OTPmeObject):
                     x_shares[share_id]['tokens'] = tokens
                     x_shares[share_id]['persist'] = True
                     user_shares[username] = x_shares
-                    already_sent.append(token_path)
+                    already_processed.append(token_path)
             for username in user_shares:
                 shares = user_shares[username]
                 notify(username=username, event_type="share_unmount", data=shares)
-        callback.post_methods.append(post_method)
+
+        if shares_before:
+            callback.post_methods.append(post_method)
+
+        return result
+
+    @check_acls(['enable:object'])
+    @object_lock()
+    def enable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Send share_mount notifications on enable.
+
+        Tokens of this role couldn't reach the role's shares while the
+        role was disabled. After enable the path opens. Pre-snapshot
+        share.get_tokens(skip_disabled=True) per share so we notify
+        only tokens that genuinely gain new access -- tokens already
+        reaching the share via another enabled path were already
+        mounted and don't need a redundant share_mount. """
+        role_tokens = self.get_tokens(skip_disabled=False,
+                                      include_roles=True,
+                                      return_type="rel_path")
+        role_shares = self.get_shares(recursive=True,
+                                      skip_disabled=False,
+                                      return_type="instance")
+        share_tokens_before = {}
+        for share in role_shares:
+            share_tokens_before[share.uuid] = set(share.get_tokens(
+                            skip_disabled=True,
+                            include_roles=True,
+                            return_type="rel_path"))
+
+        result = super().enable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+
+        def post_method():
+            user_shares = {}
+            for share in role_shares:
+                share_tokens_after = set(share.get_tokens(
+                                skip_disabled=True,
+                                include_roles=True,
+                                return_type="rel_path"))
+                # Newly reaching tokens that belong to this role.
+                gained = share_tokens_after - share_tokens_before[share.uuid]
+                notify_tokens = gained & set(role_tokens)
+                if not notify_tokens:
+                    continue
+                share_nodes = share.get_nodes(include_pools=True,
+                                              return_type="instance")
+                if not share_nodes:
+                    share_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=share.realm,
+                                                site=share.site,
+                                                return_type="instance")
+                if not share_nodes:
+                    continue
+                node_fqdns = [node.fqdn for node in share_nodes]
+                share_hosts = []
+                if share.limit_by_hosts:
+                    share_hosts = share.get_hosts(include_groups=True,
+                                                  return_type="name")
+                share_id = share.share_id
+                shares = {}
+                shares[share_id] = {}
+                shares[share_id]['name'] = share.name
+                shares[share_id]['site'] = share.site
+                shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['limit_hosts'] = share.limit_by_hosts
+                shares[share_id]['hosts'] = share_hosts
+                shares[share_id]['encrypted'] = share.encrypted
+                already_processed = []
+                for token_path in notify_tokens:
+                    username = token_path.split("/")[0]
+                    if username == ADMIN_USER:
+                        continue
+                    if token_path in already_processed:
+                        continue
+                    try:
+                        x_shares = user_shares[username]
+                    except KeyError:
+                        x_shares = {}
+                    try:
+                        tokens = x_shares[share_id]['tokens']
+                    except KeyError:
+                        tokens = []
+                    tokens.append(token_path)
+                    share_data = stuff.copy_object(shares)
+                    x_shares.update(share_data)
+                    x_shares[share_id]['tokens'] = tokens
+                    x_shares[share_id]['persist'] = True
+                    user_shares[username] = x_shares
+                    already_processed.append(token_path)
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type="share_mount", data=shares)
+
+        if role_shares and role_tokens:
+            callback.post_methods.append(post_method)
+        return result
+
+    @check_acls(['disable:object'])
+    @object_lock()
+    def disable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Send share_unmount notifications on disable.
+
+        Pre-snapshot the tokens reachable via this role. After disable,
+        a role_token that is no longer in share.get_tokens
+        (skip_disabled=True) has genuinely lost access -- the role's
+        path is gone and no other enabled path reaches it. """
+        role_tokens = self.get_tokens(skip_disabled=False,
+                                      include_roles=True,
+                                      return_type="rel_path")
+        role_shares = self.get_shares(recursive=True,
+                                      skip_disabled=False,
+                                      return_type="instance")
+
+        result = super().disable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+
+        def post_method():
+            user_shares = {}
+            for share in role_shares:
+                share_tokens_after = set(share.get_tokens(
+                                skip_disabled=True,
+                                include_roles=True,
+                                return_type="rel_path"))
+                # role_tokens that disappeared from the share's reach.
+                notify_tokens = set(role_tokens) - share_tokens_after
+                if not notify_tokens:
+                    continue
+                share_nodes = share.get_nodes(include_pools=True,
+                                              return_type="instance")
+                if not share_nodes:
+                    share_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=share.realm,
+                                                site=share.site,
+                                                return_type="instance")
+                if not share_nodes:
+                    continue
+                node_fqdns = [node.fqdn for node in share_nodes]
+                share_hosts = []
+                if share.limit_by_hosts:
+                    share_hosts = share.get_hosts(include_groups=True,
+                                                  return_type="name")
+                share_id = share.share_id
+                shares = {}
+                shares[share_id] = {}
+                shares[share_id]['name'] = share.name
+                shares[share_id]['site'] = share.site
+                shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['limit_hosts'] = share.limit_by_hosts
+                shares[share_id]['hosts'] = share_hosts
+                shares[share_id]['encrypted'] = share.encrypted
+                already_processed = []
+                for token_path in notify_tokens:
+                    username = token_path.split("/")[0]
+                    if username == ADMIN_USER:
+                        continue
+                    if token_path in already_processed:
+                        continue
+                    try:
+                        x_shares = user_shares[username]
+                    except KeyError:
+                        x_shares = {}
+                    try:
+                        tokens = x_shares[share_id]['tokens']
+                    except KeyError:
+                        tokens = []
+                    tokens.append(token_path)
+                    share_data = stuff.copy_object(shares)
+                    x_shares.update(share_data)
+                    x_shares[share_id]['tokens'] = tokens
+                    x_shares[share_id]['persist'] = True
+                    user_shares[username] = x_shares
+                    already_processed.append(token_path)
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type="share_unmount", data=shares)
+
+        if role_shares and role_tokens:
+            callback.post_methods.append(post_method)
         return result
 
     @object_lock(full_lock=True)

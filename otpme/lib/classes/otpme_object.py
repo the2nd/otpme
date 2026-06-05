@@ -4070,7 +4070,7 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Adds a host to this group. """
+        """ Adds a host to this object. """
         if self.hosts is None:
             msg = _("Object does not support hosts.")
             raise OTPmeException(msg)
@@ -4087,7 +4087,8 @@ class OTPmeObject(OTPmeBaseObject):
             host_uuid = host.uuid
 
         if host_uuid in self.hosts:
-            msg = _("Host already added to acccessgroup.")
+            msg = _("Host is already assigned to {obj_type} '{obj_name}'.")
+            msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
 
         if run_policies:
@@ -5312,6 +5313,9 @@ class OTPmeObject(OTPmeBaseObject):
                     continue
                 if role in roles_result:
                     continue
+                if skip_disabled:
+                    if not role.enabled:
+                        continue
                 roles_result.append(role)
             # Get all role tokens.
             for role in roles_result:

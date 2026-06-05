@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-host show [--policy-limit <limit>] [--token-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [host]'),
-                    'cmd'   :   '--policy-limit :max_policies: --token-limit :max_tokens: --role-limit :max_roles: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --token-limit :max_tokens: --role-limit :max_roles: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show host(s)'),
                                     '-a'                    : _('Show all hosts.'),
@@ -32,6 +32,7 @@ cmd_help = {
                                     '--policy-limit <limit>': _('Output max policies.'),
                                     '--token-limit <limit>' : _('Output <limit> tokens.'),
                                     '--role-limit <limit>'  : _('Output max roles.'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--reverse'             : _('Reverse the output order.'),
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),

@@ -67,11 +67,17 @@ def register():
                 max_len=10)
 
 def row_getter(realm, site, user_order, user_data, acls,
-    acl_checker=None, output_fields=None, max_policies=5, **kwargs):
+    limit=None, acl_checker=None, output_fields=None, max_policies=5,
+    **kwargs):
     """ Build table rows for users. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(user_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for user_uuid in user_order:
         row = []
         user_name = user_data[user_uuid]['name']

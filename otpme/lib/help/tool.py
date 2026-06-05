@@ -438,6 +438,13 @@ cmd_help = {
                                 },
                 },
 
+    'who'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool who'),
+                    '_help' :   {
+                                    'cmd'                   : _('Show logged in users'),
+                                },
+                },
+
     'whoami'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool whoami'),
                     '_help' :   {

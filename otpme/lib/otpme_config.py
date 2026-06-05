@@ -275,6 +275,8 @@ class OTPmeConfig(object):
         self.register_config_var("connection_timeout", int, 15)
         # Session reneg timeout (--reneg-timeout).
         self.register_config_var("reneg_timeout", int, 30)
+        # Terminal size.
+        self.register_config_var("term_size", dict, None)
         self.register_config_var("daemons", list, [])
         # Is this host a OTPme SSO server?
         self.register_config_var("sso_server", bool, False,
@@ -611,9 +613,6 @@ class OTPmeConfig(object):
 
         self.register_config_var("floating_ip_iface", str, None,
                                 config_file_parameter="FLOATING_IP_IFACE")
-
-        self.register_config_var("authd_workers", int, 16,
-                                config_file_parameter="AUTHD_WORKERS")
 
         self.register_config_var("controld_pidfile", str, None)
         self.register_config_var("authd_socket_path", str, None)

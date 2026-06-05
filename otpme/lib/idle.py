@@ -47,7 +47,7 @@ def notify(username, event_type, data):
             log_msg = _("Failed to send idle notification: {error}",
                         log=True)[1]
             log_msg = log_msg.format(error=e)
-            config.logger.debug(log_msg)
+            config.logger.warning(log_msg)
         except Exception:
             pass
     finally:

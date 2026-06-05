@@ -49,8 +49,8 @@ def derive_rsp(secret, hash_type, salt, rsp_len=None):
     return rsp
 
 def verify(password_hash, epoch_time=None, validity_range=None,
-    reneg=False, password=None, challenge=None, response=None,
-    sotp_len=None, access_group=None):
+    reneg=False, password=None, challenge=None, session_uuid=None,
+    response=None, sotp_len=None, access_group=None):
     """ Verify session OTP. """
     if sotp_len is None:
         sotp_len = config.sotp_len
@@ -72,7 +72,10 @@ def verify(password_hash, epoch_time=None, validity_range=None,
 
     # Check for renegotiation OTP if needed
     if reneg:
-        secret = f"RENEG:{password_hash}"
+        if not session_uuid:
+            msg = _("Missing session_uuid on reneg.")
+            raise OTPmeException(msg)
+        secret = f"RENEG:{password_hash}:{session_uuid}"
     elif access_group:
         secret = f"{access_group}:{password_hash}"
     else:
@@ -102,8 +105,8 @@ def verify(password_hash, epoch_time=None, validity_range=None,
                 return mschap_verify_status, nt_key, o, o_hash
         return False, None, None, None
 
-def gen(epoch_time=None, password_hash=None, sotp_len=None,
-    reneg=False, rsp_hash_type=None, access_group=None):
+def gen(epoch_time=None, password_hash=None, sotp_len=None, reneg=False,
+    session_uuid=None, rsp_hash_type=None, access_group=None):
     """ Generate session OTP. """
     if not epoch_time:
         # We need SOTPs in 1 second timestep because fuse mount
@@ -118,7 +121,10 @@ def gen(epoch_time=None, password_hash=None, sotp_len=None,
         if not rsp_hash_type:
             msg = _("Need <rsp_hash_type>.")
             raise OTPmeException(msg)
-        secret = f"RENEG:{password_hash}"
+        if not session_uuid:
+            msg = _("Need session_uuid on reneg.")
+            raise OTPmeException(msg)
+        secret = f"RENEG:{password_hash}:{session_uuid}"
         reneg_salt = stuff.gen_secret(32)
     elif access_group:
         secret = f"{access_group}:{password_hash}"

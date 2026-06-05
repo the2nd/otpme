@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-node show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [node]'),
-                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show node(s)'),
                                     '-a'                    : _('Show all nodes.'),
@@ -31,6 +31,7 @@ cmd_help = {
                                     '--token-limit <limit>' : _('Output <limit> tokens.'),
                                     '--policy-limit <limit>': _('Output max policies.'),
                                     '--role-limit <limit>'  : _('Output max roles.'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--reverse'             : _('Reverse the output order.'),
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),

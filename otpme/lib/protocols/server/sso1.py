@@ -28,6 +28,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.audit import emit_audit
 from otpme.lib.protocols.oidc_helpers import verify_pkce as _verify_pkce_helper
 from otpme.lib.protocols.oidc_helpers import compute_acr as _compute_acr_helper
+from otpme.lib import stuff
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 
@@ -610,11 +611,23 @@ class OTPmeSsoP1(OTPmeServer1):
             user_verification=fido2_token.uv or "preferred",
             authenticator_attachment="cross-platform",
         )
+        # Stash the (serialized) reg state + token slot under an opaque
+        # state-id in the per-host shared dict. The browser only ever
+        # sees the state-id, so an attacker with access to the Flask
+        # session cookie can't replay the WebAuthn challenge.
+        # Registration always lands on the master node (mgmt=True from
+        # the web layer; no multi-master in OTPme), so begin and
+        # complete share the same per-host shared dict by construction.
         fido2_reg_state = _serialize_fido2_state(reg_state)
+        fido2_state_id = stuff.gen_secret(len=32)
+        multiprocessing.fido2_reg_states.add(
+                key=fido2_state_id,
+                value={'state':      fido2_reg_state,
+                       'token_uuid': fido2_token.uuid},
+                expire=300)
         fido2_reg_data = {
                     'create_options'        : dict(create_options),
-                    'fido2_reg_state'       : fido2_reg_state,
-                    'fido2_reg_token_uuid'  : fido2_token.uuid,
+                    'fido2_state_id'        : fido2_state_id,
                 }
         return self.build_response(True, fido2_reg_data)
 
@@ -626,19 +639,13 @@ class OTPmeSsoP1(OTPmeServer1):
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
-            reg_state = command_args['reg_state']
+            fido2_state_id = command_args['fido2_state_id']
         except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
         try:
             registration_data = command_args['registration_data']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
-        try:
-            token_uuid = command_args['token_uuid']
         except Exception:
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
@@ -659,8 +666,19 @@ class OTPmeSsoP1(OTPmeServer1):
                                             user=user,
                                             command_args=command_args,
                                             mgmt=True)
-        # Deserialize reg state.
-        reg_state = _deserialize_fido2_state(reg_state)
+        # Pop the reg state under fido2_state_id. delete() is single-use:
+        # a second complete-call with the same state-id within the TTL
+        # window will miss, foiling replay.
+        try:
+            state_data = multiprocessing.fido2_reg_states.delete(
+                                                    fido2_state_id)
+        except KeyError:
+            log_msg = _("Fido2 reg state missing.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                    'message': 'REGISTRATION_FAILED', 'status': False})
+        reg_state = _deserialize_fido2_state(state_data['state'])
+        token_uuid = state_data['token_uuid']
         # Get fido2 token
         fido2_token = backend.get_object(uuid=token_uuid)
         if not fido2_token:
@@ -841,14 +859,25 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':f'Failed to start passkey registration: {e}', 'status':False})
+        # Stash the (serialized) reg state + name fields under an opaque
+        # state-id in the per-host shared dict. The browser only sees
+        # the state-id, so an attacker with access to the Flask session
+        # cookie can't replay the WebAuthn challenge or learn the
+        # in-flight device name. Registration always lands on the
+        # master node (mgmt=True from the web layer; no multi-master in
+        # OTPme), so begin and complete share the same per-host shared
+        # dict by construction.
         passkey_reg_state = _serialize_fido2_state(reg_state)
-        # device_name and the sanitized token_name flow through complete
-        # so we don't have to re-sanitize there.
+        passkey_state_id = stuff.gen_secret(len=32)
+        multiprocessing.passkey_reg_states.add(
+                key=passkey_state_id,
+                value={'state':       passkey_reg_state,
+                       'device_name': device_name,
+                       'token_name':  token_name},
+                expire=300)
         return self.build_response(True, {
                     'create_options'        : dict(create_options),
-                    'passkey_reg_state'     : passkey_reg_state,
-                    'device_name'           : device_name,
-                    'token_name'            : token_name,
+                    'passkey_state_id'      : passkey_state_id,
                 })
 
     def passkey_register_complete(self, username, sso_jwt, command_args):
@@ -857,10 +886,8 @@ class OTPmeSsoP1(OTPmeServer1):
         don't allow an empty passkey slot to exist. """
         try:
             rp_id = command_args['rp_id']
-            reg_state = command_args['passkey_reg_state']
+            passkey_state_id = command_args['passkey_state_id']
             registration_data = command_args['registration_data']
-            device_name = command_args['device_name']
-            token_name = command_args['token_name']
         except Exception:
             return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
         try:
@@ -875,6 +902,19 @@ class OTPmeSsoP1(OTPmeServer1):
                                             user=user,
                                             command_args=command_args,
                                             mgmt=True)
+        # Pop the reg state under passkey_state_id. delete() is
+        # single-use; a second complete with the same state-id misses.
+        try:
+            state_data = multiprocessing.passkey_reg_states.delete(
+                                                    passkey_state_id)
+        except KeyError:
+            log_msg = _("Passkey reg state missing.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                    'message': 'REGISTRATION_FAILED', 'status': False})
+        reg_state = state_data['state']
+        device_name = state_data['device_name']
+        token_name = state_data['token_name']
         if not user.get_config_parameter("sso_allow_passkeys"):
             return self.build_response(False, {'message':'Passkeys are not enabled.', 'status':False})
         if user.token(token_name):
@@ -1119,10 +1159,17 @@ class OTPmeSsoP1(OTPmeServer1):
         # Get token.
         token = config.auth_token
         token_path = token.rel_path
+        client_ip = command_args.get('client_ip')
         # Verify current password against the token.
         verify_result = token.verify_static(password=current_password,
                                             ignore_2f_token=True)
         if not verify_result:
+            emit_audit("Auth", "password_change_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token_path,
+                            reason='current_password_invalid',
+                            ip=client_ip)
             response = {'message':'Current password is incorrect.', 'status':False}
             return self.build_response(False, response)
         # Change password.
@@ -1137,11 +1184,22 @@ class OTPmeSsoP1(OTPmeServer1):
             message, log_msg = _("Password change failed for token: {token_path}: {e}", log=True)
             log_msg = log_msg.format(token_path=token_path, e=e)
             self.logger.warning(log_msg)
+            emit_audit("Auth", "password_change_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token_path,
+                            reason='policy_or_write_error',
+                            error=str(e),
+                            ip=client_ip)
             message = message.format(token_path=token_path, e=e)
             response = {'message':message, 'status':False}
             return self.build_response(False, response)
         # Write token.
         token._write(callback=callback)
+        emit_audit("Auth", "password_changed",
+                        user=user.name,
+                        token=token_path,
+                        ip=client_ip)
         message = _("Token password changed successfully.")
         return self.build_response(True, message)
 
@@ -1177,11 +1235,18 @@ class OTPmeSsoP1(OTPmeServer1):
         # Get token.
         token = config.auth_token
         token_path = token.rel_path
+        client_ip = command_args.get('client_ip')
         if not token:
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
         # Verify token belongs to user.
         if token.owner_uuid != user.uuid:
+            emit_audit("Auth", "pin_change_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token_path,
+                            reason='token_owner_mismatch',
+                            ip=client_ip)
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
         if token.pass_type != "otp":
@@ -1189,6 +1254,12 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, response)
         # Verify current PIN against the token.
         if not token.pin or str(token.pin) != str(current_pin):
+            emit_audit("Auth", "pin_change_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token_path,
+                            reason='current_pin_invalid',
+                            ip=client_ip)
             response = {'message':'Current PIN is incorrect.', 'status':False}
             return self.build_response(False, response)
         # Change PIN.
@@ -1203,11 +1274,22 @@ class OTPmeSsoP1(OTPmeServer1):
             message, log_msg = _("PIN change failed for token: {token_path}: {e}", log=True)
             log_msg = log_msg.format(token_path=token_path, e=e)
             self.logger.warning(log_msg)
+            emit_audit("Auth", "pin_change_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token_path,
+                            reason='policy_or_write_error',
+                            error=str(e),
+                            ip=client_ip)
             message = message.format(token_path=token_path, e=e)
             response = {'message':message, 'status':False}
             return self.build_response(False, response)
         # Write token.
         token._write(callback=callback)
+        emit_audit("Auth", "pin_changed",
+                        user=user.name,
+                        token=token_path,
+                        ip=client_ip)
         message = _("Token PIN changed successfully.")
         return self.build_response(True, message)
 

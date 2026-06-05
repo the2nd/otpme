@@ -13,6 +13,7 @@ except Exception:
 
 from otpme.lib import log
 from otpme.lib import config
+from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
@@ -24,6 +25,8 @@ REGISTER_AFTER = []
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("ssod")
+    multiprocessing.register_shared_dict("fido2_reg_states")
+    multiprocessing.register_shared_dict("passkey_reg_states")
 
 class SSODaemon(OTPmeDaemon):
     """ SSODaemon """

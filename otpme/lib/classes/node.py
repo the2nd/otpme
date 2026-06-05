@@ -121,6 +121,7 @@ commands = {
                                         'max_policies',
                                         'max_tokens',
                                         'max_roles',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',

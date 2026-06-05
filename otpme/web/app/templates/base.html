@@ -11,19 +11,30 @@
     {% endif %}
     <meta name="description" content="otpme-sso">
     <meta name="author" content="the2nd">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='otpme.css', _external=True, _scheme='https') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script src="{{ url_for('static', filename='csrf.js') }}"></script>
+    <script src="{{ url_for('static', filename='webauthn-utils.js') }}"></script>
   </head>
 
   <body>
+    <noscript>
+      <div class="noscript-warning">
+        {{ gettext("This SSO portal requires JavaScript. Please enable JavaScript in your browser and reload the page.") }}
+      </div>
+    </noscript>
     <nav class="navbar">
       <b>{{ gettext("SSO Portal") }}</b>
-      <a href="/index">{{ gettext("Home") }}</a>
+      <a href="{{ url_for('index', _external=True, _scheme='https') }}">{{ gettext("Home") }}</a>
       {% if g.user.is_authenticated %}
         <span class="spacer"></span>
         <span class="navbar-user" title="{{ gettext('Logged in user') }}">{{ g.user.name }}</span>
         <a href="{{ url_for('settings', _external=True, _scheme='https') }}">{{ gettext("Settings") }}</a>
-        <a href="{{ url_for('logout', _external=True, _scheme='https') }}">{{ gettext("Logout") }}</a>
+        <form method="POST" action="{{ url_for('logout', _external=True, _scheme='https') }}" class="navbar-logout-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="navbar-logout-btn">{{ gettext("Logout") }}</button>
+        </form>
       {% endif %}
     </nav>
 

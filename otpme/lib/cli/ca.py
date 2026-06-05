@@ -73,11 +73,17 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, ca_order, ca_data, acls,
-    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
+    limit=None, output_fields=None, acl_checker=None, max_policies=5,
+    **kwargs):
     """ Build table rows for CAs. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(ca_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for ca_uuid in ca_order:
         row = []
         ca_name = ca_data[ca_uuid]['name']

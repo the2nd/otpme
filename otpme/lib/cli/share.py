@@ -33,6 +33,9 @@ table_headers = [
                 "dmode",
                 "roles",
                 "tokens",
+                "hosts",
+                "groups",
+                "limit_hosts",
                 "nodes",
                 "pools",
                 "policies",
@@ -55,6 +58,7 @@ def register():
                         'force_group_uuid',
                         'create_mode',
                         'directory_mode',
+                        'limit_by_hosts',
                         'description',
                         'acl_inheritance_enabled',
                         ]
@@ -79,13 +83,25 @@ def register():
                 read_acls=read_acls,
                 max_len=30)
 
-def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
-    max_tokens=5, max_nodes=5, max_pools=5, max_policies=5, output_fields=None,
+def row_getter(realm, site, share_order, share_data, acls,
+    limit=None, max_roles=5, max_tokens=5, max_nodes=5, max_hosts=5,
+    max_pools=5, max_policies=5, max_groups=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for shares. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(share_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_roles = limit
+        max_tokens = limit
+        max_nodes = limit
+        max_hosts = limit
+        max_pools = limit
+        max_policies = limit
+        max_groups = limit
     for share_uuid in share_order:
         row = []
         share_name = share_data[share_uuid]['name']
@@ -118,6 +134,10 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
             directory_mode = share_data[share_uuid]['directory_mode'][0]
         except Exception:
             directory_mode = None
+        try:
+            limit_by_hosts = share_data[share_uuid]['limit_by_hosts'][0]
+        except Exception:
+            limit_by_hosts = False
         try:
             enabled = share_data[share_uuid]['enabled'][0]
         except Exception:
@@ -306,6 +326,95 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         else:
             if token_access:
                 row.append("")
+            else:
+                row.append("-")
+        # Hosts.
+        get_hosts = False
+        host_access = False
+        processed_hosts = []
+        if "hosts" in output_fields:
+            if check_acl("view:hosts"):
+                host_access = True
+                get_hosts = True
+        if get_hosts:
+            member_hosts = []
+            return_attrs = ['name', 'enabled']
+            share_hosts_count, \
+            share_hosts_result = backend.search(object_type="host",
+                                                attribute="uuid",
+                                                value="*",
+                                                join_object_type="share",
+                                                join_search_attr="uuid",
+                                                join_search_val=share_uuid,
+                                                join_attribute="host",
+                                                order_by="name",
+                                                max_results=max_hosts,
+                                                return_query_count=True,
+                                                return_attributes=return_attrs)
+            for host_uuid in share_hosts_result:
+                if len(processed_hosts) >= max_hosts:
+                    break
+                host_name = share_hosts_result[host_uuid]['name']
+                host_enabled = share_hosts_result[host_uuid]['enabled'][0]
+                host_string = host_name
+                if not host_enabled:
+                    host_string += " (D)"
+                member_hosts.append(host_string)
+                processed_hosts.append(host_uuid)
+
+            if share_hosts_count > max_hosts:
+                msg = _("({hosts_len} of {share_hosts_count} hosts total)")
+                msg = msg.format(hosts_len=len(processed_hosts), share_hosts_count=share_hosts_count)
+                x = msg
+                member_hosts.append(x)
+
+            row.append("\n".join(member_hosts))
+        else:
+            if host_access:
+                row.append("")
+            else:
+                row.append("-")
+        # Groups (shares hosts groups).
+        if "groups" in output_fields:
+            if check_acl("view:groups") \
+            or check_acl("add:group") \
+            or check_acl("remove:group"):
+                return_attrs = ['name', 'enabled']
+                groups_count, \
+                groups_result = backend.search(object_type="group",
+                                            join_object_type="share",
+                                            join_search_attr="uuid",
+                                            join_search_val=share_uuid,
+                                            join_attribute="group",
+                                            attribute="uuid",
+                                            value="*",
+                                            max_results=max_groups,
+                                            return_query_count=True,
+                                            return_attributes=return_attrs)
+                share_groups = []
+                for x in groups_result:
+                    group_status_string = ""
+                    x_group_name = groups_result[x]['name']
+                    x_group_enabled = groups_result[x]['enabled'][0]
+                    if not x_group_enabled:
+                        group_status_string = " (D)"
+                    group_string = f"{x_group_name}{group_status_string}"
+                    share_groups.append(group_string)
+                    processed_groups = len(share_groups)
+                    if processed_groups == max_groups:
+                        if groups_count > max_groups:
+                            msg = _("({processed_groups} of {groups_count} groups total)")
+                            msg = msg.format(processed_groups=processed_groups, groups_count=groups_count)
+                            x = msg
+                            share_groups.append(x)
+                        break
+                row.append("\n".join(share_groups))
+            else:
+                row.append("-")
+        # Limit by hosts.
+        if "limit_hosts" in output_fields:
+            if check_acl("view:limit_hosts"):
+                row.append(limit_by_hosts)
             else:
                 row.append("-")
         # Nodes.

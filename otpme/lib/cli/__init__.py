@@ -926,7 +926,7 @@ class ACLChecker(object):
 
 def show_objects(object_type, realm=None, site=None, search_regex=None,
     sort_by=None, reverse=False, max_len=None, id_attr=None, output_fields=None,
-    border=True, header=True, csv=False, csv_sep=";", show_all=False,
+    border=True, header=True, csv=False, csv_sep=";", show_all=False, _caller="API",
     verify_acls=None, show_templates=False, callback=default_callback, **kwargs):
     """ Generate table to show <object_type> on terminal. """
     if output_fields is None:
@@ -1129,6 +1129,17 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     # Handle end of line regex.
     if search_regex.endswith("$"):
         search_regex = search_regex[:-1]
+
+    # The underlying SQLite query layer cannot bind non-ASCII text
+    # parameters, so reject early with a readable error instead of
+    # leaking a UnicodeEncodeError from the driver.
+    try:
+        search_regex.encode("ascii")
+    except UnicodeEncodeError:
+        msg = _("Search regex must contain ASCII characters only: "
+                "{search_regex}")
+        msg = msg.format(search_regex=search_regex)
+        raise OTPmeException(msg) from None
 
     # Combine all ACLs to be checked.
     return_acls = None
@@ -1342,7 +1353,9 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
             footer = _("Total {list_len} {object_type}(s).")
             footer = footer.format(list_len=list_len, object_type=object_type)
         output = f"{output}\n\n{footer}"
-    return callback.ok(output)
+    if _caller == "API":
+        return callback.ok(output)
+    return callback.ok(output, return_value=True)
 
 class SessionEntry(object):
     def __init__(self, sessions, order_by):
@@ -1966,7 +1979,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         if border:
             output = "\n".join(output.split("\n")[1:-1])
         output = f"{output}\n\n{footer}"
-    return callback.ok(output)
+    return callback.ok(output, return_value=True)
 
 @object_list_cache.cache_function()
 def list_objects(object_type, show_all=False, reverse=False,

@@ -604,10 +604,10 @@ class OTPmeAgentP1(object):
                     share_site = shares[share_id]['site']
                     share_name = shares[share_id]['name']
                     try:
-                        umount_share(username=login_user,
-                                    share_site=share_site,
-                                    share_name=share_name,
-                                    logger=self.logger)
+                        mount_point = umount_share(username=login_user,
+                                                share_site=share_site,
+                                                share_name=share_name,
+                                                logger=self.logger)
                     except Exception as e:
                         log_msg = _("Failed to mount share: {share_id}: {error}", log=True)[1]
                         log_msg = log_msg.format(share_id=share_id, error=e)
@@ -943,6 +943,11 @@ class OTPmeAgentP1(object):
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
+                session_uuid = command_args['session_uuid']
+            except Exception:
+                message = "AGENT_INCOMPLETE_COMMAND"
+                status = False
+            try:
                 session_timeout = int(command_args['timeout'])
             except Exception:
                 message = "AGENT_INCOMPLETE_COMMAND"
@@ -1008,6 +1013,7 @@ class OTPmeAgentP1(object):
                 session['last_reneg'] = time.time()
                 session['last_failed_reneg'] = None
                 # Set server session timeout stuff.
+                session['session_uuid'] = session_uuid
                 session['session_timeout'] = session_timeout
                 session['session_unused_timeout'] = session_unused_timeout
                 # Add realm/site.

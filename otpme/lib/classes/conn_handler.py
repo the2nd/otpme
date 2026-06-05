@@ -100,30 +100,16 @@ class ConnHandler(object):
             else:
                 # Get command from request.
                 try:
-                    if self.proto_handler and self.proto_neg_finished:
-                        try:
-                            command, \
-                            command_args, \
-                            binary_data = self.proto_handler.decode_request(data)
-                        except Exception as e:
-                            log_msg = _("Failed to decode request with protocol handler: {proto_handler}: {error}", log=True)[1]
-                            log_msg = log_msg.format(proto_handler=self.proto_handler, error=e)
-                            self.logger.critical(log_msg, exc_info=True)
-                            final_response = _("Internal server error")
-                            status = status_codes.SERVER_QUIT
-                            config.raise_exception()
-                            break
-                    else:
-                        try:
-                            command, command_args, binary_data = decode_request(data)
-                        except Exception as e:
-                            log_msg = _("Failed to decode request: {proto_handler}: {error}", log=True)[1]
-                            log_msg = log_msg.format(proto_handler=self.proto_handler, error=e)
-                            self.logger.critical(log_msg, exc_info=True)
-                            final_response = _("Internal server error")
-                            status = status_codes.SERVER_QUIT
-                            config.raise_exception()
-                            break
+                    try:
+                        command, command_args, binary_data = decode_request(data)
+                    except Exception as e:
+                        log_msg = _("Failed to decode request: {proto_handler}: {error}", log=True)[1]
+                        log_msg = log_msg.format(proto_handler=self.proto_handler, error=e)
+                        self.logger.critical(log_msg, exc_info=True)
+                        final_response = _("Internal server error")
+                        status = status_codes.SERVER_QUIT
+                        config.raise_exception()
+                        break
                 except OTPmeException as e:
                     raise
 

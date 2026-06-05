@@ -269,13 +269,14 @@ class AgentConn(object):
         return response
 
     def add_rsp(self, realm, site, rsp, slp, login_time, timeout, unused_timeout,
-        session_key=None, offline=False):
+        session_uuid=None, session_key=None, offline=False):
         """ Add RSP to otpme-agent. """
         command_args = {
                         'realm'             : realm,
                         'site'              : site,
                         'rsp'               : rsp,
                         'slp'               : slp,
+                        'session_uuid'      : session_uuid,
                         'session_key'       : session_key,
                         'offline'           : offline,
                         'login_time'        : login_time,

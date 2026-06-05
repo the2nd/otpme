@@ -99,6 +99,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',

@@ -40,6 +40,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.pidfile import is_running
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
+from otpme.lib.daemon.controld import send_daemon_command
 #from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.freeradius.utils import reload as freeradius_reload
 
@@ -2060,7 +2061,11 @@ class ClusterDaemon(OTPmeDaemon):
             log_msg = _("Sending request to configure floating IP.", log=True)[1]
             self.logger.info(log_msg)
             self.comm_handler.send("controld", command="configure_floating_ip")
+            # Start idled.
+            self.start_idled()
         elif current_master_node == self.host_name:
+            # Stop idled.
+            self.stop_idled()
             log_msg = _("Sending request to deconfigure floating IP.", log=True)[1]
             self.logger.info(log_msg)
             self.comm_handler.send("controld", command="deconfigure_floating_ip")
@@ -2515,9 +2520,9 @@ class ClusterDaemon(OTPmeDaemon):
                 time.sleep(quorum_check_interval)
                 continue
 
-            if config.start_freeradius:
-                if config.cluster_status:
-                    if not config.daemon_shutdown:
+            if config.cluster_status:
+                if not config.daemon_shutdown:
+                    if config.start_freeradius:
                         self.start_freeradius()
 
             try:
@@ -3252,15 +3257,21 @@ class ClusterDaemon(OTPmeDaemon):
                                                         journal_dir=SESSIONS_JOURNAL_DIR)
             try:
                 if not cluster_journal_entry.committed:
+                    # Done with this id (not ready yet) -- next iter must
+                    # recv a new one, else we'd spin on the same id while
+                    # send_failed stays True.
+                    send_failed = False
                     continue
                 cluster_journal_entry.lock(write=False)
             except ObjectDeleted:
+                send_failed = False
                 continue
             # Check if cluster entry was already processed.
             try:
                 if node_name in cluster_journal_entry.get_nodes():
                     if self.check_member_nodes(cluster_journal_entry):
                         self.check_online_nodes(cluster_journal_entry)
+                    send_failed = False
                     continue
             finally:
                 cluster_journal_entry.release()
@@ -4198,6 +4209,12 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.info(log_msg)
             finally:
                 multiprocessing.daemon_reload_queue.release()
+
+    def start_idled(self):
+        send_daemon_command(daemon="idled", command="start")
+
+    def stop_idled(self):
+        send_daemon_command(daemon="idled", command="stop")
 
     def start_freeradius(self):
         from otpme.lib.freeradius.utils import start

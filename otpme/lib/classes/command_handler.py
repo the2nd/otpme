@@ -4,11 +4,13 @@ import os
 import sys
 import time
 import glob
+import pydoc
 import pprint
 import datetime
 import subprocess
 #from prettytable import ALL
 from prettytable import FRAME
+from prettytable import HEADER
 from prettytable import NONE
 from prettytable import PrettyTable
 
@@ -343,6 +345,31 @@ class CommandHandler(object):
                 msg = f"Command failed: {command} {command} {command_args}"
                 response = msg + "\n" + response
             raise OTPmeException(response)
+
+        # Make sure we start pager (less) if result exceeds terminal size.
+        if isinstance(response, str):
+            try:
+                lines = config.term_size['lines']
+                columns = config.term_size['columns']
+            except Exception:
+                pass
+            else:
+                response_split = response.split("\n")
+                max_line = 0
+                line_splits = 0
+                for line in response_split:
+                    line_len = len(line)
+                    if line_len > columns:
+                        line_splits += 1
+                    if line_len < max_line:
+                        continue
+                    max_line = line_len
+                response_len = len(response_split)
+                if max_line > columns:
+                    response_len += line_splits
+                if response_len > lines:
+                    pydoc.pager(response)
+                    return
 
         return response
 
@@ -981,20 +1008,12 @@ class CommandHandler(object):
 
     def handle_daemon_command(self, command_line, command, subcommand):
         """ Handle daemon command. """
-        register_module('otpme.lib.multiprocessing')
-        from otpme.lib import multiprocessing
         from otpme.lib.daemon.controld import ControlDaemon
+        from otpme.lib.daemon.controld import send_daemon_command
         control_daemon = ControlDaemon(config.controld_pidfile)
         ## Init cache.
         #cache.init()
         #cache.enable()
-
-        def send_daemon_command(daemon, command):
-            comm_queue = multiprocessing.InterProcessQueue("otpme-controld-commq")
-            comm_handler = comm_queue.get_handler("cli")
-            comm_handler.send(recipient="controld",
-                            command=command,
-                            data={'daemon':daemon})
 
         if subcommand == "start":
             control_daemon.start()
@@ -1753,6 +1772,9 @@ class CommandHandler(object):
 
         if subcommand == "whoami":
             return self.whoami()
+
+        if subcommand == "who":
+            return self.who()
 
         if subcommand == "get_login_token":
             login_token = self.get_login_token()
@@ -5292,6 +5314,61 @@ class CommandHandler(object):
         self.init(use_backend=False)
         login_handler = LoginHandler()
         return login_handler.whoami(verify_server_session=False)
+
+    def who(self, username=None):
+        """ Get online users. """
+        self.init()
+        try:
+            idled_conn = connections.get("idled",
+                                         auto_auth=False,
+                                         auto_preauth=False,
+                                         handle_host_auth=False,
+                                         handle_user_auth=False,
+                                         encrypt_session=False)
+            command_args = {'username':username}
+            status, \
+            status_code, \
+            response, \
+            binary_data = idled_conn.send(command="who", command_args=command_args)
+        except Exception as e:
+            msg = _("Failed to connect to idled: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+
+        table = PrettyTable(["user", "login token", "host", "connect time", "login time"],
+                            header_style="title",
+                            vrules=NONE,
+                            hrules=HEADER)
+        table.align = "l"
+        table.padding_width = 0
+        table.right_padding_width = 1
+
+        if not status:
+            return response
+
+        if not response:
+            return table.get_string()
+
+        for user in sorted(response):
+            for host in sorted(response[user]):
+                entry = response[user][host] or {}
+                host = entry.get("host", "-")
+                login_token = entry.get("login_token")
+                login_time = entry.get("login_time")
+                if login_time is None:
+                    login_time_str = "-"
+                else:
+                    login_time_str = datetime.datetime.fromtimestamp(
+                        login_time).strftime("%Y-%m-%d %H:%M:%S")
+                connect_time = entry.get("connect_time")
+                if connect_time is None:
+                    connect_time_str = "-"
+                else:
+                    connect_time_str = datetime.datetime.fromtimestamp(
+                        connect_time).strftime("%Y-%m-%d %H:%M:%S")
+                table.add_row([user, login_token, host, connect_time_str, login_time_str])
+
+        return table.get_string()
 
     def get_ssh_key_pass(self):
         """ Get SSH key passphrase from running otpme-agent. """

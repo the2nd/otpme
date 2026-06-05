@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-share show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [share]'),
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: [|object|]',
+                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --hosts-litmit :max_hosts: --group-limit :max_groups: --pool-limit :max_pools: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show share(s)'),
                                     '-a'                            : _('Show all shares.'),
@@ -34,11 +34,13 @@ cmd_help = {
                                     '--csv'                         : _('Output table as CSV.'),
                                     '--csv-sep <separator>'         : _('Output table as CSV.'),
                                     '--node-limit <limit>'          : _('Output <limit> member nodes.'),
+                                    '--host-limit <limit>'          : _('Output <limit> member hosts.'),
                                     '--pool-limit <limit>'          : _('Output <limit> member pools.'),
                                     '--token-limit <limit>'         : _('Output <limit> member tokens.'),
                                     '--role-limit <limit>'          : _('Output <limit> member roles.'),
                                     '--group-limit <limit>'         : _('Output <limit> member groups.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
+                                    '--limit <limit>'               : _('Limit number of items shown per object.'),
                                 },
                 },
 
@@ -339,6 +341,38 @@ cmd_help = {
                                 },
                 },
 
+    'add_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share add_host {share} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add host to share.'),
+                                },
+                },
+
+    'remove_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share remove_host {share} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove host from share.'),
+                                },
+                },
+
+    'limit_hosts'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-host limit_hosts {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Limit share access to assigend host (groups).'),
+                                },
+                },
+
+    'unlimit_hosts'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-host unlimit_hosts {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Unlimit share access.'),
+                                },
+                },
+
     'add_node'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share add_node {share} {node}'),
                     'cmd'   :   '<|object|> <node_name>',
@@ -419,6 +453,30 @@ cmd_help = {
                                 },
                 },
 
+    'add_group'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share add_group {share} {group}'),
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add (host) group to share.'),
+                                },
+                },
+
+    'remove_group'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share remove_group {share} {group}'),
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove (host) group from share.'),
+                                },
+                },
+
+    'list_groups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share list_groups {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List (host) groups assigend to this share.'),
+                                },
+                },
+
     'list_pools'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_pools [--return-type <return_type>] {share}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
@@ -432,6 +490,14 @@ cmd_help = {
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned nodes.'),
+                                    '--return-type'             : _('Attribute to return.'),
+                                },
+                },
+    'list_hosts'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share list_hosts {share}'),
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    '_help' :   {
+                                    'cmd'                       : _('List assigned hosts.'),
                                     '--return-type'             : _('Attribute to return.'),
                                 },
                 },

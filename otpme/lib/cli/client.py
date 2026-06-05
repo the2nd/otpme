@@ -78,13 +78,21 @@ def register():
                 read_acls=read_acls,
                 max_len=30)
 
-def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
-    max_roles=5, max_policies=5, max_scopes=5, output_fields=None,
-    acl_checker=None, **kwargs):
+def row_getter(realm, site, client_order, client_data, acls,
+    limit=None, max_tokens=5, max_roles=5, max_policies=5, max_scopes=5,
+    output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for clients. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(client_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_tokens = limit
+        max_roles = limit
+        max_policies = limit
+        max_scopes = limit
     for client_uuid in client_order:
         row = []
         client_name = client_data[client_uuid]['name']

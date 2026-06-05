@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-client show [--policy-limit <limit>] [--scope-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]'),
-                    'cmd'   :   '--policy-limit :max_policies: --scope-limit :max_scopes: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --scope-limit :max_scopes: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show client(s)'),
                                     '-a'                    : _('Show all clients.'),
@@ -30,6 +30,7 @@ cmd_help = {
                                     '--fields f1,f2,f3'     : _('Output only given fields'),
                                     '--policy-limit <limit>': _('Output max policies.'),
                                     '--scope-limit <limit>' : _('Output max scopes.'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--reverse'             : _('Reverse the output order.'),
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),

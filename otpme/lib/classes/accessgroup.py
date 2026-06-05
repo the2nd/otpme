@@ -148,6 +148,7 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -1523,7 +1524,7 @@ class AccessGroup(OTPmeObject):
         try:
             self.max_sessions = int(max_sessions)
         except Exception:
-            return callback.error("Max sesssions must be an integer.")
+            return callback.error("Max sessions must be an integer.")
         # Update index.
         self.update_index("max_sessions", self.max_sessions)
         return self._cache(callback=callback)

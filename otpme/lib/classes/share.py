@@ -13,13 +13,18 @@ except Exception:
 
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import otpme_acl
+from otpme.lib.idle import notify
 from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.cache import assigned_host_cache
 from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
@@ -52,14 +57,21 @@ ADD_SCRIPT_NAME = "add_share.sh"
 MOUNT_SCRIPT_NAME = "mount_share.sh"
 
 read_acls = []
-write_acls = []
+
+write_acls =  [
+                "limit_hosts",
+                "unlimit_hosts",
+            ]
+
 
 read_value_acls = {
                     "view"      : [
-                                    "token",
-                                    "role",
-                                    "node",
-                                    "pool",
+                                    "tokens",
+                                    "roles",
+                                    "nodes",
+                                    "hosts",
+                                    "pools",
+                                    "groups",
                                     "policy",
                                     "root_dir",
                                     "encrypted",
@@ -74,6 +86,7 @@ read_value_acls = {
                                     "add_script",
                                     "mount_script",
                                     "mount_script_enabled",
+                                    "limit_hosts",
                                 ],
             }
 
@@ -82,7 +95,9 @@ write_value_acls = {
                                     "token",
                                     "role",
                                     "node",
+                                    "host",
                                     "pool",
+                                    "group",
                                     "share_key",
                                     "master_password_token",
                                 ],
@@ -93,7 +108,9 @@ write_value_acls = {
                                     "token",
                                     "role",
                                     "node",
+                                    "host",
                                     "pool",
+                                    "group",
                                     "master_password_token",
                                 ],
                     "enable"    : [
@@ -160,10 +177,12 @@ commands = {
                                         'realm',
                                         'site',
                                         'max_nodes',
+                                        'max_hosts',
                                         'max_pools',
                                         'max_roles',
                                         'max_tokens',
                                         'max_policies',
+                                        'limit',
                                         ],
                     'job_type'          : 'thread',
                     },
@@ -322,6 +341,22 @@ commands = {
                     },
                 },
             },
+    'limit_hosts'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'limit_hosts',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'unlimit_hosts'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'unlimit_hosts',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable_acl_inheritance'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -370,6 +405,24 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_pool',
                     'args'              : ['pool_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_host',
+                    'args'              : ['host_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -425,6 +478,34 @@ commands = {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_hosts'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_hosts',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name'},
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -484,6 +565,16 @@ commands = {
                     'oargs'             : ['return_type', 'skip_disabled'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_groups'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_groups',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -744,6 +835,12 @@ def register():
     config.register_recursive_default_acl("site", "+share")
     config.register_default_acl("unit", "+share")
     config.register_recursive_default_acl("unit", "+share")
+    config.register_auth_on_action_hook("share", "add_host")
+    config.register_auth_on_action_hook("share", "remove_host")
+    config.register_auth_on_action_hook("share", "add_group")
+    config.register_auth_on_action_hook("share", "remove_group")
+    config.register_auth_on_action_hook("share", "limit_hosts")
+    config.register_auth_on_action_hook("share", "unlimit_hosts")
     config.register_auth_on_action_hook("share", "enable_mount_script")
     config.register_auth_on_action_hook("share", "disable_mount_script")
     config.register_auth_on_action_hook("share", "change_mount_script")
@@ -903,13 +1000,10 @@ class Share(OTPmeObject):
         self.root_dir = None
         self.encrypted = False
         self.block_size = 4096
+
         # Call parent class init.
         super().__init__(object_id=object_id, **kwargs)
-        # List and dict attributes must be set after calling super because
-        # self.incremental_update is only available after calling super.
-        self.nodes = []
-        self.pools = []
-        self.share_keys = {}
+
         self.read_only = False
         self.create_mode = "0o000"
         self.directory_mode = "0o000"
@@ -917,6 +1011,7 @@ class Share(OTPmeObject):
         self.master_password_tokens = []
         self.master_password_hash_params = {}
 
+        self.limit_by_hosts = False
         self.restore_share = None
         self.track_last_used = True
 
@@ -962,6 +1057,11 @@ class Share(OTPmeObject):
     def set_variables(self):
         """ Set instance variables. """
         return True
+
+    @property
+    def share_id(self):
+        share_id = f"{self.site}/{self.name}"
+        return share_id
 
     def _get_object_config(self):
         """ Get object config dict. """
@@ -1036,12 +1136,6 @@ class Share(OTPmeObject):
                                                         'type'      : list,
                                                         'required'  : False,
                                                     },
-                        'NODES'                     : {
-                                                        'var_name'  : 'nodes',
-                                                        'type'      : list,
-                                                        'required'  : False,
-                                                    },
-
                         'TOKEN_OPTIONS'             : {
                                                         'var_name'  : 'token_options',
                                                         'type'      : dict,
@@ -1054,6 +1148,22 @@ class Share(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'NODES'                     : {
+                                                        'var_name'  : 'nodes',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+                        'HOSTS'                     : {
+                                                        'var_name'  : 'hosts',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'GROUPS'                    : {
+                                                        'var_name'  : 'groups',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
                         'ADD_SCRIPT'               : {
                                                         'var_name'  : 'add_script',
                                                         'type'      : 'uuid',
@@ -1087,6 +1197,11 @@ class Share(OTPmeObject):
                         'RESTORE_SHARE'             : {
                                                         'var_name'  : 'restore_share',
                                                         'type'      : 'uuid',
+                                                        'required'  : False,
+                                                    },
+                        'LIMIT_HOSTS'               : {
+                                                        'var_name'  : 'limit_by_hosts',
+                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
                         }
@@ -1663,9 +1778,56 @@ class Share(OTPmeObject):
                                     callback=callback,
                                     verify_acls=False)
 
-        return super().add_token(token_path=token_path,
-                                        callback=callback, **kwargs)
+        # Add token by parent class.
+        result = super().add_token(token_path=token_path,
+                                callback=callback, **kwargs)
 
+        if not result:
+            return result
+
+        username = token_path.split("/")[0]
+        if username == ADMIN_USER:
+            return result
+
+        def post_method():
+            share_nodes = self.get_nodes(include_pools=True,
+                                          return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['tokens'] = [token_path]
+            shares[share_id]['persist'] = True
+
+            # Send notification to idled.
+            notify(username=username, event_type="share_mount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
+
+
+    @check_acls(['remove:token'])
     @object_lock()
     @audit_log()
     def remove_token(
@@ -1703,13 +1865,67 @@ class Share(OTPmeObject):
                                 callback=callback,
                                 verify_acls=False)
 
-        return super().remove_token(token_path=token_path,
+        # Remove token by parent class.
+        result = super().remove_token(token_path=token_path,
                                     callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        username = token_path.split("/")[0]
+        if username == ADMIN_USER:
+            return result
+
+        def post_method():
+            share_tokens = self.get_tokens(skip_disabled=False,
+                                          include_roles=True,
+                                          return_type="rel_path")
+            # If token is still valid for the share skip notification.
+            if token_path in share_tokens:
+                return
+            share_nodes = self.get_nodes(include_pools=True,
+                                          return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['tokens'] = [token_path]
+            shares[share_id]['persist'] = True
+
+            # Send notification to idled.
+            notify(username=username, event_type="share_unmount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
 
     @object_lock()
     @audit_log()
+    @check_acls(['add:role'])
     def add_role(
         self,
+        role_name: str=None,
+        role_uuid: str=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1718,7 +1934,186 @@ class Share(OTPmeObject):
         if self.encrypted:
             msg = _("Encrypted shares do not support roles.")
             return callback.error(msg)
-        return super().add_role(*args, callback=callback, **kwargs)
+
+        # Add role by parent class.
+        result =  super().add_role(*args, role_name=role_name,
+                                    role_uuid=role_uuid,
+                                    callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        if role_name:
+            role_uuid = self.get_role_uuid(role_name, callback=callback)
+        elif not role_uuid:
+            msg = "Need <role_name> or <role_uuid>."
+            raise OTPmeException(msg)
+
+        # Get role.
+        role = backend.get_object(uuid=role_uuid)
+
+        role_tokens = role.get_tokens(return_type="rel_path",
+                                        include_roles=True)
+        if not role_tokens:
+            return result
+
+        def post_method():
+            # Get share nodes.
+            share_nodes = self.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+
+            # Collect notifications.
+            user_shares = {}
+            already_processed = []
+            for token_path in role_tokens:
+                username = token_path.split("/")[0]
+                if username == ADMIN_USER:
+                    continue
+                if token_path in already_processed:
+                    continue
+                try:
+                    x_shares = user_shares[username]
+                except KeyError:
+                    x_shares = {}
+                try:
+                    tokens = x_shares[share_id]['tokens']
+                except KeyError:
+                    tokens = []
+                tokens.append(token_path)
+                share_data = stuff.copy_object(shares)
+                x_shares.update(share_data)
+                x_shares[share_id]['tokens'] = tokens
+                x_shares[share_id]['persist'] = True
+                user_shares[username] = x_shares
+                already_processed.append(token_path)
+
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type="share_mount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
+
+    @object_lock()
+    @audit_log()
+    @check_acls(['remove:role'])
+    def remove_role(
+        self,
+        role_name: str=None,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Check if share is encrypted. """
+        if self.encrypted:
+            msg = _("Encrypted shares do not support roles.")
+            return callback.error(msg)
+
+        # Add role by parent class.
+        result =  super().remove_role(*args, role_name=role_name,
+                                    callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        # Get role.
+        role_uuid = self.get_role_uuid(role_name, callback=callback)
+        role = backend.get_object(uuid=role_uuid)
+
+        role_tokens = role.get_tokens(return_type="rel_path",
+                                        include_roles=True)
+        if not role_tokens:
+            return result
+
+        def post_method():
+            # Get share tokens.
+            share_tokens = self.get_tokens(return_type="rel_path",
+                                        include_roles=True)
+            # Get share nodes.
+            share_nodes = self.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+
+            # Collect notifications.
+            user_shares = {}
+            already_processed = []
+            for token_path in role_tokens:
+                if token_path in already_processed:
+                    continue
+                username = token_path.split("/")[0]
+                if username == ADMIN_USER:
+                    continue
+                if token_path in share_tokens:
+                    continue
+                try:
+                    x_shares = user_shares[username]
+                except KeyError:
+                    x_shares = {}
+                try:
+                    tokens = x_shares[share_id]['tokens']
+                except KeyError:
+                    tokens = []
+                tokens.append(token_path)
+                share_data = stuff.copy_object(shares)
+                x_shares.update(share_data)
+                x_shares[share_id]['tokens'] = tokens
+                x_shares[share_id]['persist'] = True
+                user_shares[username] = x_shares
+                already_processed.append(token_path)
+
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type="share_unmount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
 
     @check_acls(['add:share_key'])
     @object_lock()
@@ -1963,6 +2358,490 @@ class Share(OTPmeObject):
         self.del_index('pool', pool.uuid)
         return self._cache(callback=callback)
 
+    @check_acls(['add:group'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_group(
+        self,
+        group_name: str=None,
+        group_uuid: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add a group (hosts) to this share.  """
+        if not group_uuid:
+            grp = backend.get_object(object_type="group",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=group_name)
+            if not grp:
+                msg = _("Group does not exist: {group_name}")
+                msg = msg.format(group_name=group_name)
+                return callback.error(msg)
+            group_uuid = grp.uuid
+
+        if group_uuid in self.groups:
+            msg = _("Group already added to share.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_group",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        msg = _("Adding group to share: {name}")
+        msg = msg.format(name=self.name)
+        callback.send(msg)
+
+        self.groups.append(group_uuid)
+        self.add_index("group", group_uuid)
+
+        result = self._cache(callback=callback)
+
+        if not result:
+            return result
+
+        if not self.limit_by_hosts:
+            return result
+
+        # Get group.
+        group = backend.get_object(uuid=group_uuid)
+
+        # Get group hosts.
+        group_hosts = group.get_hosts(skip_disabled=True, return_type="uuid")
+
+        if not group_hosts:
+            return result
+
+        share_tokens = self.get_tokens(skip_disabled=False,
+                                        include_roles=True,
+                                        return_type="rel_path")
+        # Get share nodes.
+        share_nodes = self.get_nodes(include_pools=True,
+                                    return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+        node_fqdns = []
+        for node in share_nodes:
+            node_fqdns.append(node.fqdn)
+
+        shares = {}
+        share_id = self.share_id
+        shares[share_id] = {}
+        shares[share_id]['name'] = self.name
+        shares[share_id]['site'] = self.site
+        shares[share_id]['nodes'] = node_fqdns
+        shares[share_id]['hosts'] = group_hosts
+        shares[share_id]['encrypted'] = self.encrypted
+
+        # Collect notifications.
+        user_shares = {}
+        already_processed = []
+        for token_path in share_tokens:
+            username = token_path.split("/")[0]
+            if username == ADMIN_USER:
+                continue
+            if token_path in already_processed:
+                continue
+            try:
+                x_shares = user_shares[username]
+            except KeyError:
+                x_shares = {}
+            try:
+                tokens = x_shares[share_id]['tokens']
+            except KeyError:
+                tokens = []
+            tokens.append(token_path)
+            share_data = stuff.copy_object(shares)
+            x_shares.update(share_data)
+            x_shares[share_id]['tokens'] = tokens
+            x_shares[share_id]['persist'] = True
+            user_shares[username] = x_shares
+            already_processed.append(token_path)
+
+        notifys = []
+        for username in user_shares:
+            shares = user_shares[username]
+            notifys.append((username, "share_add_host", shares))
+
+        def post_method():
+            for x in notifys:
+                notify(username=x[0], event_type=x[1], data=x[2])
+
+        callback.post_methods.append(post_method)
+        return result
+
+    @check_acls(['remove:group'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def remove_group(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove a group (hosts) from this share. """
+        group = backend.get_object(object_type="group",
+                                realm=config.realm,
+                                site=self.site,
+                                name=group_name)
+        if not group:
+            msg = _("Group does not exist: {group_name}")
+            msg = msg.format(group_name=group_name)
+            return callback.error(msg)
+
+        if group.uuid not in self.groups:
+            msg = _("Group not assigned share.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_group",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.groups.remove(group.uuid)
+        self.del_index("group", group.uuid)
+
+        result = self._cache(callback=callback)
+
+        if not result:
+            return result
+
+        if not self.limit_by_hosts:
+            return result
+
+        # Get group hosts.
+        group_hosts = group.get_hosts(skip_disabled=True, return_type="uuid")
+
+        if not group_hosts:
+            return result
+
+        share_tokens = self.get_tokens(skip_disabled=False,
+                                        include_roles=True,
+                                        return_type="rel_path")
+        # Get share nodes.
+        share_nodes = self.get_nodes(include_pools=True,
+                                    return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+        node_fqdns = []
+        for node in share_nodes:
+            node_fqdns.append(node.fqdn)
+
+        shares = {}
+        share_id = self.share_id
+        shares[share_id] = {}
+        shares[share_id]['name'] = self.name
+        shares[share_id]['site'] = self.site
+        shares[share_id]['nodes'] = node_fqdns
+        shares[share_id]['hosts'] = group_hosts
+        shares[share_id]['encrypted'] = self.encrypted
+
+        # Collect notifications.
+        user_shares = {}
+        already_processed = []
+        for token_path in share_tokens:
+            username = token_path.split("/")[0]
+            if username == ADMIN_USER:
+                continue
+            if token_path in already_processed:
+                continue
+            try:
+                x_shares = user_shares[username]
+            except KeyError:
+                x_shares = {}
+            try:
+                tokens = x_shares[share_id]['tokens']
+            except KeyError:
+                tokens = []
+            tokens.append(token_path)
+            share_data = stuff.copy_object(shares)
+            x_shares.update(share_data)
+            x_shares[share_id]['tokens'] = tokens
+            x_shares[share_id]['persist'] = True
+            user_shares[username] = x_shares
+            already_processed.append(token_path)
+
+        notifys = []
+        for username in user_shares:
+            shares = user_shares[username]
+            notifys.append((username, "share_remove_host", shares))
+
+        def post_method():
+            for x in notifys:
+                notify(username=x[0], event_type=x[1], data=x[2])
+
+        callback.post_methods.append(post_method)
+        return result
+
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:groups'])
+    def list_groups(self, **kwargs):
+        """ Returns the shares group. """
+        return self.get_groups(**kwargs)
+
+    def get_groups(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Get share's groups. """
+        result = []
+        if not self.groups:
+            return callback.ok(result)
+
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        return_attributes = ['site', return_type]
+        search_result = backend.search(object_type="group",
+                                    attribute="uuid",
+                                    values=self.groups,
+                                    attributes=search_attr,
+                                    return_attributes=return_attributes)
+        for uuid in search_result:
+            try:
+                x_result = search_result[uuid][return_type]
+            except Exception:
+                continue
+            if return_type == "name":
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
+    @check_acls(['add:host'])
+    @object_lock()
+    def add_host(
+        self,
+        *args,
+        host_name: str=None,
+        host_uuid: str=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a host to this share. """
+        # Try to add host via parent class.
+        result = super().add_host(*args, host_name=host_name,
+                                host_uuid=host_uuid,
+                                callback=callback, **kwargs)
+        if not result:
+            return result
+
+        if not self.limit_by_hosts:
+            return result
+
+        if not host_uuid:
+            host = backend.get_object(object_type="host",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=host_name)
+            if not host:
+                msg = _("Host does not exist: {host_name}")
+                msg = msg.format(host_name=host_name)
+                return callback.error(msg)
+            host_uuid = host.uuid
+
+        share_tokens = self.get_tokens(skip_disabled=False,
+                                        include_roles=True,
+                                        return_type="rel_path")
+        # Get share nodes.
+        share_nodes = self.get_nodes(include_pools=True,
+                                    return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+        node_fqdns = []
+        for node in share_nodes:
+            node_fqdns.append(node.fqdn)
+
+        shares = {}
+        share_id = self.share_id
+        shares[share_id] = {}
+        shares[share_id]['name'] = self.name
+        shares[share_id]['site'] = self.site
+        shares[share_id]['nodes'] = node_fqdns
+        shares[share_id]['host_uuid'] = host_uuid
+        shares[share_id]['encrypted'] = self.encrypted
+
+        # Collect notifications.
+        user_shares = {}
+        already_processed = []
+        for token_path in share_tokens:
+            username = token_path.split("/")[0]
+            if username == ADMIN_USER:
+                continue
+            if token_path in already_processed:
+                continue
+            try:
+                x_shares = user_shares[username]
+            except KeyError:
+                x_shares = {}
+            try:
+                tokens = x_shares[share_id]['tokens']
+            except KeyError:
+                tokens = []
+            tokens.append(token_path)
+            share_data = stuff.copy_object(shares)
+            x_shares.update(share_data)
+            x_shares[share_id]['tokens'] = tokens
+            x_shares[share_id]['persist'] = True
+            user_shares[username] = x_shares
+            already_processed.append(token_path)
+
+        notifys = []
+        for username in user_shares:
+            shares = user_shares[username]
+            notifys.append((username, "share_add_host", shares))
+
+        def post_method():
+            for x in notifys:
+                notify(username=x[0], event_type=x[1], data=x[2])
+
+        callback.post_methods.append(post_method)
+        return result
+
+    @check_acls(['remove:host'])
+    @object_lock()
+    def remove_host(
+        self,
+        *args,
+        host_name: str=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a host to this group. """
+        # Try to add host via parent class.
+        result = super().remove_host(*args, host_name=host_name,
+                                    callback=callback, **kwargs)
+        if not result:
+            return result
+
+        if not self.limit_by_hosts:
+            return result
+
+        host = backend.get_object(object_type="host",
+                                realm=config.realm,
+                                site=self.site,
+                                name=host_name)
+
+        share_tokens = self.get_tokens(skip_disabled=False,
+                                        include_roles=True,
+                                        return_type="rel_path")
+        # Get share nodes.
+        share_nodes = self.get_nodes(include_pools=True,
+                                    return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+        node_fqdns = []
+        for node in share_nodes:
+            node_fqdns.append(node.fqdn)
+
+        shares = {}
+        share_id = self.share_id
+        shares[share_id] = {}
+        shares[share_id]['name'] = self.name
+        shares[share_id]['site'] = self.site
+        shares[share_id]['nodes'] = node_fqdns
+        shares[share_id]['host_uuid'] = host.uuid
+        shares[share_id]['encrypted'] = self.encrypted
+
+        # Collect notifications.
+        user_shares = {}
+        already_processed = []
+        for token_path in share_tokens:
+            username = token_path.split("/")[0]
+            if username == ADMIN_USER:
+                continue
+            if token_path in already_processed:
+                continue
+            try:
+                x_shares = user_shares[username]
+            except KeyError:
+                x_shares = {}
+            try:
+                tokens = x_shares[share_id]['tokens']
+            except KeyError:
+                tokens = []
+            tokens.append(token_path)
+            share_data = stuff.copy_object(shares)
+            x_shares.update(share_data)
+            x_shares[share_id]['tokens'] = tokens
+            x_shares[share_id]['persist'] = True
+            user_shares[username] = x_shares
+            already_processed.append(token_path)
+
+        notifys = []
+        for username in user_shares:
+            shares = user_shares[username]
+            notifys.append((username, "share_remove_host", shares))
+
+        def post_method():
+            for x in notifys:
+                notify(username=x[0], event_type=x[1], data=x[2])
+
+        callback.post_methods.append(post_method)
+        return result
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['view:hosts'])
+    def list_hosts(
+        self,
+        **kwargs,
+        ):
+        """ Return list with hosts valid for this share. """
+        return self.get_hosts(**kwargs)
+
     @cli.check_rapi_opts()
     @check_acls(acls=['view:nodes'])
     def list_nodes(
@@ -1997,10 +2876,10 @@ class Share(OTPmeObject):
             return callback.ok(result)
 
         result = super().get_nodes(return_type=return_type,
-                                            skip_disabled=skip_disabled,
-                                            include_pools=include_pools,
-                                            callback=callback,
-                                            _caller=_caller)
+                                    skip_disabled=skip_disabled,
+                                    include_pools=include_pools,
+                                    callback=callback,
+                                    _caller=_caller)
 
         return callback.ok(result)
 
@@ -2059,6 +2938,198 @@ class Share(OTPmeObject):
         if _caller == "CLIENT":
             result = "\n".join(result)
 
+        return callback.ok(result)
+
+    @check_acls(['limit_hosts'])
+    @object_lock()
+    @audit_log()
+    def limit_hosts(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Limit share access to assigned hosts.
+
+        Toggling this on doesn't change WHO has access (role / token /
+        group assignments stay) -- it adds a per-host restriction.
+        Notify every user reachable through the share with a
+        share_mount carrying the new limit_hosts=True + hosts allow-
+        list so each agent re-evaluates locally and unmounts on
+        non-listed hosts. """
+        if self.limit_by_hosts:
+            return callback.error(_("Share access already limited."))
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("limit_hosts",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+        self.limit_by_hosts = True
+        self.update_index('limit_by_hosts', self.limit_by_hosts)
+        result = self._cache(callback=callback)
+        self._notify_share_metadata_change("share_unmount", callback)
+        return result
+
+    @check_acls(['unlimit_hosts'])
+    @object_lock()
+    @audit_log()
+    def unlimit_hosts(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Unlimit share access.
+
+        Symmetric to limit_hosts: WHO has access is unchanged, the
+        per-host restriction is lifted. Agents on previously blocked
+        hosts can now mount; notify everyone reachable so they
+        re-evaluate. """
+        if not self.limit_by_hosts:
+            return callback.error(_("Share access already unlimited."))
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("unlimit_hosts",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+        self.limit_by_hosts = False
+        self.update_index('limit_by_hosts', self.limit_by_hosts)
+        result = self._cache(callback=callback)
+        self._notify_share_metadata_change("share_mount", callback)
+        return result
+
+    def _notify_share_metadata_change(self, event_type, callback):
+        """ Send a share_mount / share_unmount event to every user
+        reachable through the share so each agent re-evaluates against
+        the share's current metadata. Caller picks the event type
+        based on the direction of the change: ``share_unmount`` when
+        the operation can revoke access (limit_hosts) and
+        ``share_mount`` when it can grant access (unlimit_hosts). """
+        share_tokens = self.get_tokens(skip_disabled=True,
+                                       include_roles=True,
+                                       return_type="rel_path")
+        if not share_tokens:
+            return
+        share_nodes = self.get_nodes(include_pools=True,
+                                     return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+        if not share_nodes:
+            return
+        node_fqdns = [node.fqdn for node in share_nodes]
+        share_hosts = []
+        if self.limit_by_hosts:
+            share_hosts = self.get_hosts(include_groups=True,
+                                         return_type="name")
+        share_id = self.share_id
+        share_name = self.name
+        share_site = self.site
+        share_encrypted = self.encrypted
+        share_limit_by_hosts = self.limit_by_hosts
+
+        def post_method():
+            user_shares = {}
+            already_processed = []
+            for token_path in share_tokens:
+                username = token_path.split("/")[0]
+                if username == ADMIN_USER:
+                    continue
+                if token_path in already_processed:
+                    continue
+                try:
+                    x_shares = user_shares[username]
+                except KeyError:
+                    x_shares = {}
+                try:
+                    tokens = x_shares[share_id]['tokens']
+                except KeyError:
+                    tokens = []
+                tokens.append(token_path)
+                x_shares[share_id] = {
+                    'name': share_name,
+                    'site': share_site,
+                    'nodes': list(node_fqdns),
+                    'limit_hosts': share_limit_by_hosts,
+                    'hosts': list(share_hosts),
+                    'encrypted': share_encrypted,
+                    'tokens': tokens,
+                    'persist': True,
+                }
+                user_shares[username] = x_shares
+                already_processed.append(token_path)
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type=event_type, data=shares)
+
+        callback.post_methods.append(post_method)
+
+    @assigned_host_cache.cache_method()
+    def is_assigned_host(
+        self,
+        host_uuid: str,
+        include_groups: bool=False,
+        ):
+        if host_uuid in self.hosts:
+            return self.uuid
+        if not include_groups:
+            return False
+        for x_uuid in self.groups:
+            group = backend.get_object(object_type="group", uuid=x_uuid)
+            if not group:
+                continue
+            if not group.enabled:
+                continue
+            if host_uuid in group.hosts:
+                return True
+        return False
+
+    def get_hosts(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        include_groups: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all hosts assigned to this share. """
+        result = super().get_hosts(return_type=return_type,
+                                    _caller=_caller,
+                                    callback=callback)
+
+        for x_uuid in self.groups:
+            group = backend.get_object(object_type="group", uuid=x_uuid)
+            if not group:
+                continue
+            if not group.enabled:
+                continue
+            if not group.hosts:
+                continue
+            result += backend.search(object_type="host",
+                                    attribute="uuid",
+                                    values=group.hosts,
+                                    return_type=return_type)
+        result = list(set(result))
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
         return callback.ok(result)
 
     @check_acls(['edit:add_script'])
@@ -2248,6 +3319,166 @@ class Share(OTPmeObject):
             msg = _("Failed to run share script.")
             raise OTPmeException(msg)
 
+    @check_acls(['enable:object'])
+    @object_lock()
+    def enable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable share and send idled notifications. """
+        # Try to enable by parent class.
+        result = super().enable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+
+        share_tokens = self.get_tokens(return_type="rel_path",
+                                    include_roles=True)
+        if not share_tokens:
+            return result
+
+        def post_method():
+            # Get share nodes.
+            share_nodes = self.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+
+            # Collect notifications.
+            user_shares = {}
+            already_processed = []
+            for token_path in share_tokens:
+                username = token_path.split("/")[0]
+                if username == ADMIN_USER:
+                    continue
+                if token_path in already_processed:
+                    continue
+                try:
+                    x_shares = user_shares[username]
+                except KeyError:
+                    x_shares = {}
+                try:
+                    tokens = x_shares[share_id]['tokens']
+                except KeyError:
+                    tokens = []
+                tokens.append(token_path)
+                share_data = stuff.copy_object(shares)
+                x_shares.update(share_data)
+                x_shares[share_id]['tokens'] = tokens
+                x_shares[share_id]['persist'] = True
+                user_shares[username] = x_shares
+                already_processed.append(token_path)
+
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type="share_mount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
+
+    @check_acls(['disable:object'])
+    @object_lock()
+    def disable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Check if token add will add new share permissions. """
+        # Try to by parent class.
+        result = super().disable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+
+        share_tokens = self.get_tokens(return_type="rel_path",
+                                    include_roles=True)
+        if not share_tokens:
+            return result
+
+        def post_method():
+            # Get share nodes.
+            share_nodes = self.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+
+            # Collect notifications.
+            user_shares = {}
+            already_processed = []
+            for token_path in share_tokens:
+                username = token_path.split("/")[0]
+                if username == ADMIN_USER:
+                    continue
+                if token_path in already_processed:
+                    continue
+                try:
+                    x_shares = user_shares[username]
+                except KeyError:
+                    x_shares = {}
+                try:
+                    tokens = x_shares[share_id]['tokens']
+                except KeyError:
+                    tokens = []
+                tokens.append(token_path)
+                share_data = stuff.copy_object(shares)
+                x_shares.update(share_data)
+                x_shares[share_id]['tokens'] = tokens
+                x_shares[share_id]['persist'] = True
+                user_shares[username] = x_shares
+                already_processed.append(token_path)
+
+            for username in user_shares:
+                shares = user_shares[username]
+                notify(username=username, event_type="share_unmount", data=shares)
+
+        callback.post_methods.append(post_method)
+
+        return result
+
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show share config. """
         if not self.verify_acl("view_public:object"):
@@ -2288,19 +3519,41 @@ class Share(OTPmeObject):
                     role_list.append(role_name)
             role_list.sort()
 
-        node_list = []
-        if self.nodes:
-            if self.verify_acl("view:nodes"):
-                return_attrs = ['name']
-                node_list = backend.search(object_type="node",
-                                        join_object_type="share",
-                                        join_search_attr="uuid",
-                                        join_search_val=self.uuid,
-                                        join_attribute="token",
-                                        attribute="uuid",
-                                        value="*",
-                                        return_attributes=return_attrs)
+        if self.verify_acl("view:nodes") \
+        or self.verify_acl("add:node") \
+        or self.verify_acl("remove:node"):
+            node_list = []
+            for i in self.nodes:
+                node_oid = backend.get_oid(uuid=i,
+                                        object_type="node",
+                                        instance=True)
+                # Add UUIDs of orphan nodes.
+                if not node_oid:
+                    node_list.append(i)
+                    continue
+                node_name = node_oid.name
+                node_list.append(node_name)
             node_list.sort()
+        else:
+            node_list = ""
+
+        if self.verify_acl("view:hosts") \
+        or self.verify_acl("add:host") \
+        or self.verify_acl("remove:host"):
+            host_list = []
+            for i in self.hosts:
+                host_oid = backend.get_oid(uuid=i,
+                                        object_type="host",
+                                        instance=True)
+                # Add UUIDs of orphan hosts.
+                if not host_oid:
+                    host_list.append(i)
+                    continue
+                host_name = host_oid.name
+                host_list.append(host_name)
+            host_list.sort()
+        else:
+            host_list = ""
 
         pool_list = []
         if self.pools:
@@ -2320,27 +3573,32 @@ class Share(OTPmeObject):
                                                             return_type="rel_path")
             master_password_tokens_list.sort()
 
+        if self.verify_acl("view:groups") \
+        or self.verify_acl("add:group") \
+        or self.verify_acl("remove:group"):
+            group_list = []
+            for i in self.groups:
+                group_oid = backend.get_oid(i, instance=True)
+                # Add UUIDs of orphan groups.
+                if not group_oid:
+                    group_list.append(i)
+                    continue
+                if not otpme_acl.access_granted(object_id=group_oid,
+                                                acl="view_public:object"):
+                    continue
+                group_list.append(group_oid.name)
+            group_list.sort()
+        else:
+            group_list = [""]
+
         lines = []
 
-        if self.verify_acl("view:roles"):
-            lines.append(f'ROLES="{",".join(role_list)}"')
-        else:
-            lines.append('ROLES=""')
-
-        if self.verify_acl("view:tokens"):
-            lines.append(f'TOKENS="{",".join(token_list)}"')
-        else:
-            lines.append('TOKENS=""')
-
-        if self.verify_acl("view:nodes"):
-            lines.append(f'NODES="{",".join(node_list)}"')
-        else:
-            lines.append('NODES=""')
-
-        if self.verify_acl("view:pools"):
-            lines.append(f'POOLS="{",".join(pool_list)}"')
-        else:
-            lines.append('POOLS=""')
+        lines.append(f'ROLES="{",".join(role_list)}"')
+        lines.append(f'TOKENS="{",".join(token_list)}"')
+        lines.append(f'NODES="{",".join(node_list)}"')
+        lines.append(f'NODES="{",".join(host_list)}"')
+        lines.append(f'POOLS="{",".join(pool_list)}"')
+        lines.append(f'GROUPS="{",".join(group_list)}"')
 
         if self.verify_acl("view:force_group"):
             group = None
@@ -2404,6 +3662,13 @@ class Share(OTPmeObject):
             lines.append(f'MOUNT_SCRIPT_ENABLED="{self.mount_script_enabled}"')
         else:
             lines.append('MOUNT_SCRIPT_ENABLED=""')
+
+        if self.verify_acl("view:limit_hosts") \
+        or self.verify_acl("limit_hosts") \
+        or self.verify_acl("unlimit_hosts"):
+            lines.append(f'LIMIT_HOSTS="{self.limit_by_hosts}"')
+        else:
+            lines.append('LIMIT_HOSTS=""')
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

@@ -123,12 +123,19 @@ def search_regex_getter(show_all=False):
     return search_regex
 
 def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
-    output_fields=None, acl_checker=None, max_roles=5, max_scopes=5,
-    max_policies=5, **kwargs):
+    limit=None, output_fields=None, acl_checker=None, max_roles=5,
+    max_scopes=5, max_policies=5, **kwargs):
     """ Build table rows for tokens. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(token_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_roles = limit
+        max_scopes = limit
+        max_policies = limit
     for token_uuid in token_order:
         row = []
         _id_attr = token_data[token_uuid][id_attr]

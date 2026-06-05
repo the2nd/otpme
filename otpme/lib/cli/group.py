@@ -26,6 +26,7 @@ table_headers = [
                 "status",
                 "roles",
                 "tokens",
+                "hosts",
                 "sync_users",
                 "policies",
                 "inherit",
@@ -64,13 +65,22 @@ def register():
                 read_acls=read_acls,
                 max_len=30)
 
-def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
-    max_tokens=5, max_sync_users=5, max_policies=5, output_fields=None,
-    acl_checker=None, **kwargs):
+def row_getter(realm, site, group_order, group_data, acls,
+    limit=None, max_roles=5, max_tokens=5, max_hosts=5, max_sync_users=5,
+    max_policies=5, output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for groups. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(group_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_roles = limit
+        max_tokens = limit
+        max_hosts = limit
+        max_sync_users = limit
+        max_policies = limit
     for group_uuid in group_order:
         row = []
         group_name = group_data[group_uuid]['name']
@@ -210,6 +220,52 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
             row.append("\n".join(member_tokens))
         else:
             if token_access:
+                row.append("")
+            else:
+                row.append("-")
+        # Hosts.
+        get_hosts = False
+        host_access = False
+        processed_hosts = []
+        if "hosts" in output_fields:
+            if check_acl("view:hosts"):
+                host_access = True
+                get_hosts = True
+        if get_hosts:
+            member_hosts = []
+            return_attrs = ['name', 'enabled']
+            group_hosts_count, \
+            group_hosts_result = backend.search(object_type="host",
+                                                attribute="uuid",
+                                                value="*",
+                                                join_object_type="group",
+                                                join_search_attr="uuid",
+                                                join_search_val=group_uuid,
+                                                join_attribute="host",
+                                                order_by="name",
+                                                max_results=max_hosts,
+                                                return_query_count=True,
+                                                return_attributes=return_attrs)
+            for host_uuid in group_hosts_result:
+                if len(processed_hosts) >= max_hosts:
+                    break
+                host_name = group_hosts_result[host_uuid]['name']
+                host_enabled = group_hosts_result[host_uuid]['enabled'][0]
+                host_string = host_name
+                if not host_enabled:
+                    host_string += " (D)"
+                member_hosts.append(host_string)
+                processed_hosts.append(host_uuid)
+
+            if group_hosts_count > max_hosts:
+                msg = _("({hosts_len} of {group_hosts_count} hosts total)")
+                msg = msg.format(hosts_len=len(processed_hosts), group_hosts_count=group_hosts_count)
+                x = msg
+                member_hosts.append(x)
+
+            row.append("\n".join(member_hosts))
+        else:
+            if host_access:
                 row.append("")
             else:
                 row.append("-")

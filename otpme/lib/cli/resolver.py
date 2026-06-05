@@ -83,11 +83,17 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, resolver_order, resolver_data, acls,
-    acl_checker=None, output_fields=None, max_policies=5, **kwargs):
+    limit=None, acl_checker=None, output_fields=None, max_policies=5,
+    **kwargs):
     """ Build table rows for resolvers. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(resolver_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for resolver_uuid in resolver_order:
         row = []
         resolver_name = resolver_data[resolver_uuid]['name']

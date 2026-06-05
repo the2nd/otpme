@@ -227,6 +227,15 @@ class OTPmeFsP1(OTPmeFsServer1):
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
                     return self.build_response(status, message)
+                if restore_share.limit_by_hosts:
+                    if not restore_share.is_assigned_host(host_uuid=self.peer.uuid,
+                                                        include_groups=True):
+                        status = status_codes.PERMISSION_DENIED
+                        message, log_msg = _("No share permissions for this host: {share}", log=True)
+                        message = message.format(share=self.share)
+                        log_msg = log_msg.format(share=self.share)
+                        self.logger.warning(log_msg)
+                        return self.build_response(status, message)
                 if not restore_share.is_assigned_token(token_uuid=config.auth_token.uuid):
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
@@ -318,6 +327,15 @@ class OTPmeFsP1(OTPmeFsServer1):
                     log_msg = log_msg.format(share=self.share, root_dir=share.root_dir)
                     self.logger.warning(log_msg)
                     return self.build_response(status, message)
+                if share.limit_by_hosts:
+                    if not share.is_assigned_host(host_uuid=self.peer.uuid,
+                                                    include_groups=True):
+                        status = status_codes.PERMISSION_DENIED
+                        message, log_msg = _("No share permissions for this host: {share}", log=True)
+                        message = message.format(share=self.share)
+                        log_msg = log_msg.format(share=self.share)
+                        self.logger.warning(log_msg)
+                        return self.build_response(status, message)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
                 and not share.is_master_password_token(config.auth_token.rel_path):
                     status = status_codes.PERMISSION_DENIED

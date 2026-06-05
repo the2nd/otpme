@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-user show [--fields <field1,field2,field3>] [--policy-limit <limit>] [-z <size_limit>] [-a] [-t] [user] [token]'),
-                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: [|object|] [token_name]',
+                    'cmd'   :   '--policy-limit :max_policies: --limit :limit: --fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: [|object|] [token_name]',
                     '_help' :   {
                                     'cmd'                   : _('Show user(s)'),
                                     '-a'                    : _('Show all users.'),
@@ -30,6 +30,7 @@ cmd_help = {
                                     '-z <limit>'            : _('Limit output size'),
                                     '--fields f1,f2,f3'     : _('Output only given fields'),
                                     '--policy-limit <limit>': _('Output max policies'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--reverse'             : _('Reverse the output order.'),
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),

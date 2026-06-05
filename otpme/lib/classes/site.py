@@ -247,6 +247,7 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -1317,6 +1318,43 @@ def register_config():
                                     getter=sso_jwt_valid_getter,
                                     default_value=86400,
                                     object_types=['site'])
+    # SSO web rate-limits (Flask-Limiter format: "<N>/<unit>", e.g.
+    # "10/minute"; semicolon-chained limits also supported, e.g.
+    # "3/minute; 1000/hour"). Applied per-route in
+    # otpme/web/app/views.py.
+    def sso_rate_limit_setter(value, **kwargs):
+        """ Validate the Flask-Limiter rate-limit string via the limits
+        library's parser (the same parser Flask-Limiter calls at
+        request time). Accepts any expression the parser understands. """
+        if not value:
+            return value
+        try:
+            from limits import parse_many
+            parsed = list(parse_many(value))
+            if not parsed:
+                raise ValueError("empty limit expression")
+        except Exception as err:
+            msg = _("Invalid rate-limit '{value}': {err} "
+                    "(expected e.g. '10/minute').")
+            msg = msg.format(value=value, err=err)
+            raise ValueError(msg) from err
+        return value
+    # Per-IP cap on /login POST. Coarse DoS guard against high-volume
+    # attacks from a single source; deliberately generous so NAT pools
+    # don't trip it under normal load.
+    config.register_config_parameter(name="sso_rate_limit_login",
+                                    ctype=str,
+                                    setter=sso_rate_limit_setter,
+                                    default_value="100/minute",
+                                    object_types=['site'])
+    # Per-username cap on /login POST. Targets account brute-force
+    # regardless of source IP; works alongside authd's auto_disable
+    # policy. NAT-safe because the key is the submitted username.
+    config.register_config_parameter(name="sso_rate_limit_login_user",
+                                    ctype=str,
+                                    setter=sso_rate_limit_setter,
+                                    default_value="10/minute",
+                                    object_types=['site'])
     # Hosts accessgroup.
     def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
         result = backend.search(object_type='accessgroup',
@@ -1650,6 +1688,16 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'user', 'token'])
+    # Start this number of authd workers.
+    config.register_config_parameter(name="authd_workers",
+                                    ctype=int,
+                                    default_value=16,
+                                    object_types=['site', 'unit', 'node'])
+    # Allow otpme-tool who from hosts=.
+    config.register_config_parameter(name="allow_who_from_hosts",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -1824,6 +1872,8 @@ class Site(OTPmeObject):
                                 "OIDC_PAIRWISE_SECRET",
                                 "CONFIG_PARAMS:httpd_socket_uri",
                                 "CONFIG_PARAMS:reverse_proxy_ips",
+                                "CONFIG_PARAMS:sso_rate_limit_login",
+                                "CONFIG_PARAMS:sso_rate_limit_login_user",
                                 ],
                         },
 
@@ -4204,14 +4254,18 @@ class Site(OTPmeObject):
                                                     callback=callback)
             if group.name == config.realm_access_group:
                 realm_access_group = group
-                # Set max sessions for REALM group to 3.
+                # Set max sessions for REALM accessgroup.
                 group.change_max_sessions(verify_acls=False,
                                         max_sessions=3,
                                         callback=callback)
-                # Set relogin timeout for REALM group to 1 second.
+                # Set relogin timeout for REALM accessgroup.
                 group.change_relogin_timeout(verify_acls=False,
-                                            relogin_timeout="1m",
+                                            relogin_timeout="1s",
                                             callback=callback)
+                # Set session timeout values.
+                group.change_session_timeout(verify_acls=False, timeout="1M")
+                group.change_unused_session_timeout(verify_acls=False,
+                                                    unused_timeout="3W")
             if group.name == config.sso_access_group:
                 sso_access_group = group
                 # Set max sessions for SSO portal group to 3.
@@ -4222,12 +4276,19 @@ class Site(OTPmeObject):
                 group.change_relogin_timeout(verify_acls=False,
                                             relogin_timeout="1m",
                                             callback=callback)
+                # Set session timeout values.
+                group.change_session_timeout(verify_acls=False, timeout="1M")
+                group.change_unused_session_timeout(verify_acls=False,
+                                                    unused_timeout="1M")
+                # Enable timeout pass on for SSO accessgroup.
+                group.enable_timeout_pass_on(verify_acls=False,
+                                            callback=callback)
             if group.name == config.ldap_access_group:
-                # Set max sessions for ldap (ldaptor) group to 3.
+                # Set max sessions for ldap (ldaptor) accessgroup.
                 group.change_max_sessions(verify_acls=False,
                                         max_sessions=3,
                                         callback=callback)
-                # Set relogin timeout for ldap group to 1 second.
+                # Set relogin timeout for ldap accessgroup.
                 group.change_relogin_timeout(verify_acls=False,
                                             relogin_timeout="1m",
                                             callback=callback)

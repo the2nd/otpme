@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-pool show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [pool]'),
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: [|object|]',
+                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: --node-limit :max_nodes: --token-limit :max_tokens: --role-limit :max_roles: --policy-limit :max_policies: --limit :limit: [|object|]',
                     '_help' :   {
                                     'cmd'                           : _('Show pool(s)'),
                                     '-a'                            : _('Show all pools.'),
@@ -37,6 +37,7 @@ cmd_help = {
                                     '--token-limit <limit>'         : _('Output <limit> member tokens.'),
                                     '--role-limit <limit>'          : _('Output <limit> member roles.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
+                                    '--limit <limit>'               : _('Limit number of items shown per object.'),
                                 },
                 },
 

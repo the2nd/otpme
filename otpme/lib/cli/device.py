@@ -65,12 +65,16 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, device_order, device_data, acls, object_type=None,
-    max_roles=5, max_tokens=5, max_sync_users=5, max_sync_groups=5,
-    max_policies=5, output_fields=None, acl_checker=None, **kwargs):
+    limit=None, max_policies=5, output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for devices. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(device_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for device_uuid in device_order:
         row = []
         device_name = device_data[device_uuid]['name']

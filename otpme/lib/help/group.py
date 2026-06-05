@@ -22,7 +22,7 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : _('Usage: otpme-group show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [group]'),
-                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --host-limit :max_hosts: --limit :limit: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Show group(s)'),
                                     '-a'                    : _('Show all groups.'),
@@ -32,7 +32,9 @@ cmd_help = {
                                     '--sort-by <attribute>' : _('Sort output by <attribute>.'),
                                     '--role-limit <limit>'  : _('Output max roles.'),
                                     '--token-limit <limit>' : _('Output max tokens.'),
+                                    '--host-limit <limit>'  : _('Output max hosts.'),
                                     '--policy-limit <limit>': _('Output max policies.'),
+                                    '--limit <limit>'       : _('Limit number of items shown per object.'),
                                     '--raw'                 : _('Output table without any headers/borders.'),
                                     '--csv'                 : _('Output table as CSV.'),
                                     '--csv-sep <separator>' : _('Output table as CSV.'),
@@ -426,4 +428,30 @@ cmd_help = {
                                     'cmd'                   : _('Remove sync user from group.'),
                                 },
                 },
+
+    'add_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-group add_host {group} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add host to group.'),
+                                },
+                },
+
+    'remove_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-group remove_host {group} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove host from group.'),
+                                },
+                },
+
+    'list_hosts'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-group list_hosts {group}'),
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    '_help' :   {
+                                    'cmd'                       : _('List assigned hosts.'),
+                                    '--return-type'             : _('Attribute to return.'),
+                                },
+                },
+
     }

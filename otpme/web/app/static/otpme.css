@@ -1,6 +1,36 @@
 /* ---- Global ---- */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ---- Layout utilities ----
+ * Templates and JS-built nodes used inline style="..." attributes
+ * everywhere; that forced the CSP to include style-src 'unsafe-inline',
+ * which leaves CSS-based exfiltration / click-hijacking vectors open
+ * if HTML injection slips through somewhere else. These tiny utility
+ * classes replace the inline styles so the CSP can drop
+ * 'unsafe-inline' on style-src entirely. */
+.is-hidden        { display: none !important; }
+.is-block         { display: block; }
+.mt-8             { margin-top: 8px; }
+.mt-18            { margin-top: 18px; }
+.mb-14            { margin-bottom: 14px; }
+.ml-8             { margin-left: 8px; }
+.w-full           { width: 100%; }
+.img-pixelated    { image-rendering: pixelated; }
+
+/* Shown only when JS is disabled (base.html <noscript>). Visually
+ * matches the error-msg style so users immediately see something is
+ * wrong rather than a blank page. */
+.noscript-warning {
+  margin: 12px auto;
+  max-width: 720px;
+  padding: 12px 16px;
+  background: #fff4e5;
+  color: #803300;
+  border: 1px solid #f0c891;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
 html, body {
   height: 100%;
   font-family: 'Segoe UI', Roboto, Arial, sans-serif;
@@ -42,6 +72,21 @@ a:hover { text-decoration: underline; }
 .navbar-user::before {
   content: "\1F464  ";
 }
+/* Logout is rendered as a POST form (CSRF-safe) but should look and
+ * sit in the navbar exactly like the other nav links. */
+.navbar-logout-form { margin: 0; display: inline; }
+.navbar-logout-btn {
+  font: inherit;
+  font-size: 14px;
+  color: #4a7cff;
+  background: transparent;
+  border: 0;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.navbar-logout-btn:hover { background: #f0f2f5; text-decoration: underline; }
 
 /* ---- Flash messages ---- */
 .flash-messages {

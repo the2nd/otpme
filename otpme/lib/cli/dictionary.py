@@ -65,11 +65,17 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, dict_order, dict_data, acls,
-    acl_checker=None, output_fields=None, max_policies=5, **kwargs):
+    limit=None, acl_checker=None, output_fields=None, max_policies=5,
+    **kwargs):
     """ Build table rows for dictionaries. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(dict_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for dict_uuid in dict_order:
         row = []
         dict_name = dict_data[dict_uuid]['name']

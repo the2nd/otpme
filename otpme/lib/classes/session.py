@@ -964,7 +964,9 @@ class Session(OTPmeLockObject):
             # Check for new session renegotiation.
             if auth_type == "clear-text":
                 sotp_verify_status = sotp.verify(password_hash=session_hash,
-                                                password=password, reneg=True)
+                                                password=password,
+                                                session_uuid=self.uuid,
+                                                reneg=True)
                 if sotp_verify_status:
                     srotp = password
 
@@ -975,6 +977,7 @@ class Session(OTPmeLockObject):
                 srotp_hash = sotp.verify(password_hash=session_hash,
                                         challenge=challenge,
                                         response=response,
+                                        session_uuid=self.uuid,
                                         reneg=True)
                 if sotp_verify_status:
                     srotp = _srotp

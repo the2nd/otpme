@@ -4,6 +4,17 @@
 <div id="page-data"
      data-url-fido2-begin="{{ url_for('fido2_auth_begin', _external=True, _scheme='https') }}"
      data-url-fido2-complete="{{ url_for('fido2_auth_complete', _external=True, _scheme='https') }}"></div>
+<div id="page-i18n"
+     data-label-need-username="{{ gettext('Please enter your username first.') }}"
+     data-label-https-required="{{ gettext('WebAuthn requires HTTPS. Please access this page via HTTPS.') }}"
+     data-label-webauthn-unsupported="{{ gettext('WebAuthn is not supported in this browser.') }}"
+     data-label-requesting-challenge="{{ gettext('Requesting authentication challenge...') }}"
+     data-label-failed-start="{{ gettext('Failed to start authentication.') }}"
+     data-label-touch-key="{{ gettext('Please touch your security key...') }}"
+     data-label-verifying="{{ gettext('Verifying...') }}"
+     data-label-auth-failed="{{ gettext('Authentication failed.') }}"
+     data-label-login-success="{{ gettext('Login successful! Redirecting...') }}"
+     class="is-hidden"></div>
 <div class="login-wrapper">
   <div class="login-card">
     <h1>{% if reauth %}{{ gettext("Re-authenticate") }}{% else %}{{ gettext("Sign In") }}{% endif %}</h1>

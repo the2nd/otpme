@@ -92,6 +92,7 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',

@@ -66,12 +66,19 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, host_order, host_data, acls, object_type=None,
-    max_roles=5, max_tokens=5, max_policies=5, output_fields=None,
-    acl_checker=None, **kwargs):
+    limit=None, max_roles=5, max_tokens=5, max_policies=5,
+    output_fields=None, acl_checker=None, **kwargs):
     """ Build table rows for hosts/nodes. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(host_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_roles = limit
+        max_tokens = limit
+        max_policies = limit
     for host_uuid in host_order:
         row = []
         host_name = host_data[host_uuid]['name']

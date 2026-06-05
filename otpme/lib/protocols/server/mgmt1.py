@@ -2472,7 +2472,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         share_nodes = share.get_nodes(include_pools=True,
                                     return_type="instance")
         node_fqdns = [node.fqdn for node in share_nodes]
-        share_id = f"{share.site}/{share.name}"
+        share_id = share.share_id
         shares = {
             share_id: {
                 'name':      share.name,
@@ -2484,9 +2484,14 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.build_response(True, shares)
 
     def _cmd_get_shares(self, subcommand, command_args):
-        user_shares = config.auth_token.get_shares(skip_disabled=True)
+        user_shares = config.auth_token.get_shares(skip_disabled=True,
+                                                return_type="instance")
         shares = {}
         for share in user_shares:
+            if share.limit_by_hosts:
+                if not share.is_assigned_host(self.peer.uuid,
+                                        include_groups=True):
+                    continue
             share_nodes = share.get_nodes(include_pools=True,
                                         return_type="instance")
             if not share_nodes:
@@ -2500,7 +2505,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
-                share_id = f"{share.site}/{share.name}"
+                share_id = share.share_id
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
                 shares[share_id]['site'] = share.site

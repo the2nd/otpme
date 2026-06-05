@@ -61,13 +61,19 @@ def register():
                 read_acls=read_acls,
                 max_len=30)
 
-def row_getter(realm, site, pool_order, pool_data, acls, max_roles=5,
-    max_tokens=5, max_nodes=5, max_policies=5, output_fields=None,
+def row_getter(realm, site, pool_order, pool_data, acls,
+    limit=None, max_nodes=5, max_policies=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for pools. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(pool_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_nodes = limit
+        max_policies = limit
     for pool_uuid in pool_order:
         row = []
         pool_name = pool_data[pool_uuid]['name']

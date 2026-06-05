@@ -81,11 +81,17 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, policy_order, policy_data, acls,
-    output_fields=None, acl_checker=None, max_policies=5, **kwargs):
+    limit=None, output_fields=None, acl_checker=None, max_policies=5,
+    **kwargs):
     """ Build table rows for policies. """
     if output_fields is None:
         output_fields = []
     _result = []
+    if limit is None:
+        if len(policy_order) == 1:
+            limit = 30
+    if limit is not None:
+        max_policies = limit
     for policy_uuid in policy_order:
         row = []
         policy_name = policy_data[policy_uuid]['name']

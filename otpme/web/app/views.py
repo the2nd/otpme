@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import json
 
+from urllib.parse import urlparse, urljoin
+
 from flask import g
 from flask import flash
 from flask import jsonify
@@ -23,6 +25,7 @@ from flask_babel import gettext
 
 from otpme.web.app import lm
 from otpme.web.app import app
+from otpme.web.app import limiter
 from otpme.web.app.forms import LoginForm
 
 from otpme.lib import jwt
@@ -151,8 +154,18 @@ def set_security_headers(response):
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:;"
+        # No 'unsafe-inline': all dynamic show/hide goes through the
+        # utility classes in otpme.css (.is-hidden / .is-block / .mt-8 /
+        # ...). Keeping 'unsafe-inline' out closes CSS-based exfiltration
+        # and click-hijacking vectors should HTML injection ever slip
+        # past escaping somewhere else.
+        "style-src 'self'; "
+        "img-src 'self' data:; "
+        # frame-ancestors is the CSP-native replacement for the
+        # X-Frame-Options header below. Modern browsers prefer it and
+        # some have started ignoring X-Frame-Options when CSP is set
+        # -- shipping both keeps older browsers covered.
+        "frame-ancestors 'none';"
     )
     # Force HTTPS for a year. includeSubDomains locks down anything
     # under the same registered domain -- safe for a dedicated SSO
@@ -172,6 +185,26 @@ def set_security_headers(response):
     # Avoids leaking auth-flow URLs (codes, state) to arbitrary
     # referrers while keeping intra-app referrers for analytics.
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Block browser access to powerful features the SSO portal has no
+    # legitimate use for. Anything not listed defaults to "deny for
+    # cross-origin contexts only" per the spec; we additionally lock
+    # down camera/microphone/geolocation/payment/usb to allow no
+    # origin at all (including same-origin) -- the portal doesn't
+    # need them, so a future XSS can't pop a permission prompt.
+    response.headers['Permissions-Policy'] = (
+        'accelerometer=(), '
+        'autoplay=(), '
+        'camera=(), '
+        'display-capture=(), '
+        'fullscreen=(), '
+        'geolocation=(), '
+        'gyroscope=(), '
+        'magnetometer=(), '
+        'microphone=(), '
+        'midi=(), '
+        'payment=(), '
+        'usb=()'
+    )
     return response
 
 @app.errorhandler(404)
@@ -202,8 +235,6 @@ def index():
 @app.route('/settings')
 @login_required
 def settings():
-    if not g.user.is_authenticated:
-        return redirect(url_for('login', _external=True, _scheme='https'))
     login_token_pass_type = flask_session.get('login_token_pass_type')
     login_token_type = flask_session.get('login_token_type')
     show_password_change = (login_token_pass_type == "static")
@@ -314,8 +345,6 @@ def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False)
 @app.route('/settings/device_tokens', methods=['GET'])
 @login_required
 def list_device_tokens():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     try:
         response, error = _send_ssod_command(command="list_device_tokens",
                                         default_error=gettext("Failed to list device tokens."))
@@ -337,8 +366,6 @@ def list_device_tokens():
 @app.route('/settings/device_tokens', methods=['POST'])
 @login_required
 def add_device_token():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     device_name = data.get('device_name', '').strip()
     role_uuid = (data.get('role_uuid') or '').strip()
@@ -363,8 +390,6 @@ def add_device_token():
 @app.route('/settings/device_tokens/delete', methods=['POST'])
 @login_required
 def del_device_token():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     token_name = data.get('name', '').strip()
     if not token_name:
@@ -380,8 +405,6 @@ def del_device_token():
 @app.route('/settings/passkeys', methods=['GET'])
 @login_required
 def list_passkeys():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     try:
         response, error = _send_ssod_command(
                 command="list_passkeys",
@@ -405,8 +428,6 @@ def passkey_register_begin():
     the reg_state + sanitized token_name + display name in the Flask
     session so ``complete`` can verify them server-side without
     trusting client-supplied values. """
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     device_name = (data.get('device_name') or '').strip()
     if not device_name:
@@ -421,20 +442,19 @@ def passkey_register_begin():
         return error
     if not isinstance(response, dict):
         return jsonify({"error": gettext("Failed to start passkey registration.")}), 500
-    flask_session['passkey_reg_state'] = response.get('passkey_reg_state')
-    flask_session['passkey_reg_device_name'] = response.get('device_name')
-    flask_session['passkey_reg_token_name'] = response.get('token_name')
+    # State lives on the ssod-side master node in
+    # multiprocessing.passkey_reg_states keyed by an opaque state-id.
+    # Registration always routes through the master (mgmt=True; no
+    # multi-master in OTPme), so the Flask session only carries the
+    # state-id -- no WebAuthn challenge / device-name leak via cookie.
+    flask_session['passkey_state_id'] = response.get('passkey_state_id')
     return jsonify(response.get('create_options', {}))
 
 @app.route('/settings/passkeys/register/complete', methods=['POST'])
 @login_required
 def passkey_register_complete():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
-    reg_state = flask_session.pop('passkey_reg_state', None)
-    device_name = flask_session.pop('passkey_reg_device_name', None)
-    token_name = flask_session.pop('passkey_reg_token_name', None)
-    if not reg_state or not device_name or not token_name:
+    passkey_state_id = flask_session.pop('passkey_state_id', None)
+    if not passkey_state_id:
         return jsonify({"error": gettext("No passkey registration in progress")}), 400
     registration_data = request.json
     if not registration_data:
@@ -444,10 +464,8 @@ def passkey_register_complete():
             command="passkey_register_complete",
             extra_args={
                 'rp_id'             : rp_id,
-                'passkey_reg_state' : reg_state,
+                'passkey_state_id'  : passkey_state_id,
                 'registration_data' : registration_data,
-                'device_name'       : device_name,
-                'token_name'        : token_name,
             },
             default_error=gettext("Failed to complete passkey registration."),
             mgmt=True)
@@ -462,8 +480,6 @@ def passkey_register_complete():
 @app.route('/settings/passkeys/delete', methods=['POST'])
 @login_required
 def del_passkey():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     token_name = (data.get('name') or '').strip()
     if not token_name:
@@ -480,8 +496,6 @@ def del_passkey():
 @app.route('/settings/oidc_consents', methods=['GET'])
 @login_required
 def list_oidc_consents():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     try:
         response, error = _send_ssod_command(
                 command="list_oidc_consents",
@@ -500,8 +514,6 @@ def list_oidc_consents():
 @app.route('/settings/oidc_consents/revoke', methods=['POST'])
 @login_required
 def revoke_oidc_consent():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     client_uuid = (data.get('client_uuid') or '').strip()
     if not client_uuid:
@@ -527,8 +539,6 @@ def revoke_oidc_consent():
 @login_required
 def settings_redeploy():
     """ Trigger re-deploy of the login token via the normal deploy flow. """
-    if not g.user.is_authenticated:
-        return redirect(url_for('login', _external=True, _scheme='https'))
     flask_session['sso_deploy'] = True
     flask_session['sso_deploy_optional'] = True
     return redirect(url_for('deploy', _external=True, _scheme='https'))
@@ -536,8 +546,6 @@ def settings_redeploy():
 @app.route('/change_password', methods=['POST'])
 @login_required
 def change_password():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json
     if not data:
         return jsonify({"error": gettext("Missing data")}), 400
@@ -548,8 +556,6 @@ def change_password():
         return jsonify({"error": gettext("All fields are required.")}), 400
     if new_password != confirm_password:
         return jsonify({"error": gettext("New passwords do not match.")}), 400
-    if len(new_password) < 1:
-        return jsonify({"error": gettext("Password must not be empty.")}), 400
     login_token_pass_type = flask_session.get("login_token_pass_type")
     if login_token_pass_type != "static":
         return jsonify({"error": gettext("Token does not support password change.")}), 400
@@ -590,8 +596,6 @@ def change_password():
 @app.route('/change_pin', methods=['POST'])
 @login_required
 def change_pin():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json
     if not data:
         return jsonify({"error": gettext("Missing data")}), 400
@@ -602,8 +606,6 @@ def change_pin():
         return jsonify({"error": gettext("All fields are required.")}), 400
     if new_pin != confirm_pin:
         return jsonify({"error": gettext("New PINs do not match.")}), 400
-    if len(new_pin) < 1:
-        return jsonify({"error": gettext("PIN must not be empty.")}), 400
     login_token_pass_type = flask_session.get("login_token_pass_type")
     if login_token_pass_type != "otp":
         return jsonify({"error": gettext("Token does not support PIN change.")}), 400
@@ -645,8 +647,6 @@ def change_pin():
 def change_language():
     """ Persist the user's language preference. Accepts the literal
     "default" to clear the pref (revert to Accept-Language). """
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     data = request.json or {}
     language = data.get('language', '')
     if not language:
@@ -673,8 +673,6 @@ def change_language():
 @app.route('/deploy')
 @login_required
 def deploy():
-    if not g.user.is_authenticated:
-        return redirect(url_for('login', _external=True, _scheme='https'))
     sso_deploy = flask_session.get('sso_deploy')
     if not sso_deploy:
         return redirect(url_for('index', _external=True, _scheme='https'))
@@ -704,8 +702,6 @@ def deploy():
 @app.route('/deploy/begin', methods=['POST'])
 @login_required
 def deploy_begin():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     sso_deploy = flask_session.get('sso_deploy')
     if not sso_deploy:
         return jsonify({"error": gettext("Deployment not required")}), 400
@@ -779,8 +775,6 @@ def deploy_begin():
 @app.route('/deploy/verify', methods=['POST'])
 @login_required
 def deploy_verify():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     token_data = request.json or {}
     deploy_name = flask_session.get('deploy_token_name')
     login_token_name = flask_session.get('deploy_login_token_name')
@@ -840,23 +834,115 @@ def deploy_verify():
         "redirect": url_for('index', _external=True, _scheme='https'),
     })
 
+def _site_rate_limit(name):
+    """ Read a site-level Flask-Limiter rate-limit string. Falls back
+    to None on lookup failure so the @limiter.limit decorator can plug
+    in a hardcoded default. backend.get_object is cached so the
+    per-request cost stays small. """
+    try:
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is not None:
+            return site.get_config_parameter(name)
+    except Exception as e:
+        log_msg = _("Rate-limit lookup for {name} failed: {error}", log=True)[1]
+        log_msg = log_msg.format(name=name, error=e)
+        logger.debug(log_msg)
+    return None
+
+
+def _rate_limit_login():
+    return _site_rate_limit("sso_rate_limit_login") or "100/minute"
+
+
+def _rate_limit_login_user():
+    return _site_rate_limit("sso_rate_limit_login_user") or "10/minute"
+
+
+def _login_username_key():
+    """ Rate-limit key for /login POST: the submitted username, so NAT
+    pools (corporate / mobile carrier) don't share a bucket. Falls
+    back to remote IP for GET requests or when no username given. """
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip().lower()
+        if username:
+            return f"login-user:{username}"
+    from otpme.web.app import _ratelimit_key
+    return _ratelimit_key()
+
+
+def _fido2_auth_username_key():
+    """ Rate-limit key for /fido2/auth/begin: username from JSON body. """
+    try:
+        data = request.get_json(silent=True) or {}
+    except Exception as e:
+        log_msg = _("Rate-limit key: get_json failed: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        logger.debug(log_msg)
+        data = {}
+    username = (data.get('username') or '').strip().lower()
+    if username:
+        return f"fido2-user:{username}"
+    from otpme.web.app import _ratelimit_key
+    return _ratelimit_key()
+
+
+def no_store(response):
+    """ Mark a response as non-cacheable for endpoints that carry
+    one-shot tokens or credentials (SOTP, OIDC token-bearing
+    endpoints). Browsers and proxies otherwise might keep the response
+    in cache and serve it again later.
+
+    Spec: RFC 6749 §5.1 "Successful Response"
+      (Cache-Control: no-store, Pragma: no-cache MUST be set)
+      https://datatracker.ietf.org/doc/html/rfc6749#section-5.1
+    Spec: OIDC Core 1.0 §3.1.3.3 "Successful Token Response"
+      https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
+    """
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+
 def _safe_next_url(next_url):
-    """ Validate a ``next=`` redirect target. Only same-app local
-    paths are accepted: must start with '/' and must NOT start with
-    '//' or 'http(s)://' (open-redirect defense). Returns the URL
-    if safe, else None.
+    """ Validate a ``next=`` redirect target. Returns the input
+    unchanged if it resolves to a same-origin http(s) URL after
+    urljoin-normalization, else None.
     """
     if not next_url:
         return None
-    if not next_url.startswith('/'):
+    # ASCII control chars + DEL are stripped by some browsers BEFORE
+    # URL parsing, so "\t//evil.com" could pass urljoin (which sees the
+    # control char and keeps a plausible-looking path) but the browser
+    # would later normalize the Location: response into a scheme-
+    # relative redirect. Reject anything containing them.
+    for ch in next_url:
+        if ch <= '\x20' or ch == '\x7f':
+            return None
+    # urljoin normalizes the input against our own origin and then
+    # urlparse exposes the resolved scheme/netloc:
+    #   "/foo"           -> https://host/foo                 (relative)
+    #   "//evil.com/x"   -> https://evil.com/x               (scheme-relative)
+    #   "https://evil/x" -> https://evil/x                   (absolute)
+    #   "javascript:..." -> "javascript:..."                 (no scheme/host)
+    ref = urlparse(request.host_url)
+    test = urlparse(urljoin(request.host_url, next_url))
+    if test.scheme not in ('http', 'https'):
         return None
-    # '//foo' is an interpretable scheme-relative URL; reject.
-    if next_url.startswith('//'):
+    if test.netloc != ref.netloc:
         return None
     return next_url
 
 
 @app.route('/login', methods=['GET', 'POST'])
+# Two stacked limits: per-username keeps single-account brute force in
+# check even from large NAT pools; per-IP is a coarser DoS guard
+# against username-rotation attacks. Both must pass. The actual values
+# are read from the site config (sso_rate_limit_login_user /
+# sso_rate_limit_login) at request time -- admins can tune them via
+# the management commands.
+@limiter.limit(_rate_limit_login_user, key_func=_login_username_key,
+               methods=['POST'])
+@limiter.limit(_rate_limit_login, methods=['POST'])
 def login():
     # Stash the optional ``next=`` target in the flask session so it
     # survives the form-submission roundtrip (the POST won't carry
@@ -872,9 +958,14 @@ def login():
         return redirect(target)
     form = LoginForm()
     if not form.validate_on_submit():
+        # Prefill the username field from a previous failed attempt
+        # (set by the auth-failure redirect path below). pop() so a
+        # later unrelated visit doesn't resurface it.
+        prev_username = flask_session.pop('login_prev_username', '')
+        if prev_username and not form.username.data:
+            form.username.data = prev_username
         return render_template('login.html',
                                title=gettext('Sign In'),
-                               user=None,
                                form=form)
     # Get client IP.
     client_ip = check_forwarded_for()[0]
@@ -905,11 +996,16 @@ def login():
         log_msg = f"{log_msg}: {e}"
         logger.critical(log_msg)
         flash(gettext("Login failed."))
+        # Stash the typed-in username so the login form prefills it
+        # after the redirect-after-POST roundtrip -- the form object
+        # is discarded here, but the user shouldn't have to retype.
+        flask_session['login_prev_username'] = username
         return redirect(url_for('login', _external=True, _scheme='https'))
     finally:
         authd_conn.close()
     if not auth_status:
         flash(gettext("Login failed."))
+        flask_session['login_prev_username'] = username
         return redirect(url_for('login', _external=True, _scheme='https'))
     try:
         login_token_pass_type = auth_response['login_token_pass_type']
@@ -1026,8 +1122,10 @@ def _do_sso_logout(response, skip_backchannel_client=None,
             finally:
                 try:
                     authd_conn.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_msg = _("Logout: authd_conn.close failed: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    logger.debug(log_msg)
     logout_user()
     return response
 
@@ -1057,14 +1155,16 @@ def reauth():
     form.username.data = username
     return render_template('login.html',
                            title=gettext('Re-authenticate'),
-                           user=None,
                            form=form,
                            reauth=True,
                            reauth_username=username)
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def logout():
-    next_url = _safe_next_url(request.args.get('next'))
+    # POST-only: a GET /logout (e.g. via <img src> on a third-party
+    # site) would log the user out without their consent. The navbar
+    # template renders Logout as a small POST form with a CSRF token.
+    next_url = _safe_next_url(request.form.get('next'))
     if not g.user:
         return redirect(url_for('login', next=next_url, _external=True, _scheme='https'))
     resp = make_response(redirect(url_for('login', next=next_url, _external=True, _scheme='https')))
@@ -1073,8 +1173,6 @@ def logout():
 @app.route('/get_apps')
 @login_required
 def get_apps():
-    if not g.user.is_authenticated:
-        return jsonify([])
     response, error = _send_ssod_command(command="get_apps",
                         default_error=gettext("Failed to get app list."))
     if error:
@@ -1084,16 +1182,18 @@ def get_apps():
         app_data = response.get('app_data', [])
     return jsonify(app_data)
 
-@app.route('/get_sotp')
+@app.route('/get_sotp', methods=['POST'])
 @login_required
 def get_sotp():
+    # POST + JSON body (was GET + ?access_group=...): keeps the
+    # access-group name out of access logs / browser history / Referer
+    # headers. Response is no_store()'d so the one-shot SOTP can't be
+    # served from cache later.
     sotp_data = None
-    if not g.user.is_authenticated:
-        return jsonify(sotp_data)
-    try:
-        access_group = request.args['access_group']
-    except KeyError:
-        return jsonify(sotp_data)
+    data = request.json or {}
+    access_group = data.get('access_group')
+    if not access_group:
+        return no_store(jsonify(sotp_data))
     sso_jwt = request.cookies.get('otpme_jwt')
     session_uuid = request.cookies.get('otpme_sso_session')
     client_ip = check_forwarded_for()[0]
@@ -1118,7 +1218,8 @@ def get_sotp():
         log_msg = log_msg.format(user_name=g.user.name)
         log_msg = f"{log_msg}: {e}"
         logger.critical(log_msg)
-        return jsonify({"error": gettext("Failed to get SOTP.")}), 500
+        return no_store(make_response(
+                jsonify({"error": gettext("Failed to get SOTP.")}), 500))
     finally:
         ssod_conn.close()
     if not status:
@@ -1132,17 +1233,16 @@ def get_sotp():
                     "error": gettext("Session expired. Please log in again."),
                     "redirect": url_for('login', _external=True, _scheme='https'),
                 }), 401)
-            return _do_sso_logout(resp)
-        return jsonify({"error": error_msg}), 400
-    return jsonify(sotp_data)
+            return no_store(_do_sso_logout(resp))
+        return no_store(make_response(
+                jsonify({"error": error_msg}), 400))
+    return no_store(jsonify(sotp_data))
 
 # ---- FIDO2 Registration (logged-in user registers a security key) ----
 
 @app.route('/fido2/register/begin', methods=['POST'])
 @login_required
 def fido2_register_begin():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
     rp_id = _get_fido2_rp_id()
     sso_jwt = request.cookies.get('otpme_jwt')
     is_deploy = flask_session.get('deploy_token_name') is not None
@@ -1174,21 +1274,19 @@ def fido2_register_begin():
         error_msg = _ssod_error_message(fido2_reg_data, "Failed to start fido2 registration.")
         return jsonify({"error": error_msg}), 400
     create_options = fido2_reg_data['create_options']
-    fido2_reg_state = fido2_reg_data['fido2_reg_state']
-    fido2_reg_token_uuid = fido2_reg_data['fido2_reg_token_uuid']
-    # Store state in Flask session.
-    flask_session['fido2_reg_state'] = fido2_reg_state
-    flask_session['fido2_reg_token_uuid'] = fido2_reg_token_uuid
+    # State lives on the ssod-side master node in
+    # multiprocessing.fido2_reg_states keyed by an opaque state-id.
+    # Registration always routes through the master (mgmt=True; no
+    # multi-master in OTPme), so the Flask session only carries the
+    # state-id -- no WebAuthn challenge / token-uuid leak via cookie.
+    flask_session['fido2_state_id'] = fido2_reg_data['fido2_state_id']
     return json.dumps(create_options), 200, {'Content-Type': 'application/json'}
 
 @app.route('/fido2/register/complete', methods=['POST'])
 @login_required
 def fido2_register_complete():
-    if not g.user.is_authenticated:
-        return jsonify({"error": gettext("Not authenticated")}), 401
-    reg_state = flask_session.pop('fido2_reg_state', None)
-    token_uuid = flask_session.pop('fido2_reg_token_uuid', None)
-    if not reg_state or not token_uuid:
+    fido2_state_id = flask_session.pop('fido2_state_id', None)
+    if not fido2_state_id:
         return jsonify({"error": gettext("No registration in progress")}), 400
     registration_data = request.json
     if not registration_data:
@@ -1202,8 +1300,7 @@ def fido2_register_complete():
                     'client'            : config.sso_client_name,
                     'client_ip'         : client_ip,
                     'rp_id'             : rp_id,
-                    'reg_state'         : reg_state,
-                    'token_uuid'        : token_uuid,
+                    'fido2_state_id'    : fido2_state_id,
                     'registration_data' : registration_data,
                 }
     ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
@@ -1233,6 +1330,13 @@ def fido2_register_complete():
 # ---- FIDO2 Authentication (login with security key) ----
 
 @app.route('/fido2/auth/begin', methods=['POST'])
+# Stacked per-username + per-IP limits, sharing the site-level
+# sso_rate_limit_login_user / sso_rate_limit_login configs with the
+# /login route. FIDO2 is cryptographically bruteforce-resistant; the
+# limits here primarily address enumeration (timing differences leak
+# user existence) and DoS.
+@limiter.limit(_rate_limit_login_user, key_func=_fido2_auth_username_key)
+@limiter.limit(_rate_limit_login)
 def fido2_auth_begin():
     data = request.json
     if not data or 'username' not in data:
@@ -1265,11 +1369,14 @@ def fido2_auth_begin():
         error_msg = _ssod_error_message(auth_response, "Failed to start fido2 authentication.")
         return jsonify({"error": error_msg}), 400
     request_options = auth_response['request_options']
-    # Store state in Flask session.
+    # Store state in Flask session. The credential->token_name map
+    # is intentionally NOT stashed here -- it now lives server-side in
+    # authd's fido2_auth_states shared dict, so the synthetic
+    # "decoy-N" names for unknown users never leak via the (signed
+    # but unencrypted) Flask session cookie.
     flask_session['fido2_auth_username'] = str(username)
     flask_session['fido2_state_id'] = auth_response['fido2_state_id']
     flask_session['fido2_auth_node'] = auth_response['fido2_auth_node']
-    flask_session['fido2_credential_token_map'] = auth_response['fido2_credential_token_map']
     return json.dumps(dict(request_options)), 200, {'Content-Type': 'application/json'}
 
 @app.route('/fido2/auth/complete', methods=['POST'])
@@ -1277,18 +1384,16 @@ def fido2_auth_complete():
     fido2_state_id = flask_session.pop('fido2_state_id', None)
     fido2_auth_node = flask_session.pop('fido2_auth_node', None)
     username = flask_session.pop('fido2_auth_username', None)
-    credential_token_map = flask_session.pop('fido2_credential_token_map', {})
     if not fido2_state_id or not fido2_auth_node or not username:
         return jsonify({"error": gettext("No authentication in progress")}), 400
     auth_response = request.json
     if not auth_response:
         return jsonify({"error": gettext("Missing auth response")}), 400
-    # Find the matching token by credential ID from the response.
-    response_cred_id = auth_response.get('id', '')
-    matched_token_name = credential_token_map.get(response_cred_id)
-    if not matched_token_name:
-        logger.warning(f"FIDO2 auth: no token found for credential ID: {response_cred_id}")
-        return jsonify({"error": gettext("Login failed")}), 401
+    # The credential -> token_name lookup now happens in authd, against
+    # the server-side fido2_auth_states map cached at begin time. Web
+    # layer just forwards the assertion -- no early "no matching
+    # token" 401 here, which would itself be a side-channel against
+    # decoy credential_ids returned for unknown users.
     rp_id = _get_fido2_rp_id()
     sso_jwt = request.cookies.get('otpme_jwt')
     client_ip = check_forwarded_for()[0]
@@ -1306,7 +1411,6 @@ def fido2_auth_complete():
                     'rp_id'             : rp_id,
                     'fido2_state_id'    : fido2_state_id,
                     'auth_response'     : auth_response,
-                    'matched_token_name': matched_token_name,
                 }
     if reauth_mode:
         verify_args['reauth'] = True

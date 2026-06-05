@@ -27,12 +27,14 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_pass
+from otpme.lib.idle import notify
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.role import get_roles
+from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.register import register_module
@@ -142,6 +144,7 @@ commands = {
                                         'max_policies',
                                         'max_scopes',
                                         'max_roles',
+                                        'limit',
                                         'sort_by',
                                         'reverse',
                                         'header',
@@ -1588,8 +1591,7 @@ class Token(OTPmeObject):
             elif return_type == "uuid":
                 result.append(share.uuid)
             elif return_type == "path":
-                share_id = f"{share.site}/{share.name}"
-                result.append(share_id)
+                result.append(share.share_id)
             else:
                 msg = _("Invalid resturn type: {return_type}")
                 msg = msg.format(return_type=return_type)
@@ -3768,6 +3770,110 @@ class Token(OTPmeObject):
         if internal_object:
             return True
         return False
+
+    def _shares_data_for_notify(self):
+        """ Build the per-share notify dict for every share this token
+        reaches (directly or via roles). Returns {} if the token isn't
+        wired to any share.
+
+        skip_disabled=False so a share that was disabled while still
+        mounted on the agent still shows up in the unmount payload --
+        we don't want a missed share.disable notification to leave
+        stale mounts behind. """
+        token_shares = self.get_shares(skip_disabled=False,
+                                       return_type="instance")
+        shares_data = {}
+        for share in token_shares:
+            share_nodes = share.get_nodes(include_pools=True,
+                                          return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=share.realm,
+                                            site=share.site,
+                                            return_type="instance")
+            if not share_nodes:
+                continue
+            node_fqdns = [node.fqdn for node in share_nodes]
+            share_hosts = []
+            if share.limit_by_hosts:
+                share_hosts = share.get_hosts(include_groups=True,
+                                              return_type="name")
+            share_id = share.share_id
+            shares_data[share_id] = {
+                'name': share.name,
+                'site': share.site,
+                'nodes': node_fqdns,
+                'limit_hosts': share.limit_by_hosts,
+                'hosts': share_hosts,
+                'encrypted': share.encrypted,
+                'tokens': [self.rel_path],
+                'persist': True,
+            }
+        return shares_data
+
+    @check_acls(['enable:object'])
+    @object_lock()
+    def enable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Send share_mount notifications on enable.
+
+        Once the token is enabled again, share.get_tokens
+        (skip_disabled=True) starts returning it, so any share it can
+        reach should be (re)mounted by the agent. Over-notification
+        for shares the user already had via other tokens is harmless
+        -- the agent's mount handler is idempotent. """
+        if not self.owner or self.owner == ADMIN_USER:
+            return super().enable(*args, callback=callback, **kwargs)
+        result = super().enable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+        shares_data = self._shares_data_for_notify()
+        if shares_data:
+            owner = self.owner
+            def post_method():
+                notify(username=owner,
+                       event_type="share_mount",
+                       data=shares_data)
+            callback.post_methods.append(post_method)
+        return result
+
+    @check_acls(['disable:object'])
+    @object_lock()
+    def disable(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Send share_unmount notifications on disable.
+
+        The token is going away from share.get_tokens
+        (skip_disabled=True). Tell the owner's agent that this
+        specific token no longer grants access -- the agent decides
+        whether to unmount (no other token reaches the share) or
+        keep the mount (the user still has access via a different
+        token). Snapshot BEFORE super().disable so we still see the
+        reachable shares even if the disable cascade strips them. """
+        if not self.owner or self.owner == ADMIN_USER:
+            return super().disable(*args, callback=callback, **kwargs)
+        shares_data = self._shares_data_for_notify()
+        result = super().disable(*args, callback=callback, **kwargs)
+        if not result:
+            return result
+        if shares_data:
+            owner = self.owner
+            def post_method():
+                notify(username=owner,
+                       event_type="share_unmount",
+                       data=shares_data)
+            callback.post_methods.append(post_method)
+        return result
 
     @object_lock(full_lock=True)
     @backend.transaction

@@ -5,8 +5,25 @@
         return document.getElementById('page-data').dataset;
     }
 
+    function getPageI18n() {
+        const el = document.getElementById('page-i18n');
+        return el ? el.dataset : {};
+    }
+
+    // Substitute {name}-style placeholders in a translated string
+    // client-side. We avoid %(name)s here because Jinja-Babel's
+    // gettext eagerly runs a %-format on the result and raises
+    // KeyError when the template doesn't pass the substitution
+    // value -- our placeholders are expanded only later, in JS, so
+    // {name} is the safe carrier syntax that survives gettext.
+    function interpolate(template, vars) {
+        return template.replace(/\{(\w+)\}/g, (_, k) =>
+                (vars[k] !== undefined ? vars[k] : ''));
+    }
+
     async function changePassword() {
         const urls = getUrls();
+        const i18n = getPageI18n();
         const statusEl = document.getElementById('pwStatus');
         const errorEl = document.getElementById('pwError');
         statusEl.textContent = '';
@@ -17,22 +34,21 @@
         const confirmPassword = document.getElementById('confirmPassword').value;
 
         if (!currentPassword || !newPassword || !confirmPassword) {
-            errorEl.textContent = 'All fields are required.';
+            errorEl.textContent = i18n.labelAllFieldsRequired || 'All fields are required.';
             return;
         }
         if (newPassword !== confirmPassword) {
-            errorEl.textContent = 'New passwords do not match.';
+            errorEl.textContent = i18n.labelNewPasswordsMismatch || 'New passwords do not match.';
             return;
         }
 
         const btn = document.getElementById('changePwBtn');
         btn.disabled = true;
-        statusEl.textContent = 'Changing password...';
+        statusEl.textContent = i18n.labelChangingPassword || 'Changing password...';
 
         try {
-            const resp = await fetch(urls.urlChangePassword, {
+            const resp = await fetchJSON(urls.urlChangePassword, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     current_password: currentPassword,
                     new_password: newPassword,
@@ -41,14 +57,14 @@
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Password change failed.');
+                throw new Error(result.error || i18n.labelPasswordFailed || 'Password change failed.');
             }
-            statusEl.textContent = result.message || 'Password changed successfully.';
+            statusEl.textContent = result.message || i18n.labelPasswordSuccess || 'Password changed successfully.';
             document.getElementById('currentPassword').value = '';
             document.getElementById('newPassword').value = '';
             document.getElementById('confirmPassword').value = '';
         } catch (e) {
-            errorEl.textContent = e.message || 'Password change failed.';
+            errorEl.textContent = e.message || i18n.labelPasswordFailed || 'Password change failed.';
             statusEl.textContent = '';
         } finally {
             btn.disabled = false;
@@ -57,6 +73,7 @@
 
     async function changePin() {
         const urls = getUrls();
+        const i18n = getPageI18n();
         const statusEl = document.getElementById('pinStatus');
         const errorEl = document.getElementById('pinError');
         statusEl.textContent = '';
@@ -67,22 +84,21 @@
         const confirmPin = document.getElementById('confirmPin').value;
 
         if (!currentPin || !newPin || !confirmPin) {
-            errorEl.textContent = 'All fields are required.';
+            errorEl.textContent = i18n.labelAllFieldsRequired || 'All fields are required.';
             return;
         }
         if (newPin !== confirmPin) {
-            errorEl.textContent = 'New PINs do not match.';
+            errorEl.textContent = i18n.labelNewPinsMismatch || 'New PINs do not match.';
             return;
         }
 
         const btn = document.getElementById('changePinBtn');
         btn.disabled = true;
-        statusEl.textContent = 'Changing PIN...';
+        statusEl.textContent = i18n.labelChangingPin || 'Changing PIN...';
 
         try {
-            const resp = await fetch(urls.urlChangePin, {
+            const resp = await fetchJSON(urls.urlChangePin, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     current_pin: currentPin,
                     new_pin: newPin,
@@ -91,14 +107,14 @@
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'PIN change failed.');
+                throw new Error(result.error || i18n.labelPinFailed || 'PIN change failed.');
             }
-            statusEl.textContent = result.message || 'PIN changed successfully.';
+            statusEl.textContent = result.message || i18n.labelPinSuccess || 'PIN changed successfully.';
             document.getElementById('currentPin').value = '';
             document.getElementById('newPin').value = '';
             document.getElementById('confirmPin').value = '';
         } catch (e) {
-            errorEl.textContent = e.message || 'PIN change failed.';
+            errorEl.textContent = e.message || i18n.labelPinFailed || 'PIN change failed.';
             statusEl.textContent = '';
         } finally {
             btn.disabled = false;
@@ -162,15 +178,15 @@
             <div class="settings-form">
                 <label for="${ids.nameInput}"></label>
                 <input type="text" id="${ids.nameInput}" autocomplete="off">
-                <button type="button" id="${ids.addBtn}" class="btn btn-primary" style="margin-top:8px;"></button>
+                <button type="button" id="${ids.addBtn}" class="btn btn-primary mt-8"></button>
                 <div class="status-msg" id="${ids.status}"></div>
                 <div class="error-msg" id="${ids.error}"></div>
             </div>
-            <div id="${ids.result}" class="device-token-reveal" style="display:none;">
+            <div id="${ids.result}" class="device-token-reveal is-hidden">
                 <div>
                     <strong></strong>
                     <code id="${ids.password}"></code>
-                    <button type="button" id="${ids.copyBtn}" class="btn btn-secondary btn-small" style="margin-left:8px;"></button>
+                    <button type="button" id="${ids.copyBtn}" class="btn btn-secondary btn-small ml-8"></button>
                 </div>
                 <span class="hint"></span>
             </div>
@@ -180,7 +196,7 @@
         card.querySelector('h3').textContent = heading;
         const descEl = card.querySelector('p.settings-desc');
         descEl.textContent = role.role_info || '';
-        descEl.style.display = role.role_info ? '' : 'none';
+        descEl.classList.toggle('is-hidden', !role.role_info);
         card.querySelector(`label[for="${ids.nameInput}"]`).textContent = i18n.labelDeviceName || 'Device Name';
         card.querySelector(`#${ids.nameInput}`).placeholder = i18n.labelDeviceNamePlaceholder || '';
         card.querySelector(`#${ids.addBtn}`).textContent = i18n.labelAddDeviceToken || 'Add Device Token';
@@ -201,8 +217,8 @@
         if (pendingReveal && pendingReveal.role_uuid === role.role_uuid) {
             const resultEl = card.querySelector(`#${ids.result}`);
             card.querySelector(`#${ids.password}`).textContent = pendingReveal.password;
-            resultEl.style.display = 'block';
-            card.querySelector(`#${ids.status}`).textContent = 'Device token created.';
+            resultEl.classList.remove('is-hidden');
+            card.querySelector(`#${ids.status}`).textContent = getPageI18n().labelDeviceTokenCreated || 'Device token created.';
             pendingReveal = null;
             // Scroll the reveal into view once the card is in the DOM.
             // rAF waits for layout after the parent append in
@@ -242,32 +258,33 @@
 
     async function loadDeviceTokens() {
         const urls = getUrls();
+        const pageI18n = getPageI18n();
         const container = document.getElementById('deviceRolesContainer');
         const disabledHint = document.getElementById('deviceDisabledHint');
         container.innerHTML = '';
         try {
-            const resp = await fetch(urls.urlListDeviceTokens);
+            const resp = await fetchJSON(urls.urlListDeviceTokens);
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to load device tokens.');
+                throw new Error(result.error || pageI18n.labelFailedLoadDeviceTokens || 'Failed to load device tokens.');
             }
             const rolesConfigured = !!result.roles_configured;
             const roles = result.roles || [];
             if (!rolesConfigured || roles.length === 0) {
-                disabledHint.style.display = '';
+                disabledHint.classList.remove('is-hidden');
                 return;
             }
-            disabledHint.style.display = 'none';
+            disabledHint.classList.add('is-hidden');
             for (const role of roles) {
                 container.appendChild(buildRoleCard(role));
             }
         } catch (e) {
-            disabledHint.style.display = 'none';
+            disabledHint.classList.add('is-hidden');
             const errCard = document.createElement('div');
             errCard.className = 'settings-card';
             const p = document.createElement('p');
             p.className = 'error-msg';
-            p.textContent = e.message || 'Failed to load device tokens.';
+            p.textContent = e.message || pageI18n.labelFailedLoadDeviceTokens || 'Failed to load device tokens.';
             errCard.appendChild(p);
             container.appendChild(errCard);
         }
@@ -275,32 +292,32 @@
 
     async function addDeviceToken(roleUuid, ids) {
         const urls = getUrls();
+        const i18n = getPageI18n();
         const statusEl = document.getElementById(ids.status);
         const errorEl = document.getElementById(ids.error);
         const resultEl = document.getElementById(ids.result);
         statusEl.textContent = '';
         errorEl.textContent = '';
-        resultEl.style.display = 'none';
+        resultEl.classList.add('is-hidden');
 
         const deviceName = document.getElementById(ids.nameInput).value.trim();
         if (!deviceName) {
-            errorEl.textContent = 'Device name is required.';
+            errorEl.textContent = i18n.labelDeviceNameRequired || 'Device name is required.';
             return;
         }
 
         const btn = document.getElementById(ids.addBtn);
         btn.disabled = true;
-        statusEl.textContent = 'Adding device token...';
+        statusEl.textContent = i18n.labelAddingDeviceToken || 'Adding device token...';
 
         try {
-            const resp = await fetch(urls.urlAddDeviceToken, {
+            const resp = await fetchJSON(urls.urlAddDeviceToken, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({device_name: deviceName, role_uuid: roleUuid}),
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to add device token.');
+                throw new Error(result.error || i18n.labelFailedAddDeviceToken || 'Failed to add device token.');
             }
             // Stash the password for the next render to pick up — the
             // current card (incl. resultEl/passwordEl/statusEl) is about
@@ -309,7 +326,7 @@
             document.getElementById(ids.nameInput).value = '';
             loadDeviceTokens();
         } catch (e) {
-            errorEl.textContent = e.message || 'Failed to add device token.';
+            errorEl.textContent = e.message || i18n.labelFailedAddDeviceToken || 'Failed to add device token.';
             statusEl.textContent = '';
         } finally {
             btn.disabled = false;
@@ -318,18 +335,19 @@
 
     async function deleteDeviceToken(name, label) {
         const urls = getUrls();
-        if (!confirm('Delete device token "' + label + '"?')) {
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmDeleteDeviceToken || 'Delete device token "%(name)s"?';
+        if (!confirm(interpolate(tpl, {name: label}))) {
             return;
         }
         try {
-            const resp = await fetch(urls.urlDelDeviceToken, {
+            const resp = await fetchJSON(urls.urlDelDeviceToken, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({name: name}),
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to delete device token.');
+                throw new Error(result.error || i18n.labelFailedDeleteDeviceToken || 'Failed to delete device token.');
             }
             loadDeviceTokens();
         } catch (e) {
@@ -342,56 +360,44 @@
     async function copyDevicePassword(ids) {
         const pw = document.getElementById(ids.password).textContent;
         if (!pw) return;
+        const i18n = getPageI18n();
         try {
             await navigator.clipboard.writeText(pw);
-            document.getElementById(ids.status).textContent = 'Password copied to clipboard.';
+            document.getElementById(ids.status).textContent = i18n.labelPasswordCopied || 'Password copied to clipboard.';
         } catch (e) {
-            document.getElementById(ids.error).textContent = 'Failed to copy password.';
+            document.getElementById(ids.error).textContent = i18n.labelFailedCopyPassword || 'Failed to copy password.';
         }
     }
 
     // ---- Passkeys ----
 
-    function base64urlToBuffer(base64url) {
-        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - base64.length % 4) % 4);
-        const binary = atob(base64 + padding);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return bytes.buffer;
-    }
-
-    function bufferToBase64url(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (const byte of bytes) binary += String.fromCharCode(byte);
-        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
+    const {base64urlToBuffer, bufferToBase64url} = window.WebAuthnUtils;
 
     async function loadPasskeys() {
         const urls = getUrls();
+        const i18n = getPageI18n();
         const card = document.getElementById('passkeyCard');
         const listEl = document.getElementById('passkeyList');
         if (!listEl) return;
         listEl.innerHTML = '';
         try {
-            const resp = await fetch(urls.urlListPasskeys);
+            const resp = await fetchJSON(urls.urlListPasskeys);
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to load passkeys.');
+                throw new Error(result.error || i18n.labelFailedLoadPasskeys || 'Failed to load passkeys.');
             }
             // Server gates the card on sso_allow_passkeys. Keep it hidden
             // entirely when disabled — no listing, no add form.
             if (result.allowed === false) {
-                if (card) card.style.display = 'none';
+                if (card) card.classList.add('is-hidden');
                 return;
             }
-            if (card) card.style.display = '';
+            if (card) card.classList.remove('is-hidden');
             const passkeys = result.passkeys || [];
             if (passkeys.length === 0) {
                 const li = document.createElement('li');
                 li.className = 'empty';
-                li.textContent = 'No passkeys yet.';
+                li.textContent = i18n.labelNoPasskeys || 'No passkeys yet.';
                 listEl.appendChild(li);
                 return;
             }
@@ -404,7 +410,7 @@
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-secondary btn-small';
-                btn.textContent = 'Delete';
+                btn.textContent = i18n.labelDeleteBtn || 'Delete';
                 btn.addEventListener('click',
                     () => deletePasskey(p.name, p.device_name || p.name));
                 li.appendChild(btn);
@@ -413,46 +419,46 @@
         } catch (e) {
             const li = document.createElement('li');
             li.className = 'error-msg';
-            li.textContent = e.message || 'Failed to load passkeys.';
+            li.textContent = e.message || i18n.labelFailedLoadPasskeys || 'Failed to load passkeys.';
             listEl.appendChild(li);
         }
     }
 
     async function addPasskey() {
         const urls = getUrls();
+        const i18n = getPageI18n();
         const statusEl = document.getElementById('passkeyStatus');
         const errorEl = document.getElementById('passkeyError');
         statusEl.textContent = '';
         errorEl.textContent = '';
 
         if (!window.isSecureContext) {
-            errorEl.textContent = 'WebAuthn requires HTTPS.';
+            errorEl.textContent = i18n.labelHttpsRequired || 'WebAuthn requires HTTPS.';
             return;
         }
         if (!window.PublicKeyCredential) {
-            errorEl.textContent = 'WebAuthn is not supported in this browser.';
+            errorEl.textContent = i18n.labelWebauthnUnsupported || 'WebAuthn is not supported in this browser.';
             return;
         }
 
         const deviceName = document.getElementById('passkeyName').value.trim();
         if (!deviceName) {
-            errorEl.textContent = 'Passkey name is required.';
+            errorEl.textContent = i18n.labelPasskeyNameRequired || 'Passkey name is required.';
             return;
         }
 
         const btn = document.getElementById('addPasskeyBtn');
         btn.disabled = true;
-        statusEl.textContent = 'Preparing passkey registration...';
+        statusEl.textContent = i18n.labelPreparingPasskey || 'Preparing passkey registration...';
 
         try {
-            const beginResp = await fetch(urls.urlPasskeyRegisterBegin, {
+            const beginResp = await fetchJSON(urls.urlPasskeyRegisterBegin, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({device_name: deviceName}),
             });
             const beginResult = await beginResp.json();
             if (!beginResp.ok) {
-                throw new Error(beginResult.error || 'Failed to start passkey registration.');
+                throw new Error(beginResult.error || i18n.labelFailedStartPasskey || 'Failed to start passkey registration.');
             }
 
             // python-fido2 serialises challenge/user.id/excludeCredentials[].id
@@ -467,7 +473,7 @@
                 }));
             }
 
-            statusEl.textContent = 'Confirm on your device to create the passkey...';
+            statusEl.textContent = i18n.labelConfirmPasskey || 'Confirm on your device to create the passkey...';
             const credential = await navigator.credentials.create({publicKey: publicKey});
 
             const regResponse = {
@@ -481,24 +487,23 @@
                 clientExtensionResults: credential.getClientExtensionResults(),
             };
 
-            statusEl.textContent = 'Completing registration...';
-            const completeResp = await fetch(urls.urlPasskeyRegisterComplete, {
+            statusEl.textContent = i18n.labelCompletingPasskey || 'Completing registration...';
+            const completeResp = await fetchJSON(urls.urlPasskeyRegisterComplete, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(regResponse),
             });
             const completeResult = await completeResp.json();
             if (!completeResp.ok) {
-                throw new Error(completeResult.error || 'Passkey registration failed.');
+                throw new Error(completeResult.error || i18n.labelPasskeyRegFailed || 'Passkey registration failed.');
             }
-            statusEl.textContent = 'Passkey added.';
+            statusEl.textContent = i18n.labelPasskeyAdded || 'Passkey added.';
             document.getElementById('passkeyName').value = '';
             loadPasskeys();
         } catch (e) {
             // NotAllowedError covers user cancel + timeout; surface the
             // raw message so users see "this passkey is already
             // registered" etc. unchanged.
-            errorEl.textContent = e.message || 'Failed to add passkey.';
+            errorEl.textContent = e.message || i18n.labelFailedAddPasskey || 'Failed to add passkey.';
             statusEl.textContent = '';
         } finally {
             btn.disabled = false;
@@ -507,26 +512,27 @@
 
     async function deletePasskey(name, label) {
         const urls = getUrls();
-        if (!confirm('Delete passkey "' + label + '"?')) {
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmDeletePasskey || 'Delete passkey "%(name)s"?';
+        if (!confirm(interpolate(tpl, {name: label}))) {
             return;
         }
         const statusEl = document.getElementById('passkeyStatus');
         const errorEl = document.getElementById('passkeyError');
         errorEl.textContent = '';
         try {
-            const resp = await fetch(urls.urlDelPasskey, {
+            const resp = await fetchJSON(urls.urlDelPasskey, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({name: name}),
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to delete passkey.');
+                throw new Error(result.error || i18n.labelFailedDeletePasskey || 'Failed to delete passkey.');
             }
-            statusEl.textContent = 'Passkey deleted.';
+            statusEl.textContent = i18n.labelPasskeyDeleted || 'Passkey deleted.';
             loadPasskeys();
         } catch (e) {
-            errorEl.textContent = e.message || 'Failed to delete passkey.';
+            errorEl.textContent = e.message || i18n.labelFailedDeletePasskey || 'Failed to delete passkey.';
         }
     }
 
@@ -546,20 +552,21 @@
 
     async function loadOidcConsents() {
         const urls = getConsentUrls();
+        const i18n = getPageI18n();
         const listEl = document.getElementById('oidcConsentList');
         if (!urls || !listEl) return;
         listEl.innerHTML = '';
         try {
-            const resp = await fetch(urls.urlList);
+            const resp = await fetchJSON(urls.urlList);
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to load consents.');
+                throw new Error(result.error || i18n.labelFailedLoadConsents || 'Failed to load consents.');
             }
             const consents = result.consents || [];
             if (consents.length === 0) {
                 const li = document.createElement('li');
                 li.className = 'empty';
-                li.textContent = 'No connected applications.';
+                li.textContent = i18n.labelNoConnectedApps || 'No connected applications.';
                 listEl.appendChild(li);
                 return;
             }
@@ -572,23 +579,21 @@
                 label.appendChild(head);
                 if (c.scopes && c.scopes.length) {
                     const scopes = document.createElement('span');
-                    scopes.className = 'hint';
-                    scopes.style.display = 'block';
-                    scopes.textContent = 'Scopes: ' + c.scopes.join(', ');
+                    scopes.className = 'hint is-block';
+                    scopes.textContent = (i18n.labelScopesPrefix || 'Scopes:') + ' ' + c.scopes.join(', ');
                     label.appendChild(scopes);
                 }
                 if (c.granted_at) {
                     const granted = document.createElement('span');
-                    granted.className = 'hint';
-                    granted.style.display = 'block';
-                    granted.textContent = 'Granted: ' + formatGrantedAt(c.granted_at);
+                    granted.className = 'hint is-block';
+                    granted.textContent = (i18n.labelGrantedPrefix || 'Granted:') + ' ' + formatGrantedAt(c.granted_at);
                     label.appendChild(granted);
                 }
                 li.appendChild(label);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-secondary btn-small';
-                btn.textContent = 'Disconnect';
+                btn.textContent = i18n.labelDisconnectBtn || 'Disconnect';
                 btn.addEventListener('click',
                         () => revokeOidcConsent(c.client_uuid, c.client_name));
                 li.appendChild(btn);
@@ -597,7 +602,7 @@
         } catch (e) {
             const li = document.createElement('li');
             li.className = 'error-msg';
-            li.textContent = e.message || 'Failed to load consents.';
+            li.textContent = e.message || i18n.labelFailedLoadConsents || 'Failed to load consents.';
             listEl.appendChild(li);
         }
     }
@@ -605,8 +610,10 @@
     async function revokeOidcConsent(clientUuid, label) {
         const urls = getConsentUrls();
         if (!urls) return;
-        if (!confirm('Disconnect "' + label
-                     + '"? Active sessions for this application will be terminated.')) {
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmRevoke
+                || 'Disconnect "%(name)s"? Active sessions for this application will be terminated.';
+        if (!confirm(interpolate(tpl, {name: label}))) {
             return;
         }
         const statusEl = document.getElementById('consentStatus');
@@ -614,24 +621,24 @@
         statusEl.textContent = '';
         errorEl.textContent = '';
         try {
-            const resp = await fetch(urls.urlRevoke, {
+            const resp = await fetchJSON(urls.urlRevoke, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({client_uuid: clientUuid}),
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to revoke consent.');
+                throw new Error(result.error || i18n.labelFailedRevoke || 'Failed to revoke consent.');
             }
-            statusEl.textContent = result.message || 'Disconnected.';
+            statusEl.textContent = result.message || i18n.labelDisconnected || 'Disconnected.';
             loadOidcConsents();
         } catch (e) {
-            errorEl.textContent = e.message || 'Failed to revoke consent.';
+            errorEl.textContent = e.message || i18n.labelFailedRevoke || 'Failed to revoke consent.';
         }
     }
 
     async function saveLanguage() {
         const urls = getUrls();
+        const i18n = getPageI18n();
         const statusEl = document.getElementById('languageStatus');
         const errorEl = document.getElementById('languageError');
         statusEl.textContent = '';
@@ -641,21 +648,20 @@
         const language = select.value;
         const btn = document.getElementById('saveLanguageBtn');
         btn.disabled = true;
-        statusEl.textContent = 'Saving...';
+        statusEl.textContent = i18n.labelSaving || 'Saving...';
         try {
-            const resp = await fetch(urls.urlChangeLanguage, {
+            const resp = await fetchJSON(urls.urlChangeLanguage, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({language: language}),
             });
             const result = await resp.json();
             if (!resp.ok) {
-                throw new Error(result.error || 'Failed to save language.');
+                throw new Error(result.error || i18n.labelFailedSaveLanguage || 'Failed to save language.');
             }
             // Reload so Babel re-renders the page in the new locale.
             window.location.reload();
         } catch (e) {
-            errorEl.textContent = e.message || 'Failed to save language.';
+            errorEl.textContent = e.message || i18n.labelFailedSaveLanguage || 'Failed to save language.';
             statusEl.textContent = '';
             btn.disabled = false;
         }

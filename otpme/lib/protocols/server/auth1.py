@@ -2,10 +2,13 @@
 
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import hmac
 import json
 import time
 import base64
+import hashlib
 import setproctitle
+from fido2.cose import ES256
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
 
@@ -72,6 +75,107 @@ def _deserialize_fido2_state(data):
         else:
             state[k] = v
     return state
+
+
+# Per-process cache for the decoy HMAC seed -- derived from the site's
+# private key once, so we don't pay export_private_key() on every
+# fido2_auth_begin. Reset to None on fork; the child re-derives lazily.
+_DECOY_SEED_CACHE = None
+# P-256 (secp256r1) curve order. Standard NIST constant, immutable.
+_P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+
+def _decoy_seed():
+    """ Return per-site HMAC seed for /fido2/auth/begin decoy
+    credentials. Derived from the site's private RSA key
+    (``OTPmeRSAKey``) via DER export + SHA256. The private key is
+    sync'd to authd nodes but never leaked to clients, so an attacker
+    cannot compute the same decoys to distinguish them from real
+    credentials -- which is the entire point of the mechanism.
+
+    Raises OTPmeException if the site key cannot be read. No public-info
+    fallback by design: a fallback based on the site UUID (or any
+    other client-visible material) would let the attacker generate the
+    same decoys and recognise them in responses, defeating enumeration
+    resistance. """
+    global _DECOY_SEED_CACHE
+    if _DECOY_SEED_CACHE is not None:
+        return _DECOY_SEED_CACHE
+    site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    if site is None:
+        msg = _("FIDO2 decoy seed: site object not found.")
+        raise OTPmeException(msg)
+    key_obj = getattr(site, '_key', None)
+    if key_obj is None:
+        msg = _("FIDO2 decoy seed: site private key missing.")
+        raise OTPmeException(msg)
+    der = key_obj.export_private_key(encoding="DER")
+    _DECOY_SEED_CACHE = hashlib.sha256(
+            b"otpme-fido2-decoy-v1:" + der).digest()
+    return _DECOY_SEED_CACHE
+
+
+def _derive_decoy_pubkey(seed, username, idx):
+    """ Deterministic throwaway P-256 public key derived from
+    ``(seed, username, idx)``. Same input → same key, so an attacker
+    can't spot decoys by querying twice and comparing. Uses only
+    documented APIs of cryptography / python-fido2; no reliance on
+    python-fido2's internal COSE dict layout. """
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.backends import default_backend
+    msg = f"fido2-decoy:{username}:{idx}".encode('utf-8')
+    seed_bytes = hmac.new(seed, msg, hashlib.sha512).digest()
+    # Map HMAC bytes into [1, n-1]: valid ECDSA private-key range.
+    # See the math note in the commit message; we don't need
+    # cryptographic strength on the scalar itself (the pubkey is just
+    # a placeholder so AttestedCredentialData parses) but mapping
+    # cleanly into the legal range keeps any present-or-future
+    # validation in python-fido2 happy.
+    scalar = (int.from_bytes(seed_bytes, 'big') % (_P256_ORDER - 1)) + 1
+    priv = ec.derive_private_key(scalar, ec.SECP256R1(), default_backend())
+    return priv.public_key()
+
+
+def _decoy_fido2_credentials(username, count=1):
+    """ Build deterministic decoy FIDO2 credentials for /fido2/auth/begin
+    so the response shape doesn't leak whether the user exists or has
+    a FIDO2 token. credential_ids and the underlying public key are
+    HMAC-derived from a per-site secret seed:
+
+      * same username + same site -> same fake credential_ids (random
+        variation would itself signal "user unknown"),
+      * an attacker can't generate matching decoys without the secret.
+
+    The pubkey is a valid on-curve P-256 point but with the private
+    half discarded; verify naturally fails at complete-time. """
+    seed = _decoy_seed()
+    credentials = []
+    credential_token_map = {}
+    for idx in range(count):
+        cred_id = hmac.new(seed,
+                           f"fido2-decoy:{username}:{idx}:id".encode('utf-8'),
+                           hashlib.sha256).digest()
+        pub_ec = _derive_decoy_pubkey(seed, username, idx)
+        pub_key = ES256.from_cryptography_key(pub_ec)
+        acd = AttestedCredentialData.create(b"\0" * 16, cred_id, pub_key)
+        credentials.append(acd)
+        cred_id_b64 = base64.urlsafe_b64encode(cred_id).rstrip(b'=').decode()
+        # Synthetic token_name keeps the complete-path's
+        # matched_token_name lookup from 400-ing differently for decoy
+        # vs real -- signature verify fails either way.
+        credential_token_map[cred_id_b64] = f"decoy-{idx}"
+    return credentials, credential_token_map
+
+
+def _pad_min_duration(start, target=0.15):
+    """ Sleep so the surrounding function takes at least ``target``
+    seconds from ``start`` (monotonic). Equalises real vs decoy auth
+    paths so an attacker can't tell apart "user unknown" / "no FIDO2"
+    from "user has FIDO2" via timing. 150ms covers backend.get_object,
+    token lookups and Fido2Server.authenticate_begin on a busy node. """
+    elapsed = time.monotonic() - start
+    if elapsed < target:
+        time.sleep(target - elapsed)
 
 class OTPmeAuthP1(OTPmeServer1):
     """ Class that implements OTPme-auth-1.0. """
@@ -396,6 +500,11 @@ class OTPmeAuthP1(OTPmeServer1):
         return state_data, None
 
     def fido2_auth_begin(self, username, command_args):
+        # Record start so we can pad to a uniform minimum duration
+        # regardless of code path (decoy / real / cross-site). Without
+        # this an attacker can distinguish "user unknown" from "user
+        # exists w/ FIDO2" by response time alone.
+        begin_start = time.monotonic()
         try:
             rp_id = command_args['rp_id']
         except Exception:
@@ -407,54 +516,67 @@ class OTPmeAuthP1(OTPmeServer1):
                                 realm=config.realm,
                                 run_policies=True,
                                 _no_func_cache=True)
-        if not user:
-            status = False
-            command_error = "AUTH_UNKOWN_USER"
-            auth_response = {'message':'Login failed.', 'status':False}
-            log_msg = self.build_log_msg(command_error)
-            self.logger.warning(log_msg)
-            return self.build_response(status, auth_response)
-        # Check for command redirection.
-        if user.site != config.site:
-            status, \
-            message = self.authd_redirect_command(command="fido2_auth_begin",
-                                            user=user,
-                                            command_args=command_args)
+        # Cross-site redirect: only possible when the user is known
+        # locally. Pad on this path too so the cross-site latency
+        # doesn't itself become a "user exists remotely" oracle (we
+        # can't shorten the network roundtrip but we can guarantee a
+        # floor that masks fast-path local responses).
+        if user is not None and user.site != config.site:
             try:
-                fido2_state_id = message['fido2_state_id']
-            except KeyError:
-                pass
-            else:
+                status, \
+                message = self.authd_redirect_command(command="fido2_auth_begin",
+                                                user=user,
+                                                command_args=command_args)
                 try:
-                    fido2_auth_node = message.pop('fido2_auth_node')
-                except KeyError:
+                    fido2_state_id = message['fido2_state_id']
+                except (TypeError, KeyError):
                     pass
                 else:
-                    multiprocessing.fido2_auth_states.add(key=fido2_state_id,
-                                                        value={'node':fido2_auth_node},
-                                                        expire=60)
-                    my_host = self._get_host()
-                    message['fido2_auth_node'] = my_host.fqdn
-            return self.build_response(status, message)
-        # Find user's deployed FIDO2 tokens.
-        user_tokens = backend.search(object_type="token",
-                                    attribute="owner_uuid",
-                                    value=user.uuid,
-                                    return_type="instance")
+                    try:
+                        fido2_auth_node = message.pop('fido2_auth_node')
+                    except KeyError:
+                        pass
+                    else:
+                        multiprocessing.fido2_auth_states.add(key=fido2_state_id,
+                                                            value={'node':fido2_auth_node},
+                                                            expire=60)
+                        my_host = self._get_host()
+                        message['fido2_auth_node'] = my_host.fqdn
+                return self.build_response(status, message)
+            finally:
+                _pad_min_duration(begin_start)
+        # Local path: gather real FIDO2/passkey credentials for the
+        # user. Empty list (or unknown user) falls through to the
+        # decoy path so the response is shape-indistinguishable from
+        # the success case.
         credentials = []
         credential_token_map = {}
-        for token in user_tokens:
-            if token.token_type in ("fido2", "passkey") and token.credential_data:
-                cred_data = decode(token.credential_data, "hex")
-                acd = AttestedCredentialData(cred_data)
-                credentials.append(acd)
-                # Map base64url credential ID to token name for lookup in complete.
-                cred_id_b64 = base64.urlsafe_b64encode(acd.credential_id).rstrip(b'=').decode()
-                credential_token_map[cred_id_b64] = token.name
+        if user is not None:
+            user_tokens = backend.search(object_type="token",
+                                        attribute="owner_uuid",
+                                        value=user.uuid,
+                                        return_type="instance")
+            for token in user_tokens:
+                if token.token_type in ("fido2", "passkey") and token.credential_data:
+                    cred_data = decode(token.credential_data, "hex")
+                    acd = AttestedCredentialData(cred_data)
+                    credentials.append(acd)
+                    cred_id_b64 = base64.urlsafe_b64encode(acd.credential_id).rstrip(b'=').decode()
+                    credential_token_map[cred_id_b64] = token.name
         if not credentials:
-            status = False
-            auth_response = {'message':'Login failed.', 'status':False}
-            return self.build_response(status, auth_response)
+            # User unknown OR exists but has no FIDO2 / passkey
+            # credentials. Generate deterministic decoys so the
+            # response shape stays identical to the "real" path; the
+            # complete-step then naturally fails at signature verify
+            # (real path: wrong key) or at token lookup (decoy path:
+            # no token by that name). Both surface as a generic
+            # "Login failed" -- indistinguishable to the caller.
+            log_msg = _("FIDO2 auth_begin: returning decoys for {username}",
+                        log=True)[1]
+            log_msg = log_msg.format(username=username)
+            self.logger.info(log_msg)
+            credentials, credential_token_map = _decoy_fido2_credentials(
+                                                            username)
         rp_data = {"id": rp_id, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="direct")
         request_options, auth_state = fido2_server.authenticate_begin(
@@ -462,23 +584,26 @@ class OTPmeAuthP1(OTPmeServer1):
             user_verification="preferred",
         )
         fido2_auth_state = _serialize_fido2_state(auth_state)
-        fido2_credential_token_map = credential_token_map
-        # Get own node FQDN.
         my_host = self._get_host()
         fido2_auth_node = my_host.fqdn
-        # Cache auth state
         fido2_state_id = stuff.gen_secret(len=32)
+        # Keep the credential->token_name map server-side: the web
+        # layer's flask_session is a signed-but-unencrypted cookie, so
+        # putting the map there would leak the synthetic "decoy-N"
+        # token names back to the client and undo the enumeration
+        # resistance. The map is popped at fido2_auth_complete to
+        # resolve matched_token_name.
         multiprocessing.fido2_auth_states.add(key=fido2_state_id,
                                             value={'state':fido2_auth_state,
-                                                    'node':fido2_auth_node},
+                                                    'node':fido2_auth_node,
+                                                    'credential_token_map':credential_token_map},
                                             expire=60)
-        # Build fido2 auth data.
         fido2_auth_data = {
                     'request_options'           : dict(request_options),
                     'fido2_state_id'            : fido2_state_id,
                     'fido2_auth_node'           : fido2_auth_node,
-                    'fido2_credential_token_map': fido2_credential_token_map,
                 }
+        _pad_min_duration(begin_start)
         return self.build_response(True, fido2_auth_data)
 
     def fido2_auth_complete(self, username, client, client_ip, sso_challenge, command_args):
@@ -500,12 +625,11 @@ class OTPmeAuthP1(OTPmeServer1):
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
-        try:
-            matched_token_name = command_args['matched_token_name']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
+        # matched_token_name is no longer accepted from the web layer:
+        # the credential->token_name map is held server-side (in the
+        # fido2_auth_states shared dict) so the synthetic "decoy-N"
+        # names for unknown users never leave the server. Derived from
+        # state_data after we pop it below.
         # OIDC ``prompt=login`` / ``max_age`` step-up: web layer sets
         # ``reauth=True`` + the current SSO session_uuid. On success we
         # don't create a new login session -- we just bump
@@ -548,6 +672,15 @@ class OTPmeAuthP1(OTPmeServer1):
         # consumed by both the step-up reauth path (``token.verify()``)
         # and the regular login path (``user.authenticate()``).
         auth_state = _deserialize_fido2_state(state_data['state'])
+        # Look up which token name owns the credential the browser
+        # asserted with. The map was cached server-side at begin so
+        # decoy token names ("decoy-N") never leak via the web
+        # layer's flask_session cookie. A missing entry (assertion
+        # for a credential we don't know about) falls through to the
+        # normal "token not found" failure below.
+        credential_token_map = state_data.get('credential_token_map') or {}
+        response_cred_id = auth_response.get('id', '') if isinstance(auth_response, dict) else ''
+        matched_token_name = credential_token_map.get(response_cred_id)
         smartcard_data = {
             'rp_id'         : rp_id,
             'auth_state'    : auth_state,

@@ -110,6 +110,7 @@ commands = {
                                         'max_roles',
                                         'max_tokens',
                                         'max_policies',
+                                        'limit',
                                         ],
                     'job_type'          : 'thread',
                     },

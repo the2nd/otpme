@@ -1,6 +1,11 @@
 (function () {
     'use strict';
 
+    function getI18n() {
+        const el = document.getElementById('page-i18n');
+        return el ? el.dataset : {};
+    }
+
     function openTabAndSendPost(sso_url, data) {
         const newTab = window.open('', '_blank');
         if (newTab) {
@@ -16,17 +21,23 @@
                 form.appendChild(input);
             }
             newTab.document.body.appendChild(form);
+            // Defense in depth: even with target="_top" the spawned
+            // tab inherits an `opener` reference that the destination
+            // origin could navigate via window.opener.location. Null
+            // it before submitting so a hostile RP can't tab-nab us.
+            try { newTab.opener = null; } catch (e) { /* cross-origin */ }
             form.submit();
         }
     }
 
     function addApps() {
         const pageData = document.getElementById('page-data').dataset;
+        const i18n = getI18n();
         const appsUrl = pageData.urlApps;
         const sotpUrl = pageData.urlSotp;
         const username = pageData.username;
 
-        fetch(appsUrl)
+        fetchJSON(appsUrl)
             .then(async response => {
                 const data = await response.json();
                 if (!response.ok) {
@@ -34,7 +45,7 @@
                         window.location.href = data.redirect;
                         return null;
                     }
-                    throw new Error((data && data.error) || 'Failed to load apps.');
+                    throw new Error((data && data.error) || i18n.labelFailedApps || 'Failed to load apps.');
                 }
                 return data;
             })
@@ -61,7 +72,7 @@
                     }
 
                     const openButton = document.createElement('button');
-                    openButton.textContent = 'Open';
+                    openButton.textContent = i18n.labelOpen || 'Open';
                     openButton.classList.add('btn', 'btn-primary', 'btn-small');
                     openButton.addEventListener('click', () => {
                         // OIDC RPs handle SSO themselves -- the browser
@@ -72,8 +83,10 @@
                             window.open(item.login_url, '_blank');
                             return;
                         }
-                        const url = sotpUrl + "?access_group=" + encodeURIComponent(item.app_ag);
-                        fetch(url)
+                        fetchJSON(sotpUrl, {
+                                method: 'POST',
+                                body: JSON.stringify({access_group: item.app_ag}),
+                            })
                             .then(async response => {
                                 const data = await response.json();
                                 if (!response.ok) {
@@ -81,7 +94,7 @@
                                         window.location.href = data.redirect;
                                         return null;
                                     }
-                                    throw new Error((data && data.error) || 'Failed to get SOTP.');
+                                    throw new Error((data && data.error) || i18n.labelFailedSotp || 'Failed to get SOTP.');
                                 }
                                 return data;
                             })

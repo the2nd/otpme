@@ -2882,7 +2882,7 @@ class AuthHandler(object):
         # remove other sessions.
         if not self.auth_failed:
             if self.auth_group.max_sessions > 0:
-                if self.create_sessions or self.oidc_context:
+                if self.create_sessions or self.oidc_context or self.realm_login:
                     if not self.realm_logout:
                         self.check_max_sessions()
 
@@ -3094,12 +3094,16 @@ class AuthHandler(object):
                     for share in user_shares:
                         if not share.enabled:
                             continue
+                        if share.limit_by_hosts:
+                            if not share.is_assigned_host(self.peer.uuid,
+                                                    include_groups=True):
+                                continue
                         share_nodes = share.get_nodes(include_pools=True,
                                                     return_type="instance")
                         node_fqdns = []
                         for node in share_nodes:
                             node_fqdns.append(node.fqdn)
-                        share_id = f"{share.site}/{share.name}"
+                        share_id = share.share_id
                         shares[share_id] = {}
                         shares[share_id]['name'] = share.name
                         shares[share_id]['site'] = share.site

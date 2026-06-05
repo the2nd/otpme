@@ -2244,12 +2244,12 @@ class OTPmeClient1(OTPmeClientBase):
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
         jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
-        login_interface="tty", logout=False, reneg=False, add_agent_acl=False,
-        agent_acls=None, add_agent_session=None, save_offline_token=None,
-        add_login_session=None, mount_shares=False, offline_token=None,
-        login_session_id=None, cache_login_tokens=False, sc_pass=None,
-        send_password="auto", password_method=None, password=None,
-        cleanup_method=None, check_offline_pass_strength=None,
+        login_interface="tty", logout=False, reneg=False, session_uuid=None,
+        add_agent_acl=False, agent_acls=None, add_agent_session=None,
+        save_offline_token=None, add_login_session=None, mount_shares=False,
+        offline_token=None, login_session_id=None, cache_login_tokens=False,
+        sc_pass=None, send_password="auto", password_method=None,
+        password=None, cleanup_method=None, check_offline_pass_strength=None,
         offline_iterations_by_score=None, offline_key_derivation_func=None,
         offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
         verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
@@ -2504,6 +2504,7 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Indicates if we should start a session renegotiation.
         self.reneg = reneg
+        self.session_uuid = session_uuid
 
         # Add agent ACLs?.
         self.add_agent_acl = add_agent_acl
@@ -2687,6 +2688,7 @@ class OTPmeClient1(OTPmeClientBase):
                             unlock=self.unlock,
                             logout=self.logout,
                             reneg=self.reneg,
+                            session_uuid=self.session_uuid,
                             otpme_agent_user=self.otpme_agent_user,
                             add_agent_acl=self.add_agent_acl,
                             agent_acls=self.agent_acls,
@@ -3841,6 +3843,7 @@ class OTPmeClient1(OTPmeClientBase):
                                             self.rsp,
                                             hash_type=self.rsp_hash_type)
             srotp, reneg_salt, self.new_rsp = sotp.gen(reneg=True,
+                                                session_uuid=self.session_uuid,
                                                 rsp_hash_type=self.rsp_hash_type,
                                                 password_hash=rsp_hash)
             command_args['reneg'] = True
@@ -4424,6 +4427,7 @@ class OTPmeClient1(OTPmeClientBase):
                             site=self.site,
                             rsp=self.rsp,
                             slp=slp,
+                            session_uuid=session_uuid,
                             session_key=self.offline_session_key,
                             login_time=login_time,
                             timeout=session_timeout,

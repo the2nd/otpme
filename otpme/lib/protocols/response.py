@@ -57,6 +57,9 @@ def decode_response(response, encryption=None, encoding="base64", enc_key=None):
     """ Decode OTPme response. """
     if isinstance(response, str):
         response = response.decode()
+    if len(response) < 4:
+        msg = _("Received invalid response.")
+        raise OTPmeException(msg)
     header_len = struct.unpack('>I', response[:4])[0]
     header_start = 4
     header_end = header_start + header_len

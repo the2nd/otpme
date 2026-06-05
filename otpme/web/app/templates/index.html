@@ -4,6 +4,11 @@
      data-url-apps="{{ url_for('get_apps', _external=True, _scheme='https') }}"
      data-url-sotp="{{ url_for('get_sotp', _external=True, _scheme='https') }}"
      data-username="{{ g.user.name }}"></div>
+<div id="page-i18n"
+     data-label-open="{{ gettext('Open') }}"
+     data-label-failed-apps="{{ gettext('Failed to load apps.') }}"
+     data-label-failed-sotp="{{ gettext('Failed to get SOTP.') }}"
+     class="is-hidden"></div>
 <div class="portal-wrapper">
     <h2>{{ gettext("Applications") }}</h2>
     <div class="app-grid" id="app-tiles"></div>

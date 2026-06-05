@@ -108,19 +108,8 @@ def _oidc_cors_response(response):
     return response
 
 
-def _no_store(response):
-    """ Mark a response as non-cacheable for token-bearing endpoints
-    (/token, /userinfo, /introspect, /revoke).
-
-    Spec: RFC 6749 §5.1 "Successful Response"
-      (Cache-Control: no-store, Pragma: no-cache MUST be set)
-      https://datatracker.ietf.org/doc/html/rfc6749#section-5.1
-    Spec: OIDC Core 1.0 §3.1.3.3 "Successful Token Response"
-      https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
-    """
-    response.headers['Cache-Control'] = 'no-store'
-    response.headers['Pragma'] = 'no-cache'
-    return response
+# _no_store moved to otpme.web.app.views so /get_sotp can share it.
+from otpme.web.app.views import no_store as _no_store
 
 
 def _extract_client_credentials():
@@ -285,8 +274,11 @@ def _send_oidc_command(command, command_args):
         if ssod_conn is not None:
             try:
                 ssod_conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log_msg = _("OIDC: ssod_conn.close failed: {error}",
+                            log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.debug(log_msg)
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +312,7 @@ def discovery():
 # ---------------------------------------------------------------------------
 
 
-@oidc_bp.route('/avatar/<path:user_uuid>', methods=['GET'])
+@oidc_bp.route('/avatar/<string:user_uuid>', methods=['GET'])
 def avatar(user_uuid):
     """ Public avatar endpoint -- serves user.photo as image/jpeg.
 
@@ -331,11 +323,17 @@ def avatar(user_uuid):
     identify the holder.
 
     Accepts the UUID with or without ``.jpg`` suffix (helps caches /
-    browsers infer the file type).
+    browsers infer the file type). ``<string:>`` (not ``<path:>``)
+    rejects slashes in the segment, and we further enforce a strict
+    UUID format check before passing through to ssod -- defense in
+    depth against weird path strings landing in the audit log.
     """
     import base64
+    from otpme.lib import stuff
     if user_uuid.endswith('.jpg'):
         user_uuid = user_uuid[:-4]
+    if not stuff.is_uuid(user_uuid):
+        return make_response('', 404)
     status, response = _send_oidc_command('oidc_avatar',
                                           {'user_uuid': user_uuid})
     if status is None or not status:
@@ -911,13 +909,14 @@ def _oidc_html_error_page(error, description, title=None, http_status=400):
     so we render here instead of bouncing back). JSON-style
     ``_oidc_error`` is for server-to-server endpoints only.
     """
-    safe_err = (error or "invalid_request").replace("<", "&lt;").replace(">", "&gt;")
-    safe_desc = (description or "").replace("<", "&lt;").replace(">", "&gt;")
-    title = title or gettext("Error")
+    from markupsafe import escape
+    safe_err = escape(error or "invalid_request")
+    safe_desc = escape(description or "")
+    safe_title = escape(title or gettext("Error"))
     html = (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-        f"<title>{title}</title></head>"
-        f"<body><h1>{title}</h1>"
+        f"<title>{safe_title}</title></head>"
+        f"<body><h1>{safe_title}</h1>"
         f"<p><strong>{safe_err}</strong></p>"
         f"<p>{safe_desc}</p>"
         "</body></html>"
@@ -1120,8 +1119,11 @@ def authorize():
     finally:
         try:
             ssod_conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            log_msg = _("OIDC authorize: ssod_conn.close failed: {error}",
+                        log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.debug(log_msg)
 
     if not v_status:
         # Validation failed. Two paths depending on can_redirect.
@@ -1226,8 +1228,11 @@ def authorize():
     finally:
         try:
             authd_conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            log_msg = _("OIDC: authd_conn.close failed: {error}",
+                        log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.debug(log_msg)
 
     if not a_status:
         target = _build_redirect_with_params(redirect_uri, {

@@ -5,6 +5,22 @@
      data-url-deploy-verify="{{ url_for('deploy_verify', _external=True, _scheme='https') }}"
      data-url-fido2-register-begin="{{ url_for('fido2_register_begin', _external=True, _scheme='https') }}"
      data-url-fido2-register-complete="{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}"></div>
+<div id="page-i18n"
+     data-label-creating-token="{{ gettext('Creating token...') }}"
+     data-label-deployment-failed="{{ gettext('Deployment failed.') }}"
+     data-label-https-required="{{ gettext('WebAuthn requires HTTPS.') }}"
+     data-label-webauthn-unsupported="{{ gettext('WebAuthn is not supported in this browser.') }}"
+     data-label-preparing-key="{{ gettext('Preparing security key registration...') }}"
+     data-label-failed-start-reg="{{ gettext('Failed to start registration.') }}"
+     data-label-touch-key="{{ gettext('Please touch your security key...') }}"
+     data-label-completing-reg="{{ gettext('Completing registration...') }}"
+     data-label-reg-failed="{{ gettext('Registration failed.') }}"
+     data-label-finalizing="{{ gettext('Finalizing deployment...') }}"
+     data-label-need-otp="{{ gettext('Please enter the OTP from your authenticator app.') }}"
+     data-label-verifying-otp="{{ gettext('Verifying OTP...') }}"
+     data-label-verify-failed="{{ gettext('Verification failed.') }}"
+     data-label-scan-qr="{{ gettext('Scan the QR code, then enter the OTP below.') }}"
+     class="is-hidden"></div>
 <div class="login-wrapper">
   <div class="deploy-card">
     <h1>{{ gettext("Token Enrollment") }}</h1>
@@ -17,7 +33,7 @@
       {% if deploy_token_types|length == 0 %}
       <p class="deploy-hint">{{ gettext("Token enrollment is currently disabled. Please contact your administrator.") }}</p>
       {% elif deploy_token_types|length > 1 %}
-      <p class="deploy-hint" style="margin-bottom:14px;">{{ gettext("Choose your preferred authentication method:") }}</p>
+      <p class="deploy-hint mb-14">{{ gettext("Choose your preferred authentication method:") }}</p>
       <div class="token-choice">
         {% for tt in deploy_token_types %}
         <button type="button" class="btn btn-secondary token-choice-btn" data-token-type="{{ tt }}" id="btn-{{ tt }}">
@@ -32,7 +48,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <button type="button" id="deployBtn" data-token-type="{{ deploy_token_types[0] }}" class="btn btn-primary" style="width:100%;">
+      <button type="button" id="deployBtn" data-token-type="{{ deploy_token_types[0] }}" class="btn btn-primary w-full">
         {% if deploy_token_types[0] == "fido2" %}
         {{ gettext("Register Security Key") }}
         {% else %}
@@ -43,8 +59,8 @@
     </div>
 
     <!-- Step 2a: QR code for OATH tokens -->
-    <div id="step-qrcode" style="display:none;">
-      <div class="qr-container"><img id="qrcodeImg" src="" alt="{{ gettext('QR Code') }}" style="image-rendering:pixelated;"></div>
+    <div id="step-qrcode" class="is-hidden">
+      <div class="qr-container"><img id="qrcodeImg" src="" alt="{{ gettext('QR Code') }}" class="img-pixelated"></div>
       <div class="deploy-info">
         <div class="info-row">
           <span class="info-label">{{ gettext("PIN:") }}</span>
@@ -59,7 +75,7 @@
 
       <label for="otpInput">{{ gettext("One-Time Password") }}</label>
       <input type="text" id="otpInput" maxlength="10" autocomplete="one-time-code" placeholder="{{ gettext('Enter OTP from app') }}">
-      <button type="button" id="verifyBtn" class="btn btn-primary" style="width:100%;">{{ gettext("Verify & Activate") }}</button>
+      <button type="button" id="verifyBtn" class="btn btn-primary w-full">{{ gettext("Verify & Activate") }}</button>
     </div>
 
     <div class="status-msg" id="deployStatus"></div>

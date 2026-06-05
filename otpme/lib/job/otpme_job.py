@@ -224,6 +224,10 @@ class OTPmeJob(object):
             pass
         try:
             job_status = self.target_method(**self.args)
+            # If the job return success, check for return_value.
+            if job_status is True:
+                if self.return_value:
+                    job_response.append(self.return_value)
             # If the job return failure try to get its last error.
             if job_status is False:
                 try:
@@ -242,7 +246,6 @@ class OTPmeJob(object):
             log_msg = log_msg.format(method_name=self.target_method.__name__, error=e)
             self.logger.warning(log_msg)
             job_response.append(job_error)
-            job_log.append(job_error)
             job_status = False
             config.raise_exception()
 
@@ -314,7 +317,7 @@ class OTPmeJob(object):
         multiprocessing.job_uuid = None
 
         if self.callback:
-            return self.callback.stop(job_status, job_response)
+            return self.callback.stop(status=job_status, message=job_response)
 
         return job_status, job_response
 
