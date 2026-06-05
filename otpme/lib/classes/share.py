@@ -310,6 +310,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -318,6 +319,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -345,6 +347,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'limit_hosts',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -353,6 +356,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'unlimit_hosts',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -414,6 +418,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_host',
                     'args'              : ['host_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -423,6 +428,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_host',
                     'args'              : ['host_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -450,6 +456,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -459,6 +466,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -468,6 +476,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -477,6 +486,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -486,6 +496,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_group',
                     'args'              : ['group_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -495,6 +506,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_group',
                     'args'              : ['group_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1271,6 +1283,7 @@ class Share(OTPmeObject):
                         return callback.error(msg)
                 if not self.add_token(token_path=restore_token,
                                         share_key=share_key,
+                                        persist_mount=False,
                                         callback=callback):
                     msg = _("Failed to add token: {token}")
                     msg = msg.format(token=restore_token)
@@ -1686,6 +1699,8 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         share_key: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1789,6 +1804,9 @@ class Share(OTPmeObject):
         if username == ADMIN_USER:
             return result
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         def post_method():
             share_nodes = self.get_nodes(include_pools=True,
                                           return_type="instance")
@@ -1807,6 +1825,7 @@ class Share(OTPmeObject):
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
                                             return_type="name")
+
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -1817,12 +1836,16 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['tokens'] = [token_path]
-            shares[share_id]['persist'] = True
+            shares[share_id]['persist'] = persist_mount
 
             # Send notification to idled.
             notify(username=username, event_type="share_mount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -1833,6 +1856,8 @@ class Share(OTPmeObject):
     def remove_token(
         self,
         token_path: str,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1876,6 +1901,9 @@ class Share(OTPmeObject):
         if username == ADMIN_USER:
             return result
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         def post_method():
             share_tokens = self.get_tokens(skip_disabled=False,
                                           include_roles=True,
@@ -1910,12 +1938,16 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['tokens'] = [token_path]
-            shares[share_id]['persist'] = True
+            shares[share_id]['persist'] = persist_mount
 
             # Send notification to idled.
             notify(username=username, event_type="share_unmount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -1926,6 +1958,8 @@ class Share(OTPmeObject):
         self,
         role_name: str=None,
         role_uuid: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1956,6 +1990,9 @@ class Share(OTPmeObject):
                                         include_roles=True)
         if not role_tokens:
             return result
+
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
 
         def post_method():
             # Get share nodes.
@@ -2006,7 +2043,7 @@ class Share(OTPmeObject):
                 share_data = stuff.copy_object(shares)
                 x_shares.update(share_data)
                 x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = True
+                x_shares[share_id]['persist'] = persist_mount
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
 
@@ -2014,7 +2051,11 @@ class Share(OTPmeObject):
                 shares = user_shares[username]
                 notify(username=username, event_type="share_mount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -2024,6 +2065,8 @@ class Share(OTPmeObject):
     def remove_role(
         self,
         role_name: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -2048,6 +2091,9 @@ class Share(OTPmeObject):
                                         include_roles=True)
         if not role_tokens:
             return result
+
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
 
         def post_method():
             # Get share tokens.
@@ -2103,7 +2149,7 @@ class Share(OTPmeObject):
                 share_data = stuff.copy_object(shares)
                 x_shares.update(share_data)
                 x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = True
+                x_shares[share_id]['persist'] = persist_mount
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
 
@@ -2111,7 +2157,11 @@ class Share(OTPmeObject):
                 shares = user_shares[username]
                 notify(username=username, event_type="share_unmount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -2366,6 +2416,8 @@ class Share(OTPmeObject):
         self,
         group_name: str=None,
         group_uuid: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2448,6 +2500,9 @@ class Share(OTPmeObject):
         shares[share_id]['hosts'] = group_hosts
         shares[share_id]['encrypted'] = self.encrypted
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         # Collect notifications.
         user_shares = {}
         already_processed = []
@@ -2469,7 +2524,7 @@ class Share(OTPmeObject):
             share_data = stuff.copy_object(shares)
             x_shares.update(share_data)
             x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = True
+            x_shares[share_id]['persist'] = persist_mount
             user_shares[username] = x_shares
             already_processed.append(token_path)
 
@@ -2482,7 +2537,11 @@ class Share(OTPmeObject):
             for x in notifys:
                 notify(username=x[0], event_type=x[1], data=x[2])
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
         return result
 
     @check_acls(['remove:group'])
@@ -2492,6 +2551,8 @@ class Share(OTPmeObject):
     def remove_group(
         self,
         group_name: str,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2565,6 +2626,9 @@ class Share(OTPmeObject):
         shares[share_id]['hosts'] = group_hosts
         shares[share_id]['encrypted'] = self.encrypted
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         # Collect notifications.
         user_shares = {}
         already_processed = []
@@ -2586,7 +2650,7 @@ class Share(OTPmeObject):
             share_data = stuff.copy_object(shares)
             x_shares.update(share_data)
             x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = True
+            x_shares[share_id]['persist'] = persist_mount
             user_shares[username] = x_shares
             already_processed.append(token_path)
 
@@ -2599,7 +2663,11 @@ class Share(OTPmeObject):
             for x in notifys:
                 notify(username=x[0], event_type=x[1], data=x[2])
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
         return result
 
 
@@ -2658,6 +2726,8 @@ class Share(OTPmeObject):
         *args,
         host_name: str=None,
         host_uuid: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -2709,6 +2779,9 @@ class Share(OTPmeObject):
         shares[share_id]['host_uuid'] = host_uuid
         shares[share_id]['encrypted'] = self.encrypted
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         # Collect notifications.
         user_shares = {}
         already_processed = []
@@ -2730,7 +2803,7 @@ class Share(OTPmeObject):
             share_data = stuff.copy_object(shares)
             x_shares.update(share_data)
             x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = True
+            x_shares[share_id]['persist'] = persist_mount
             user_shares[username] = x_shares
             already_processed.append(token_path)
 
@@ -2743,7 +2816,11 @@ class Share(OTPmeObject):
             for x in notifys:
                 notify(username=x[0], event_type=x[1], data=x[2])
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
         return result
 
     @check_acls(['remove:host'])
@@ -2752,6 +2829,8 @@ class Share(OTPmeObject):
         self,
         *args,
         host_name: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -2796,6 +2875,9 @@ class Share(OTPmeObject):
         shares[share_id]['host_uuid'] = host.uuid
         shares[share_id]['encrypted'] = self.encrypted
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         # Collect notifications.
         user_shares = {}
         already_processed = []
@@ -2817,7 +2899,7 @@ class Share(OTPmeObject):
             share_data = stuff.copy_object(shares)
             x_shares.update(share_data)
             x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = True
+            x_shares[share_id]['persist'] = persist_mount
             user_shares[username] = x_shares
             already_processed.append(token_path)
 
@@ -2830,7 +2912,11 @@ class Share(OTPmeObject):
             for x in notifys:
                 notify(username=x[0], event_type=x[1], data=x[2])
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
         return result
 
     @cli.check_rapi_opts()
@@ -2945,6 +3031,8 @@ class Share(OTPmeObject):
     @audit_log()
     def limit_hosts(
         self,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2973,7 +3061,9 @@ class Share(OTPmeObject):
         self.limit_by_hosts = True
         self.update_index('limit_by_hosts', self.limit_by_hosts)
         result = self._cache(callback=callback)
-        self._notify_share_metadata_change("share_unmount", callback)
+        self._notify_share_metadata_change("share_unmount", callback,
+                                            persist_mount=persist_mount,
+                                            share_notifications=share_notifications)
         return result
 
     @check_acls(['unlimit_hosts'])
@@ -2981,6 +3071,8 @@ class Share(OTPmeObject):
     @audit_log()
     def unlimit_hosts(
         self,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3007,10 +3099,14 @@ class Share(OTPmeObject):
         self.limit_by_hosts = False
         self.update_index('limit_by_hosts', self.limit_by_hosts)
         result = self._cache(callback=callback)
-        self._notify_share_metadata_change("share_mount", callback)
+        self._notify_share_metadata_change("share_mount", callback,
+                                            persist_mount=persist_mount,
+                                            share_notifications=share_notifications)
         return result
 
-    def _notify_share_metadata_change(self, event_type, callback):
+    def _notify_share_metadata_change(self, event_type, callback,
+                                      persist_mount: bool=None,
+                                      share_notifications: bool=None):
         """ Send a share_mount / share_unmount event to every user
         reachable through the share so each agent re-evaluates against
         the share's current metadata. Caller picks the event type
@@ -3044,6 +3140,9 @@ class Share(OTPmeObject):
         share_encrypted = self.encrypted
         share_limit_by_hosts = self.limit_by_hosts
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         def post_method():
             user_shares = {}
             already_processed = []
@@ -3070,7 +3169,7 @@ class Share(OTPmeObject):
                     'hosts': list(share_hosts),
                     'encrypted': share_encrypted,
                     'tokens': tokens,
-                    'persist': True,
+                    'persist': persist_mount,
                 }
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
@@ -3078,7 +3177,11 @@ class Share(OTPmeObject):
                 shares = user_shares[username]
                 notify(username=username, event_type=event_type, data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
     @assigned_host_cache.cache_method()
     def is_assigned_host(
@@ -3324,6 +3427,8 @@ class Share(OTPmeObject):
     def enable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3338,6 +3443,9 @@ class Share(OTPmeObject):
         if not share_tokens:
             return result
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         def post_method():
             # Get share nodes.
             share_nodes = self.get_nodes(include_pools=True,
@@ -3387,7 +3495,7 @@ class Share(OTPmeObject):
                 share_data = stuff.copy_object(shares)
                 x_shares.update(share_data)
                 x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = True
+                x_shares[share_id]['persist'] = persist_mount
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
 
@@ -3395,7 +3503,11 @@ class Share(OTPmeObject):
                 shares = user_shares[username]
                 notify(username=username, event_type="share_mount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -3404,6 +3516,8 @@ class Share(OTPmeObject):
     def disable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3418,6 +3532,9 @@ class Share(OTPmeObject):
         if not share_tokens:
             return result
 
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
         def post_method():
             # Get share nodes.
             share_nodes = self.get_nodes(include_pools=True,
@@ -3467,7 +3584,7 @@ class Share(OTPmeObject):
                 share_data = stuff.copy_object(shares)
                 x_shares.update(share_data)
                 x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = True
+                x_shares[share_id]['persist'] = persist_mount
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
 
@@ -3475,7 +3592,11 @@ class Share(OTPmeObject):
                 shares = user_shares[username]
                 notify(username=username, event_type="share_unmount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 

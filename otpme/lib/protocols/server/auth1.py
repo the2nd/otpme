@@ -7,6 +7,7 @@ import json
 import time
 import base64
 import hashlib
+import datetime
 import setproctitle
 from fido2.cose import ES256
 from fido2.server import Fido2Server
@@ -327,8 +328,10 @@ class OTPmeAuthP1(OTPmeServer1):
 
         _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
 
-        log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}", log=True)[1]
-        log_msg = log_msg.format(username=username, token_name=token.name, access_group=access_group, reason=reason)
+        expire_human = datetime.datetime.fromtimestamp(
+                            jwt_data['exp']).strftime("%Y-%m-%d %H:%M:%S")
+        log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}, expire={expire}", log=True)[1]
+        log_msg = log_msg.format(username=username, token_name=token.name, access_group=access_group, reason=reason, expire=expire_human)
         self.logger.info(log_msg)
         return _jwt
 

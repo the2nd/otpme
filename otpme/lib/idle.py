@@ -28,6 +28,8 @@ from otpme.lib.exceptions import *
 
 def notify(username, event_type, data):
     """Send a notification to all idled subscribers of the given user."""
+    if config.use_api:
+        return
     idled_conn = None
     try:
         idled_conn = connections.get("idled",

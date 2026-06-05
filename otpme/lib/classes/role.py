@@ -190,6 +190,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -198,6 +199,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -242,7 +244,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -252,7 +254,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['keep_sign'],
+                    'oargs'             : ['keep_sign', 'share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -262,6 +264,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -271,6 +274,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1237,6 +1241,8 @@ class Role(OTPmeObject):
     def add_token(
         self,
         token_path: str,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1257,6 +1263,9 @@ class Role(OTPmeObject):
                                     return_type="instance")
         if not role_shares:
             return result
+
+        if persist_mount is None:
+            persist_mount = True
 
         def post_method():
             shares = {}
@@ -1287,11 +1296,15 @@ class Role(OTPmeObject):
                 shares[share_id]['hosts'] = share_hosts
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['tokens'] = [token_path]
-                shares[share_id]['persist'] = True
+                shares[share_id]['persist'] = persist_mount
 
             notify(username=username, event_type="share_mount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -1300,6 +1313,8 @@ class Role(OTPmeObject):
     def remove_token(
         self,
         token_path: str,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1320,6 +1335,9 @@ class Role(OTPmeObject):
         role_shares = set(self.get_shares(recursive=True,
                                           skip_disabled=False,
                                           return_type="instance"))
+
+        if persist_mount is None:
+            persist_mount = True
 
         def post_method():
             shares = {}
@@ -1350,12 +1368,16 @@ class Role(OTPmeObject):
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['tokens'] = [token_path]
-                shares[share_id]['persist'] = True
+                shares[share_id]['persist'] = persist_mount
 
             # Send notification to idled.
             notify(username=username, event_type="share_unmount", data=shares)
 
-        callback.post_methods.append(post_method)
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
 
         return result
 
@@ -1365,6 +1387,8 @@ class Role(OTPmeObject):
         self,
         role_name: str=None,
         role_uuid: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1376,6 +1400,9 @@ class Role(OTPmeObject):
         elif not role_uuid:
             msg = "Need <role_name> or <role_uuid>."
             raise OTPmeException(msg)
+
+        if persist_mount is None:
+            persist_mount = True
 
         role_shares = self.get_shares(recursive=True,
                                     skip_disabled=False,
@@ -1444,7 +1471,7 @@ class Role(OTPmeObject):
                     share_data = stuff.copy_object(shares)
                     x_shares.update(share_data)
                     x_shares[share_id]['tokens'] = tokens
-                    x_shares[share_id]['persist'] = True
+                    x_shares[share_id]['persist'] = persist_mount
                     user_shares[username] = x_shares
                     already_processed.append(token_path)
 
@@ -1455,7 +1482,12 @@ class Role(OTPmeObject):
             def post_method():
                 for x in notifys:
                     notify(username=x[0], event_type=x[1], data=x[2])
-            callback.post_methods.append(post_method)
+
+            if share_notifications is None:
+                share_notifications = self.get_config_parameter("send_share_notifications")
+
+            if share_notifications:
+                callback.post_methods.append(post_method)
 
         result = super().add_role(*args, role_name=role_name,
                                 role_uuid=role_uuid,
@@ -1468,6 +1500,8 @@ class Role(OTPmeObject):
         self,
         role_name: str=None,
         role_uuid: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         *args,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1496,6 +1530,9 @@ class Role(OTPmeObject):
 
         result = super().remove_role(*args, role_name=role_name or _role_uuid,
                                         callback=callback, **kwargs)
+
+        if persist_mount is None:
+            persist_mount = True
 
         def post_method():
             shares_after = set(role_to_remove.get_shares(recursive=True,
@@ -1553,14 +1590,17 @@ class Role(OTPmeObject):
                     share_data = stuff.copy_object(shares)
                     x_shares.update(share_data)
                     x_shares[share_id]['tokens'] = tokens
-                    x_shares[share_id]['persist'] = True
+                    x_shares[share_id]['persist'] = persist_mount
                     user_shares[username] = x_shares
                     already_processed.append(token_path)
             for username in user_shares:
                 shares = user_shares[username]
                 notify(username=username, event_type="share_unmount", data=shares)
 
-        if shares_before:
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if shares_before and share_notifications:
             callback.post_methods.append(post_method)
 
         return result
@@ -1570,6 +1610,8 @@ class Role(OTPmeObject):
     def enable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1597,6 +1639,9 @@ class Role(OTPmeObject):
         result = super().enable(*args, callback=callback, **kwargs)
         if not result:
             return result
+
+        if persist_mount is None:
+            persist_mount = True
 
         def post_method():
             user_shares = {}
@@ -1654,14 +1699,17 @@ class Role(OTPmeObject):
                     share_data = stuff.copy_object(shares)
                     x_shares.update(share_data)
                     x_shares[share_id]['tokens'] = tokens
-                    x_shares[share_id]['persist'] = True
+                    x_shares[share_id]['persist'] = persist_mount
                     user_shares[username] = x_shares
                     already_processed.append(token_path)
             for username in user_shares:
                 shares = user_shares[username]
                 notify(username=username, event_type="share_mount", data=shares)
 
-        if role_shares and role_tokens:
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if role_shares and role_tokens and share_notifications:
             callback.post_methods.append(post_method)
         return result
 
@@ -1670,6 +1718,8 @@ class Role(OTPmeObject):
     def disable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1689,6 +1739,9 @@ class Role(OTPmeObject):
         result = super().disable(*args, callback=callback, **kwargs)
         if not result:
             return result
+
+        if persist_mount is None:
+            persist_mount = True
 
         def post_method():
             user_shares = {}
@@ -1745,14 +1798,17 @@ class Role(OTPmeObject):
                     share_data = stuff.copy_object(shares)
                     x_shares.update(share_data)
                     x_shares[share_id]['tokens'] = tokens
-                    x_shares[share_id]['persist'] = True
+                    x_shares[share_id]['persist'] = persist_mount
                     user_shares[username] = x_shares
                     already_processed.append(token_path)
             for username in user_shares:
                 shares = user_shares[username]
                 notify(username=username, event_type="share_unmount", data=shares)
 
-        if role_shares and role_tokens:
+        if share_notifications is None:
+            share_notifications = self.get_config_parameter("send_share_notifications")
+
+        if role_shares and role_tokens and share_notifications:
             callback.post_methods.append(post_method)
         return result
 

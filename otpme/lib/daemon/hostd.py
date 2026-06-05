@@ -236,7 +236,7 @@ class HostDaemon(OTPmeDaemon):
 
     def get_unsync_sites(self, timeout=None):
         """ Get nodes/sites that are not in sync with us. """
-        # Only master nodes must send sync notifies.
+        # Only master nodes must send sync notifications.
         if not config.master_node:
             return
 

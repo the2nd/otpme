@@ -276,18 +276,24 @@ cmd_help = {
                 },
 
     'enable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user enable {user}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user enable [--share-notify] [--no-share-notify] [--no-persist-mount] {user}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Enable user'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                 },
                 },
 
     'disable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user disable {user}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user disable [--share-notify] [--no-share-notify] [--no-persist-mount] {user}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable user'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 

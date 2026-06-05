@@ -4367,6 +4367,19 @@ class OTPmeSsoP1(OTPmeServer1):
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
 
+        try:
+            session_uuid = command_args['session_uuid']
+        except Exception:
+            status = False
+            message = _("AUTHD_INCOMPLETE_COMMAND")
+            return self.build_response(status, message)
+
+        session = backend.get_object(uuid=session_uuid)
+        if not session:
+            return self.build_response(False, {
+                'message': 'UNKNOWN_SESSION', 'status': False,
+            })
+
         if command == "get_apps":
             log_msg = _("Processing command get_apps.", log=True)[1]
             self.logger.info(log_msg)

@@ -996,12 +996,18 @@ class ControlDaemon(UnixDaemon):
                     daemon_name = data['daemon']
                 except Exception:
                     continue
+                if daemon_name not in self.daemons:
+                    self.daemons.append(daemon_name)
                 self.start_daemon(daemon_name)
             elif command == "stop":
                 try:
                     daemon_name = data['daemon']
                 except Exception:
                     continue
+                try:
+                    self.daemons.remove(daemon_name)
+                except Exception:
+                    pass
                 self.stop_child(daemon_name)
             else:
                 log_msg = _("Unknown daemon command: {command}", log=True)[1]

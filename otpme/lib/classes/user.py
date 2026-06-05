@@ -257,6 +257,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -265,6 +266,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -5249,7 +5251,7 @@ class User(OTPmeObject):
                         script_options=script_options,
                         script=auth_script, callback=callback)
 
-    def _shares_data_for_notify(self):
+    def _shares_data_for_notify(self, persist_mount: bool=True):
         """ Build the per-share notify dict covering every share this
         user's tokens reach (directly or via roles). Returns {} if the
         user has no reachable share. Shape matches the dict produced
@@ -5296,7 +5298,7 @@ class User(OTPmeObject):
                 'hosts': share_hosts,
                 'encrypted': share.encrypted,
                 'tokens': sorted(token_paths),
-                'persist': True,
+                'persist': persist_mount,
             }
         return shares_data
 
@@ -5305,6 +5307,8 @@ class User(OTPmeObject):
     def enable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -5317,7 +5321,9 @@ class User(OTPmeObject):
         to once their account is active again. """
         if self.name == ADMIN_USER:
             return super().enable(*args, callback=callback, **kwargs)
-        shares_data = self._shares_data_for_notify()
+        if persist_mount is None:
+            persist_mount = True
+        shares_data = self._shares_data_for_notify(persist_mount=persist_mount)
         result = super().enable(*args, callback=callback, **kwargs)
         if not result:
             return result
@@ -5326,7 +5332,10 @@ class User(OTPmeObject):
                 notify(username=self.name,
                        event_type="share_mount",
                        data=shares_data)
-            callback.post_methods.append(post_method)
+            if share_notifications is None:
+                share_notifications = self.get_config_parameter("send_share_notifications")
+            if share_notifications:
+                callback.post_methods.append(post_method)
         return result
 
     @check_acls(['disable:object'])
@@ -5334,6 +5343,8 @@ class User(OTPmeObject):
     def disable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -5346,7 +5357,9 @@ class User(OTPmeObject):
         _shares_data_for_notify for the rationale). """
         if self.name == ADMIN_USER:
             return super().disable(*args, callback=callback, **kwargs)
-        shares_data = self._shares_data_for_notify()
+        if persist_mount is None:
+            persist_mount = True
+        shares_data = self._shares_data_for_notify(persist_mount=persist_mount)
         result = super().disable(*args, callback=callback, **kwargs)
         if not result:
             return result
@@ -5355,7 +5368,10 @@ class User(OTPmeObject):
                 notify(username=self.name,
                        event_type="share_unmount",
                        data=shares_data)
-            callback.post_methods.append(post_method)
+            if share_notifications is None:
+                share_notifications = self.get_config_parameter("send_share_notifications")
+            if share_notifications:
+                callback.post_methods.append(post_method)
         return result
 
     @check_special_user()

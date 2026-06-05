@@ -303,11 +303,13 @@ def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False)
         extra_args = {}
     sso_jwt = request.cookies.get('otpme_jwt')
     client_ip = check_forwarded_for()[0]
+    session_uuid = request.cookies.get('otpme_sso_session')
     command_args = {
                     'username'      : g.user.name,
                     'sso_jwt'       : sso_jwt,
                     'client'        : config.sso_client_name,
                     'client_ip'     : client_ip,
+                    'session_uuid'  : session_uuid,
                 }
     accept_language = _browser_preferred_language()
     if accept_language:
@@ -329,7 +331,12 @@ def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False)
         ssod_conn.close()
     if not status:
         # Invalid/expired JWT: force logout so the user re-authenticates.
+        do_logout = False
         if isinstance(response, dict) and response.get('message') == 'JWT_INVALID':
+            do_logout = True
+        if isinstance(response, dict) and response.get('message') == 'UNKNOWN_SESSION':
+            do_logout = True
+        if do_logout:
             log_msg = _("SSO JWT invalid for user '{user_name}', logging out.", log=True)[1]
             log_msg = log_msg.format(user_name=g.user.name)
             logger.warning(log_msg)
@@ -1017,7 +1024,8 @@ def login():
         sso_jwt = auth_response['sso_jwt']
         slp = auth_response['slp']
     except KeyError as e:
-        log_msg = _("Invalid auth response.", log=True)[1]
+        log_msg = _("Invalid auth response: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
         logger.warning(log_msg)
         flash(gettext("Login failed."))
         return redirect(url_for('login', _external=True, _scheme='https'))
@@ -1225,7 +1233,12 @@ def get_sotp():
     if not status:
         error_msg = _ssod_error_message(sotp_data, "Failed to get SOTP.")
         # Invalid/expired JWT: force logout so the user re-authenticates.
+        do_logout = False
         if isinstance(sotp_data, dict) and sotp_data.get('message') == 'JWT_INVALID':
+            do_logout = True
+        if isinstance(sotp_data, dict) and sotp_data.get('message') == 'UNKNOWN_SESSION':
+            do_logout = True
+        if do_logout:
             log_msg = _("SSO JWT invalid for user '{user_name}', logging out.", log=True)[1]
             log_msg = log_msg.format(user_name=g.user.name)
             logger.warning(log_msg)
@@ -1451,8 +1464,8 @@ def fido2_auth_complete():
         sso_jwt = auth_response['sso_jwt']
         slp = auth_response['slp']
     except KeyError as e:
-        log_msg = _("Invalid auth response.", log=True)[1]
-        logger.warning(log_msg)
+        log_msg = _("Invalid auth response: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
         flash(gettext("Login failed."))
         return redirect(url_for('login', _external=True, _scheme='https'))
     # Get users site public key to verify the JWT.

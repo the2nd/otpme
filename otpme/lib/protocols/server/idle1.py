@@ -182,7 +182,7 @@ class OTPmeIdleP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 return self.build_response(False, str(e))
             try:
-                result = self.process_event(event)
+                result = self.process_event(username, event)
             except Exception as e:
                 log_msg = _("Failed to process event: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -191,7 +191,7 @@ class OTPmeIdleP1(OTPmeServer1):
             if result:
                 return result
 
-    def process_event(self, event):
+    def process_event(self, username, event):
         try:
             event_type = event['event_type']
         except KeyError:
@@ -199,6 +199,17 @@ class OTPmeIdleP1(OTPmeServer1):
             raise OTPmeException(msg)
 
         if event_type == "share_unmount":
+            try:
+                shares = event['data']
+            except KeyError:
+                shares = None
+            if not shares:
+                msg = _("Got share unmount event without shares.")
+                raise OTPmeException(msg)
+            share_ids = ",".join(shares.keys())
+            log_msg = _("Sending share unmount notification ({shares}) to {username} on host {host}", log=True)[1]
+            log_msg = log_msg.format(shares=share_ids, username=username, host=self.peer.name)
+            self.logger.info(log_msg)
             return self.build_response(True, event)
 
         elif event_type == "share_mount":
@@ -226,6 +237,10 @@ class OTPmeIdleP1(OTPmeServer1):
                 shares.pop(share_id)
             if not shares:
                 return False
+            share_ids = ",".join(shares.keys())
+            log_msg = _("Sending share mount notification ({shares}) to {username} on host {host}", log=True)[1]
+            log_msg = log_msg.format(shares=share_ids, username=username, host=self.peer.name)
+            self.logger.info(log_msg)
             return self.build_response(True, event)
 
         elif event_type == "share_add_host":
@@ -256,6 +271,10 @@ class OTPmeIdleP1(OTPmeServer1):
                 shares.pop(share_id)
             if not shares:
                 return False
+            share_ids = ",".join(shares.keys())
+            log_msg = _("Sending share mount notification ({shares}) to {username} on host {host}", log=True)[1]
+            log_msg = log_msg.format(shares=share_ids, username=username, host=self.peer.name)
+            self.logger.info(log_msg)
             mount_event = {'event_type':'share_mount', 'data':shares}
             return self.build_response(True, mount_event)
 
@@ -287,6 +306,10 @@ class OTPmeIdleP1(OTPmeServer1):
                 shares.pop(share_id)
             if not shares:
                 return False
+            share_ids = ",".join(shares.keys())
+            log_msg = _("Sending share unmount notification ({shares}) to {username} on host {host}", log=True)[1]
+            log_msg = log_msg.format(shares=share_ids, username=username, host=self.peer.name)
+            self.logger.info(log_msg)
             mount_event = {'event_type':'share_unmount', 'data':shares}
             return self.build_response(True, mount_event)
         else:

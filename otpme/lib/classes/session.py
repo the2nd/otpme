@@ -1254,6 +1254,8 @@ class Session(OTPmeLockObject):
         offline_data_key: Union[str,None]=None,
         start_group: Union[object,None]=None,
         access_group: Union[str,None]=None,
+        timeout: int=None,
+        unused_timeout: int=None,
         ):
         """
         Walk through all child groups and add child sessions
@@ -1268,7 +1270,9 @@ class Session(OTPmeLockObject):
                 log_msg = _("Adding session '{session_name}'", log=True)[1]
                 log_msg = log_msg.format(session_name=self.name)
                 logger.debug(log_msg)
-                self.add(offline_data_key=offline_data_key)
+                self.add(offline_data_key=offline_data_key,
+                        timeout=timeout,
+                        unused_timeout=unused_timeout)
                 # Reload session config.
                 self.exists()
             groups_processed = [ self.access_group ]
@@ -1326,7 +1330,7 @@ class Session(OTPmeLockObject):
                 log_msg = _("Adding child session '{session_name}'.", log=True)[1]
                 log_msg = log_msg.format(session_name=child_session.name)
                 logger.debug(log_msg)
-                child_session.add()
+                child_session.add(timeout=timeout, unused_timeout=unused_timeout)
 
                 # Only re-write the child config if the inherited timeouts
                 # changed it. Session.add() already persists the object, so

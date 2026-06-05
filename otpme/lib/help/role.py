@@ -80,18 +80,24 @@ cmd_help = {
                 },
 
     'enable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role enable {role}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-role enable [--share-notify] [--no-share-notify] [--no-persist-mount] {role}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Enable role'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                 },
                 },
 
     'disable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role disable {role}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-role disable [--share-notify] [--no-share-notify] [--no-persist-mount] {role}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable role'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 
@@ -331,38 +337,50 @@ cmd_help = {
                 },
 
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] {role} {token} [token_options]'),
-                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: <|object|> <token_path> [token_options]',
+                    '_cmd_usage_help' : _('Usage: otpme-role add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {token} [token_options]'),
+                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <token_path> [token_options]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to role.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
                                     '--sign'                : _('Sign the object with default tags.'),
                                     '--tags <tag1,tag2>'    : _('Add tags to signature.'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                 },
                 },
 
     'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role remove_token --keep-sign {role} {token}'),
-                    'cmd'   :   '--keep-sign :keep_sign=True: <|object|> <token_path>',
+                    '_cmd_usage_help' : _('Usage: otpme-role remove_token [--keep-sign] [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {token}'),
+                    'cmd'   :   '--keep-sign :keep_sign=True: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from role'),
                                     '--keep-sign'           : _('Do not remove any signature.'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 
     'add_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role add_role {role} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-role add_role [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {role}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <role_name>',
                     '_help' :   {
                                     'cmd'                   : _('Add role to role'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                 },
                 },
 
     'remove_role'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role remove_role {role} {role}'),
-                    'cmd'   :   '<|object|> <role_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-role remove_role [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {role}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <role_name>',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from role'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 

@@ -1387,7 +1387,7 @@ class SessionEntry(object):
 
 def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False,
     max_len=30, output_fields=None, header=True, border=True, csv=False, csv_sep=";",
-    show_all=False, callback=default_callback, **kwargs):
+    show_all=False, show_username=False, callback=default_callback, **kwargs):
     """
     Show sessions, all or selected by regex.
 
@@ -1472,14 +1472,15 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
     # Combine all ACLs to be checked.
     verify_acls = write_acls + read_acls
 
-    show_username = False
     if show_all:
-        show_username = True
+        if show_username is None:
+            show_username = True
         if search_regex is None:
             search_regex = "*"
 
     if search_regex is not None:
-        show_username = True
+        if show_username is None:
+            show_username = True
 
     # Admin user does not need ACL check.
     if config.auth_token:
@@ -1545,7 +1546,8 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             continue
         user_uuids.append(user_uuid)
         if len(user_uuids) > 1:
-            show_username = True
+            if show_username is None:
+                show_username = True
             break
 
     if show_username:

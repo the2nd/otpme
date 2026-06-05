@@ -1693,11 +1693,16 @@ def register_config():
                                     ctype=int,
                                     default_value=16,
                                     object_types=['site', 'unit', 'node'])
-    # Allow otpme-tool who from hosts=.
+    # Allow otpme-tool who from hosts.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
                                     default_value=False,
                                     object_types=['site'])
+    # Send share notifications.
+    config.register_config_parameter(name="send_share_notifications",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site', 'unit', 'share', 'user', 'token'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")

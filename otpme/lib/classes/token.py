@@ -209,6 +209,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -217,6 +218,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -3771,7 +3773,7 @@ class Token(OTPmeObject):
             return True
         return False
 
-    def _shares_data_for_notify(self):
+    def _shares_data_for_notify(self, persist_mount: bool=True):
         """ Build the per-share notify dict for every share this token
         reaches (directly or via roles). Returns {} if the token isn't
         wired to any share.
@@ -3809,7 +3811,7 @@ class Token(OTPmeObject):
                 'hosts': share_hosts,
                 'encrypted': share.encrypted,
                 'tokens': [self.rel_path],
-                'persist': True,
+                'persist': persist_mount,
             }
         return shares_data
 
@@ -3818,6 +3820,8 @@ class Token(OTPmeObject):
     def enable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3833,14 +3837,19 @@ class Token(OTPmeObject):
         result = super().enable(*args, callback=callback, **kwargs)
         if not result:
             return result
-        shares_data = self._shares_data_for_notify()
+        if persist_mount is None:
+            persist_mount = True
+        shares_data = self._shares_data_for_notify(persist_mount=persist_mount)
         if shares_data:
             owner = self.owner
             def post_method():
                 notify(username=owner,
                        event_type="share_mount",
                        data=shares_data)
-            callback.post_methods.append(post_method)
+            if share_notifications is None:
+                share_notifications = self.get_config_parameter("send_share_notifications")
+            if share_notifications:
+                callback.post_methods.append(post_method)
         return result
 
     @check_acls(['disable:object'])
@@ -3848,6 +3857,8 @@ class Token(OTPmeObject):
     def disable(
         self,
         *args,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3862,7 +3873,9 @@ class Token(OTPmeObject):
         reachable shares even if the disable cascade strips them. """
         if not self.owner or self.owner == ADMIN_USER:
             return super().disable(*args, callback=callback, **kwargs)
-        shares_data = self._shares_data_for_notify()
+        if persist_mount is None:
+            persist_mount = True
+        shares_data = self._shares_data_for_notify(persist_mount=persist_mount)
         result = super().disable(*args, callback=callback, **kwargs)
         if not result:
             return result
@@ -3872,7 +3885,10 @@ class Token(OTPmeObject):
                 notify(username=owner,
                        event_type="share_unmount",
                        data=shares_data)
-            callback.post_methods.append(post_method)
+            if share_notifications is None:
+                share_notifications = self.get_config_parameter("send_share_notifications")
+            if share_notifications:
+                callback.post_methods.append(post_method)
         return result
 
     @object_lock(full_lock=True)

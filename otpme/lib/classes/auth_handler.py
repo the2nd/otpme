@@ -1132,6 +1132,8 @@ class AuthHandler(object):
                                                 return_type="instance",
                                                 quiet=False)
                 for token in ag_tokens:
+                    if token.temp_password_hash:
+                        self.temp_pass_tokens.append(token)
                     if not self.user_default_token:
                         if token.uuid == self.user.default_token:
                             self.user_default_token = token
@@ -1164,6 +1166,7 @@ class AuthHandler(object):
         and not self.valid_user_tokens_smartcard \
         and not self.valid_user_tokens_dot1x \
         and not self.valid_user_tokens_ssh \
+        and not self.temp_pass_tokens \
         and not self.user_default_token:
             log_msg = _("Unable to find a token to verify this request.", log=True)[1]
             self.logger.warning(log_msg)
@@ -1208,11 +1211,12 @@ class AuthHandler(object):
             return verify_status
         # Mark auth as temp password auth.
         self.temp_password_auth = True
-        # Dont create sessions for temp password auth.
-        self.create_sessions = False
+        # Make sure session is only valid as long as the temp password.
+        self.session_timeout = int(verify_token.temp_password_expire - time.time())
+        self.session_unused_timeout = self.session_timeout
         return verify_status
 
-    def verify_user_token(self, token):
+    def verify_user_token(self, token, temp=False):
         """ Verify the given user token. """
         if not token.enabled:
             log_msg = _("Not verifying disabled token: {token_name}", log=True)[1]
@@ -1307,12 +1311,13 @@ class AuthHandler(object):
         log_msg = log_msg.format(token_type=token.token_type, token_path=token.rel_path)
         self.logger.debug(log_msg)
 
-        # Try to verify token. A status of None means continue to next token.
-        verify_status = self.try_temp_pass_auth(_verify_token,
-                                            token_verify_parms)
-        # Try normal token verify.
         do_dot1x_auth = False
-        if verify_status is None:
+        if temp:
+            # Try to verify token. A status of None means continue to next token.
+            verify_status = self.try_temp_pass_auth(_verify_token,
+                                                token_verify_parms)
+        else:
+            # Try normal token verify.
             if self.auth_client and self.auth_client.dot1x_auth:
                 if _verify_token.support_dot1x:
                     do_dot1x_auth = True
@@ -2134,7 +2139,14 @@ class AuthHandler(object):
                 # parent session so we need no session.add() here. Child
                 # sessions are always created regardless if sessions are
                 # enabled for each child.
-                add_status = session.create_child_sessions(offline_data_key=self.offline_data_key)
+                timeout = None
+                unused_timeout = None
+                if self.temp_password_auth:
+                    timeout = self.session_timeout
+                    unused_timeout = self.session_unused_timeout
+                add_status = session.create_child_sessions(offline_data_key=self.offline_data_key,
+                                                            timeout=timeout,
+                                                            unused_timeout=unused_timeout)
                 if add_status:
                     # Call exists() to fill in all session variables.
                     session.exists()
@@ -2209,7 +2221,6 @@ class AuthHandler(object):
         if self.vlan:
             log_vlan = self.vlan
 
-        # Final success message.
         log_message = f"{self.auth_message}: user={log_username} token={log_token_name} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_type={log_auth_type} session={log_session_id} vlan={log_vlan}"
         return log_message
 
@@ -2431,6 +2442,8 @@ class AuthHandler(object):
         # Will hold a list of user dot1x tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_dot1x = []
+        # Tokens with temp password set.
+        self.temp_pass_tokens = []
         # Will to hold realm session password.
         self.rsp = None
         # Indicates that the password is a SOTP.
@@ -2787,6 +2800,16 @@ class AuthHandler(object):
                 log_msg = _("Verifying script_otp tokens...", log=True)[1]
                 self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
+
+        if not self.auth_failed and self.auth_status is False:
+            if self.temp_pass_tokens:
+                log_msg = _("Verifying temp password tokens...", log=True)[1]
+                self.logger.debug(log_msg)
+                for token in self.temp_pass_tokens:
+                    temp_passwords_allowed = token.get_config_parameter('allow_temp_paswords')
+                    if not temp_passwords_allowed:
+                        continue
+                    self.verify_user_token(token=token, temp=True)
 
         # Check if we have a auth token.
         if self.user.type == "user":

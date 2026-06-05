@@ -77,18 +77,24 @@ cmd_help = {
                 },
 
     'enable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group enable {group}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-group enable [--share-notify] [--no-share-notify] [--no-persist-mount] {group}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Enable group'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                 },
                 },
 
     'disable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group disable {group}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-group disable [--share-notify] [--no-share-notify] [--no-persist-mount] {group}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable group'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 
@@ -430,18 +436,24 @@ cmd_help = {
                 },
 
     'add_host'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-group add_host {group} {host}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-group add_host [--share-notify] [--no-share-notify] [--no-persist-mount] {group} {host}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <host_name>',
                     '_help' :   {
                                     'cmd'                   : _('Add host to group.'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
                                 },
                 },
 
     'remove_host'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-group remove_host {group} {host}'),
-                    'cmd'   :   '<|object|> <host_name>',
+                    '_cmd_usage_help' : _('Usage: otpme-group remove_host [--share-notify] [--no-share-notify] [--no-persist-mount] {group} {host}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <host_name>',
                     '_help' :   {
                                     'cmd'                   : _('Remove host from group.'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 
