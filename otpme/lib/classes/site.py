@@ -1513,7 +1513,7 @@ def register_config():
                                     ctype=str,
                                     setter=socket_uri_setter,
                                     default_value="tcp://[::]:443",
-                                    object_types=['site', 'unit', 'node'])
+                                    object_types=['site', 'unit', 'node', 'host'])
     # OIDC default scopes.
     def scopes_setter(scopes, callback=default_callback, **kwargs):
         if isinstance(scopes, str):
@@ -1693,6 +1693,11 @@ def register_config():
                                     ctype=int,
                                     default_value=16,
                                     object_types=['site', 'unit', 'node'])
+    # Start this number of httpd workers.
+    config.register_config_parameter(name="httpd_workers",
+                                    ctype=int,
+                                    default_value=8,
+                                    object_types=['site', 'unit', 'node', 'host'])
     # Allow otpme-tool who from hosts.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
@@ -1874,7 +1879,7 @@ class Site(OTPmeObject):
                                 "SSO_CERT",
                                 "SSO_SECRET",
                                 "SSO_CSRF_SECRET",
-                                "OIDC_PAIRWISE_SECRET",
+                                "CONFIG_PARAMS:httpd_workers",
                                 "CONFIG_PARAMS:httpd_socket_uri",
                                 "CONFIG_PARAMS:reverse_proxy_ips",
                                 "CONFIG_PARAMS:sso_rate_limit_login",

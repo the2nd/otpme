@@ -23,11 +23,33 @@ Display group information. Without arguments, shows all groups.
 .B list \fR[\fIregex\fR]
 List groups, optionally filtered by regex pattern.
 .TP
-.B enable \fIgroup\fR
+.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
 Enable a disabled group.
+.RS
 .TP
-.B disable \fIgroup\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR
 Disable a group without deleting it.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B rename \fIgroup\fR \fInew_name\fR
 Rename a group.
@@ -63,6 +85,38 @@ List users in the group.
 .TP
 .B list_default_group_users \fIgroup\fR
 List users that have this group as their default group.
+.SS Host Management
+.TP
+.B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
+Add a host to the group.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B remove_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
+Remove a host from the group.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
+.TP
+.B list_hosts \fIgroup\fR
+List hosts in the group.
 .SS Sync User Management
 .TP
 .B add_sync_user \fIgroup\fR \fIuser\fR
@@ -110,11 +164,11 @@ Show all configuration parameters.
 .B description \fIgroup\fR \fR[\fIdescription\fR]
 Set group description.
 .TP
-.B info \fIgroup\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIgroup\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIgroup\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIgroup\fR
 Dump the info text to stdout.
 .TP
 .B add_extension \fIgroup\fR \fIextension\fR
@@ -164,6 +218,9 @@ Limit number of tokens shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

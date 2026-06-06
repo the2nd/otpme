@@ -25,11 +25,33 @@ Display user information. Without arguments, shows all users.
 .B list \fR[\fIregex\fR]
 List users, optionally filtered by regex pattern.
 .TP
-.B enable \fIuser\fR
+.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
 Enable a disabled user account.
+.RS
 .TP
-.B disable \fIuser\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
 Disable a user account without deleting it.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B rename \fIuser\fR \fInew_name\fR
 Rename a user account.
@@ -150,14 +172,14 @@ Remove an LDAP object class from the user.
 .B show_ldif \fIuser\fR
 Display LDAP LDIF representation of the user.
 .TP
-.B info \fIuser\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR \fR[\fIinfo\fR]
 Set free-form user info text. If
 .I info
 is omitted, the current info text is opened in the editor specified by the
 .B EDITOR
 environment variable.
 .TP
-.B dump_info \fIuser\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR
 Dump the user info text to stdout.
 .SS Extension Management
 .TP
@@ -254,6 +276,9 @@ Display only specified fields.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

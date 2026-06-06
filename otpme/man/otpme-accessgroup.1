@@ -158,11 +158,11 @@ Show all configuration parameters.
 .B description \fIaccessgroup\fR \fR[\fIdescription\fR]
 Set access group description.
 .TP
-.B info \fIaccessgroup\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIaccessgroup\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIaccessgroup\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIaccessgroup\fR
 Dump the info text to stdout.
 .TP
 .B add_extension \fIaccessgroup\fR \fIextension\fR
@@ -203,6 +203,9 @@ Display only specified fields.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

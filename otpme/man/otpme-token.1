@@ -89,11 +89,33 @@ Display token information.
 .B list \fR[\fIregex\fR]
 List tokens, optionally filtered by regex pattern.
 .TP
-.B enable \fItoken\fR
+.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fItoken\fR
 Enable a disabled token.
+.RS
 .TP
-.B disable \fItoken\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fItoken\fR
 Disable a token without deleting it.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B rename \fItoken\fR \fInew_name\fR
 Rename a token.
@@ -117,11 +139,11 @@ Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disabl
 .B description \fItoken\fR \fR[\fIdescription\fR]
 Set token description.
 .TP
-.B info \fItoken\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fItoken\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fItoken\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fItoken\fR
 Dump the info text to stdout.
 .TP
 .B test \fItoken\fR \fR[\fIotp|password\fR]
@@ -451,6 +473,9 @@ Limit number of roles shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .SS General Options
 .TP
 .B \-r

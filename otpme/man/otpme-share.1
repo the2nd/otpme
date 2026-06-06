@@ -25,11 +25,39 @@ Display share information.
 .B list \fR[\fIregex\fR]
 List shares, optionally filtered by regex pattern.
 .TP
-.B enable \fIshare\fR
+.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Enable a disabled share.
+.RS
 .TP
-.B disable \fIshare\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-persist\-mount
+Persist new share mounts on hosts.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Disable a share without deleting it.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-persist\-mount
+Also remove persisted share mounts on hosts.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B rename \fIshare\fR \fInew_name\fR
 Rename a share.
@@ -62,11 +90,11 @@ Make share read-write.
 .B description \fIshare\fR \fR[\fIdescription\fR]
 Set share description.
 .TP
-.B info \fIshare\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIshare\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIshare\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIshare\fR
 Dump the info text to stdout.
 .SS Mount Script
 A mount script is executed each time the share is mounted by a user. It can be used to perform custom actions during mount, such as preparing the share directory or checking prerequisites. The mount script must be enabled separately after being configured.
@@ -105,6 +133,78 @@ List roles assigned to the share. Use \fB\-r\fR for recursive listing.
 .TP
 .B list_users \fIshare\fR
 List users of the share.
+.SS Host Management
+.TP
+.B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
+Add a host to the share.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-persist\-mount
+Persist new share mounts on hosts.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B remove_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
+Remove a host from the share.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-persist\-mount
+Also remove persisted share mounts on hosts.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
+.TP
+.B list_hosts \fIshare\fR
+List hosts assigned to the share.
+.TP
+.B limit_hosts \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+Limit share access to assigned hosts and host groups.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-persist\-mount
+Also remove persisted share mounts on hosts.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
+.TP
+.B unlimit_hosts \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
+Remove host-based access limitation on the share.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-persist\-mount
+Persist new share mounts on hosts.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
 .SS Master Password Token
 .TP
 .B add_master_password_token \fIshare\fR \fItoken_path\fR
@@ -221,6 +321,9 @@ Limit number of groups shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

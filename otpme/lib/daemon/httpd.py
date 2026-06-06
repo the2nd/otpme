@@ -182,15 +182,18 @@ class HttpDaemon(OTPmeDaemon):
                 self.access_log = gunicorn_logger
 
         # Gunicorn options
-        own_site = backend.get_object(uuid=config.site_uuid)
-        socket_uri = own_site.get_config_parameter("httpd_socket_uri")
+        own_host = backend.get_object(uuid=config.uuid)
+        socket_uri = own_host.get_config_parameter("httpd_socket_uri")
         if not socket_uri:
             socket_uri = "tcp://[::]:443"
+        httpd_workers = own_host.get_config_parameter("httpd_workers")
+        if not httpd_workers:
+            httpd_workers = 4
         options = {
           # Dual-stack: '[::]' binds both IPv6 and IPv4 (V6ONLY=0 default
           # on Linux). One socket accepts traffic from both families.
           'bind': socket_uri,
-          'workers': 4,
+          'workers': httpd_workers,
           'worker_class': 'gevent',
           'worker_connections': 1000,
           'timeout': 30,

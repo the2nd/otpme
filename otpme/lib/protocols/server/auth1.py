@@ -1087,12 +1087,13 @@ class OTPmeAuthP1(OTPmeServer1):
 
     def auth_user(self, user, auth_type, auth_mode,
         password=None, mschap_challenge=None, mschap_response=None,
-        access_group=None, sso_challenge=None, host=None,
-        host_type=None, host_ip=None, client=None, client_ip=None,
-        oidc_context=None, oidc_scope=None, oidc_nonce=None,
-        oidc_redirect_uri=None, oidc_code_challenge=None,
-        oidc_code_challenge_method=None,
+        access_group=None, sso_challenge=None, session_logout=False,
+        host=None, host_type=None, host_ip=None, client=None,
+        client_ip=None, oidc_context=None, oidc_scope=None,
+        oidc_nonce=None, oidc_redirect_uri=None,
         oidc_skip_backchannel_client=None,
+        oidc_code_challenge_method=None,
+        oidc_code_challenge=None,
         oidc_skip_backchannel=False):
         # Build auth request.
         kwargs = {
@@ -1103,6 +1104,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     'challenge'                 : mschap_challenge,
                     'response'                  : mschap_response,
                     'password'                  : password,
+                    'session_logout'            : session_logout,
                     'host'                      : host,
                     'host_type'                 : host_type,
                     'host_ip'                   : host_ip,
@@ -1482,6 +1484,7 @@ class OTPmeAuthP1(OTPmeServer1):
                             mschap_response=mschap_response,
                             access_group=access_group,
                             sso_challenge=sso_challenge,
+                            session_logout=sso_logout,
                             host=host,
                             host_ip=host_ip,
                             host_type=host_type,

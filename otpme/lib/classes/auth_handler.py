@@ -426,32 +426,6 @@ class AuthHandler(object):
             # Session update done.
             return
 
-        # If this is a logout-request...
-        if self.session_logout:
-            # Set auth_failed because we dont want to allow logins using SLPs.
-            self.auth_failed = True
-            # But we dont want a logout request to be counted as failed login.
-            self.count_fails = False
-            if self.realm_logout:
-                log_msg = _("Realm logout request. Removing session '{session_name}'", log=True)[1]
-                log_msg = log_msg.format(session_name=session.name)
-                self.logger.info(log_msg)
-                self.auth_message = "REALM_LOGOUT_OK"
-            else:
-                log_msg = _("Logout request. Removing session '{session_name}'", log=True)[1]
-                log_msg = log_msg.format(session_name=session.name)
-                self.logger.info(log_msg)
-                self.auth_message = "SESSION_LOGOUT_OK"
-            # Delete session if this is a logout request.
-            session.delete(force=True, recursive=True, verify_acls=False,
-                           skip_backchannel_client=self.oidc_skip_backchannel_client,
-                           skip_backchannel=self.oidc_skip_backchannel)
-            # On session logout authentication fails but the action was
-            # successful. Thus loglevel INFO is sufficient.
-            self.error_log_method = self.logger.info
-            # Session update done.
-            return
-
         if self.session_reneg:
             if self.reneg_type == "reneg_start":
                 self.auth_message = "AUTH_SESSION_RENEG_START"
@@ -2227,10 +2201,10 @@ class AuthHandler(object):
     def authenticate(self, user, ecdh_curve=None, auth_type="clear-text",
         auth_mode="auto", peer=None, realm_login=False, realm_logout=False,
         login_interface=None, reneg=None, reneg_salt=None, rsp_hash_type=None,
-        unlock=False, password=None, challenge=None, response=None,
-        smartcard_data=None, client=None, client_ip=None, access_group=None,
-        user_token=None, count_fails=None, host_type=None, host=None,
-        host_ip=None, replace_sessions=None, require_token_types=None,
+        unlock=False, session_logout=False, password=None, challenge=None,
+        response=None, smartcard_data=None, client=None, client_ip=None,
+        access_group=None, user_token=None, count_fails=None, host_type=None,
+        host=None, host_ip=None, replace_sessions=None, require_token_types=None,
         require_pass_types=None, redirect_challenge=None, jwt_auth=False,
         allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
         jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
@@ -2475,7 +2449,7 @@ class AuthHandler(object):
         # Indicates if we should create sessions.
         self.create_sessions = True
         # Will be set to True if this is a session logout request.
-        self.session_logout = False
+        self.session_logout = session_logout
         # Will be set to True if this is a session refresh request.
         self.session_refresh = False
         # Supported RSP hash types.
@@ -2522,6 +2496,8 @@ class AuthHandler(object):
             self.check_policies = False
         # We do not check policies on realm logout.
         if self.realm_logout:
+            self.check_policies = False
+        if self.session_logout:
             self.check_policies = False
 
         # Check if we got a valid client/host.
@@ -2647,6 +2623,32 @@ class AuthHandler(object):
         if not self.auth_failed:
             # Verify sessions.
             self.verify_user_sessions()
+
+        # If this is a logout-request...
+        if self.session_logout:
+            # Set auth_failed because we dont want to allow logins using SLPs.
+            self.auth_failed = True
+            # But we dont want a logout request to be counted as failed login.
+            self.count_fails = False
+            if self.realm_logout:
+                log_msg = _("Realm logout request. Removing session '{session_name}'", log=True)[1]
+                log_msg = log_msg.format(session_name=self.auth_session.name)
+                self.logger.info(log_msg)
+                self.auth_message = "REALM_LOGOUT_OK"
+            else:
+                if self.auth_session:
+                    log_msg = _("Logout request. Removing session '{session_name}'", log=True)[1]
+                    log_msg = log_msg.format(session_name=self.auth_session.name)
+                    self.logger.info(log_msg)
+                self.auth_message = "SESSION_LOGOUT_OK"
+            # Delete session if this is a logout request.
+            if self.auth_session:
+                self.auth_session.delete(force=True, recursive=True, verify_acls=False,
+                                       skip_backchannel_client=self.oidc_skip_backchannel_client,
+                                       skip_backchannel=self.oidc_skip_backchannel)
+            # On session logout authentication fails but the action was
+            # successful. Thus loglevel INFO is sufficient.
+            self.error_log_method = self.logger.info
 
         # If session verification did not succeed and this is not a JWT auth,
         # check for user from other site.
@@ -3177,7 +3179,12 @@ class AuthHandler(object):
             # Finally return.
             return auth_response
 
+        logout = False
         if self.realm_logout:
+            logout = True
+        if self.session_logout:
+            logout = True
+        if logout:
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()
             # Token may not exist anymore.

@@ -78,11 +78,11 @@ Disable ACL inheritance.
 .B description \fIpool\fR \fR[\fIdescription\fR]
 Set pool description.
 .TP
-.B info \fIpool\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpool\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIpool\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpool\fR
 Dump the info text to stdout.
 .SS Import/Export
 .TP
@@ -108,6 +108,9 @@ Limit number of nodes shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

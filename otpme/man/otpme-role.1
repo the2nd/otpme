@@ -23,11 +23,33 @@ Display role information. Without arguments, shows all roles.
 .B list \fR[\fIregex\fR]
 List roles, optionally filtered by regex pattern.
 .TP
-.B enable \fIrole\fR
+.B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
 Enable a disabled role.
+.RS
 .TP
-.B disable \fIrole\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B disable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIrole\fR
 Disable a role without deleting it.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B rename \fIrole\fR \fInew_name\fR
 Rename a role.
@@ -39,21 +61,65 @@ Move role to a different unit.
 Re-index the object to fix potential index problems.
 .SS Token Assignment
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIrole\fR \fItoken_path\fR
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fItoken_path\fR
 Add a token to the role. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh).
+.RS
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIrole\fR \fItoken_path\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B remove_token \fR[\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fItoken_path\fR
 Remove a token from the role.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B list_tokens \fIrole\fR
 List tokens assigned to the role.
 .SS Role Nesting
 .TP
-.B add_role \fIrole\fR \fIchild_role\fR
+.B add_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
 Add a child role to this role.
+.RS
 .TP
-.B remove_role \fIrole\fR \fIchild_role\fR
+.B \-\-share\-notify
+Send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on new share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Do not persist new share mounts on hosts.
+.RE
+.TP
+.B remove_role \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fIchild_role\fR
 Remove a child role from this role.
+.RS
+.TP
+.B \-\-share\-notify
+Send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-share\-notify
+Do not send notification to all online hosts on revoked share permissions.
+.TP
+.B \-\-no\-persist\-mount
+Keep persisted share mounts on hosts (transient unmount only).
+.RE
 .TP
 .B list_roles \fR[\fB\-r\fR] \fIrole\fR
 List roles assigned to the role. Use \fB\-r\fR for recursive listing.
@@ -64,6 +130,25 @@ List users of the role.
 .TP
 .B list_dynamic_groups \fIrole\fR
 List dynamic groups of the role.
+.SS Host and Device Assignment
+.TP
+.B add_host \fIrole\fR \fIhost\fR
+Add a host to the role.
+.TP
+.B remove_host \fIrole\fR \fIhost\fR
+Remove a host from the role.
+.TP
+.B list_hosts \fIrole\fR
+List hosts assigned to the role.
+.TP
+.B add_device \fIrole\fR \fIdevice\fR
+Add a device to the role.
+.TP
+.B remove_device \fIrole\fR \fIdevice\fR
+Remove a device from the role.
+.TP
+.B list_devices \fIrole\fR
+List devices assigned to the role.
 .SS Dynamic Groups
 .TP
 .B add_dynamic_group \fIrole\fR \fIgroup\fR
@@ -140,11 +225,11 @@ Show all configuration parameters.
 .B description \fIrole\fR \fR[\fIdescription\fR]
 Set role description.
 .TP
-.B info \fIrole\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIrole\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR
 Dump the info text to stdout.
 .SS Import/Export
 .TP
@@ -179,6 +264,9 @@ Limit number of groups shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

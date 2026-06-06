@@ -158,11 +158,11 @@ Show all configuration parameters.
 .B description \fInode\fR \fR[\fIdescription\fR]
 Set node description.
 .TP
-.B info \fInode\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fInode\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fInode\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fInode\fR
 Dump the info text to stdout.
 .SS Import/Export
 .TP
@@ -191,6 +191,9 @@ Limit number of tokens shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

@@ -1010,7 +1010,11 @@ class Host(OTPmeHost, OTPmeDevice):
                             "JOIN_TOKEN",
                             "JOIN_TOKEN_CACHE",
                             "DYNAMIC_GROUPS",
-                            ]
+                            ],
+                        'sso_host'  : [
+                                "CONFIG_PARAMS:httpd_workers",
+                                "CONFIG_PARAMS:httpd_socket_uri",
+                                ],
                         },
 
                     'node'  : {

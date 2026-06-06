@@ -84,11 +84,11 @@ Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .B description \fIpolicy\fR \fR[\fIdescription\fR]
 Set policy description.
 .TP
-.B info \fIpolicy\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIpolicy\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpolicy\fR
 Dump the info text to stdout.
 .SS Policy Assignment
 Policies can be assigned to other policies (policy chaining):
@@ -361,6 +361,9 @@ Display only specified fields.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .PP
 Global options are available for all commands. See
 .BR otpme (1)

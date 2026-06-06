@@ -51,11 +51,11 @@ Show all configuration parameters.
 .B description \fIsite\fR \fR[\fIdescription\fR]
 Set site description.
 .TP
-.B info \fIsite\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIsite\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIsite\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIsite\fR
 Dump the info text to stdout.
 .SS Trust Relationships
 .TP
@@ -375,6 +375,9 @@ Display only specified fields.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.

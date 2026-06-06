@@ -90,11 +90,11 @@ Show LDIF representation of the realm. Use \fB\-a\fR to show only specific attri
 .B description \fIrealm\fR \fR[\fIdescription\fR]
 Set realm description.
 .TP
-.B info \fIrealm\fR \fR[\fIinfo\fR]
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrealm\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
-.B dump_info \fIrealm\fR
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrealm\fR
 Dump the info text to stdout.
 .TP
 .B touch \fIrealm\fR
@@ -170,6 +170,9 @@ Display only specified fields.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
 Sort output by field.
