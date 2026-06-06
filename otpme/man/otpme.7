@@ -456,7 +456,7 @@ Per\-username rate limit on the SSO portal /login POST endpoint. Targets account
 Object types: site
 .TP
 .B httpd_socket_uri \fR(str, default: tcp://[::]:443)
-Listen socket URI for the SSO portal HTTPS daemon. Supports \fBtcp://address:port\fR. The most specific match wins (host overrides node overrides unit overrides site) so individual SSO hosts can bind a non\-default port (e.g. when fronted by a reverse proxy).
+Listen socket URI for the SSO portal HTTPS daemon. Supports \fBtcp://address:port\fR. The most specific match wins (node/host override unit overrides site) so individual SSO hosts can bind a non\-default port (e.g. when fronted by a reverse proxy).
 .br
 Object types: site, unit, node, host
 .TP
@@ -565,6 +565,13 @@ Number of preforked
 worker processes. Increase on busy nodes to handle more concurrent authentication requests. The most specific match wins (node overrides unit overrides site).
 .br
 Object types: site, unit, node
+.TP
+.B httpd_workers \fR(int, default: 8)
+Number of preforked
+.B httpd
+worker processes serving the SSO portal. Increase on busy SSO hosts to handle more concurrent HTTPS requests. The most specific match wins (node/host override unit overrides site).
+.br
+Object types: site, unit, node, host
 .TP
 .B allow_who_from_hosts \fR(bool, default: false)
 Whether \fBotpme\-tool who\fR may be invoked from non\-node hosts. Default false restricts the global session view to nodes; set true to allow ordinary OTPme hosts on the site to query active sessions of the users that are logged in there. Defense\-in\-depth: enable only when needed.

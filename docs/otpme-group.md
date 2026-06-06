@@ -29,11 +29,30 @@ Display group information. Without arguments, shows all groups.
 **list \[*regex*\]**  
 List groups, optionally filtered by regex pattern.
 
-**enable *group***  
+**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group***  
 Enable a disabled group.
 
-**disable *group***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group***  
 Disable a group without deleting it.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **rename *group* *new_name***  
 Rename a group.
@@ -71,6 +90,36 @@ List users in the group.
 
 **list_default_group_users *group***  
 List users that have this group as their default group.
+
+## Host Management
+
+**add_host \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host***  
+Add a host to the group.
+
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**remove_host \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *group* *host***  
+Remove a host from the group.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
+
+**list_hosts *group***  
+List hosts in the group.
 
 ## Sync User Management
 
@@ -122,11 +171,11 @@ Show all configuration parameters.
 **description *group* \[*description*\]**  
 Set group description.
 
-**info *group* \[*info*\]**  
+**info \[**--language** *LANG*\] *group* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *group***  
+**dump_info \[**--language** *LANG*\] *group***  
 Dump the info text to stdout.
 
 **add_extension *group* *extension***  
@@ -180,6 +229,9 @@ Limit number of tokens shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

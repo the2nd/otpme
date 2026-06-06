@@ -58,11 +58,11 @@ Show all configuration parameters.
 **description *site* \[*description*\]**  
 Set site description.
 
-**info *site* \[*info*\]**  
+**info \[**--language** *LANG*\] *site* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *site***  
+**dump_info \[**--language** *LANG*\] *site***  
 Dump the info text to stdout.
 
 ## Trust Relationships
@@ -405,6 +405,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

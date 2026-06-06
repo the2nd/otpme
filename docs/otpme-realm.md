@@ -106,11 +106,11 @@ attributes.
 **description *realm* \[*description*\]**  
 Set realm description.
 
-**info *realm* \[*info*\]**  
+**info \[**--language** *LANG*\] *realm* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *realm***  
+**dump_info \[**--language** *LANG*\] *realm***  
 Dump the info text to stdout.
 
 **touch *realm***  
@@ -194,6 +194,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

@@ -27,11 +27,30 @@ Display role information. Without arguments, shows all roles.
 **list \[*regex*\]**  
 List roles, optionally filtered by regex pattern.
 
-**enable *role***  
+**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role***  
 Enable a disabled role.
 
-**disable *role***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role***  
 Disable a role without deleting it.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **rename *role* *new_name***  
 Rename a role.
@@ -44,23 +63,61 @@ Re-index the object to fix potential index problems.
 
 ## Token Assignment
 
-**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *role* *token_path***  
+**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *token_path***  
 Add a token to the role. Use **-i** to limit login to specific
 interfaces (e.g. tty, gui, ssh).
 
-**remove_token \[**--keep-sign**\] *role* *token_path***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**remove_token \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *token_path***  
 Remove a token from the role.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **list_tokens *role***  
 List tokens assigned to the role.
 
 ## Role Nesting
 
-**add_role *role* *child_role***  
+**add_role \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role***  
 Add a child role to this role.
 
-**remove_role *role* *child_role***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**remove_role \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *child_role***  
 Remove a child role from this role.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **list_roles \[**-r**\] *role***  
 List roles assigned to the role. Use **-r** for recursive listing.
@@ -72,6 +129,26 @@ List users of the role.
 
 **list_dynamic_groups *role***  
 List dynamic groups of the role.
+
+## Host and Device Assignment
+
+**add_host *role* *host***  
+Add a host to the role.
+
+**remove_host *role* *host***  
+Remove a host from the role.
+
+**list_hosts *role***  
+List hosts assigned to the role.
+
+**add_device *role* *device***  
+Add a device to the role.
+
+**remove_device *role* *device***  
+Remove a device from the role.
+
+**list_devices *role***  
+List devices assigned to the role.
 
 ## Dynamic Groups
 
@@ -155,11 +232,11 @@ Show all configuration parameters.
 **description *role* \[*description*\]**  
 Set role description.
 
-**info *role* \[*info*\]**  
+**info \[**--language** *LANG*\] *role* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *role***  
+**dump_info \[**--language** *LANG*\] *role***  
 Dump the info text to stdout.
 
 ## Import/Export
@@ -197,6 +274,9 @@ Limit number of groups shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

@@ -180,11 +180,11 @@ Show all configuration parameters.
 **description *node* \[*description*\]**  
 Set node description.
 
-**info *node* \[*info*\]**  
+**info \[**--language** *LANG*\] *node* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *node***  
+**dump_info \[**--language** *LANG*\] *node***  
 Dump the info text to stdout.
 
 ## Import/Export
@@ -216,6 +216,9 @@ Limit number of tokens shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

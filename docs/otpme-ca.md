@@ -76,11 +76,11 @@ Show all configuration parameters.
 **description *ca* \[*description*\]**  
 Set CA description.
 
-**info *ca* \[*info*\]**  
+**info \[**--language** *LANG*\] *ca* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *ca***  
+**dump_info \[**--language** *LANG*\] *ca***  
 Dump the info text to stdout.
 
 ## Policy Management
@@ -160,6 +160,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

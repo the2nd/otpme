@@ -609,14 +609,62 @@ Object types: site, unit, host, device, user, token
 
 ## SSO Portal
 
-**sso_token_role (str)**  
-Role to which device tokens that are created via the SSO portal are
-added. The role's info text is displayed in the SSO portal settings to
-inform users about the purpose and scope of the role. The value can be a
-plain role name (resolved within the current site) or a *site/role* path
-to reference a role on another site. The parameter is resolved per user;
-the most specific match wins (user overrides unit overrides site).  
+**sso_token_roles (list)**  
+Comma separated list of roles to which device tokens registered via the
+SSO portal are added. The role's info text is displayed in the SSO
+portal settings to inform users about the purpose and scope of the role.
+Each value can be a plain role name (resolved within the current site)
+or a *site/role* path to reference a role on another site. The parameter
+is resolved per user; the most specific match wins (user overrides unit
+overrides site).  
 Object types: site, unit, user
+
+**device_token_suffix (str)**  
+Suffix appended to the device token name when the SSO portal registers a
+token under this role. A role without **device_token_suffix** is not
+shown in the SSO portal at all, so this parameter doubles as the opt-in
+switch that makes a role eligible as an SSO device-token target via
+**sso_token_roles**.  
+Object types: role
+
+**sso_allow_passkeys (bool, default: true)**  
+Whether passkeys (FIDO2 resident credentials) are accepted as a login
+method on this site. Set to false to refuse passkey authentication
+entirely; the SSO portal login mask is unchanged.  
+Object types: site, unit, user, token
+
+**sso_allow_fido2_deploy (bool, default: true)**  
+Whether end users may register a new FIDO2 token through the SSO portal
+Settings page. Set to false to restrict FIDO2 deployment to
+administrator workflows.  
+Object types: site, unit, user, token
+
+**sso_allow_totp_deploy (bool, default: true)**  
+Whether end users may register a new TOTP token through the SSO portal
+Settings page. Set to false to restrict TOTP deployment to administrator
+workflows.  
+Object types: site, unit, user, token
+
+**sso_rate_limit_login (str, default: 100/minute)**  
+Per-IP rate limit on the SSO portal /login POST endpoint. Coarse DoS
+guard against high-volume attacks from a single source; deliberately
+generous so NAT pools do not trip it under normal load. Accepts the
+standard Flask-Limiter syntax (e.g. **100/minute**, **1000/hour**).  
+Object types: site
+
+**sso_rate_limit_login_user (str, default: 10/minute)**  
+Per-username rate limit on the SSO portal /login POST endpoint. Targets
+account brute-force regardless of source IP; works alongside authd's
+auto_disable policy. NAT-safe because the key is the submitted
+username.  
+Object types: site
+
+**httpd_socket_uri (str, default: tcp://\[::\]:443)**  
+Listen socket URI for the SSO portal HTTPS daemon. Supports
+**tcp://address:port**. The most specific match wins (node/host override
+unit overrides site) so individual SSO hosts can bind a non-default port
+(e.g. when fronted by a reverse proxy).  
+Object types: site, unit, node, host
 
 **auth_jwt_valid (time, default: 60s)**  
 Validity of JWTs issued for cross-site authentication. When a user
@@ -653,6 +701,118 @@ request originates from one of these IPs, the **X-Forwarded-For** and
 IP and the requested host. Requests from any other source IP ignore
 these headers, so a client cannot spoof its origin by setting them
 itself.  
+Object types: site
+
+## OIDC Provider
+
+The following parameters apply per OIDC client (with site/unit serving
+as the deployment default). For the operational view of the OP --
+enabling it, rotating signing keys, the pairwise secret -- see
+**otpme-site**(1).
+
+**oidc_default_scopes (list)**  
+Comma separated list of scopes auto-granted to RPs without an explicit
+Scope-object grant. Names must reference existing **scope** objects.  
+Object types: site, unit
+
+**oidc_email_attribute (str, default: mail)**  
+LDIF attribute used as the source for the OIDC *email* claim. The
+default is the standard inetOrgPerson **mail** attribute; sites that
+virtualise mail aliases via **mailLocalAddress** (postfix-virtual /
+qmail-style) can override here.  
+Object types: site, unit
+
+**oidc_logout_scope (str, default: sso)**  
+Behaviour of the OIDC */end_session* endpoint. **sso** performs full
+single sign-out and cascades into all child OIDCSessions (firing
+backchannel logout to each registered RP). **rp** terminates only the
+OIDCSession of the calling RP; the SSO session and other RPs stay logged
+in. Useful when high-security RPs want their own, shorter session
+lifetime independent of SSO. Valid values: **sso**, **rp**.  
+Object types: site, unit, client
+
+**oidc_pkce_required (bool, default: true)**  
+Whether PKCE (RFC 7636) is mandatory for the authorize flow. OAuth 2.1
+makes PKCE required for all clients, so the default is true. Disable
+per-client only for legacy RPs that cannot generate code_verifier /
+code_challenge.  
+Object types: site, unit, client
+
+**oidc_allow_plain_pkce (bool, default: false)**  
+Whether the deprecated PKCE method **plain** is acceptable for the
+authorize flow. OAuth 2.1 §7.5.2 forbids **plain** because an attacker
+who steals the auth code also has the verifier. The only use case for
+true is interop with a legacy RP that hardcodes **plain** and cannot be
+upgraded. The discovery document never advertises it regardless.  
+Object types: site, unit, client
+
+**oidc_id_token_hint_max_age (time, default: 90d)**  
+Maximum age of an **id_token_hint** accepted at */end_session*. We
+deliberately do not enforce **exp** -- a user logging out an hour after
+the AT expired is a legit case -- but unbounded acceptance would let a
+years-old leaked ID Token from a backup still drive a logout. 90 days is
+a reasonable default; reduce for higher-assurance deployments. Accepts
+human units (e.g. **7D**, **12h**, **2W**).  
+Object types: site, unit, client
+
+**oidc_access_token_ttl (time, default: 1h)**  
+Lifetime of OIDC access tokens (and the ID Token issued alongside).
+Default 1h matches OAuth 2.1 guidance for bearer tokens. High-value RPs
+(banking, admin tooling) may set 5m; low-value internal tools may set
+8h. Refresh tokens are bounded by the parent SSO session, not by this
+TTL. Accepts human units (e.g. **5m**, **1h**, **8h**).  
+Object types: site, unit, client
+
+**oidc_acr_scheme (str, default: numeric)**  
+Authentication Context Class Reference (*acr*) scheme used in ID Tokens.
+**numeric** emits "0" / "1" / "2" per the OIDC Core §2 + ISO/IEC 29115 /
+NIST 800-63 conventions (broadest RP support). **none** omits the *acr*
+claim entirely; only *amr* (RFC 8176) is included. AMR is always emitted
+when an auth_token is known. Valid values: **numeric**, **none**.  
+Object types: site, unit, client
+
+**oidc_require_consent (bool, default: false)**  
+Whether the OP shows an end-user consent screen at */authorize*. Default
+false matches the enterprise-SSO sweet spot: the admin has already gated
+per-Scope-allowlist who-can-grant-what; an additional per-user click is
+friction for trusted internal RPs. Set true per-client for public-facing
+or multi-tenant RPs where the user must explicitly approve data sharing.
+Granted consents are remembered per (user, client) trust-on-first-use; a
+wider scope request re-prompts. The OIDC **prompt=consent** request
+parameter overrides the stored value and always re-shows the screen.  
+Object types: site, unit, client
+
+## Share Notifications
+
+**send_share_notifications (bool, default: false)**  
+Whether the site sends share-permission notifications to online hosts so
+they can react to permission changes immediately (e.g. transient mount /
+unmount on enable/disable). The most specific match wins (token
+overrides user overrides share overrides unit overrides site).
+Per-command **--share-notify** / **--no-share-notify** flags on
+**otpme-share**, **otpme-group**, **otpme-role**, **otpme-token**, and
+**otpme-user**(1) override this default for a single invocation.  
+Object types: site, unit, share, user, token
+
+## Daemon Tuning
+
+**authd_workers (int, default: 16)**  
+Number of preforked **authd** worker processes. Increase on busy nodes
+to handle more concurrent authentication requests. The most specific
+match wins (node overrides unit overrides site).  
+Object types: site, unit, node
+
+**httpd_workers (int, default: 8)**  
+Number of preforked **httpd** worker processes serving the SSO portal.
+Increase on busy SSO hosts to handle more concurrent HTTPS requests. The
+most specific match wins (node/host override unit overrides site).  
+Object types: site, unit, node, host
+
+**allow_who_from_hosts (bool, default: false)**  
+Whether **otpme-tool who** may be invoked from non-node hosts. Default
+false restricts the global session view to nodes; set true to allow
+ordinary OTPme hosts on the site to query active sessions of the users
+that are logged in there. Defense-in-depth: enable only when needed.  
 Object types: site
 
 ## Backup
@@ -701,6 +861,14 @@ Object types: node, share
 **backup_includes (list)**  
 Comma-separated list of patterns to include in backup.  
 Object types: node, share
+
+**backup_script (str)**  
+Path of the OTPme script ( *scripts/*unit relative path) run by
+**backupd** around each backup. Invoked with a **pre** hook before and a
+**post** hook after the backup; non-zero exit aborts the run. Default
+points at the bundled **backup_script.sh** in the default scripts unit.
+Setting this parameter requires admin.  
+Object types: site, unit, share, node
 
 ## HOTP Tokens
 

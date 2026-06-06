@@ -116,11 +116,11 @@ Disable ACL inheritance.
 **description *script* \[*description*\]**  
 Set script description.
 
-**info *script* \[*info*\]**  
+**info \[**--language** *LANG*\] *script* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *script***  
+**dump_info \[**--language** *LANG*\] *script***  
 Dump the info text to stdout.
 
 ## Import/Export
@@ -146,6 +146,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

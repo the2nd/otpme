@@ -85,11 +85,30 @@ Display token information.
 **list \[*regex*\]**  
 List tokens, optionally filtered by regex pattern.
 
-**enable *token***  
+**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *token***  
 Enable a disabled token.
 
-**disable *token***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *token***  
 Disable a token without deleting it.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **rename *token* *new_name***  
 Rename a token.
@@ -116,11 +135,11 @@ disable if unused for the given time.
 **description *token* \[*description*\]**  
 Set token description.
 
-**info *token* \[*info*\]**  
+**info \[**--language** *LANG*\] *token* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *token***  
+**dump_info \[**--language** *LANG*\] *token***  
 Dump the info text to stdout.
 
 **test *token* \[*otp\|password*\]**  
@@ -487,6 +506,9 @@ Limit number of roles shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 ## General Options
 

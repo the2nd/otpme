@@ -93,11 +93,11 @@ Disable ACL inheritance.
 **description *dictionary* \[*description*\]**  
 Set dictionary description.
 
-**info *dictionary* \[*info*\]**  
+**info \[**--language** *LANG*\] *dictionary* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *dictionary***  
+**dump_info \[**--language** *LANG*\] *dictionary***  
 Dump the info text to stdout.
 
 ## Import/Export
@@ -120,6 +120,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

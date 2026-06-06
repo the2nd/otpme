@@ -155,11 +155,11 @@ Set a configuration parameter. Use **-d** to delete (reset to default).
 **description *resolver* \[*description*\]**  
 Set resolver description.
 
-**info *resolver* \[*info*\]**  
+**info \[**--language** *LANG*\] *resolver* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *resolver***  
+**dump_info \[**--language** *LANG*\] *resolver***  
 Dump the info text to stdout.
 
 ## Import/Export
@@ -189,6 +189,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 Global options are available for all commands. See **otpme**(1) for
 details.

@@ -109,11 +109,11 @@ Set a configuration parameter. Use **-d** to delete (reset to default).
 **description *policy* \[*description*\]**  
 Set policy description.
 
-**info *policy* \[*info*\]**  
+**info \[**--language** *LANG*\] *policy* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *policy***  
+**dump_info \[**--language** *LANG*\] *policy***  
 Dump the info text to stdout.
 
 ## Policy Assignment
@@ -400,6 +400,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 Global options are available for all commands. See **otpme**(1) for
 details.

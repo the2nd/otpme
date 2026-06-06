@@ -33,11 +33,30 @@ Display user information. Without arguments, shows all users.
 **list \[*regex*\]**  
 List users, optionally filtered by regex pattern.
 
-**enable *user***  
+**enable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user***  
 Enable a disabled user account.
 
-**disable *user***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**disable \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *user***  
 Disable a user account without deleting it.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **rename *user* *new_name***  
 Rename a user account.
@@ -167,12 +186,12 @@ Remove an LDAP object class from the user.
 **show_ldif *user***  
 Display LDAP LDIF representation of the user.
 
-**info *user* \[*info*\]**  
+**info \[**--language** *LANG*\] *user* \[*info*\]**  
 Set free-form user info text. If *info* is omitted, the current info
 text is opened in the editor specified by the **EDITOR** environment
 variable.
 
-**dump_info *user***  
+**dump_info \[**--language** *LANG*\] *user***  
 Dump the user info text to stdout.
 
 ## Extension Management
@@ -271,6 +290,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

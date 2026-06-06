@@ -184,11 +184,11 @@ Show all configuration parameters.
 **description *accessgroup* \[*description*\]**  
 Set access group description.
 
-**info *accessgroup* \[*info*\]**  
+**info \[**--language** *LANG*\] *accessgroup* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *accessgroup***  
+**dump_info \[**--language** *LANG*\] *accessgroup***  
 Dump the info text to stdout.
 
 **add_extension *accessgroup* *extension***  
@@ -232,6 +232,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.

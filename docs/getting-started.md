@@ -843,11 +843,75 @@ otpme-user enable_auto_mount joe
 ```
 
 A share can be made read-only, and it can be disabled entirely (which
-refuses any new mount request — already mounted shares continue to work):
+refuses any new mount request — already mounted shares continue to work:
 
 ```bash
 otpme-share enable_ro testshare
 otpme-share disable testshare
+```
+
+### Share Notifications
+
+OTPme supports share notifications via `idled`. Every online host connects
+to `idled` on the master node on login, so it can react immediately when
+share permissions change. To enable share notifications site-wide, set
+the `send_share_notifications` config parameter:
+
+```bash
+otpme-site config <site> send_share_notifications True
+```
+
+With notifications enabled, re-enabling the share tells every logged-in
+host or user to mount it; disabling it tells them to unmount it:
+
+```bash
+# Mounts the share on all currently logged in hosts/users.
+otpme-share enable testshare
+
+# Unmounts the share on all currently logged in hosts/users.
+otpme-share disable testshare
+```
+
+The global `send_share_notifications` setting can be overridden per
+command with `--no-share-notify`. You can additionally use
+`--no-persist-mount` so that the mount or unmount does not persist on
+hosts — for example, an offline login will then not re-mount the share:
+
+```bash
+# Disable but do not notify online hosts for this invocation.
+otpme-share disable --no-share-notify testshare
+
+# Enable but do not persist the mount on hosts.
+otpme-share enable --no-persist-mount testshare
+```
+
+To see all logged in users and hosts, use the `who` command. By default
+`who` is only allowed on nodes. To allow it from hosts too, set the site
+config parameter `allow_who_from_hosts` to `True`:
+
+```bash
+otpme-tool who
+```
+
+### Limiting Share Access to Specific Hosts
+
+Share access can be restricted to specific hosts or host groups. After
+turning on host-based limiting with `limit_hosts`, only assigned hosts
+(directly or via a host group) will be able to mount the share. Each
+of the following commands also accepts `--share-notify`,
+`--no-share-notify` and `--no-persist-mount`:
+
+```bash
+# Enable host-based access limiting on the share.
+otpme-share limit_hosts testshare
+
+# Limit to a single host.
+otpme-share add_host testshare <yourhostname>
+
+# Or use a host group.
+otpme-group add testshare-hosts
+otpme-group add_host testshare-hosts <yourhostname>
+otpme-share add_group testshare testshare-hosts
 ```
 
 ### Encrypted Shares

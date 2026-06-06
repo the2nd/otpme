@@ -480,11 +480,6 @@ lead to inconsistent state but helps when objects change frequently.
 **MASTER_FAILOVER_SYNC**  
 Do a sync on master node failover.
 
-**AUTHD_WORKERS**  
-Number of preforked authentication daemon (**authd**) worker processes.
-Increase on busy nodes to handle more concurrent authentication
-requests. Default is 16.
-
 **TWO_NODE_TIMEOUT**  
 Seconds to wait for second node in two-node clusters.
 

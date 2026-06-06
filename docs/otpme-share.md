@@ -40,11 +40,36 @@ Display share information.
 **list \[*regex*\]**  
 List shares, optionally filtered by regex pattern.
 
-**enable *share***  
+**enable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Enable a disabled share.
 
-**disable *share***  
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--persist-mount**  
+Persist new share mounts on hosts.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**disable \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Disable a share without deleting it.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--persist-mount**  
+Also remove persisted share mounts on hosts.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **rename *share* *new_name***  
 Rename a share.
@@ -78,11 +103,11 @@ Make share read-write.
 **description *share* \[*description*\]**  
 Set share description.
 
-**info *share* \[*info*\]**  
+**info \[**--language** *LANG*\] *share* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
 opened in the editor specified by the **EDITOR** environment variable.
 
-**dump_info *share***  
+**dump_info \[**--language** *LANG*\] *share***  
 Dump the info text to stdout.
 
 ## Mount Script
@@ -128,6 +153,73 @@ List roles assigned to the share. Use **-r** for recursive listing.
 
 **list_users *share***  
 List users of the share.
+
+## Host Management
+
+**add_host \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *host***  
+Add a host to the share.
+
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--persist-mount**  
+Persist new share mounts on hosts.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
+
+**remove_host \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *host***  
+Remove a host from the share.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--persist-mount**  
+Also remove persisted share mounts on hosts.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
+
+**list_hosts *share***  
+List hosts assigned to the share.
+
+**limit_hosts \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+Limit share access to assigned hosts and host groups.
+
+**--share-notify**  
+Send notification to all online hosts on revoked share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on revoked share
+permissions.
+
+**--persist-mount**  
+Also remove persisted share mounts on hosts.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
+
+**unlimit_hosts \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+Remove host-based access limitation on the share.
+
+**--share-notify**  
+Send notification to all online hosts on new share permissions.
+
+**--no-share-notify**  
+Do not send notification to all online hosts on new share permissions.
+
+**--persist-mount**  
+Persist new share mounts on hosts.
+
+**--no-persist-mount**  
+Do not persist new share mounts on hosts.
 
 ## Master Password Token
 
@@ -252,6 +344,9 @@ Limit number of groups shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--limit *N***  
+Limit number of items shown per object.
 
 **--sort-by *FIELD***  
 Sort output by field.
