@@ -912,6 +912,12 @@ otpme-share add_host testshare <yourhostname>
 otpme-group add testshare-hosts
 otpme-group add_host testshare-hosts <yourhostname>
 otpme-share add_group testshare testshare-hosts
+
+# Or use a role. Adding hosts to roles is more flexible than host
+# groups — you can, for example, add a role to another role.
+otpme-role add testshare-hosts
+otpme-role add_host testshare-hosts <yourhostname>
+otpme-share add_role testshare testshare-hosts
 ```
 
 ### Encrypted Shares
