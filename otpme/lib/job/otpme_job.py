@@ -263,9 +263,10 @@ class OTPmeJob(object):
                     try:
                         post_method()
                     except Exception as e:
-                        log_msg = _("Job post method failed: {post_method}", log=True)[1]
-                        log_msg = log_msg.format(post_method=post_method)
+                        log_msg = _("Job post method failed: {post_method}: {e}", log=True)[1]
+                        log_msg = log_msg.format(post_method=post_method, e=e)
                         self.logger.warning(log_msg)
+                        config.raise_exception()
         else:
             # Make sure all locks are released.
             self.callback.release_cache_locks()

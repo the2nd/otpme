@@ -33,9 +33,9 @@ table_headers = [
                 "dmode",
                 "roles",
                 "tokens",
+                "limit_hosts",
                 "hosts",
                 "groups",
-                "limit_hosts",
                 "nodes",
                 "pools",
                 "policies",
@@ -328,6 +328,12 @@ def row_getter(realm, site, share_order, share_data, acls,
                 row.append("")
             else:
                 row.append("-")
+        # Limit by hosts.
+        if "limit_hosts" in output_fields:
+            if check_acl("view:limit_hosts"):
+                row.append(limit_by_hosts)
+            else:
+                row.append("-")
         # Hosts.
         get_hosts = False
         host_access = False
@@ -409,12 +415,6 @@ def row_getter(realm, site, share_order, share_data, acls,
                             share_groups.append(x)
                         break
                 row.append("\n".join(share_groups))
-            else:
-                row.append("-")
-        # Limit by hosts.
-        if "limit_hosts" in output_fields:
-            if check_acl("view:limit_hosts"):
-                row.append(limit_by_hosts)
             else:
                 row.append("-")
         # Nodes.

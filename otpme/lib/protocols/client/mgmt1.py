@@ -47,6 +47,8 @@ class OTPmeMgmtP1(OTPmeClient1):
             args['verbose_level'] = config.verbose_level
         if 'force' not in args:
             args['force'] = config.force
+        if config.impersonate_token:
+            args['impersonate_token'] = config.impersonate_token
         args['job_timeout'] = config.job_timeout
         args['lock_timeout'] = config.lock_timeout
         args['lock_wait_timeout'] = config.lock_wait_timeout

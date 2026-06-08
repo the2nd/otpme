@@ -300,10 +300,10 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                             value=role_uuid,
                                             return_attributes=return_attributes)
                 role_scopes_result = {}
-                if role_roles_result:
+                if scopes_result:
                     role_scopes_result = backend.search(object_type="scope",
                                                 attribute="role",
-                                                values=list(role_roles_result),
+                                                values=list(scopes_result),
                                                 return_attributes=return_attributes)
                 scope_strings = []
                 all_scopes = set(list(scopes_result) + list(role_scopes_result))

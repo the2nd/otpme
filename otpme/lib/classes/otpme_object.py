@@ -95,7 +95,7 @@ global_read_value_acls = {
                                 "checksum",
                                 "sync_checksum",
                                 "object",
-                                "policy",
+                                "policies",
                                 "extension",
                                 "attribute",
                                 "acl_inheritance",

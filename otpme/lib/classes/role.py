@@ -56,6 +56,7 @@ read_value_acls = {
                                     "groups",
                                     "policies",
                                     "roles",
+                                    "scopes",
                                     "dynamic_groups",
                                 ],
             }
@@ -1286,6 +1287,7 @@ class Role(OTPmeObject):
                 share_hosts = []
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
+                                                include_roles=True,
                                                 return_type="name")
                 share_id = share.share_id
                 shares[share_id] = {}
@@ -1440,6 +1442,7 @@ class Role(OTPmeObject):
                 share_hosts = []
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
+                                                include_roles=True,
                                                 return_type="name")
                 shares = {}
                 share_id = share.share_id
@@ -1605,6 +1608,122 @@ class Role(OTPmeObject):
 
         return result
 
+    @check_acls(['add:host'])
+    @object_lock()
+    def add_host(
+        self,
+        *args,
+        host_name: str=None,
+        host_uuid: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a host to this role. """
+        affected_shares = backend.search(object_type="share",
+                                         attribute="role",
+                                         value=self.uuid,
+                                         return_type="instance")
+        affected_shares = [s for s in affected_shares if s.limit_by_hosts]
+
+        # Try to add host via parent class.
+        result = super().add_host(*args, host_name=host_name,
+                                host_uuid=host_uuid,
+                                callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        for share in affected_shares:
+            share._notify_share_metadata_change("share_add_host", callback,
+                                                persist_mount=persist_mount,
+                                                share_notifications=share_notifications)
+        return result
+
+    @check_acls(['remove:host'])
+    @object_lock()
+    def remove_host(
+        self,
+        *args,
+        host_name: str=None,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a host to this group. """
+        affected_shares = backend.search(object_type="share",
+                                         attribute="role",
+                                         value=self.uuid,
+                                         return_type="instance")
+        affected_shares = [s for s in affected_shares if s.limit_by_hosts]
+
+        # Try to remove host via parent class.
+        result = super().remove_host(*args, host_name=host_name,
+                                    callback=callback, **kwargs)
+        if not result:
+            return result
+
+        for share in affected_shares:
+            share._notify_share_metadata_change("share_remove_host", callback,
+                                                persist_mount=persist_mount,
+                                                share_notifications=share_notifications)
+        return result
+
+    def get_hosts(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        recursive: bool=True,
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all hosts assigned to this role. """
+        result = []
+
+        if self.hosts:
+            search_attr = {}
+            if skip_disabled:
+                search_attr['enabled'] = {}
+                search_attr['enabled']['value'] = True
+            return_attributes = ['site', return_type]
+            search_result = backend.search(object_type="host",
+                                        attribute="uuid",
+                                        values=self.hosts,
+                                        attributes=search_attr,
+                                        return_attributes=return_attributes)
+            for uuid in search_result:
+                try:
+                    host_name = search_result[uuid][return_type]
+                except Exception:
+                    continue
+                result.append(host_name)
+
+        if not recursive:
+            result = list(set(result))
+            result.sort()
+            return result
+
+        for role_uuid in self.roles:
+            role = backend.get_object(uuid=role_uuid)
+            if not role:
+                continue
+            if skip_disabled:
+                if not role.enabled:
+                    continue
+            result += role.get_hosts(return_type=return_type)
+
+        result = list(set(result))
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
     @check_acls(['enable:object'])
     @object_lock()
     def enable(
@@ -1670,7 +1789,8 @@ class Role(OTPmeObject):
                 share_hosts = []
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
-                                                  return_type="name")
+                                                include_roles=True,
+                                                return_type="name")
                 share_id = share.share_id
                 shares = {}
                 shares[share_id] = {}
@@ -1769,7 +1889,8 @@ class Role(OTPmeObject):
                 share_hosts = []
                 if share.limit_by_hosts:
                     share_hosts = share.get_hosts(include_groups=True,
-                                                  return_type="name")
+                                                include_roles=True,
+                                                return_type="name")
                 share_id = share.share_id
                 shares = {}
                 shares[share_id] = {}

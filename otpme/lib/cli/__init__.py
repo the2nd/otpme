@@ -820,16 +820,13 @@ class ACLChecker(object):
     def __init__(self, acls=None):
         self.acls = acls
     def check_acl(self, acl):
-        if not self.acls:
-            return True
         if config.auth_token:
             if config.auth_token.is_admin():
                 return True
+            return self._check_acl(acl)
         if config.use_api:
-            if config.auth_token:
-                return self._check_acl(acl)
             return True
-        if not config.auth_token:
+        if not self.acls:
             return False
         return self._check_acl(acl)
 

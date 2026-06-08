@@ -94,6 +94,7 @@ register_global_opt("--use-ssh-agent [y|n]", "Use ssh-agent for authentication")
 register_global_opt("--use-smartcard [y|n]", "Use smartcard for authentication")
 register_global_opt("--fetch-scripts", "Fetch scripts from server instead of using cached ones.")
 register_global_opt("--stdin-pass", "Read passphrase from stdin")
+register_global_opt("--impersonate-token [token]", "Work as token [token]. Needs admin permissions.")
 register_global_opt("--socket", "Use mgmtd socket.")
 register_global_opt("--api", "Use direct API calls instead of connecting to a daemon")
 register_global_opt("--auth-token [token]", "Emulate login with [token] in API mode")
@@ -501,6 +502,11 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--login-use-dns":
             main_opts['login_use_dns'] = True
             sys.argv.pop(0)
+        elif sys.argv[0] == "--impersonate-token":
+            sys.argv.pop(0)
+            impersonate_token = str(sys.argv[0])
+            sys.argv.pop(0)
+            main_opts['impersonate_token'] = impersonate_token
         elif sys.argv[0] == "--api":
             main_opts['use_api'] = True
             sys.argv.pop(0)

@@ -74,6 +74,7 @@ read_value_acls = {
                         "groups",
                         "roles",
                         "shares",
+                        "scopes",
                         "pin",
                         "pin_status",
                         "used_otp_salt",

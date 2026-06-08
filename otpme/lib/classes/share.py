@@ -1824,6 +1824,7 @@ class Share(OTPmeObject):
             share_hosts = []
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
                                             return_type="name")
 
             shares = {}
@@ -1927,6 +1928,7 @@ class Share(OTPmeObject):
             share_hosts = []
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
                                             return_type="name")
             shares = {}
             share_id = self.share_id
@@ -2011,6 +2013,7 @@ class Share(OTPmeObject):
             share_hosts = []
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
                                             return_type="name")
             shares = {}
             share_id = self.share_id
@@ -2115,6 +2118,7 @@ class Share(OTPmeObject):
             share_hosts = []
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
                                             return_type="name")
             shares = {}
             share_id = self.share_id
@@ -2469,7 +2473,7 @@ class Share(OTPmeObject):
         group = backend.get_object(uuid=group_uuid)
 
         # Get group hosts.
-        group_hosts = group.get_hosts(skip_disabled=True, return_type="uuid")
+        group_hosts = group.get_hosts(skip_disabled=True, return_type="name")
 
         if not group_hosts:
             return result
@@ -2742,16 +2746,13 @@ class Share(OTPmeObject):
         if not self.limit_by_hosts:
             return result
 
-        if not host_uuid:
+        if host_uuid:
+            host = backend.get_object(uuid=host_uuid)
+        else:
             host = backend.get_object(object_type="host",
                                     realm=config.realm,
                                     site=self.site,
                                     name=host_name)
-            if not host:
-                msg = _("Host does not exist: {host_name}")
-                msg = msg.format(host_name=host_name)
-                return callback.error(msg)
-            host_uuid = host.uuid
 
         share_tokens = self.get_tokens(skip_disabled=False,
                                         include_roles=True,
@@ -2776,7 +2777,7 @@ class Share(OTPmeObject):
         shares[share_id]['name'] = self.name
         shares[share_id]['site'] = self.site
         shares[share_id]['nodes'] = node_fqdns
-        shares[share_id]['host_uuid'] = host_uuid
+        shares[share_id]['host'] = host.name
         shares[share_id]['encrypted'] = self.encrypted
 
         if persist_mount is None:
@@ -2872,7 +2873,7 @@ class Share(OTPmeObject):
         shares[share_id]['name'] = self.name
         shares[share_id]['site'] = self.site
         shares[share_id]['nodes'] = node_fqdns
-        shares[share_id]['host_uuid'] = host.uuid
+        shares[share_id]['host'] = host.uuid
         shares[share_id]['encrypted'] = self.encrypted
 
         if persist_mount is None:
@@ -3061,7 +3062,7 @@ class Share(OTPmeObject):
         self.limit_by_hosts = True
         self.update_index('limit_by_hosts', self.limit_by_hosts)
         result = self._cache(callback=callback)
-        self._notify_share_metadata_change("share_unmount", callback,
+        self._notify_share_metadata_change("share_remove_host", callback,
                                             persist_mount=persist_mount,
                                             share_notifications=share_notifications)
         return result
@@ -3130,20 +3131,21 @@ class Share(OTPmeObject):
         if not share_nodes:
             return
         node_fqdns = [node.fqdn for node in share_nodes]
-        share_hosts = []
-        if self.limit_by_hosts:
-            share_hosts = self.get_hosts(include_groups=True,
-                                         return_type="name")
-        share_id = self.share_id
-        share_name = self.name
-        share_site = self.site
-        share_encrypted = self.encrypted
-        share_limit_by_hosts = self.limit_by_hosts
 
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
 
         def post_method():
+            share_hosts = self.get_hosts(include_groups=True,
+                                        include_roles=True,
+                                        return_type="name")
+
+            share_id = self.share_id
+            share_name = self.name
+            share_site = self.site
+            share_encrypted = self.encrypted
+            share_limit_by_hosts = self.limit_by_hosts
+
             user_shares = {}
             already_processed = []
             for token_path in share_tokens:
@@ -3187,28 +3189,39 @@ class Share(OTPmeObject):
     def is_assigned_host(
         self,
         host_uuid: str,
+        include_roles: bool=False,
         include_groups: bool=False,
         ):
         if host_uuid in self.hosts:
             return self.uuid
-        if not include_groups:
-            return False
-        for x_uuid in self.groups:
-            group = backend.get_object(object_type="group", uuid=x_uuid)
-            if not group:
-                continue
-            if not group.enabled:
-                continue
-            if host_uuid in group.hosts:
-                return True
+        if include_groups:
+            for x_uuid in self.groups:
+                group = backend.get_object(object_type="group", uuid=x_uuid)
+                if not group:
+                    continue
+                if not group.enabled:
+                    continue
+                if host_uuid in group.hosts:
+                    return True
+        if include_roles:
+            for x_uuid in self.roles:
+                role = backend.get_object(object_type="role", uuid=x_uuid)
+                if not role:
+                    continue
+                if not role.enabled:
+                    continue
+                if role.is_assigned_host(host_uuid):
+                    return True
         return False
 
     def get_hosts(
         self,
         return_type: str="name",
-        _caller: str="API",
+        skip_disabled: bool=True,
+        include_roles: bool=False,
         include_groups: bool=False,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         """ Return list with all hosts assigned to this share. """
@@ -3216,19 +3229,33 @@ class Share(OTPmeObject):
                                     _caller=_caller,
                                     callback=callback)
 
-        for x_uuid in self.groups:
-            group = backend.get_object(object_type="group", uuid=x_uuid)
-            if not group:
-                continue
-            if not group.enabled:
-                continue
-            if not group.hosts:
-                continue
-            result += backend.search(object_type="host",
-                                    attribute="uuid",
-                                    values=group.hosts,
-                                    return_type=return_type)
+        if include_groups:
+            for x_uuid in self.groups:
+                group = backend.get_object(object_type="group", uuid=x_uuid)
+                if not group:
+                    continue
+                if skip_disabled:
+                    if not group.enabled:
+                        continue
+                if not group.hosts:
+                    continue
+                result += backend.search(object_type="host",
+                                        attribute="uuid",
+                                        values=group.hosts,
+                                        return_type=return_type)
+        if include_roles:
+            for x_uuid in self.roles:
+                role = backend.get_object(object_type="role", uuid=x_uuid)
+                if not role:
+                    continue
+                if skip_disabled:
+                    if not role.enabled:
+                        continue
+                result += role.get_hosts(return_type=return_type)
+
         result = list(set(result))
+        result.sort()
+
         if _caller == "RAPI":
             result = ",".join(result)
         if _caller == "CLIENT":
@@ -3463,6 +3490,7 @@ class Share(OTPmeObject):
             share_hosts = []
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
                                             return_type="name")
             shares = {}
             share_id = self.share_id
@@ -3552,6 +3580,7 @@ class Share(OTPmeObject):
             share_hosts = []
             if self.limit_by_hosts:
                 share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
                                             return_type="name")
             shares = {}
             share_id = self.share_id

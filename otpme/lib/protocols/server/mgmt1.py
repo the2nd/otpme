@@ -113,6 +113,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.new_message_event = None
         # Management server requires master node.
         self.require_master_node = True
+        # Original (on impersonate_token) auth token.
+        self.org_auth_token = None
         # call parent class init
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -322,7 +324,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if _caller not in api_callers:
             log_msg = _("Request contains invalid API caller: {caller}", log=True)[1]
             log_msg = log_msg.format(caller=_caller)
-            logger.warning(log_msg)
+            self.logger.warning(log_msg)
             _caller = "CLIENT"
 
         _method_args['_caller'] = _caller
@@ -585,21 +587,22 @@ class OTPmeMgmtP1(OTPmeServer1):
             except KeyError:
                 pass
 
-            # Update auth token if needed. There is also some code to update
-            # the auth token in OTPmeObject().
-            if config.auth_token and job.start_process:
-                x = backend.get_object(object_type="token",
-                                uuid=config.auth_token.uuid)
-                if x != config.auth_token:
-                    log_msg  = _("Reloading modified auth token.", log=True)[1]
-                    logger.debug(log_msg)
-                    config.auth_token = x
-                x = backend.get_object(object_type="user",
-                                uuid=config.auth_user.uuid)
-                if x != config.auth_user:
-                    log_msg = _("Reloading modified auth user.", log=True)[1]
-                    logger.debug(log_msg)
-                    config.auth_user = x
+            # FIXME: do we still need this?
+            ## Update auth token if needed. There is also some code to update
+            ## the auth token in OTPmeObject().
+            #if config.auth_token and job.start_process:
+            #    x = backend.get_object(object_type="token",
+            #                    uuid=config.auth_token.uuid)
+            #    if x != config.auth_token:
+            #        log_msg  = _("Reloading modified auth token.", log=True)[1]
+            #        self.logger.debug(log_msg)
+            #        config.auth_token = x
+            #    x = backend.get_object(object_type="user",
+            #                    uuid=config.auth_user.uuid)
+            #    if x != config.auth_user:
+            #        log_msg = _("Reloading modified auth user.", log=True)[1]
+            #        self.logger.debug(log_msg)
+            #        config.auth_user = x
 
         return job_status, job_response
 
@@ -2708,6 +2711,47 @@ class OTPmeMgmtP1(OTPmeServer1):
             self.use_cached_objects = False
         if not self.use_cached_objects:
             cache.clear(keep_func_caches=True, update_clear_time=False)
+
+        if not config.use_api:
+            try:
+                impersonate_token = command_args.pop("impersonate_token")
+            except KeyError:
+                if self.org_auth_token:
+                    config.auth_token = self.org_auth_token
+                    self.org_auth_token = None
+            else:
+                token_user = impersonate_token.split("/")[0]
+                token_name = impersonate_token.split("/")[1]
+                impersonate_token = backend.get_object(object_type="token",
+                                                        realm=config.realm,
+                                                        user=token_user,
+                                                        name=token_name)
+                if self.org_auth_token:
+                    auth_token = self.org_auth_token
+                else:
+                    auth_token = config.auth_token
+                if not auth_token.is_admin():
+                    message = _("Permission denied.")
+                    return self.build_response(False, message)
+                if not impersonate_token:
+                    message = _("Invalid token: {token}")
+                    message = message.format(token=impersonate_token)
+                    return self.build_response(False, message)
+                if impersonate_token.uuid == config.admin_token_uuid:
+                    message = _("Permission denied.")
+                    return self.build_response(False, message)
+                if impersonate_token.uuid == auth_token.uuid:
+                    message = _("Cannot impersonate own token.")
+                    return self.build_response(False, message)
+                log_msg = _("User impersonated token: {token}", log=True)[1]
+                log_msg = log_msg.format(token=impersonate_token.rel_path)
+                self.logger.info(log_msg)
+                audit_logger = config.audit_logger
+                if audit_logger:
+                    audit_logger.info(log_msg)
+                if not self.org_auth_token:
+                    self.org_auth_token = config.auth_token
+                config.auth_token = impersonate_token
 
         # Try to get object identifier from command.
         try:

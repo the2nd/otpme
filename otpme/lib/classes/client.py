@@ -54,6 +54,7 @@ read_value_acls =    {
                                 "roles",
                                 "tokens",
                                 "accessgroups",
+                                "scopes",
                                 "secret",
                                 "login_url",
                                 "auth_cache",

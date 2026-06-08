@@ -15,17 +15,14 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import jwt
 from otpme.lib import json
-from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
-from otpme.lib.idle import notify
 from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.register import register_module
-from otpme.lib.classes.realm import ADMIN_USER
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
@@ -978,102 +975,24 @@ class Group(OTPmeObject):
         **kwargs,
         ):
         """ Adds a host to this group. """
+        affected_shares = backend.search(object_type="share",
+                                         attribute="group",
+                                         value=self.uuid,
+                                         return_type="instance")
+        affected_shares = [s for s in affected_shares if s.limit_by_hosts]
+
         # Try to add host via parent class.
         result = super().add_host(*args, host_name=host_name,
                                 host_uuid=host_uuid,
                                 callback=callback, **kwargs)
+
         if not result:
             return result
 
-        if not host_uuid:
-            host = backend.get_object(object_type="host",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=host_name)
-            if not host:
-                msg = _("Host does not exist: {host_name}")
-                msg = msg.format(host_name=host_name)
-                return callback.error(msg)
-            host_uuid = host.uuid
-
-        group_shares = backend.search(object_type="share",
-                                    attribute="group",
-                                    value=self.uuid,
-                                    return_type="instance")
-
-        if not group_shares:
-            return result
-
-        if persist_mount is None:
-            persist_mount = True
-
-        notifys = []
-        user_shares = {}
-        for share in group_shares:
-            if not share.limit_by_hosts:
-                continue
-            share_tokens = share.get_tokens(skip_disabled=False,
-                                            include_roles=True,
-                                            return_type="rel_path")
-            # Get share nodes.
-            share_nodes = share.get_nodes(include_pools=True,
-                                        return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
-                                            return_type="instance")
-            node_fqdns = []
-            for node in share_nodes:
-                node_fqdns.append(node.fqdn)
-            share_id = share.share_id
-            shares = {}
-            shares[share_id] = {}
-            shares[share_id]['name'] = share.name
-            shares[share_id]['site'] = share.site
-            shares[share_id]['nodes'] = node_fqdns
-            shares[share_id]['host_uuid'] = host_uuid
-            shares[share_id]['encrypted'] = share.encrypted
-
-            # Collect notifications.
-            already_sent = []
-            for token_path in share_tokens:
-                username = token_path.split("/")[0]
-                if username == ADMIN_USER:
-                    continue
-                if token_path in already_sent:
-                    continue
-                try:
-                    x_shares = user_shares[username]
-                except KeyError:
-                    x_shares = {}
-                try:
-                    tokens = x_shares[share_id]['tokens']
-                except KeyError:
-                    tokens = []
-                tokens.append(token_path)
-                share_data = stuff.copy_object(shares)
-                x_shares.update(share_data)
-                x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = persist_mount
-                user_shares[username] = x_shares
-                already_sent.append(token_path)
-
-        for username in user_shares:
-            shares = user_shares[username]
-            notifys.append((username, "share_add_host", shares))
-
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
-
-        if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
-
-        if share_notifications:
-            callback.post_methods.append(post_method)
+        for share in affected_shares:
+            share._notify_share_metadata_change("share_add_host", callback,
+                                                persist_mount=persist_mount,
+                                                share_notifications=share_notifications)
         return result
 
     @check_acls(['remove:host'])
@@ -1088,94 +1007,23 @@ class Group(OTPmeObject):
         **kwargs,
         ):
         """ Adds a host to this group. """
-        # Try to add host via parent class.
+        affected_shares = backend.search(object_type="share",
+                                         attribute="group",
+                                         value=self.uuid,
+                                         return_type="instance")
+        affected_shares = [s for s in affected_shares if s.limit_by_hosts]
+
+        # Try to remove host via parent class.
         result = super().remove_host(*args, host_name=host_name,
                                     callback=callback, **kwargs)
+
         if not result:
             return result
 
-        group_shares = backend.search(object_type="share",
-                                    attribute="group",
-                                    value=self.uuid,
-                                    return_type="instance")
-        if not group_shares:
-            return result
-
-        host = backend.get_object(object_type="host",
-                                realm=config.realm,
-                                site=self.site,
-                                name=host_name)
-
-        if persist_mount is None:
-            persist_mount = True
-
-        notifys = []
-        user_shares = {}
-        for share in group_shares:
-            if not share.limit_by_hosts:
-                continue
-            share_tokens = share.get_tokens(skip_disabled=False,
-                                            include_roles=True,
-                                            return_type="rel_path")
-            # Get share nodes.
-            share_nodes = share.get_nodes(include_pools=True,
-                                        return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
-                                            return_type="instance")
-            node_fqdns = []
-            for node in share_nodes:
-                node_fqdns.append(node.fqdn)
-            share_id = share.share_id
-            shares = {}
-            shares[share_id] = {}
-            shares[share_id]['name'] = share.name
-            shares[share_id]['site'] = share.site
-            shares[share_id]['nodes'] = node_fqdns
-            shares[share_id]['host_uuid'] = host.uuid
-            shares[share_id]['encrypted'] = share.encrypted
-
-            # Collect notifications.
-            already_sent = []
-            for token_path in share_tokens:
-                username = token_path.split("/")[0]
-                if username == ADMIN_USER:
-                    continue
-                if token_path in already_sent:
-                    continue
-                try:
-                    x_shares = user_shares[username]
-                except KeyError:
-                    x_shares = {}
-                try:
-                    tokens = x_shares[share_id]['tokens']
-                except KeyError:
-                    tokens = []
-                tokens.append(token_path)
-                share_data = stuff.copy_object(shares)
-                x_shares.update(share_data)
-                x_shares[share_id]['tokens'] = tokens
-                x_shares[share_id]['persist'] = persist_mount
-                user_shares[username] = x_shares
-                already_sent.append(token_path)
-
-        for username in user_shares:
-            shares = user_shares[username]
-            notifys.append((username, "share_remove_host", shares))
-
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
-
-        if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
-
-        if share_notifications:
-            callback.post_methods.append(post_method)
+        for share in affected_shares:
+            share._notify_share_metadata_change("share_remove_host", callback,
+                                                persist_mount=persist_mount,
+                                                share_notifications=share_notifications)
         return result
 
     @check_acls(['enable:object'])
@@ -1207,7 +1055,7 @@ class Group(OTPmeObject):
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_mount", callback,
+            share._notify_share_metadata_change("share_add_host", callback,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
@@ -1239,7 +1087,7 @@ class Group(OTPmeObject):
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_unmount", callback,
+            share._notify_share_metadata_change("share_remove_host", callback,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
