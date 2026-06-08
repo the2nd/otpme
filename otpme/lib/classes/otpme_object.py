@@ -7129,8 +7129,7 @@ class OTPmeObject(OTPmeBaseObject):
                 # inherit_default_acl().
                 _acl_objects.remove(o)
 
-        self._cache(callback=callback)
-        return callback.ok()
+        return self._cache(callback=callback)
 
     def check_auto_disable(self, log=True, **kwargs):
         """ Handle auto disable. """
@@ -9295,6 +9294,7 @@ class OTPmeObject(OTPmeBaseObject):
         force: bool=False,
         _caller: str="API",
         run_policies: bool=True,
+        verify_acls: bool=True,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -9306,7 +9306,7 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Invalid parameter: {obj}: {param}")
             msg = msg.format(obj=self, param=parameter)
             return callback.error(msg)
-        if not self.verify_acl(f'edit:config:{parameter}'):
+        if verify_acls and not self.verify_acl(f'edit:config:{parameter}'):
             msg = _("Permission denied.")
             return callback.error(msg)
         if run_policies:

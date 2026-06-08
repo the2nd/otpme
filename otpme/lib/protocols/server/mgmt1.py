@@ -2493,7 +2493,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         for share in user_shares:
             if share.limit_by_hosts:
                 if not share.is_assigned_host(self.peer.uuid,
-                                        include_groups=True):
+                                        include_groups=True,
+                                        include_roles=True):
                     continue
             share_nodes = share.get_nodes(include_pools=True,
                                         return_type="instance")

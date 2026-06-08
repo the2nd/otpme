@@ -1077,6 +1077,142 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         return self.build_response(True, {'status': True})
 
+    def _resolve_temp_pass_role(self, user):
+        """ Resolve ``sso_temp_pass_role`` (single "site/role" path,
+        inheritance-walked from user/unit/site) to a same-site role
+        instance. Cross-site grants are out of scope here; returns
+        ``None`` if the parameter is unset / unresolvable / off-site. """
+        try:
+            role_path = user.get_config_parameter("sso_temp_pass_role")
+        except Exception:
+            role_path = None
+        if not role_path:
+            return None
+        if "/" in role_path:
+            role_site, role_name = role_path.split("/", 1)
+        else:
+            role_site = config.site
+            role_name = role_path
+        if role_site != config.site:
+            return None
+        result = backend.search(object_type="role",
+                                attribute="name",
+                                value=role_name,
+                                realm=config.realm,
+                                site=role_site,
+                                return_type="instance")
+        if not result:
+            return None
+        return result[0]
+
+    def get_admin_access_state(self, username, sso_jwt, command_args):
+        """ Tell the settings page whether the admin-access toggle is
+        applicable for this user, and what its current state is.
+
+        ``available=False`` (sso_temp_pass_role unset or unresolvable on
+        the home site) makes the frontend hide the card entirely.
+
+        ``enabled`` reflects ``allow_temp_paswords`` on the user object
+        *non-recursively* -- the toggle is per-user, not inherited. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="get_admin_access_state",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        role = self._resolve_temp_pass_role(user)
+        if role is None:
+            return self.build_response(True, {
+                    'available': False, 'enabled': False, 'status': True})
+        try:
+            enabled = bool(user.get_config_parameter("allow_temp_paswords",
+                                                     recursive=False))
+        except Exception:
+            enabled = False
+        return self.build_response(True, {
+                'available': True, 'enabled': enabled, 'status': True})
+
+    def set_admin_access_state(self, username, sso_jwt, command_args):
+        """ Self-service: flip ``allow_temp_paswords`` on the user and
+        grant / revoke the ``set_temp_password`` ACL (recursive, so it
+        cascades to every one of the user's tokens) for the role
+        configured under ``sso_temp_pass_role``. """
+        try:
+            enabled = bool(command_args['enabled'])
+        except Exception:
+            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="set_admin_access_state",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        role = self._resolve_temp_pass_role(user)
+        if role is None:
+            return self.build_response(False, {
+                'message': 'Admin access is not available: sso_temp_pass_role '
+                           'is not configured.',
+                'status': False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        acl = f"role:{role.uuid}:set_temp_password"
+        try:
+            if enabled:
+                user.set_config_param("allow_temp_paswords", True,
+                                      verify_acls=False,
+                                      run_policies=False,
+                                      callback=callback)
+                user.add_acl(acl=acl,
+                             recursive_acls=True,
+                             apply_default_acls=False,
+                             verify_acls=False,
+                             run_policies=False,
+                             callback=callback)
+            else:
+                user.set_config_param("allow_temp_paswords", delete=True,
+                                      verify_acls=False,
+                                      run_policies=False,
+                                      callback=callback)
+                user.del_acl(acl=acl,
+                             recursive_acls=True,
+                             apply_default_acls=False,
+                             verify_acls=False,
+                             run_policies=False,
+                             callback=callback)
+                for token in user.get_tokens(return_type="instance"):
+                    token.set_temp_password(force=True,
+                                            verify_acls=False,
+                                            remove=True,
+                                            run_policies=False,
+                                            callback=callback)
+        except Exception as e:
+            log_msg = _("Admin-access toggle failed for user '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message': str(e), 'status': False})
+        user._write(callback=callback)
+        emit_audit("Auth",
+                   "admin_access_enabled" if enabled else "admin_access_disabled",
+                   user=user.name,
+                   actor=user.name,
+                   role=f"{role.site}/{role.name}")
+        return self.build_response(True, {'enabled': enabled, 'status': True})
+
     def change_language(self, username, sso_jwt, command_args):
         """ Persist the user's preferred UI language on the User object.
 
@@ -4287,6 +4423,8 @@ class OTPmeSsoP1(OTPmeServer1):
                             "sso_create_device_token",
                             "sso_delete_device_token",
                             "sso_get_device_token_role_uuids",
+                            "get_admin_access_state",
+                            "set_admin_access_state",
                             "oidc_token",
                             "oidc_userinfo",
                             "oidc_introspect",
@@ -4459,6 +4597,16 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command sso_get_device_token_role_uuids.", log=True)[1]
             self.logger.info(log_msg)
             return self.sso_get_device_token_role_uuids(username, sso_jwt, command_args)
+
+        if command == "get_admin_access_state":
+            log_msg = _("Processing command get_admin_access_state.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.get_admin_access_state(username, sso_jwt, command_args)
+
+        if command == "set_admin_access_state":
+            log_msg = _("Processing command set_admin_access_state.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.set_admin_access_state(username, sso_jwt, command_args)
 
         if command == "list_passkeys":
             log_msg = _("Processing command list_passkeys.", log=True)[1]

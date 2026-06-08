@@ -80,6 +80,7 @@ write_acls = [
             "gen_keys",
             "del_keys",
             "unblock",
+            "set_temp_password",
         ]
 
 read_value_acls = {

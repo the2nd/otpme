@@ -229,7 +229,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     return self.build_response(status, message)
                 if restore_share.limit_by_hosts:
                     if not restore_share.is_assigned_host(host_uuid=self.peer.uuid,
-                                                        include_groups=True):
+                                                        include_groups=True,
+                                                        include_roles=True):
                         status = status_codes.PERMISSION_DENIED
                         message, log_msg = _("No share permissions for this host: {share}", log=True)
                         message = message.format(share=self.share)
@@ -329,7 +330,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     return self.build_response(status, message)
                 if share.limit_by_hosts:
                     if not share.is_assigned_host(host_uuid=self.peer.uuid,
-                                                    include_groups=True):
+                                                    include_groups=True,
+                                                    include_roles=True):
                         status = status_codes.PERMISSION_DENIED
                         message, log_msg = _("No share permissions for this host: {share}", log=True)
                         message = message.format(share=self.share)

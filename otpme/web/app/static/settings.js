@@ -536,6 +536,70 @@
         }
     }
 
+    // ---- Admin access (self-service toggle) ----
+
+    async function loadAdminAccess() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const card = document.getElementById('adminAccessCard');
+        const toggle = document.getElementById('adminAccessToggle');
+        const errorEl = document.getElementById('adminAccessError');
+        if (!card || !toggle) return;
+        try {
+            const resp = await fetchJSON(urls.urlGetAdminAccess);
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelAdminAccessFailedLoad || 'Failed to load admin access state.');
+            }
+            // available=false → sso_temp_pass_role unresolvable for this
+            // user; hide the entire card.
+            if (!result.available) {
+                card.classList.add('is-hidden');
+                return;
+            }
+            toggle.checked = !!result.enabled;
+            card.classList.remove('is-hidden');
+        } catch (e) {
+            if (errorEl) {
+                errorEl.textContent = e.message || i18n.labelAdminAccessFailedLoad || 'Failed to load admin access state.';
+            }
+        }
+    }
+
+    async function onAdminAccessToggle(ev) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const toggle = ev.currentTarget;
+        const statusEl = document.getElementById('adminAccessStatus');
+        const errorEl = document.getElementById('adminAccessError');
+        const desired = toggle.checked;
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+        toggle.disabled = true;
+        try {
+            const resp = await fetchJSON(urls.urlSetAdminAccess, {
+                method: 'POST',
+                body: JSON.stringify({enabled: desired}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelAdminAccessFailedSave || 'Failed to update admin access.');
+            }
+            // Re-sync from server: handles the (rare) case where the
+            // server clipped/overrode the request.
+            toggle.checked = !!result.enabled;
+            statusEl.textContent = result.enabled
+                ? (i18n.labelAdminAccessOn || 'Admin access enabled.')
+                : (i18n.labelAdminAccessOff || 'Admin access disabled.');
+        } catch (e) {
+            // Revert UI state on failure so it matches reality.
+            toggle.checked = !desired;
+            errorEl.textContent = e.message || i18n.labelAdminAccessFailedSave || 'Failed to update admin access.';
+        } finally {
+            toggle.disabled = false;
+        }
+    }
+
     function getConsentUrls() {
         const el = document.getElementById('oidc-consent-urls');
         return el ? el.dataset : null;
@@ -686,6 +750,10 @@
         if (addPasskeyBtn) addPasskeyBtn.addEventListener('click', addPasskey);
         attachNameSanitizer(document.getElementById('passkeyName'));
         loadPasskeys();
+
+        const adminToggle = document.getElementById('adminAccessToggle');
+        if (adminToggle) adminToggle.addEventListener('change', onAdminAccessToggle);
+        loadAdminAccess();
 
         loadOidcConsents();
     });

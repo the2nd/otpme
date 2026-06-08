@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-06-02 20:25+0200\n"
-"PO-Revision-Date: 2026-06-02 20:25+0200\n"
+"POT-Creation-Date: 2026-06-08 20:48+0200\n"
+"PO-Revision-Date: 2026-06-08 20:48+0200\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: de <LL@li.org>\n"
 "Language: de\n"
@@ -25,332 +25,348 @@ msgid "SSO Portal"
 msgstr "SSO-Portal"
 
 #. AI-generated
-#: templates/base.html:33 templates/settings.html:61 views.py:261
+#: templates/base.html:33 templates/settings.html:67 views.py:261
 msgid "Settings"
 msgstr "Einstellungen"
 
 #. AI-generated
-#: views.py:337 views.py:1233
+#: views.py:344 views.py:1286
 msgid "Session expired. Please log in again."
 msgstr "Sitzung abgelaufen. Bitte melden Sie sich erneut an."
 
 #. AI-generated
-#: views.py:350 views.py:353
+#: views.py:357 views.py:360
 msgid "Failed to list device tokens."
 msgstr "Geräte-Token konnten nicht aufgelistet werden."
 
 #. AI-generated
-#: templates/settings.html:29 views.py:373 views.py:434
+#: templates/settings.html:31 views.py:380 views.py:441
 msgid "Device name is required."
 msgstr "Gerätename ist erforderlich."
 
 #. AI-generated
-#: views.py:375
+#: views.py:382
 msgid "Role is required."
 msgstr "Rolle ist erforderlich."
 
 #. AI-generated
-#: templates/settings.html:27 views.py:379
+#: templates/settings.html:29 views.py:386
 msgid "Failed to add device token."
 msgstr "Geräte-Token konnte nicht hinzugefügt werden."
 
 #. AI-generated
-#: views.py:396 views.py:486
+#: views.py:403 views.py:493
 msgid "Token name is required."
 msgstr "Token-Name ist erforderlich."
 
 #. AI-generated
-#: templates/settings.html:28 views.py:399
+#: templates/settings.html:30 views.py:406
 msgid "Failed to delete device token."
 msgstr "Geräte-Token konnte nicht gelöscht werden."
 
 #. AI-generated
-#: views.py:411 views.py:414
+#: views.py:418 views.py:421
 msgid "Failed to list passkeys."
 msgstr "Passkeys konnten nicht aufgelistet werden."
 
 #. AI-generated
-#: templates/settings.html:42 views.py:439 views.py:444
+#: templates/settings.html:44 views.py:446 views.py:451
 msgid "Failed to start passkey registration."
 msgstr "Passkey-Registrierung konnte nicht gestartet werden."
 
 #. AI-generated
-#: views.py:458
+#: views.py:465
 msgid "No passkey registration in progress"
-msgstr "Keine Passkey-Registrierung in Bearbeitung"
+msgstr "Keine Passkey-Registrierung im Gange"
 
 #. AI-generated
-#: views.py:461 views.py:1293
+#: views.py:468 views.py:1346
 msgid "Missing registration data"
-msgstr "Fehlende Registrierungsdaten"
+msgstr "Registrierungsdaten fehlen"
 
 #. AI-generated
-#: views.py:470
+#: views.py:477
 msgid "Failed to complete passkey registration."
 msgstr "Passkey-Registrierung konnte nicht abgeschlossen werden."
 
 #. AI-generated
-#: templates/settings.html:49 views.py:490
+#: templates/settings.html:51 views.py:497
 msgid "Failed to delete passkey."
 msgstr "Passkey konnte nicht gelöscht werden."
 
 #. AI-generated
-#: views.py:502 views.py:505
+#: templates/settings.html:61 views.py:511 views.py:514
+msgid "Failed to load admin access state."
+msgstr "Admin-Zugriffsstatus konnte nicht geladen werden."
+
+#. AI-generated
+#: views.py:529
+msgid "Missing 'enabled' flag."
+msgstr "'enabled'-Flag fehlt."
+
+#. AI-generated
+#: templates/settings.html:62 views.py:534
+msgid "Failed to update admin access."
+msgstr "Admin-Zugriff konnte nicht aktualisiert werden."
+
+#. AI-generated
+#: views.py:549 views.py:552
 msgid "Failed to list OIDC consents."
 msgstr "OIDC-Einwilligungen konnten nicht aufgelistet werden."
 
 #. AI-generated
-#: views.py:520
+#: views.py:567
 msgid "client_uuid is required."
 msgstr "client_uuid ist erforderlich."
 
 #. AI-generated
-#: templates/settings.html:57 views.py:524
+#: templates/settings.html:59 views.py:571
 msgid "Failed to revoke consent."
 msgstr "Einwilligung konnte nicht widerrufen werden."
 
 #. AI-generated
-#: views.py:551 views.py:601
+#: views.py:598 views.py:648
 msgid "Missing data"
-msgstr "Fehlende Daten"
+msgstr "Daten fehlen"
 
 #. AI-generated
-#: templates/settings.html:18 views.py:556 views.py:606
+#: templates/settings.html:20 views.py:603 views.py:653
 msgid "All fields are required."
 msgstr "Alle Felder sind erforderlich."
 
 #. AI-generated
-#: templates/settings.html:19 views.py:558
+#: templates/settings.html:21 views.py:605
 msgid "New passwords do not match."
 msgstr "Neue Passwörter stimmen nicht überein."
 
 #. AI-generated
-#: views.py:561
+#: views.py:608
 msgid "Token does not support password change."
 msgstr "Token unterstützt keine Passwortänderung."
 
 #. AI-generated
-#: views.py:585
+#: views.py:632
 msgid "Failed to change password."
 msgstr "Passwort konnte nicht geändert werden."
 
 #. AI-generated
-#: templates/settings.html:23 views.py:608
+#: templates/settings.html:25 views.py:655
 msgid "New PINs do not match."
 msgstr "Neue PINs stimmen nicht überein."
 
 #. AI-generated
-#: views.py:611
+#: views.py:658
 msgid "Token does not support PIN change."
 msgstr "Token unterstützt keine PIN-Änderung."
 
 #. AI-generated
-#: views.py:634
+#: views.py:681
 msgid "Failed to change PIN."
 msgstr "PIN konnte nicht geändert werden."
 
 #. AI-generated
-#: views.py:653
+#: views.py:700
 msgid "Missing language."
-msgstr "Fehlende Sprache."
+msgstr "Sprache fehlt."
 
 #. AI-generated
-#: views.py:659
+#: views.py:706
 msgid "Unsupported language."
 msgstr "Nicht unterstützte Sprache."
 
 #. AI-generated
-#: views.py:662
+#: views.py:709
 msgid "Failed to change language."
 msgstr "Sprache konnte nicht geändert werden."
 
 #. AI-generated
-#: templates/deploy.html:26 views.py:698
+#: templates/deploy.html:26 views.py:745
 msgid "Token Enrollment"
 msgstr "Token-Registrierung"
 
 #. AI-generated
-#: views.py:707
+#: views.py:754
 msgid "Deployment not required"
 msgstr "Bereitstellung nicht erforderlich"
 
 #. AI-generated
-#: views.py:717
+#: views.py:764
 msgid "Invalid token type."
 msgstr "Ungültiger Token-Typ."
 
 #. AI-generated
-#: views.py:740
+#: views.py:787
 msgid "Failed to start token deploy."
 msgstr "Token-Bereitstellung konnte nicht gestartet werden."
 
 #. AI-generated
-#: views.py:782
+#: views.py:829
 msgid "No deployment in progress."
-msgstr "Keine Bereitstellung in Bearbeitung."
+msgstr "Keine Bereitstellung im Gange."
 
 #. AI-generated
-#: views.py:806
+#: views.py:853
 msgid "Failed to verify token deploy."
-msgstr "Token-Bereitstellung konnte nicht überprüft werden."
+msgstr "Token-Bereitstellung konnte nicht verifiziert werden."
 
 #. AI-generated
-#: templates/login.html:20 templates/login.html:46 views.py:968
+#: templates/login.html:20 templates/login.html:46 views.py:1015
 msgid "Sign In"
 msgstr "Anmelden"
 
 #. AI-generated
-#: views.py:998 views.py:1007 views.py:1022 views.py:1034 views.py:1456
-#: views.py:1468
+#: views.py:1045 views.py:1054 views.py:1070 views.py:1082 views.py:1509
+#: views.py:1521
 msgid "Login failed."
 msgstr "Anmeldung fehlgeschlagen."
 
 #. AI-generated
-#: templates/login.html:20 views.py:1157
+#: templates/login.html:20 views.py:1205
 msgid "Re-authenticate"
 msgstr "Erneut authentifizieren"
 
 #. AI-generated
-#: views.py:1177
+#: views.py:1225
 msgid "Failed to get app list."
 msgstr "App-Liste konnte nicht abgerufen werden."
 
 #. AI-generated
-#: templates/index.html:10 views.py:1222
+#: templates/index.html:10 views.py:1270
 msgid "Failed to get SOTP."
 msgstr "SOTP konnte nicht abgerufen werden."
 
 #. AI-generated
-#: views.py:1270
+#: views.py:1323
 msgid "Failed to start fido2 registration."
 msgstr "fido2-Registrierung konnte nicht gestartet werden."
 
 #. AI-generated
-#: views.py:1290
+#: views.py:1343
 msgid "No registration in progress"
-msgstr "Keine Registrierung in Bearbeitung"
+msgstr "Keine Registrierung im Gange"
 
 #. AI-generated
-#: views.py:1318
+#: views.py:1371
 msgid "Failed to complete fido2 registration."
 msgstr "fido2-Registrierung konnte nicht abgeschlossen werden."
 
 #. AI-generated
-#: views.py:1343
+#: views.py:1396
 msgid "Username required"
 msgstr "Benutzername erforderlich"
 
 #. AI-generated
-#: views.py:1365
+#: views.py:1418
 msgid "Failed to start fido2 authentication."
 msgstr "fido2-Authentifizierung konnte nicht gestartet werden."
 
 #. AI-generated
-#: views.py:1388
+#: views.py:1441
 msgid "No authentication in progress"
-msgstr "Keine Authentifizierung in Bearbeitung"
+msgstr "Keine Authentifizierung im Gange"
 
 #. AI-generated
-#: views.py:1391
+#: views.py:1444
 msgid "Missing auth response"
-msgstr "Fehlende Authentifizierungsantwort"
+msgstr "Authentifizierungsantwort fehlt"
 
 #. AI-generated
-#: views.py:1430
+#: views.py:1483
 msgid "Failed to complete fido2 authentication."
-msgstr "fido2-Authentifizierung konnte nicht abgeschlossen werden."
+msgstr "Die fido2-Authentifizierung konnte nicht abgeschlossen werden."
 
 #. AI-generated
-#: oidc/views.py:722 oidc/views.py:741 oidc/views.py:748
+#: oidc/views.py:725 oidc/views.py:744 oidc/views.py:751
 msgid "Logout error"
 msgstr "Abmeldefehler"
 
 #. AI-generated
-#: oidc/views.py:812
+#: oidc/views.py:815
 msgid "Verify your identity"
 msgstr "Bestätigen Sie Ihre Identität"
 
 #. AI-generated
-#: oidc/views.py:813
+#: oidc/views.py:816
 msgid "Confirm who you are so the application can sign you in."
-msgstr "Bestätigen Sie Ihre Identität, damit die Anwendung Sie anmelden kann."
+msgstr "Bestätigen Sie, wer Sie sind, damit die Anwendung Sie anmelden kann."
 
 #. AI-generated
-#: oidc/views.py:814
+#: oidc/views.py:817
 msgid "Basic profile information"
 msgstr "Grundlegende Profilinformationen"
 
 #. AI-generated
-#: oidc/views.py:815
+#: oidc/views.py:818
 msgid "Your name, username and basic profile fields."
 msgstr "Ihr Name, Benutzername und grundlegende Profilfelder."
 
 #. AI-generated
-#: oidc/views.py:816
+#: oidc/views.py:819
 msgid "Email address"
 msgstr "E-Mail-Adresse"
 
 #. AI-generated
-#: oidc/views.py:817
+#: oidc/views.py:820
 msgid "Your primary email address."
 msgstr "Ihre primäre E-Mail-Adresse."
 
 #. AI-generated
-#: oidc/views.py:818
+#: oidc/views.py:821
 msgid "Postal address"
 msgstr "Postanschrift"
 
 #. AI-generated
-#: oidc/views.py:819
+#: oidc/views.py:822
 msgid "Your postal/mailing address attributes."
-msgstr "Ihre Postanschrift-Attribute."
+msgstr "Ihre Post-/Versandadressattribute."
 
 #. AI-generated
-#: oidc/views.py:820
+#: oidc/views.py:823
 msgid "Phone number"
 msgstr "Telefonnummer"
 
 #. AI-generated
-#: oidc/views.py:821
+#: oidc/views.py:824
 msgid "Your phone number on file."
 msgstr "Ihre hinterlegte Telefonnummer."
 
 #. AI-generated
-#: oidc/views.py:822
+#: oidc/views.py:825
 msgid "Group memberships"
 msgstr "Gruppenmitgliedschaften"
 
 #. AI-generated
-#: oidc/views.py:823
+#: oidc/views.py:826
 msgid "Which groups you belong to (used by the app for access control)."
 msgstr ""
-"Welchen Gruppen Sie angehören (von der App zur Zugriffssteuerung verwendet)."
+"Zu welchen Gruppen Sie gehören (von der App zur Zugriffskontrolle "
+"verwendet)."
 
 #. AI-generated
-#: oidc/views.py:824
+#: oidc/views.py:827
 msgid "Stay signed in when offline"
 msgstr "Angemeldet bleiben, wenn offline"
 
 #. AI-generated
-#: oidc/views.py:825
+#: oidc/views.py:828
 msgid "Allow the application to refresh its session without asking you again."
 msgstr ""
 "Erlauben Sie der Anwendung, ihre Sitzung zu aktualisieren, ohne Sie erneut "
 "zu fragen."
 
 #. AI-generated
-#: oidc/views.py:871
+#: oidc/views.py:874
 #, python-format
 msgid "Application-specific permission '%(scope)s'."
 msgstr "Anwendungsspezifische Berechtigung '%(scope)s'."
 
 #. AI-generated
-#: oidc/views.py:899
+#: oidc/views.py:902
 msgid "Authorization error"
 msgstr "Autorisierungsfehler"
 
 #. AI-generated
-#: oidc/views.py:912
+#: oidc/views.py:915
 msgid "Error"
 msgstr "Fehler"
 
@@ -411,12 +427,12 @@ msgid "Deployment failed."
 msgstr "Bereitstellung fehlgeschlagen."
 
 #. AI-generated
-#: templates/deploy.html:11 templates/settings.html:39
+#: templates/deploy.html:11 templates/settings.html:41
 msgid "WebAuthn requires HTTPS."
 msgstr "WebAuthn erfordert HTTPS."
 
 #. AI-generated
-#: templates/deploy.html:12 templates/login.html:10 templates/settings.html:40
+#: templates/deploy.html:12 templates/login.html:10 templates/settings.html:42
 msgid "WebAuthn is not supported in this browser."
 msgstr "WebAuthn wird in diesem Browser nicht unterstützt."
 
@@ -436,7 +452,7 @@ msgid "Please touch your security key..."
 msgstr "Bitte berühren Sie Ihren Sicherheitsschlüssel..."
 
 #. AI-generated
-#: templates/deploy.html:16 templates/settings.html:44
+#: templates/deploy.html:16 templates/settings.html:46
 msgid "Completing registration..."
 msgstr "Registrierung wird abgeschlossen..."
 
@@ -473,7 +489,7 @@ msgstr "Scannen Sie den QR-Code und geben Sie dann das OTP unten ein."
 #. AI-generated
 #: templates/deploy.html:28
 msgid "Your account requires a new authentication token."
-msgstr "Ihr Konto erfordert ein neues Authentifizierungs-Token."
+msgstr "Ihr Konto erfordert ein neues Authentifizierungstoken."
 
 #. AI-generated
 #: templates/deploy.html:34
@@ -529,7 +545,7 @@ msgid ""
 "Scan the QR code with your authenticator app (e.g. Google Authenticator, "
 "Authy). Then enter the OTP shown in your app to verify."
 msgstr ""
-"Scannen Sie den QR-Code mit Ihrer Authenticator-App (z. B. Google "
+"Scannen Sie den QR-Code mit Ihrer Authentifizierungs-App (z. B. Google "
 "Authenticator, Authy). Geben Sie dann das in Ihrer App angezeigte OTP zur "
 "Überprüfung ein."
 
@@ -546,7 +562,7 @@ msgstr "OTP aus der App eingeben"
 #. AI-generated
 #: templates/deploy.html:78
 msgid "Verify & Activate"
-msgstr "Verifizieren & Aktivieren"
+msgstr "Überprüfen & Aktivieren"
 
 #. AI-generated
 #: templates/index.html:8
@@ -577,7 +593,7 @@ msgstr ""
 #. AI-generated
 #: templates/login.html:11
 msgid "Requesting authentication challenge..."
-msgstr "Authentifizierungsanfrage wird gestellt..."
+msgstr "Authentifizierungs-Challenge wird angefordert..."
 
 #. AI-generated
 #: templates/login.html:12
@@ -587,7 +603,7 @@ msgstr "Authentifizierung konnte nicht gestartet werden."
 #. AI-generated
 #: templates/login.html:14
 msgid "Verifying..."
-msgstr "Wird verifiziert..."
+msgstr "Überprüfung läuft..."
 
 #. AI-generated
 #: templates/login.html:15
@@ -631,14 +647,14 @@ msgid ""
 "is asking permission to access your account. If you approve, it will "
 "receive:"
 msgstr ""
-"bittet um Erlaubnis, auf Ihr Konto zuzugreifen. Wenn Sie zustimmen, erhält "
-"es:"
+"bittet um die Erlaubnis, auf Ihr Konto zuzugreifen. Wenn Sie zustimmen, "
+"erhält die App:"
 
 #. AI-generated
 #: templates/oidc_consent.html:34
 msgid "You can revoke this approval at any time from the Settings page."
 msgstr ""
-"Sie können diese Genehmigung jederzeit auf der Einstellungsseite widerrufen."
+"Sie können diese Zustimmung jederzeit auf der Einstellungsseite widerrufen."
 
 #. AI-generated
 #: templates/oidc_consent.html:54
@@ -648,162 +664,162 @@ msgstr "Erlauben"
 #. AI-generated
 #: templates/oidc_consent.html:56
 msgid "Deny"
-msgstr "Ablehnen"
+msgstr "Verweigern"
 
 #. AI-generated
-#: templates/settings.html:15
+#: templates/settings.html:17
 msgid "Changing password..."
 msgstr "Passwort wird geändert..."
 
 #. AI-generated
-#: templates/settings.html:16
+#: templates/settings.html:18
 msgid "Password change failed."
 msgstr "Passwortänderung fehlgeschlagen."
 
 #. AI-generated
-#: templates/settings.html:17
+#: templates/settings.html:19
 msgid "Password changed successfully."
 msgstr "Passwort erfolgreich geändert."
 
 #. AI-generated
-#: templates/settings.html:20
+#: templates/settings.html:22
 msgid "Changing PIN..."
 msgstr "PIN wird geändert..."
 
 #. AI-generated
-#: templates/settings.html:21
+#: templates/settings.html:23
 msgid "PIN change failed."
 msgstr "PIN-Änderung fehlgeschlagen."
 
 #. AI-generated
-#: templates/settings.html:22
+#: templates/settings.html:24
 msgid "PIN changed successfully."
 msgstr "PIN erfolgreich geändert."
 
 #. AI-generated
-#: templates/settings.html:24
+#: templates/settings.html:26
 msgid "Saving..."
 msgstr "Wird gespeichert..."
 
 #. AI-generated
-#: templates/settings.html:25
+#: templates/settings.html:27
 msgid "Failed to save language."
 msgstr "Sprache konnte nicht gespeichert werden."
 
 #. AI-generated
-#: templates/settings.html:26
+#: templates/settings.html:28
 msgid "Failed to load device tokens."
 msgstr "Geräte-Token konnten nicht geladen werden."
 
 #. AI-generated
-#: templates/settings.html:30
+#: templates/settings.html:32
 msgid "Adding device token..."
 msgstr "Geräte-Token wird hinzugefügt..."
 
 #. AI-generated
-#: templates/settings.html:31
+#: templates/settings.html:33
 msgid "Device token created."
 msgstr "Geräte-Token erstellt."
 
 #. AI-generated
-#: templates/settings.html:32
+#: templates/settings.html:34
 #, python-brace-format
 msgid "Delete device token \"{name}\"?"
 msgstr "Geräte-Token \"{name}\" löschen?"
 
 #. AI-generated
-#: templates/settings.html:33
+#: templates/settings.html:35
 msgid "Password copied to clipboard."
 msgstr "Passwort in die Zwischenablage kopiert."
 
 #. AI-generated
-#: templates/settings.html:34
+#: templates/settings.html:36
 msgid "Failed to copy password."
 msgstr "Passwort konnte nicht kopiert werden."
 
 #. AI-generated
-#: templates/settings.html:35
+#: templates/settings.html:37
 msgid "Failed to load passkeys."
 msgstr "Passkeys konnten nicht geladen werden."
 
 #. AI-generated
-#: templates/settings.html:36
+#: templates/settings.html:38
 msgid "No passkeys yet."
-msgstr "Noch keine Passkeys vorhanden."
+msgstr "Noch keine Passkeys."
 
 #. AI-generated
-#: templates/settings.html:37 templates/settings.html:150
+#: templates/settings.html:39 templates/settings.html:156
 msgid "Delete"
 msgstr "Löschen"
 
 #. AI-generated
-#: templates/settings.html:38
+#: templates/settings.html:40
 msgid "Passkey name is required."
-msgstr "Ein Passkey-Name ist erforderlich."
+msgstr "Passkey-Name ist erforderlich."
 
 #. AI-generated
-#: templates/settings.html:41
+#: templates/settings.html:43
 msgid "Preparing passkey registration..."
 msgstr "Passkey-Registrierung wird vorbereitet..."
 
 #. AI-generated
-#: templates/settings.html:43
+#: templates/settings.html:45
 msgid "Confirm on your device to create the passkey..."
 msgstr "Bestätigen Sie auf Ihrem Gerät, um den Passkey zu erstellen..."
 
 #. AI-generated
-#: templates/settings.html:45
+#: templates/settings.html:47
 msgid "Passkey registration failed."
 msgstr "Passkey-Registrierung fehlgeschlagen."
 
 #. AI-generated
-#: templates/settings.html:46
+#: templates/settings.html:48
 msgid "Passkey added."
 msgstr "Passkey hinzugefügt."
 
 #. AI-generated
-#: templates/settings.html:47
+#: templates/settings.html:49
 msgid "Failed to add passkey."
 msgstr "Passkey konnte nicht hinzugefügt werden."
 
 #. AI-generated
-#: templates/settings.html:48
+#: templates/settings.html:50
 #, python-brace-format
 msgid "Delete passkey \"{name}\"?"
 msgstr "Passkey \"{name}\" löschen?"
 
 #. AI-generated
-#: templates/settings.html:50
+#: templates/settings.html:52
 msgid "Passkey deleted."
 msgstr "Passkey gelöscht."
 
 #. AI-generated
-#: templates/settings.html:51
+#: templates/settings.html:53
 msgid "Failed to load consents."
-msgstr "Einwilligungen konnten nicht geladen werden."
+msgstr "Zustimmungen konnten nicht geladen werden."
 
 #. AI-generated
-#: templates/settings.html:52
+#: templates/settings.html:54
 msgid "No connected applications."
 msgstr "Keine verbundenen Anwendungen."
 
 #. AI-generated
-#: templates/settings.html:53
+#: templates/settings.html:55
 msgid "Scopes:"
 msgstr "Berechtigungen:"
 
 #. AI-generated
-#: templates/settings.html:54
+#: templates/settings.html:56
 msgid "Granted:"
 msgstr "Gewährt:"
 
 #. AI-generated
-#: templates/settings.html:55
+#: templates/settings.html:57
 msgid "Disconnect"
 msgstr "Trennen"
 
 #. AI-generated
-#: templates/settings.html:56
+#: templates/settings.html:58
 #, python-brace-format
 msgid ""
 "Disconnect \"{name}\"? Active sessions for this application will be "
@@ -811,76 +827,86 @@ msgid ""
 msgstr "\"{name}\" trennen? Aktive Sitzungen für diese Anwendung werden beendet."
 
 #. AI-generated
-#: templates/settings.html:58
+#: templates/settings.html:60
 msgid "Disconnected."
 msgstr "Getrennt."
 
 #. AI-generated
-#: templates/settings.html:66 templates/settings.html:77
+#: templates/settings.html:63
+msgid "Admin access enabled."
+msgstr "Admin-Zugriff aktiviert."
+
+#. AI-generated
+#: templates/settings.html:64
+msgid "Admin access disabled."
+msgstr "Admin-Zugriff deaktiviert."
+
+#. AI-generated
+#: templates/settings.html:72 templates/settings.html:83
 msgid "Change Password"
 msgstr "Passwort ändern"
 
 #. AI-generated
-#: templates/settings.html:68
+#: templates/settings.html:74
 msgid "Current Password"
 msgstr "Aktuelles Passwort"
 
 #. AI-generated
-#: templates/settings.html:71
+#: templates/settings.html:77
 msgid "New Password"
 msgstr "Neues Passwort"
 
 #. AI-generated
-#: templates/settings.html:74
+#: templates/settings.html:80
 msgid "Confirm New Password"
 msgstr "Neues Passwort bestätigen"
 
 #. AI-generated
-#: templates/settings.html:87 templates/settings.html:98
+#: templates/settings.html:93 templates/settings.html:104
 msgid "Change PIN"
 msgstr "PIN ändern"
 
 #. AI-generated
-#: templates/settings.html:89
+#: templates/settings.html:95
 msgid "Current PIN"
 msgstr "Aktuelle PIN"
 
 #. AI-generated
-#: templates/settings.html:92
+#: templates/settings.html:98
 msgid "New PIN"
 msgstr "Neue PIN"
 
 #. AI-generated
-#: templates/settings.html:95
+#: templates/settings.html:101
 msgid "Confirm New PIN"
 msgstr "Neue PIN bestätigen"
 
 #. AI-generated
-#: templates/settings.html:108
+#: templates/settings.html:114
 msgid "Login Token"
-msgstr "Anmelde-Token"
+msgstr "Login-Token"
 
 #. AI-generated
-#: templates/settings.html:109
+#: templates/settings.html:115
 msgid ""
 "Re-deploy your login token. This will replace your current login token with "
 "a new one."
 msgstr ""
-"Stellen Sie Ihr Anmelde-Token erneut bereit. Dadurch wird Ihr aktuelles "
-"Anmelde-Token durch ein neues ersetzt."
+"Stellen Sie Ihren Login-Token neu bereit. Dadurch wird Ihr aktueller Login-"
+"Token durch einen neuen ersetzt."
 
 #. AI-generated
-#: templates/settings.html:110
+#: templates/settings.html:116
 msgid "Re-deploy Login Token"
-msgstr "Anmelde-Token erneut bereitstellen"
+msgstr "Login-Token neu bereitstellen"
 
 #. AI-generated
-#: templates/settings.html:116 templates/settings.html:119
+#: templates/settings.html:122 templates/settings.html:125
 msgid "Language"
 msgstr "Sprache"
 
 #. AI-generated
-#: templates/settings.html:117
+#: templates/settings.html:123
 msgid ""
 "Choose your preferred language. \"Browser default\" follows the language "
 "sent by your browser."
@@ -889,113 +915,133 @@ msgstr ""
 " Browser gesendeten Sprache."
 
 #. AI-generated
-#: templates/settings.html:121
+#: templates/settings.html:127
 msgid "Browser default"
 msgstr "Browser-Standard"
 
 #. AI-generated
-#: templates/settings.html:126
+#: templates/settings.html:132
 msgid "Save"
 msgstr "Speichern"
 
 #. AI-generated
-#: templates/settings.html:135 templates/settings.html:141
+#: templates/settings.html:141 templates/settings.html:147
 msgid "Device Tokens"
-msgstr "Gerätetoken"
+msgstr "Geräte-Tokens"
 
 #. AI-generated
-#: templates/settings.html:137
+#: templates/settings.html:143
 msgid "Device tokens are not available:"
-msgstr "Gerätetoken sind nicht verfügbar:"
+msgstr "Geräte-Tokens sind nicht verfügbar:"
 
 #. AI-generated
-#: templates/settings.html:137
+#: templates/settings.html:143
 msgid "is not configured."
 msgstr "ist nicht konfiguriert."
 
 #. AI-generated
-#: templates/settings.html:142
+#: templates/settings.html:148
 msgid "Device Name"
 msgstr "Gerätename"
 
 #. AI-generated
-#: templates/settings.html:143
+#: templates/settings.html:149
 msgid "e.g. my-phone"
 msgstr "z. B. mein-handy"
 
 #. AI-generated
-#: templates/settings.html:144
+#: templates/settings.html:150
 msgid "Add Device Token"
-msgstr "Gerätetoken hinzufügen"
+msgstr "Geräte-Token hinzufügen"
 
 #. AI-generated
-#: templates/settings.html:145
+#: templates/settings.html:151
 msgid "Existing Device Tokens"
-msgstr "Vorhandene Gerätetoken"
+msgstr "Vorhandene Geräte-Tokens"
 
 #. AI-generated
-#: templates/settings.html:146
+#: templates/settings.html:152
 msgid "No device tokens yet."
-msgstr "Noch keine Gerätetoken."
+msgstr "Noch keine Geräte-Tokens."
 
 #. AI-generated
-#: templates/settings.html:147
+#: templates/settings.html:153
 msgid "New password:"
 msgstr "Neues Passwort:"
 
 #. AI-generated
-#: templates/settings.html:148
+#: templates/settings.html:154
 msgid "Copy"
 msgstr "Kopieren"
 
 #. AI-generated
-#: templates/settings.html:149
+#: templates/settings.html:155
 msgid "This password is shown only once. Copy it now."
 msgstr "Dieses Passwort wird nur einmal angezeigt. Kopieren Sie es jetzt."
 
 #. AI-generated
-#: templates/settings.html:157
+#: templates/settings.html:163
 msgid "Passkeys"
 msgstr "Passkeys"
 
 #. AI-generated
-#: templates/settings.html:158
+#: templates/settings.html:164
 msgid ""
 "Sign in without a password using a passkey on this device or a synced "
 "credential provider (iCloud Keychain, Google Password Manager, 1Password, "
 "...)."
 msgstr ""
 "Melden Sie sich ohne Passwort mit einem Passkey auf diesem Gerät oder einem "
-"synchronisierten Anmeldeinformationsanbieter (iCloud-Schlüsselbund, Google "
+"synchronisierten Anmeldedaten-Anbieter (iCloud Schlüsselbund, Google "
 "Passwortmanager, 1Password, ...) an."
 
 #. AI-generated
-#: templates/settings.html:160
+#: templates/settings.html:166
 msgid "Passkey Name"
 msgstr "Passkey-Name"
 
 #. AI-generated
-#: templates/settings.html:161
+#: templates/settings.html:167
 msgid "e.g. iphone, laptop, work-pc"
 msgstr "z. B. iphone, laptop, arbeits-pc"
 
 #. AI-generated
-#: templates/settings.html:162
+#: templates/settings.html:168
 msgid "Add Passkey"
 msgstr "Passkey hinzufügen"
 
 #. AI-generated
-#: templates/settings.html:166
+#: templates/settings.html:172
 msgid "Existing Passkeys"
 msgstr "Vorhandene Passkeys"
 
 #. AI-generated
-#: templates/settings.html:172
+#: templates/settings.html:183
+msgid "Admin Access"
+msgstr "Admin-Zugriff"
+
+#. AI-generated
+#: templates/settings.html:184
+msgid ""
+"Allow administrators to set a temporary password on your account for support"
+" purposes. Turn off when no longer needed."
+msgstr ""
+"Erlauben Sie Administratoren, zu Supportzwecken ein temporäres Passwort für "
+"Ihr Konto festzulegen. Deaktivieren Sie dies, wenn es nicht mehr benötigt "
+"wird."
+
+#. AI-generated
+#: templates/settings.html:191
+msgid "Allow admin access"
+msgstr "Admin-Zugriff erlauben"
+
+#. AI-generated
+#: templates/settings.html:200
 msgid "Connected Applications"
 msgstr "Verbundene Anwendungen"
 
 #. AI-generated
-#: templates/settings.html:174
+#: templates/settings.html:202
 msgid ""
 "Applications you have granted access to your account. Disconnecting removes "
 "the approval and terminates the application's active session."

@@ -500,6 +500,46 @@ def del_passkey():
         return error
     return jsonify({"status": "ok", "message": "Passkey deleted."})
 
+@app.route('/settings/admin_access', methods=['GET'])
+@login_required
+def get_admin_access_state():
+    """ Return whether the admin-access toggle should be shown
+    (``available``) and its current state (``enabled``). """
+    try:
+        response, error = _send_ssod_command(
+                command="get_admin_access_state",
+                default_error=gettext("Failed to load admin access state."))
+    except Exception as e:
+        logger.critical(f"get_admin_access_state failed: {e}")
+        return jsonify({"error": gettext("Failed to load admin access state.")}), 500
+    if error:
+        return error
+    available = False
+    enabled = False
+    if isinstance(response, dict):
+        available = bool(response.get('available'))
+        enabled = bool(response.get('enabled'))
+    return jsonify({"available": available, "enabled": enabled})
+
+@app.route('/settings/admin_access', methods=['POST'])
+@login_required
+def set_admin_access_state():
+    data = request.json or {}
+    if 'enabled' not in data:
+        return jsonify({"error": gettext("Missing 'enabled' flag.")}), 400
+    enabled = bool(data.get('enabled'))
+    response, error = _send_ssod_command(
+            command="set_admin_access_state",
+            extra_args={'enabled': enabled},
+            default_error=gettext("Failed to update admin access."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({
+                "status"    : "ok",
+                "enabled"   : bool(response.get('enabled')) if isinstance(response, dict) else enabled,
+            })
+
 @app.route('/settings/oidc_consents', methods=['GET'])
 @login_required
 def list_oidc_consents():

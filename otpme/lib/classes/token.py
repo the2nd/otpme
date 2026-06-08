@@ -827,6 +827,47 @@ def register_config_parameters():
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
+    # Role that is allowed to set temp password if enabled in SSO portal.
+    def sso_temp_pass_role_setter(role, callback=JobCallback, **kwargs):
+        if "/" in role:
+            role_site = role.split("/")[0]
+            role_name = role.split("/")[1]
+        else:
+            role_site = config.site
+            role_name = role
+        result = backend.search(object_type='role',
+                                attribute="name",
+                                value=role_name,
+                                realm=config.realm,
+                                site=role_site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown role: {role}")
+            msg = msg.format(role=role)
+            raise ValueError(msg)
+        role = result[0]
+        if not role.verify_acl("add:token"):
+            msg = _("You dont have permissions to add tokens to this role: {role}")
+            msg = msg.format(role=role.oid)
+            raise PermissionDenied(msg)
+        return role.uuid
+    def sso_temp_pass_role_getter(role_uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='role',
+                                attribute="uuid",
+                                value=role_uuid,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown role: {uuid}")
+            msg = msg.format(uuid=role_uuid)
+            raise ValueError(msg)
+        role = result[0]
+        role_path = f"{role.site}/{role.name}"
+        return role_path
+    config.register_config_parameter(name="sso_temp_pass_role",
+                                    ctype=str,
+                                    setter=sso_temp_pass_role_setter,
+                                    getter=sso_temp_pass_role_getter,
+                                    object_types=object_types)
 
 def register_backend():
     """ Register object for the file backend. """
@@ -3208,7 +3249,7 @@ class Token(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(['set_temp_password'])
+    #@check_acls(['set_temp_password'])
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['temp_password'])
@@ -3226,10 +3267,18 @@ class Token(OTPmeObject):
         **kwargs,
         ):
         """ Set token temp password. """
-        temp_passwords_allowed = self.get_config_parameter('allow_temp_paswords')
-        if not temp_passwords_allowed:
-            msg = _("Temporary password not allowed.")
-            return callback.error(msg)
+        if not remove:
+            temp_passwords_allowed = self.get_config_parameter('allow_temp_paswords')
+            if not temp_passwords_allowed:
+                msg = _("Temporary password not allowed.")
+                return callback.error(msg)
+        if verify_acls:
+            if not self.verify_acl("set_temp_password"):
+                parent_object = self.get_parent_object()
+                if not parent_object.verify_acl("set_temp_password"):
+                    msg = _("Permission denied: {token_path}")
+                    msg = msg.format(token_path=self.rel_path)
+                    return callback.error(msg, exception=PermissionDenied)
         # Use destination token if we have one.
         if self.destination_token:
             # Before changing password of the destination token we have to run
@@ -3239,7 +3288,7 @@ class Token(OTPmeObject):
                     self.run_policies("modify",
                                     callback=callback,
                                     _caller=_caller)
-                    self.run_policies("change_password",
+                    self.run_policies("set_temp_password",
                                     callback=callback,
                                     _caller=_caller)
                 except Exception as e:
@@ -3274,7 +3323,7 @@ class Token(OTPmeObject):
         # Set temp password.
         change_result = self.change_password(password=temp_password,
                                             auto_password=auto_password,
-                                            verify_acls=verify_acls,
+                                            verify_acls=False,
                                             force=force,
                                             temp=True,
                                             callback=callback)
@@ -4143,8 +4192,8 @@ class Token(OTPmeObject):
                 return callback.error(_("Cannot delete realm admin token."))
 
         # Get parent object to check ACLs.
-        parent_object = self.get_parent_object()
         if verify_acls:
+            parent_object = self.get_parent_object()
             if not self.verify_acl("delete:object"):
                 del_acl = f"delete:{self.type}"
                 if not parent_object.verify_acl(del_acl):

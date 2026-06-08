@@ -10,7 +10,9 @@
      data-url-list-passkeys="{{ url_for('list_passkeys', _external=True, _scheme='https') }}"
      data-url-passkey-register-begin="{{ url_for('passkey_register_begin', _external=True, _scheme='https') }}"
      data-url-passkey-register-complete="{{ url_for('passkey_register_complete', _external=True, _scheme='https') }}"
-     data-url-del-passkey="{{ url_for('del_passkey', _external=True, _scheme='https') }}"></div>
+     data-url-del-passkey="{{ url_for('del_passkey', _external=True, _scheme='https') }}"
+     data-url-get-admin-access="{{ url_for('get_admin_access_state', _external=True, _scheme='https') }}"
+     data-url-set-admin-access="{{ url_for('set_admin_access_state', _external=True, _scheme='https') }}"></div>
 <div id="page-i18n"
      data-label-changing-password="{{ gettext('Changing password...') }}"
      data-label-password-failed="{{ gettext('Password change failed.') }}"
@@ -56,6 +58,10 @@
      data-label-confirm-revoke="{{ gettext('Disconnect \"{name}\"? Active sessions for this application will be terminated.') }}"
      data-label-failed-revoke="{{ gettext('Failed to revoke consent.') }}"
      data-label-disconnected="{{ gettext('Disconnected.') }}"
+     data-label-admin-access-failed-load="{{ gettext('Failed to load admin access state.') }}"
+     data-label-admin-access-failed-save="{{ gettext('Failed to update admin access.') }}"
+     data-label-admin-access-on="{{ gettext('Admin access enabled.') }}"
+     data-label-admin-access-off="{{ gettext('Admin access disabled.') }}"
      class="is-hidden"></div>
 <div class="portal-wrapper">
     <h2>{{ gettext("Settings") }}</h2>
@@ -165,6 +171,28 @@
         </div>
         <h4>{{ gettext("Existing Passkeys") }}</h4>
         <ul id="passkeyList" class="device-token-list"></ul>
+    </div>
+
+    <!-- Admin access: opt-in. Hidden by default; revealed by
+         loadAdminAccess() when the server reports available=true
+         (sso_temp_pass_role config parameter resolvable on the home
+         site). Toggling flips allow_temp_paswords on the user and
+         grants/revokes the set_temp_password ACL (recursive over
+         tokens) to the configured role. -->
+    <div class="settings-card is-hidden" id="adminAccessCard">
+        <h3>{{ gettext("Admin Access") }}</h3>
+        <p class="settings-desc">{{ gettext("Allow administrators to set a temporary password on your account for support purposes. Turn off when no longer needed.") }}</p>
+        <div class="settings-form">
+            <label class="toggle-label" for="adminAccessToggle">
+                <span class="toggle-switch">
+                    <input type="checkbox" id="adminAccessToggle" role="switch">
+                    <span class="toggle-track" aria-hidden="true"></span>
+                </span>
+                <span class="toggle-text">{{ gettext("Allow admin access") }}</span>
+            </label>
+            <div class="status-msg" id="adminAccessStatus"></div>
+            <div class="error-msg" id="adminAccessError"></div>
+        </div>
     </div>
 
     <!-- Connected applications (OIDC consents) -->

@@ -15,7 +15,7 @@ maintainers = [
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {file = "LICENSE"}
-keywords = ['OTP, U2F, fido2, two factor authentication, PAM, LDAP']
+keywords = ['OTP, U2F, fido2, oidc-provider, two factor authentication, PAM, LDAP']
 classifiers = [
   "Development Status :: 3 - Alpha",
   #"Development Status :: 4 - Beta",
@@ -98,6 +98,7 @@ dependencies = [
     "xattr>=1.2.0",
     "yubikey-manager>=5.9.1",
 	"systemd>=0.16.1",
+	"jeepney>=0.8.0",
 ]
 
 [project.optional-dependencies]
@@ -112,6 +113,7 @@ backuphost = [
 ssohost = [
     "Flask>=3.0.3",
     "Flask-Babel>=4.0.0",
+    "Flask-Limiter>=3.5.0",
     "Flask-Login>=0.6.3",
     "Flask-WTF>=1.2.1",
     "gunicorn>=23.0.0",
@@ -188,6 +190,10 @@ otpme-yk-piv = "otpme.bin.yk_piv:main"
 [tool.setuptools.dynamic]
 version = {attr = "otpme.__version__"}
 #readme = {file = ["README.md"]}
+
+[tool.setuptools.packages.find]
+include = ["otpme*"]
+namespaces = true
 
 [tool.setuptools.package-data]
 otpme = [

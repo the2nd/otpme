@@ -444,6 +444,66 @@ a:hover { text-decoration: underline; }
   padding-top: 16px;
   border-top: 1px solid #eef0f3;
 }
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+}
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+/* Native checkbox stays for forms / a11y, but visually hidden.
+   Track + knob are drawn via the sibling .toggle-track. */
+.toggle-switch input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: #c8ccd2;
+  border-radius: 22px;
+  transition: background 0.18s ease;
+}
+.toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.18s ease;
+}
+.toggle-switch input[type="checkbox"]:checked + .toggle-track {
+  background: #2a7ae0;
+}
+.toggle-switch input[type="checkbox"]:checked + .toggle-track::after {
+  transform: translateX(18px);
+}
+.toggle-switch input[type="checkbox"]:focus-visible + .toggle-track {
+  outline: 2px solid #2a7ae0;
+  outline-offset: 2px;
+}
+.toggle-switch input[type="checkbox"]:disabled + .toggle-track {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .device-token-list {
   list-style: none;
   padding: 0;
