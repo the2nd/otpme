@@ -1301,6 +1301,9 @@ otpme-trash restore --keep <trash_id>
 
 # Restore only specific objects from a trash entry.
 otpme-trash restore --objects "user|realm/site/users/user1" <trash_id>
+
+# Dump object data to inspect before restoring.
+otpme-trash dump <trash_id> "user|realm/site/users/user1"
 ```
 
 To permanently remove all objects from the trash:
