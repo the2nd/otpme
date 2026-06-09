@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import pprint
 from functools import wraps
 
 try:
@@ -699,7 +700,8 @@ class JobCallback(object):
             message = ""
         # Make sure message is string.
         if self.job._caller == "CLIENT":
-            message = str(message)
+            if not isinstance(message, str):
+                message = pprint.pformat(message)
 
         # In API mode "message" is the Exception we have to raise when status=False.
         if self.api_mode or not self.enabled:

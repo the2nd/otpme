@@ -204,7 +204,7 @@ class CommandHandler(object):
             pass
 
         if parse_command_syntax:
-            if not command in self.command_map:
+            if command not in self.command_map:
                 msg = _("Unknown command: {command}")
                 msg = msg.format(command=command)
                 raise OTPmeException(msg)
@@ -347,13 +347,15 @@ class CommandHandler(object):
             raise OTPmeException(response)
 
         # Make sure we start pager (less) if result exceeds terminal size.
-        if isinstance(response, str):
+        if client_type == "CLIENT":
             try:
                 lines = config.term_size['lines']
                 columns = config.term_size['columns']
             except Exception:
                 pass
             else:
+                if not isinstance(response, str):
+                    response = pprint.pformat(response)
                 response_split = response.split("\n")
                 max_line = 0
                 line_splits = 0
@@ -4502,13 +4504,14 @@ class CommandHandler(object):
         """ Dump object config. """
         #init_otpme()
         self.init()
-        mgmt_client = self.get_mgmt_client()
-        mgmt_cmd = "dump_object"
+        # Send command.
+        command = "tool"
+        subcommand = "dump_object"
         command_args = {'object_id':object_id}
-        status, \
-        response = mgmt_client.send(command=mgmt_cmd, command_args=command_args)
-        if status == False:
-            raise OTPmeException(response)
+        response = self.send_command(daemon="mgmtd",
+                                command=command,
+                                subcommand=subcommand,
+                                command_args=command_args)
         return response
 
     def delete_object(self, object_id):
@@ -4530,13 +4533,13 @@ class CommandHandler(object):
         """ Dump object index. """
         #init_otpme()
         self.init()
-        mgmt_client = self.get_mgmt_client()
-        mgmt_cmd = "dump_index"
+        command = "tool"
+        subcommand = "dump_index"
         command_args = {'object_id':object_id}
-        status, \
-        response = mgmt_client.send(command=mgmt_cmd, command_args=command_args)
-        if status == False:
-            raise OTPmeException(response)
+        response = self.send_command(daemon="mgmtd",
+                                command=command,
+                                subcommand=subcommand,
+                                command_args=command_args)
         return response
 
     def import_object(self, object_config, object_id, password=None):
@@ -4792,7 +4795,6 @@ class CommandHandler(object):
         """ Dump daemon caches. """
         try:
             object_id = self.command_line[1]
-
         except Exception:
             object_id = None
 
@@ -4803,7 +4805,6 @@ class CommandHandler(object):
                 command_args['parameter'] = object_id
             dump_result = self.send_command(daemon="hostd", command=cmd,
                                             command_args=command_args)
-
         elif dump_type == "acl_cache":
             command_args = {}
             cmd = "dump_acl_cache"
@@ -4811,11 +4812,9 @@ class CommandHandler(object):
                 command_args['parameter'] = object_id
             dump_result = self.send_command(daemon="hostd", command=cmd,
                                             command_args=command_args)
-
         elif dump_type == "sync_map":
             cmd = "dump_sync_map"
             dump_result = self.send_command(daemon="hostd", command=cmd)
-
         else:
             return self.get_help()
 

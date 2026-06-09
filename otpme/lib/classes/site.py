@@ -1698,6 +1698,39 @@ def register_config():
                                     ctype=int,
                                     default_value=8,
                                     object_types=['site', 'unit', 'node', 'host'])
+    # Max connections settings.
+    config.register_config_parameter(name="mgmtd_max_conn",
+                                    ctype=int,
+                                    default_value=128,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="joind_max_conn",
+                                    ctype=int,
+                                    default_value=128,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="syncd_max_conn",
+                                    ctype=int,
+                                    default_value=1024,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="ssod_max_conn",
+                                    ctype=int,
+                                    default_value=1024,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="clusterd_max_conn",
+                                    ctype=int,
+                                    default_value=512,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="fsd_max_conn",
+                                    ctype=int,
+                                    default_value=1024,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="idled_max_conn",
+                                    ctype=int,
+                                    default_value=1024,
+                                    object_types=['site', 'unit', 'node'])
+    config.register_config_parameter(name="backupd_max_conn",
+                                    ctype=int,
+                                    default_value=256,
+                                    object_types=['site', 'unit', 'node', 'host'])
     # Allow otpme-tool who from hosts.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
@@ -1884,6 +1917,7 @@ class Site(OTPmeObject):
                                 "CONFIG_PARAMS:reverse_proxy_ips",
                                 "CONFIG_PARAMS:sso_rate_limit_login",
                                 "CONFIG_PARAMS:sso_rate_limit_login_user",
+                                "CONFIG_PARAMS:backupd_max_conn",
                                 ],
                         },
 

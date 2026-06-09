@@ -80,6 +80,17 @@ class OTPmeDaemon(object):
         self.close()
         os._exit(0)
 
+    def get_max_conn(self, parameter):
+        """ Get max connections by config parameter. """
+        max_conn = 128
+        own_host = backend.get_object(uuid=config.uuid)
+        if not own_host:
+            return max_conn
+        _max_conn = own_host.get_config_parameter(parameter)
+        if not _max_conn:
+            return max_conn
+        return _max_conn
+
     def _send_local_daemon_msg(self, command, data=None, timeout=1):
         """ Send command to daemon itself. """
         try:

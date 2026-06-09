@@ -54,7 +54,7 @@ cmd_help = {
                 },
 
     'ls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-backup ls [--full-path] [--recursive] {backup_object} {snapshot} [path}'),
+                    '_cmd_usage_help' : _('Usage: otpme-backup ls [--full-path] [--recursive] {backup_object} {snapshot} [path]'),
                     'cmd'   :   '--full-path :full_path=True: --recursive :recursive=True: <backup_object> <snap_name> [path]',
                     '_help' :   {
                                     'cmd'                           : _('List backup snapshots.'),

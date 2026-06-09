@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import sys
+import stat
 import time
 import copy
 import gettext
@@ -292,10 +293,12 @@ class OTPmeConfig(object):
                                 config_file_parameter="BACKUP_REPOSITORY")
         self.register_config_var("backup_mode", str, "pack",
                                 config_file_parameter="BACKUP_MODE")
-        self.register_config_var("backup_repo_pass", str, None,
-                                config_file_parameter="BACKUP_REPO_PASS")
-        self.register_config_var("backup_key", str, None,
-                                config_file_parameter="BACKUP_KEY")
+        self.register_config_var("backup_key_file", str, "/etc/otpme/backup.key",
+                                config_file_parameter="BACKUP_KEY_FILE")
+        self.register_config_var("backup_repo_pass_file", str, "/etc/otpme/backup.pass",
+                                config_file_parameter="BACKUP_REPO_PASS_FILE")
+        self.register_config_var("backup_key", str, None)
+        self.register_config_var("backup_repo_pass", str, None)
         self.register_config_var("backup_exclude_special", bool, None,
                                 config_file_parameter="BACKUP_EXCLUDE_SPECIAL")
         self.register_config_var("backup_excludes", list, None,
@@ -1062,6 +1065,40 @@ class OTPmeConfig(object):
                 msg = _("Unable to set config parameter: {parameter}: {e}")
                 msg = msg.format(parameter=parameter, e=e)
                 error_message(msg)
+
+        # Read backup repo pass file.
+        if os.path.exists(self.backup_repo_pass_file):
+            is_world_readable = bool(os.stat(self.backup_repo_pass_file).st_mode & stat.S_IROTH)
+            if is_world_readable:
+                msg = _("Backup repo pass file is world readable: {file}")
+                msg = msg.format(file=self.backup_repo_pass_file)
+                print(msg)
+            else:
+                try:
+                    fd = open(self.backup_repo_pass_file, "r")
+                    self.backup_repo_pass = fd.read().split("\n")[0].rstrip('\n')
+                    fd.close()
+                except Exception as e:
+                    msg = _("Failed to read backup repo pass file: {e}")
+                    msg = msg.format(e=e)
+                    raise OTPmeException(msg)
+
+        # Read backup key file.
+        if os.path.exists(self.backup_key_file):
+            is_world_readable = bool(os.stat(self.backup_key_file).st_mode & stat.S_IROTH)
+            if is_world_readable:
+                msg = _("Backup key file is world readable: {file}")
+                msg = msg.format(file=self.backup_key_file)
+                print(msg)
+            else:
+                try:
+                    fd = open(self.backup_key_file, "r")
+                    self.backup_key = fd.read().split("\n")[0].rstrip('\n')
+                    fd.close()
+                except Exception as e:
+                    msg = _("Failed to read backup key file: {e}")
+                    msg = msg.format(e=e)
+                    raise OTPmeException(msg)
 
         # Setup locale.
         self.setup_locale(self.language)

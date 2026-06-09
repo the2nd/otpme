@@ -181,6 +181,7 @@ class OTPmeFS(fuse.Operations):
                                     password=sotp,
                                     use_ssh_agent=False,
                                     use_smartcard=False,
+                                    request_token=False,
                                     encrypt_session=False,
                                     connect_timeout=3,
                                     timeout=None)
@@ -254,10 +255,21 @@ class OTPmeFS(fuse.Operations):
                                                     encode_request=False,
                                                     compress_request=False)
                     if not mount_status:
-                        log_msg = _("Failed to mount share: {share}: {mount_response}", log=True)[1]
-                        log_msg = log_msg.format(share=self.share, mount_response=mount_response)
+                        try:
+                            mount_message = mount_response['message']
+                            try_other_node = mount_response['try_other_node']
+                        except Exception:
+                            try_other_node = False
+                            mount_message = mount_response
+                        log_msg = _("Failed to mount share: {share}: {mount_message}", log=True)[1]
+                        log_msg = log_msg.format(share=self.share, mount_message=mount_message)
                         self.logger.warning(log_msg)
+                        done = False
+                        if not try_other_node:
+                            done = True
                         if len(tried_nodes) == len(nodes):
+                            done = True
+                        if done:
                             self.fsd_conn.close()
                             self.fsd_conn = None
                             raise_exception = False
@@ -267,11 +279,11 @@ class OTPmeFS(fuse.Operations):
                                 raise_exception = True
                             if raise_exception:
                                 if mount_response_code == status_codes.UNKNOWN_OBJECT:
-                                    raise OSError(errno.ENOENT, mount_response)
+                                    raise OSError(errno.ENOENT, mount_message)
                                 elif mount_response_code == status_codes.PERMISSION_DENIED:
-                                    raise OSError(errno.EACCES, mount_response)
+                                    raise OSError(errno.EACCES, mount_message)
                                 else:
-                                    raise OSError(errno.EINVAL, mount_response)
+                                    raise OSError(errno.EINVAL, mount_message)
                         time.sleep(1)
                         continue
                     try:

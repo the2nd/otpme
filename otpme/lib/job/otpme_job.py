@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import pprint
 import setproctitle
 
 try:
@@ -157,8 +158,7 @@ class OTPmeJob(object):
         from otpme.lib import cache
         job_status = True
         job_error = None
-        job_response = []
-        job_log = []
+        job_response = None
 
         # Handle multiprocessing stuff.
         if self.start_process:
@@ -227,7 +227,7 @@ class OTPmeJob(object):
             # If the job return success, check for return_value.
             if job_status is True:
                 if self.return_value:
-                    job_response.append(self.return_value)
+                    job_response = self.return_value
             # If the job return failure try to get its last error.
             if job_status is False:
                 try:
@@ -238,14 +238,14 @@ class OTPmeJob(object):
             job_error = str(e)
             log_msg = job_error
             self.logger.warning(log_msg)
-            job_response.append(job_error)
+            job_response = job_error
             job_status = False
         except Exception as e:
             job_error, log_msg = _("Job error running command method: {method_name}: {error}", log=True)
             job_error = job_error.format(method_name=self.target_method.__name__, error=e)
             log_msg = log_msg.format(method_name=self.target_method.__name__, error=e)
             self.logger.warning(log_msg)
-            job_response.append(job_error)
+            job_response = job_errora
             job_status = False
             config.raise_exception()
 
@@ -273,14 +273,7 @@ class OTPmeJob(object):
             # Clear caches.
             cache.flush(commit=False)
 
-        # In debug mode we also send the job log to the client.
-        if config.debug_enabled:
-            job_response += job_log
-
-        # Response needs to be a string when sending to a client.
-        if self._caller == "CLIENT":
-            job_response = "\n".join(job_response)
-        else:
+        if self._caller != "CLIENT":
             job_response = self.return_value
 
         if not job_error:

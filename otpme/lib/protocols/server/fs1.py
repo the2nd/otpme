@@ -144,7 +144,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             message, log_msg = _("Please authenticate.", log=True)
             self.logger.warning(log_msg)
             status = status_codes.NEED_USER_AUTH
-            return self.build_response(status, message)
+            response = {'try_other_node':False, 'message':message}
+            return self.build_response(status, response)
 
         if self.mounted and self.root:
             try:
@@ -177,7 +178,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             log_msg = log_msg.format(command=command)
             self.logger.warning(log_msg)
             status = False
-            return self.build_response(status, message)
+            response = {'try_other_node':False, 'message':message}
+            return self.build_response(status, response)
 
         status = True
         if command == "mount":
@@ -187,14 +189,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 message = message.format(share=self.share)
                 log_msg = log_msg.format(share=self.share)
                 self.logger.warning(log_msg)
-                return self.build_response(status, message)
+                response = {'try_other_node':False, 'message':message}
+                return self.build_response(status, response)
             try:
                 self.share = command_args['share']
             except KeyError:
                 status = status_codes.UNKNOWN_OBJECT
                 message, log_msg = _("Missing share.", log=True)
                 self.logger.warning(log_msg)
-                return self.build_response(status, message)
+                response = {'try_other_node':False, 'message':message}
+                return self.build_response(status, response)
             result = backend.search(object_type="share",
                                     attribute="name",
                                     value=self.share,
@@ -207,7 +211,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 message = message.format(share=self.share)
                 log_msg = log_msg.format(share=self.share)
                 self.logger.warning(log_msg)
-                return self.build_response(status, message)
+                response = {'try_other_node':False, 'message':message}
+                return self.build_response(status, response)
             share = result[0]
             if not share.enabled:
                 status = status_codes.PERMISSION_DENIED
@@ -215,7 +220,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 message = message.format(share=self.share)
                 log_msg = log_msg.format(share=self.share)
                 self.logger.warning(log_msg)
-                return self.build_response(status, message)
+                response = {'try_other_node':False, 'message':message}
+                return self.build_response(status, response)
             self.encrypted = share.encrypted
             if share.restore_share:
                 self.restore_share = True
@@ -226,7 +232,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
                 if restore_share.limit_by_hosts:
                     if not restore_share.is_assigned_host(host_uuid=self.peer.uuid,
                                                         include_groups=True,
@@ -236,14 +243,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(share=self.share)
                         log_msg = log_msg.format(share=self.share)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                 if not restore_share.is_assigned_token(token_uuid=config.auth_token.uuid):
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
                 host = restore_share.get_config_parameter("backup_server")
                 if not host:
                     status = status_codes.UNKNOWN_OBJECT
@@ -251,7 +260,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
                 self.encrypted = restore_share.encrypted
                 # Get backup key
                 backup_key = restore_share.get_config_parameter("backup_key")
@@ -261,7 +271,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
                 self.aes_key = bytes.fromhex(backup_key)
             # Get user groups.
             default_group = stuff.get_users_default_group(self.username)
@@ -280,7 +291,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share_name=share.name, e=e)
                     log_msg = log_msg.format(share_name=share.name, e=e)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':True, 'message':message}
+                    return self.build_response(status, response)
                 if self.encrypted:
                     try:
                         file_data = self.backupd_conn.read_cryptfs_settings()[1]
@@ -290,7 +302,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(share_name=share.name, e=e)
                         log_msg = log_msg.format(share_name=share.name, e=e)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':True, 'message':message}
+                        return self.build_response(status, response)
                     try:
                         file_data = file_data.decode()
                         lines = file_data.strip().split("\n")
@@ -310,7 +323,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(share_name=share.name, e=e)
                         log_msg = log_msg.format(share_name=share.name, e=e)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':True, 'message':message}
+                        return self.build_response(status, response)
                     try:
                         fs_data = load_cryptfs_settings(buf)
                     except Exception as e:
@@ -319,7 +333,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(e=e)
                         log_msg = log_msg.format(e=e)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':True, 'message':message}
+                        return self.build_response(status, response)
             else:
                 if not os.path.exists(share.root_dir):
                     status = status_codes.UNKNOWN_OBJECT
@@ -327,7 +342,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share=self.share, root_dir=share.root_dir)
                     log_msg = log_msg.format(share=self.share, root_dir=share.root_dir)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':True, 'message':message}
+                    return self.build_response(status, response)
                 if share.limit_by_hosts:
                     if not share.is_assigned_host(host_uuid=self.peer.uuid,
                                                     include_groups=True,
@@ -337,7 +353,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(share=self.share)
                         log_msg = log_msg.format(share=self.share)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
                 and not share.is_master_password_token(config.auth_token.rel_path):
                     status = status_codes.PERMISSION_DENIED
@@ -345,7 +362,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share=self.share)
                     log_msg = log_msg.format(share=self.share)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
                 try:
                     self.root = os.path.realpath(share.root_dir)
                 except Exception as e:
@@ -355,7 +373,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     log_msg = log_msg.format(share=share)
                     log_msg = f"{log_msg}: {e}"
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':True, 'message':message}
+                    return self.build_response(status, response)
                 if share.mount_script_enabled:
                     try:
                         share.run_mount_script()
@@ -366,7 +385,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         log_msg = log_msg.format(share=share)
                         log_msg = f"{log_msg}: {e}"
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':True, 'message':message}
+                        return self.build_response(status, response)
                 if share.force_group_uuid is not None:
                     group = backend.get_object(uuid=share.force_group_uuid)
                     if not group:
@@ -375,7 +395,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(group_uuid=share.force_group_uuid)
                         log_msg = log_msg.format(group_uuid=share.force_group_uuid)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                     try:
                         self.force_group_gid = grp.getgrnam(group.name).gr_gid
                     except Exception:
@@ -384,7 +405,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(group_name=group.name)
                         log_msg = log_msg.format(group_name=group.name)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                 # Get read-only attribute.
                 self.read_only = share.read_only
                 if share.directory_mode != "0o000":
@@ -407,7 +429,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         log_msg = log_msg.format(share_name=share.name)
                         log_msg = f"{log_msg}: {e}"
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                     try:
                         fs_data = read_cryptfs_settings(path=self.root)
                     except NotInitialized:
@@ -416,7 +439,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(root=self.root)
                         log_msg = log_msg.format(root=self.root)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                     except Exception as e:
                         status = status_codes.UNKNOWN_OBJECT
                         message, log_msg = _("Failed to read cryptfs settings: {share_name}", log=True)
@@ -424,7 +448,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         log_msg = log_msg.format(share_name=share.name)
                         log_msg = f"{log_msg}: {e}"
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
             if self.encrypted:
                 try:
                     self.block_size = fs_data['block_size']
@@ -434,7 +459,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = message.format(share_name=share.name)
                     log_msg = log_msg.format(share_name=share.name)
                     self.logger.warning(log_msg)
-                    return self.build_response(status, message)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
                 share_key = None
                 master_password_hash_params = None
                 try:
@@ -448,7 +474,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(token_path=config.auth_token.rel_path)
                         log_msg = log_msg.format(token_path=config.auth_token.rel_path)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                     try:
                         master_password_hash_params = fs_data['hash_params']
                     except KeyError:
@@ -457,7 +484,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(share_name=share.name)
                         log_msg = log_msg.format(share_name=share.name)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                 else:
                     share_key_share = share
                     if self.restore_share:
@@ -470,7 +498,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(user_name=config.auth_user.name)
                         log_msg = log_msg.format(user_name=config.auth_user.name)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
 
             # Update last used time.
             share.update_last_used_time()
@@ -492,7 +521,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                             message = message.format(group_name=group.name)
                             log_msg = log_msg.format(group_name=group.name)
                             self.logger.warning(log_msg)
-                            return self.build_response(status, message)
+                            response = {'try_other_node':False, 'message':message}
+                            return self.build_response(status, response)
                     try:
                         drop_privileges(user=self.username, group=default_group, groups=groups)
                     except Exception as e:
@@ -501,7 +531,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         message = message.format(error=e)
                         log_msg = log_msg.format(error=e)
                         self.logger.warning(log_msg)
-                        return self.build_response(status, message)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                     self.privileges_dropped = True
             self.set_proctitle(self.username, share)
             if self.encrypted:
@@ -518,7 +549,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             message, log_msg = _("No share mounted.", log=True)
             self.logger.warning(log_msg)
             status = status_codes.UNKNOWN_OBJECT
-            return self.build_response(status, message)
+            response = {'try_other_node':False, 'message':message}
+            return self.build_response(status, False)
 
         if command == "add_share_key":
             try:

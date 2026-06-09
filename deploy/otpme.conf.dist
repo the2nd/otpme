@@ -432,10 +432,10 @@ ALLOW_NEW_BACKUP_REPOS="False"
 BACKUP_REPOSITORY=""
 # Backup mode. Can be "pack" or "tree".
 BACKUP_MODE="pack"
-# Repository password.
-BACKUP_REPO_PASS=""
-# Backup AES key used to encrypt backup (use "openssl rand -hex 32" to generate).
-BACKUP_KEY=""
+# Repository password file.
+BACKUP_REPO_PASS_FILE="/etc/otpme/backup.pass"
+# Backup AES key file used to encrypt backup (use openssl rand -hex 32 to generate).
+BACKUP_KEY_FILE="/etc/otpme/backup.key"
 # Exclude special files.
 BACKUP_EXCLUDE_SPECIAL="True"
 # Backup excludes.

@@ -81,6 +81,17 @@ commands = {
                     },
                 },
             },
+    'dump'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'args'              : [
+                                        'trash_id',
+                                        'object_id',
+                                        ],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'del'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -392,6 +403,46 @@ def restore(trash_id=None, objects=None, keep_trash=False,
     msg = _("Restored {restore_counter} objects.")
     msg = msg.format(restore_counter=restore_counter)
     return callback.ok(msg)
+
+def dump(trash_id, object_id, callback=default_callback, **kwargs):
+    if not trash_id:
+        msg = _("Need <trash_id>.")
+        raise OTPmeException(msg)
+    trash_dir = os.path.join(TRASH_DIR, trash_id)
+    if not os.path.exists(trash_dir):
+        msg = _("Unknown trash entry: {trash_id}")
+        msg = msg.format(trash_id=trash_id)
+        return callback.error(msg)
+
+    if config.auth_token and not config.auth_token.is_admin():
+        deleted_by = get_deleted_by(trash_id)
+        deleted_by_token = f"token:{config.auth_token.rel_path}"
+        if deleted_by != deleted_by_token:
+            msg = _("Permission denied")
+            return callback.error(msg)
+
+    x_file = object_id.replace("/", "+")
+    trash_file = os.path.join(trash_dir, x_file)
+
+    try:
+        file_content = filetools.read_file(trash_file)
+    except Exception as e:
+        msg = _("Failed to read object from trash: {trash_file}: {e}")
+        msg = msg.format(trash_file=trash_file, e=e)
+        return callback.error(msg)
+    try:
+        object_data = json.loads(file_content)
+    except Exception as e:
+        msg = _("Failed to parse JSON data from trash file: {trash_file}: {e}")
+        msg = msg.format(trash_file=trash_file, e=e)
+        return callback.error(msg)
+    try:
+        object_config = object_data['object_config']
+    except Exception:
+        msg = _("Failed to get object config for object: {object_id}")
+        msg = msg.format(object_id=object_id)
+        return callback.error(msg)
+    return callback.ok(object_config, return_value=True)
 
 def empty(cluster=True, callback=default_callback, **kwargs):
     for root, dirs, files in os.walk(TRASH_DIR):

@@ -32,11 +32,19 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-trash restore --keep --objects <object_id_1,object_id_2> {trash_id}'),
                     'cmd'   :   '--objects :[objects]: --keep :keep_trash=True: [|object|]',
                     '_help' :   {
-                                    'cmd'                   : _('Restore object(s).'),
-                                    '--keep'                : _('Keep copy of object in trash.'),
+                                    'cmd'                                   : _('Restore object(s).'),
+                                    '--keep'                                : _('Keep copy of object in trash.'),
+                                    '--objects <object_id1,object_id2>'     : _('Restore given objects.'),
                                 },
                 },
 
+    'dump'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-trash dump {trash_id} {object_id}'),
+                    'cmd'   :   '[|object|] <object_id>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump object to stdout.'),
+                                },
+                },
 
     'del'    : {
                     '_cmd_usage_help' : _('Usage: otpme-trash del {trash_id}'),

@@ -45,17 +45,18 @@ default_callback = config.get_callback()
 sub_types = {}
 command_map = {}
 
-# All valid commands
+# All valid commands.
 valid_commands = [
                 'job',
+                'tool',
                 'trash',
                 'backend',
                 'stop_job',
                 'move_object',
                 'mass_object_add',
                 'change_user_default_group',
-                'dump_index',
-                'dump_object',
+                #'dump_index',
+                #'dump_object',
                 'reset_reauth',
                 'delete_object',
                 'get_share',
@@ -2056,6 +2057,32 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return self.build_response(status, response)
 
+    def handle_tool_commands(self, tool_command, command_args):
+        """ Handle 'tool' commands. """
+        valid_tool_commands = [
+                                "dump_object",
+                                "dump_index",
+                            ]
+
+        if len(tool_command) < 2:
+            status = False
+            message = _("Missing tool sub command: {command}")
+            message = message.format(command=tool_command)
+            return self.build_response(status, message)
+
+        # Check if we got a valid command
+        if not tool_command in valid_tool_commands:
+            status = False
+            message = _("Unknown tool command: {command}")
+            message = message.format(command=tool_command)
+            return self.build_response(status, message)
+
+        if tool_command == "dump_object":
+            return self.dump_object(tool_command, command_args)
+
+        if tool_command == "dump_index":
+            return self.dump_index(tool_command, command_args)
+
     def handle_backend_commands(self, backend_command, command_args):
         """ Handle 'backend' commands. """
         status = False
@@ -2308,15 +2335,17 @@ class OTPmeMgmtP1(OTPmeServer1):
     def handle_trash_commands(self, trash_command, command_args):
         """ Handle 'trash' commands. """
         from otpme.lib.trash import empty
+        from otpme.lib.trash import dump
         from otpme.lib.trash import delete
         from otpme.lib.trash import restore
         from otpme.lib.trash import show_trash
         status = False
         response = ""
 
-        valid_backend_commands = [  "show",
+        valid_trash_commnads = [  "show",
                                     "restore",
                                     "empty",
+                                    "dump",
                                     "del",
                                 ]
 
@@ -2327,7 +2356,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             return self.build_response(status, message)
 
         # Check if we got a valid command
-        if not trash_command in valid_backend_commands:
+        if not trash_command in valid_trash_commnads:
             status = False
             message = _("Unknown command: {command}")
             message = message.format(command=trash_command)
@@ -2390,6 +2419,36 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="trash_restore",
                                     target_method=restore,
                                     args={}, _args=_args,
+                                    _opt_args=_opt_args,
+                                    command_args=command_args,
+                                    process=job_process,
+                                    thread=job_thread)
+            except Exception as e:
+                config.raise_exception()
+                response = _("Error running command: {command}: {error}")
+                response = response.format(command=backend_command, error=e)
+
+        if trash_command == "dump":
+            try:
+                trash_id = command_args.pop('object_identifier')
+            except Exception:
+                message = "MGMT_INCOMPLETE_COMMAND"
+                status = False
+                return self.build_response(status, message)
+
+            try:
+                object_id = command_args.pop('object_id')
+            except Exception:
+                message = "MGMT_INCOMPLETE_COMMAND"
+                status = False
+                return self.build_response(status, message)
+
+            args = {'trash_id':trash_id, 'object_id':object_id}
+            try:
+                status, \
+                response = self.start_job(name="trash_dump",
+                                    target_method=dump,
+                                    args=args, _args=_args,
                                     _opt_args=_opt_args,
                                     command_args=command_args,
                                     process=job_process,
@@ -2567,6 +2626,9 @@ class OTPmeMgmtP1(OTPmeServer1):
     def _cmd_trash(self, subcommand, command_args):
         return self.handle_trash_commands(subcommand, command_args)
 
+    def _cmd_tool(self, subcommand, command_args):
+        return self.handle_tool_commands(subcommand, command_args)
+
     def _cmd_check_duplicate_ids(self, subcommand, command_args):
         if subcommand == "user":
             id_attribute = "ldif:uidNumber"
@@ -2592,7 +2654,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             response = pprint.pformat(duplicates)
         return self.build_response(True, response)
 
-    def _cmd_dump_object(self, subcommand, command_args):
+    def dump_object(self, subcommand, command_args):
         if not self.is_admin:
             return self.build_response(False, _("Permission denied."))
         try:
@@ -2670,7 +2732,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             status = False
         return self.build_response(status, response)
 
-    def _cmd_dump_index(self, subcommand, command_args):
+    def dump_index(self, subcommand, command_args):
         if not self.is_admin:
             return self.build_response(False, _("Permission denied."))
         try:

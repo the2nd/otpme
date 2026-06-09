@@ -35,9 +35,8 @@ class JoinDaemon(OTPmeDaemon):
         self.configure()
         # All protocols we support.
         self.protocols = config.get_otpme_protocols(self.name, server=True)
-        # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 1024
+        self.max_conn = self.get_max_conn("joind_max_conn")
         # FIXME: where to configure socket banner?
         # set socket banner.
         msg = "{status} {name} {version}"

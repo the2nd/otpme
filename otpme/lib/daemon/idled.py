@@ -96,9 +96,8 @@ class IdleDaemon(OTPmeDaemon):
         self.configure()
         # All protocols we support.
         self.protocols = config.get_otpme_protocols(self.name, server=True)
-        # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 1024
+        self.max_conn = self.get_max_conn("idled_max_conn")
         # FIXME: where to configure socket banner?
         # set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"

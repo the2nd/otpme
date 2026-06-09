@@ -4320,9 +4320,8 @@ class ClusterDaemon(OTPmeDaemon):
         """ Start daemon loop. """
         # Setup logger.
         self.logger = log.setup_logger(pid=True)
-        # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 256
+        self.max_conn = self.get_max_conn("clusterd_max_conn")
         # Set signal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)

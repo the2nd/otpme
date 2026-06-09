@@ -1177,7 +1177,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                       run_policies=False,
                                       callback=callback)
                 user.add_acl(acl=acl,
-                             recursive_acls=True,
+                             recursive_acls=False,
                              apply_default_acls=False,
                              verify_acls=False,
                              run_policies=False,
@@ -1188,12 +1188,14 @@ class OTPmeSsoP1(OTPmeServer1):
                                       run_policies=False,
                                       callback=callback)
                 user.del_acl(acl=acl,
-                             recursive_acls=True,
+                             recursive_acls=False,
                              apply_default_acls=False,
                              verify_acls=False,
                              run_policies=False,
                              callback=callback)
                 for token in user.get_tokens(return_type="instance"):
+                    if not token._temp_password_hash:
+                        continue
                     token.set_temp_password(force=True,
                                             verify_acls=False,
                                             remove=True,
