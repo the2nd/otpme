@@ -1024,6 +1024,7 @@ class Role(OTPmeObject):
                             "ROLES",
                             "SYNC_USERS",
                             "DYNAMIC_GROUPS",
+                            "CONFIG_PARAMS:device_token_suffix",
                             ]
                         },
                     }

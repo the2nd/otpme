@@ -1557,6 +1557,8 @@ class User(OTPmeObject):
                             "uidNumber",
                             "givenName",
                             "sn",
+                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:allow_temp_paswords",
                             ]
                         },
                     }
@@ -6491,4 +6493,4 @@ class User(OTPmeObject):
 
         output += "\n".join(token_lines)
 
-        return callback.ok(output)
+        return callback.ok(output, return_value=True)

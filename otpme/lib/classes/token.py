@@ -1195,6 +1195,8 @@ class Token(OTPmeObject):
                             "CROSS_SITE_LINKS",
                             "DESTINATION_TOKEN",
                             "DYNAMIC_GROUPS",
+                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:allow_temp_paswords",
                             ]
                         },
                     }

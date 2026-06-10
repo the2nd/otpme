@@ -84,7 +84,7 @@ def show_compgen():
     cur = None
     counter = 0
     comp_words = None
-    #comp_cword = None
+    comp_cword = None
     for x in sys.argv:
         if x == "--cur":
             try:
@@ -93,7 +93,7 @@ def show_compgen():
                 cur = ""
             sys.argv.remove(x)
         if x == "--comp-cword":
-            #comp_cword = int(sys.argv[counter+1])
+            comp_cword = int(sys.argv[counter+1])
             sys.argv.remove(x)
         if x == "--comp-words":
             comp_words = sys.argv[counter+1].split()
@@ -136,21 +136,23 @@ def show_compgen():
     help_dict = help.get_cmd_help(main_command)
 
     # Check if command line already includes a subcommand.
-    word_counter = 0
+    word_counter = -1
     found_subcommand = False
     sub_commands = list(help_dict)
     for word in comp_words:
+        word_counter += 1
         if word not in sub_commands:
             continue
-        prev_subcommand_word = comp_words[word_counter-2]
+        prev_subcommand_word = comp_words[word_counter-1]
         if prev_subcommand_word == "--type":
             sub_command = None
             found_subcommand = False
-            break
-        if cur == word:
-            sub_command = None
-            found_subcommand = False
-            break
+            continue
+        if word_counter == comp_cword:
+            if cur == word:
+                sub_command = None
+                found_subcommand = False
+                break
         if len(comp_words) >= 3:
             prev_subcommand_word = comp_words[word_counter-3]
             if cur != "":
@@ -160,6 +162,7 @@ def show_compgen():
                     break
         sub_command = word
         found_subcommand = True
+        break
 
     # Check for global options.
     global_opts_done = True

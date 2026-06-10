@@ -866,7 +866,8 @@ class OTPmeAuthP1(OTPmeServer1):
                     'smartcard_data': smartcard_data,
                     }
         auth_token = None
-        for x_token in user.get_tokens(return_type="instance"):
+        user_tokens = user.get_tokens(return_type="instance")
+        for x_token in user_tokens:
             if command == "token_verify":
                 if x_token.pass_type != "static":
                     if x_token.pass_type != "otp":
@@ -886,8 +887,39 @@ class OTPmeAuthP1(OTPmeServer1):
                 continue
             if verify_status is None:
                 continue
-            auth_token = x_token
-            break
+            if verify_status is True:
+                auth_token = x_token
+                break
+
+        # Try temp password.
+        if not auth_token and password:
+            for x_token in user_tokens:
+                if command == "token_verify_mschap":
+                    try:
+                        verify_status = x_token.verify(temp=True, **token_verify_parms)
+                    except Exception as e:
+                        log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
+                        log_msg = log_msg.format(token_name=x_token.name, error=e)
+                        self.logger.critical(log_msg)
+                        continue
+                else:
+                    token_verify_parms = {
+                            'auth_type'         : "clear-text",
+                            'password'          : password,
+                            }
+                    try:
+                        verify_status = x_token.verify_temp_password(**token_verify_parms)
+                    except Exception as e:
+                        log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
+                        log_msg = log_msg.format(token_name=x_token.name, error=e)
+                        self.logger.critical(log_msg)
+                        continue
+
+                if verify_status is None:
+                    continue
+                if verify_status is True:
+                    auth_token = x_token
+                    break
 
         _jwt = None
         auth_status = False

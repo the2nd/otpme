@@ -153,7 +153,7 @@
     let pendingReveal = null;
 
     function buildRoleCard(role) {
-        // One settings-card per sso_token_roles entry. The role description
+        // One settings-card per device_token_roles entry. The role description
         // (admin-curated, localized server-side) is shown as the section
         // hint so the user knows what the token will grant access to.
         const i18n = getDeviceI18n();
@@ -743,7 +743,7 @@
 
         // Device-token cards (add/copy buttons) are wired up per role
         // inside loadDeviceTokens() / buildRoleCard() since the count
-        // and ids depend on the user's configured sso_token_roles.
+        // and ids depend on the user's configured device_token_roles.
         loadDeviceTokens();
 
         const addPasskeyBtn = document.getElementById('addPasskeyBtn');

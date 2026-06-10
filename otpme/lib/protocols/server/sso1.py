@@ -178,12 +178,17 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
             return self.build_response(False, auth_response)
+        # The session_uuid only exists on the redirecting site (where the
+        # SSO portal lives). The foreign ssod must not try to look it up
+        # in its local backend -- strip it before forwarding.
+        forward_args = dict(command_args)
+        forward_args.pop('session_uuid', None)
         try:
             status, \
             status_code, \
             deploy_data, \
             binary_data = ssod_conn.send(command=command,
-                                        command_args=command_args)
+                                        command_args=forward_args)
         except Exception as e:
             log_msg = _("Failed to redirect command: {command}", log=True)[1]
             log_msg = log_msg.format(command=command)
@@ -1077,15 +1082,63 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         return self.build_response(True, {'status': True})
 
-    def _resolve_temp_pass_role(self, user):
-        """ Resolve ``sso_temp_pass_role`` (single "site/role" path,
-        inheritance-walked from user/unit/site) to a same-site role
-        instance. Cross-site grants are out of scope here; returns
-        ``None`` if the parameter is unset / unresolvable / off-site. """
+    def _site_trusts_user_home_for_temp_pass(self, user):
+        """ The local site decides whether it trusts a user's home-site
+        ``sso_temp_pass_role`` cascade. Own-site users are implicitly
+        trusted; foreign users only when the local site lists their
+        home site under ``sso_temp_pass_role_trusts``. """
+        if user.site == config.site:
+            return True
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return False
         try:
-            role_path = user.get_config_parameter("sso_temp_pass_role")
+            trusts = local_site.get_config_parameter("sso_temp_pass_role_trusts")
         except Exception:
-            role_path = None
+            trusts = None
+        if not trusts:
+            return False
+        return user.site in trusts
+
+    def _site_trusts_site_for_temp_pass(self, site):
+        """ Check sites trust status for temp pass role. """
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return False
+        try:
+            trusts = local_site.get_config_parameter("sso_temp_pass_role_trusts")
+        except Exception:
+            trusts = None
+        if not trusts:
+            return False
+        return site in trusts
+
+    def _resolve_temp_pass_role(self, user):
+        """ Resolve ``sso_temp_pass_role`` (single "<site>/<role>" path,
+        bare name defaults to the local site) to a role instance.
+
+        Honours ``sso_temp_pass_role_trusts`` on the local site: trusted
+        users (own site or home site in the trust list) get the value
+        walked from ``user.get_config_parameter`` (user → unit → site of
+        the user, cluster-synced). Untrusted foreign users fall back to
+        the local site's own ``sso_temp_pass_role`` (site-only). Returns
+        ``None`` if unset or the role does not exist. """
+        if self._site_trusts_user_home_for_temp_pass(user):
+            try:
+                role_path = user.get_config_parameter("sso_temp_pass_role")
+            except Exception:
+                role_path = None
+        else:
+            local_site = backend.get_object(object_type="site",
+                                            uuid=config.site_uuid)
+            if local_site is None:
+                return None
+            try:
+                role_path = local_site.get_config_parameter("sso_temp_pass_role")
+            except Exception:
+                role_path = None
         if not role_path:
             return None
         if "/" in role_path:
@@ -1093,8 +1146,6 @@ class OTPmeSsoP1(OTPmeServer1):
         else:
             role_site = config.site
             role_name = role_path
-        if role_site != config.site:
-            return None
         result = backend.search(object_type="role",
                                 attribute="name",
                                 value=role_name,
@@ -1109,8 +1160,9 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Tell the settings page whether the admin-access toggle is
         applicable for this user, and what its current state is.
 
-        ``available=False`` (sso_temp_pass_role unset or unresolvable on
-        the home site) makes the frontend hide the card entirely.
+        ``available=False`` (sso_temp_pass_role unresolvable from the
+        relevant config -- user-scope when trusted, local-site-scope
+        otherwise) makes the frontend hide the card entirely.
 
         ``enabled`` reflects ``allow_temp_paswords`` on the user object
         *non-recursively* -- the toggle is per-user, not inherited. """
@@ -1122,11 +1174,11 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        if user.site != config.site:
-            return self.ssod_redirect_command(command="get_admin_access_state",
-                                            user=user,
-                                            command_args=command_args,
-                                            mgmt=True)
+        # No cross-site redirect: the trust check in _resolve_temp_pass_role
+        # is anchored to the *local* site's sso_temp_pass_role_trusts, so it
+        # has to run here -- not on the user's home site. The user object
+        # is cluster-synced; reading allow_temp_paswords (recursive=False
+        # = per-user value) works on any node.
         role = self._resolve_temp_pass_role(user)
         if role is None:
             return self.build_response(True, {
@@ -1156,64 +1208,122 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        if user.site != config.site:
-            return self.ssod_redirect_command(command="set_admin_access_state",
-                                            user=user,
-                                            command_args=command_args,
-                                            mgmt=True)
-        role = self._resolve_temp_pass_role(user)
+        # Trust check + role resolution must happen on the originating
+        # (local) site because sso_temp_pass_role_trusts is anchored
+        # there. The actual user-object writes (config_param, ACLs,
+        # temp-password cleanup) are authoritative on the user's home
+        # site, so foreign users get redirected -- with the resolved
+        # role_uuid attached so the home side doesn't re-resolve from
+        # its own (possibly different) config.
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_role_uuid = command_args.get('_temp_pass_role_uuid')
+        if is_cluster_peer and peer_role_uuid:
+            if not self._site_trusts_site_for_temp_pass(self.peer.site):
+                return self.build_response(False, {
+                    'message': 'Admin access is not available: sso_temp_pass_role_trusts '
+                               'is not configured.',
+                    'status': False})
+            role = backend.get_object(object_type="role", uuid=peer_role_uuid)
+        else:
+            role = self._resolve_temp_pass_role(user)
         if role is None:
             return self.build_response(False, {
                 'message': 'Admin access is not available: sso_temp_pass_role '
                            'is not configured.',
                 'status': False})
-        callback = self.get_callback()
-        callback.raise_exception = True
-        acl = f"role:{role.uuid}:set_temp_password"
+        if user.site != config.site:
+            # Foreign user: home is authoritative for user-object writes
+            # (config_params, ACLs, token temp-password cleanup). After
+            # home accepts, mirror the same writes on this site so
+            # subsequent GETs see the new state immediately rather than
+            # waiting for cluster sync to propagate. Same idea as
+            # add_device_token's mirror-back.
+            forward_args = dict(command_args)
+            forward_args['_temp_pass_role_uuid'] = role.uuid
+            remote_status, remote_resp = self._remote_ssod_call(
+                                            user=user,
+                                            command="set_admin_access_state",
+                                            extra_args=forward_args,
+                                            mgmt=True)
+            if not remote_status:
+                return self.build_response(False, remote_resp)
+            try:
+                self._apply_admin_access_writes(user, role, enabled)
+            except Exception as e:
+                log_msg = _("Admin-access local mirror failed for user '{u}': {e}",
+                            log=True)[1]
+                log_msg = log_msg.format(u=user.name, e=e)
+                self.logger.warning(log_msg)
+                # Home is authoritative and already committed; cluster
+                # sync will eventually update the local view. Don't
+                # surface the mirror failure to the caller.
+            emit_audit("Auth",
+                       "admin_access_enabled" if enabled else "admin_access_disabled",
+                       user=user.name,
+                       actor=user.name,
+                       role=f"{role.site}/{role.name}")
+            return self.build_response(True, {'enabled': enabled, 'status': True})
         try:
-            if enabled:
-                user.set_config_param("allow_temp_paswords", True,
-                                      verify_acls=False,
-                                      run_policies=False,
-                                      callback=callback)
-                user.add_acl(acl=acl,
-                             recursive_acls=False,
-                             apply_default_acls=False,
-                             verify_acls=False,
-                             run_policies=False,
-                             callback=callback)
-            else:
-                user.set_config_param("allow_temp_paswords", delete=True,
-                                      verify_acls=False,
-                                      run_policies=False,
-                                      callback=callback)
-                user.del_acl(acl=acl,
-                             recursive_acls=False,
-                             apply_default_acls=False,
-                             verify_acls=False,
-                             run_policies=False,
-                             callback=callback)
-                for token in user.get_tokens(return_type="instance"):
-                    if not token._temp_password_hash:
-                        continue
-                    token.set_temp_password(force=True,
-                                            verify_acls=False,
-                                            remove=True,
-                                            run_policies=False,
-                                            callback=callback)
+            self._apply_admin_access_writes(user, role, enabled)
         except Exception as e:
             log_msg = _("Admin-access toggle failed for user '{u}': {e}", log=True)[1]
             log_msg = log_msg.format(u=user.name, e=e)
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message': str(e), 'status': False})
-        user._write(callback=callback)
         emit_audit("Auth",
                    "admin_access_enabled" if enabled else "admin_access_disabled",
                    user=user.name,
                    actor=user.name,
                    role=f"{role.site}/{role.name}")
         return self.build_response(True, {'enabled': enabled, 'status': True})
+
+    def _apply_admin_access_writes(self, user, role, enabled):
+        """ Apply the admin-access flip on the user object. Used by
+        ``set_admin_access_state`` on both the authoritative home-site
+        write and the originator-side mirror write. Raises on failure. """
+        callback = self.get_callback()
+        callback.raise_exception = True
+        acl = f"role:{role.uuid}:set_temp_password"
+        if enabled:
+            user.set_config_param("allow_temp_paswords", True,
+                                  verify_acls=False,
+                                  run_policies=False,
+                                  callback=callback)
+            user.add_acl(acl=acl,
+                         recursive_acls=False,
+                         apply_default_acls=False,
+                         verify_acls=False,
+                         run_policies=False,
+                         callback=callback)
+        else:
+            try:
+                user.set_config_param("allow_temp_paswords", delete=True,
+                                      verify_acls=False,
+                                      run_policies=False,
+                                      callback=callback)
+            except Exception:
+                pass
+            try:
+                user.del_acl(acl=acl,
+                             recursive_acls=False,
+                             apply_default_acls=False,
+                             verify_acls=False,
+                             run_policies=False,
+                             callback=callback)
+            except Exception:
+                pass
+            for token in user.get_tokens(return_type="instance"):
+                if not token._temp_password_hash:
+                    continue
+                token.set_temp_password(force=True,
+                                        verify_acls=False,
+                                        remove=True,
+                                        run_policies=False,
+                                        callback=callback)
+        user._write(callback=callback)
 
     def change_language(self, username, sso_jwt, command_args):
         """ Persist the user's preferred UI language on the User object.
@@ -1431,20 +1541,10 @@ class OTPmeSsoP1(OTPmeServer1):
         message = _("Token PIN changed successfully.")
         return self.build_response(True, message)
 
-    def _get_sso_token_roles(self, user):
-        """ Resolve the sso_token_roles config parameter to a list of role
-        instances. `user.get_config_parameter` walks user → unit(s) →
-        site and applies the registered getter which returns a list of
-        "<site>/<role>" paths (bare names default to the local site).
-        Unknown roles are silently skipped. Must be called on the
-        user's home site. """
-        try:
-            role_paths = user.get_config_parameter("sso_token_roles")
-        except Exception as e:
-            log_msg = _("Failed to read sso_token_roles: {e}", log=True)[1]
-            log_msg = log_msg.format(e=e)
-            self.logger.warning(log_msg)
-            return []
+    def _device_token_role_paths_to_instances(self, role_paths):
+        """ Convert a list of "<site>/<role>" paths (bare names default
+        to the local site) into role instances. Unknown roles are
+        silently skipped. """
         if not role_paths:
             return []
         roles = []
@@ -1465,13 +1565,69 @@ class OTPmeSsoP1(OTPmeServer1):
             roles.append(result[0])
         return roles
 
-    def _resolve_sso_token_roles(self, user, command_args):
-        """ Resolve sso_token_roles to a list of role instances. Cross-site
-        users go through their home site's ssod to obtain the list of
-        role UUIDs; the role objects themselves are then loaded locally
-        via the cluster-synced backend. """
+    def _get_device_token_roles(self, user):
+        """ Resolve the device_token_roles config parameter to a list of role
+        instances via ``user.get_config_parameter`` (walks user → unit(s)
+        → site). Must be called on the user's home site. """
+        try:
+            role_paths = user.get_config_parameter("device_token_roles")
+        except Exception as e:
+            log_msg = _("Failed to read device_token_roles: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return []
+        return self._device_token_role_paths_to_instances(role_paths)
+
+    def _get_local_site_device_token_roles(self):
+        """ Resolve device_token_roles from the *local* site's config only
+        (no user/unit walk). Used as the fallback when the user's home
+        site is not trusted via ``device_token_roles_trusts``. """
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return []
+        try:
+            role_paths = local_site.get_config_parameter("device_token_roles")
+        except Exception as e:
+            log_msg = _("Failed to read device_token_roles: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return []
+        return self._device_token_role_paths_to_instances(role_paths)
+
+    def _site_trusts_user_home(self, user):
+        """ The local site decides whether it trusts a user's home-site
+        ``device_token_roles`` cascade. Own-site users are implicitly
+        trusted; foreign users only when the local site lists their
+        home site under ``device_token_roles_trusts``. """
         if user.site == config.site:
-            return self._get_sso_token_roles(user)
+            return True
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return False
+        try:
+            trusts = local_site.get_config_parameter("device_token_roles_trusts")
+        except Exception:
+            trusts = None
+        if not trusts:
+            return False
+        return user.site in trusts
+
+    def _resolve_device_token_roles(self, user, command_args):
+        """ Resolve device_token_roles to a list of role instances.
+
+        Honours ``device_token_roles_trusts`` on the local site: if the
+        user's home site is trusted (or the user lives here), use the
+        user-scoped value via ``user.get_config_parameter`` -- cross-site
+        users go through their home ssod for that resolution. If the
+        user's home site is *not* trusted, fall back to the local site's
+        ``device_token_roles`` setting (site-only, no user/unit walk).
+        """
+        if not self._site_trusts_user_home(user):
+            return self._get_local_site_device_token_roles()
+        if user.site == config.site:
+            return self._get_device_token_roles(user)
         status, resp = self._remote_ssod_call(user=user,
                                             command="sso_get_device_token_role_uuids",
                                             extra_args=command_args)
@@ -1487,7 +1643,7 @@ class OTPmeSsoP1(OTPmeServer1):
         return roles
 
     def sso_get_device_token_role_uuids(self, username, sso_jwt, command_args):
-        """ Internal cross-site command: resolve sso_token_roles on the
+        """ Internal cross-site command: resolve device_token_roles on the
         user's home site and return the list of role UUIDs. The caller
         loads the role objects locally (cluster-synced). """
         try:
@@ -1499,7 +1655,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
-        roles = self._get_sso_token_roles(user)
+        roles = self._get_device_token_roles(user)
         role_uuids = [role.uuid for role in roles]
         return self.build_response(True, {'role_uuids': role_uuids, 'status': True})
 
@@ -1674,15 +1830,12 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        # Check for command redirection.
-        if user.site != config.site:
-            return self.ssod_redirect_command(command="list_device_tokens",
-                                            user=user,
-                                            command_args=command_args)
-        # The role UUIDs must come from the user's home site (config walks
-        # up the user hierarchy); the role objects themselves are
-        # cluster-synced and loaded locally.
-        roles = self._resolve_sso_token_roles(user, command_args)
+        # No cross-site redirect here: the role list comes from
+        # _resolve_device_token_roles (which honours device_token_roles_trusts
+        # on the local site and falls back to the local site-level config
+        # for untrusted foreign users), and user.tokens is cluster-synced
+        # so we can enumerate the user's tokens locally on any site.
+        roles = self._resolve_device_token_roles(user, command_args)
         # Roles without a device_token_suffix have no way to render a
         # usable token name and are therefore hidden from the portal.
         roles = [r for r in roles if r.get_config_parameter("device_token_suffix")]
@@ -1710,7 +1863,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     }
         # Iterate the user's own tokens and check role membership on each.
         # This is cheaper than walking role.tokens when a role holds many
-        # tokens (e.g. lots of users sharing the same sso_token_roles entry).
+        # tokens (e.g. lots of users sharing the same device_token_roles entry).
         for token_uuid in user.tokens:
             try:
                 token = backend.get_object(object_type="token", uuid=token_uuid)
@@ -1764,9 +1917,9 @@ class OTPmeSsoP1(OTPmeServer1):
         the user's home site and add it to the requested role. The
         caller passes the target role_uuid (chosen from the per-role
         section in the SSO portal); we re-validate it against the
-        user's sso_token_roles here and derive the final token name
+        user's device_token_roles here and derive the final token name
         from the role's device_token_suffix. The home site is the
-        authoritative location for both: sso_token_roles walks up the
+        authoritative location for both: device_token_roles walks up the
         user hierarchy, and we don't want callers to pick the token
         name freely. The token OID/OC is returned so the calling site
         can mirror the token locally without waiting for cluster sync. """
@@ -1784,14 +1937,27 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
-        # Validate the requested role_uuid against the configured list.
-        # Prevents a malicious or stale caller from depositing tokens
-        # into an arbitrary role.
+        # sso_create_device_token is only ever reached from another
+        # site's ssod via the mgmt port (cluster peer). The originator
+        # has already validated role_uuid against its own policy --
+        # which may be either user.get_config_parameter (trusted) or
+        # the originator's site.get_config_parameter (untrusted via
+        # device_token_roles_trusts) -- so we can't redo the same
+        # check here without rejecting the legitimate untrusted-foreign
+        # case. Trust the peer and load any cluster-synced role by uuid;
+        # non-peer callers still go through the device_token_roles
+        # allow-list as a safety net.
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
         role = None
-        for candidate in self._get_sso_token_roles(user):
-            if candidate.uuid == role_uuid:
-                role = candidate
-                break
+        if is_cluster_peer:
+            role = backend.get_object(object_type="role", uuid=role_uuid)
+        else:
+            for candidate in self._get_device_token_roles(user):
+                if candidate.uuid == role_uuid:
+                    role = candidate
+                    break
         if not role:
             return self.build_response(False, {'message':'Invalid role.', 'status':False})
         suffix = role.get_config_parameter("device_token_suffix")
@@ -1885,6 +2051,11 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _remote_ssod_call(self, user, command, extra_args, mgmt=False):
         """ Run an ssod command on the user's home site. """
+        # The session_uuid only exists on the redirecting site (where the
+        # SSO portal lives). The foreign ssod must not try to look it up
+        # in its local backend -- strip it before forwarding.
+        forward_args = dict(extra_args)
+        forward_args.pop('session_uuid', None)
         try:
             ssod_conn = connections.get("ssod",
                                         mgmt=mgmt,
@@ -1901,7 +2072,7 @@ class OTPmeSsoP1(OTPmeServer1):
             status, \
             status_code, \
             response, \
-            binary_data = ssod_conn.send(command=command, command_args=extra_args)
+            binary_data = ssod_conn.send(command=command, command_args=forward_args)
         except Exception as e:
             log_msg = _("Remote ssod command '{command}' failed: {e}", log=True)[1]
             log_msg = log_msg.format(command=command, e=e)
@@ -1943,7 +2114,7 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             # Token creation must happen on the user's home site (authoritative
             # write). The remote ssod re-validates role_uuid against the
-            # user's sso_token_roles and appends the role's
+            # user's device_token_roles and appends the role's
             # device_token_suffix to build the final token name.
             remote_args = dict(command_args)
             remote_args['device_name'] = device_name
@@ -1995,10 +2166,10 @@ class OTPmeSsoP1(OTPmeServer1):
             # add-to-role step.
             role = backend.get_object(object_type="role", uuid=confirmed_role_uuid)
             if not role:
-                return self.build_response(False, {'message':'sso_token_roles role not found locally.', 'status':False})
+                return self.build_response(False, {'message':'device_token_roles role not found locally.', 'status':False})
         else:
             # Validate the requested role_uuid against the configured list.
-            for candidate in self._get_sso_token_roles(user):
+            for candidate in self._get_device_token_roles(user):
                 if candidate.uuid == role_uuid:
                     role = candidate
                     break
@@ -2006,7 +2177,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 response = {'message':'Invalid role.', 'status':False}
                 return self.build_response(False, response)
             # Append the role's device_token_suffix to disambiguate
-            # tokens that belong to different sso_token_roles (e.g.
+            # tokens that belong to different device_token_roles (e.g.
             # "device-iphone-wlan" vs "device-iphone-vpn"). Roles
             # without a suffix are hidden from list_device_tokens, so
             # a missing suffix here means a race against an admin
@@ -2088,9 +2259,9 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        roles = self._resolve_sso_token_roles(user, command_args)
+        roles = self._resolve_device_token_roles(user, command_args)
         if not roles:
-            response = {'message':'sso_token_roles is not configured.', 'status':False}
+            response = {'message':'device_token_roles is not configured.', 'status':False}
             return self.build_response(False, response)
         token = user.token(token_name)
         if not token:
@@ -2100,7 +2271,7 @@ class OTPmeSsoP1(OTPmeServer1):
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
         # Only allow deletion of tokens that are part of any configured
-        # sso_token_roles role.
+        # device_token_roles role.
         if not any(token.uuid in role.tokens for role in roles):
             response = {'message':'Not a device token.', 'status':False}
             return self.build_response(False, response)
@@ -4507,18 +4678,17 @@ class OTPmeSsoP1(OTPmeServer1):
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
 
-        try:
-            session_uuid = command_args['session_uuid']
-        except Exception:
-            status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
-            return self.build_response(status, message)
-
-        session = backend.get_object(uuid=session_uuid)
-        if not session:
-            return self.build_response(False, {
-                'message': 'UNKNOWN_SESSION', 'status': False,
-            })
+        # session_uuid is only meaningful when the request originates
+        # from the SSO portal (web frontend / CLI). Cross-site ssod-to-
+        # ssod redirects strip it -- the originating ssod has already
+        # verified the session, and the foreign backend wouldn't see it.
+        session_uuid = command_args.get('session_uuid')
+        if session_uuid:
+            session = backend.get_object(uuid=session_uuid)
+            if not session:
+                return self.build_response(False, {
+                    'message': 'UNKNOWN_SESSION', 'status': False,
+                })
 
         if command == "get_apps":
             log_msg = _("Processing command get_apps.", log=True)[1]

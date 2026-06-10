@@ -417,7 +417,7 @@ VLAN identifier to assign. This is used for VLAN assignment during 802.1x or MAB
 Object types: site, unit, host, device, user, token
 .SS SSO Portal
 .TP
-.B sso_token_roles \fR(list)
+.B device_token_roles \fR(list)
 Comma separated list of roles to which device tokens registered via the SSO portal are added. The role's info text is displayed in the SSO portal settings to inform users about the purpose and scope of the role. Each value can be a plain role name (resolved within the current site) or a
 .IR site/role
 path to reference a role on another site. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
@@ -426,7 +426,7 @@ Object types: site, unit, user
 .TP
 .B device_token_suffix \fR(str)
 Suffix appended to the device token name when the SSO portal registers a token under this role. A role without \fBdevice_token_suffix\fR is not shown in the SSO portal at all, so this parameter doubles as the opt\-in switch that makes a role eligible as an SSO device\-token target via
-.BR sso_token_roles .
+.BR device_token_roles .
 .br
 Object types: role
 .TP

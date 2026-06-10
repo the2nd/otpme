@@ -1432,7 +1432,7 @@ def register_config():
                     'unit',
                     'user',
                     ]
-    def sso_role_setter(roles, callback=JobCallback, **kwargs):
+    def device_token_roles_setter(roles, callback=JobCallback, **kwargs):
         if isinstance(roles, str):
             roles = roles.split(",")
         roles_uuids = []
@@ -1460,7 +1460,7 @@ def register_config():
                 raise PermissionDenied(msg)
             roles_uuids.append(role.uuid)
         return roles_uuids
-    def sso_role_getter(roles, callback=JobCallback, **kwargs):
+    def device_token_roles_getter(roles, callback=JobCallback, **kwargs):
         if isinstance(roles, str):
             roles = roles.split(",")
         roles_paths = []
@@ -1477,11 +1477,89 @@ def register_config():
             role_path = f"{role.site}/{role.name}"
             roles_paths.append(role_path)
         return roles_paths
-    config.register_config_parameter(name="sso_token_roles",
+    config.register_config_parameter(name="device_token_roles",
                                     ctype=list,
-                                    setter=sso_role_setter,
-                                    getter=sso_role_getter,
+                                    setter=device_token_roles_setter,
+                                    getter=device_token_roles_getter,
                                     object_types=object_types)
+    # Sites to trust device token roles config parameter.
+    def trust_device_tokens_roles_setter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        sites_uuids = []
+        for site_name in sites:
+            result = backend.search(object_type='site',
+                                    attribute="name",
+                                    value=site_name,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            site_uuid = result[0]
+            sites_uuids.append(site_uuid)
+        return sites_uuids
+    def trust_device_tokens_roles_getter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        _sites = []
+        for site_uuid in sites:
+            result = backend.search(object_type='site',
+                                    attribute="uuid",
+                                    value=site_uuid,
+                                    return_type="name")
+            if not result:
+                msg = _("Unknown site: {uuid}")
+                msg = msg.format(uuid=site_uuid)
+                raise ValueError(msg)
+            site_name = result[0]
+            _sites.append(site_name)
+        return _sites
+    config.register_config_parameter(name="device_token_roles_trusts",
+                                    ctype=list,
+                                    setter=trust_device_tokens_roles_setter,
+                                    getter=trust_device_tokens_roles_getter,
+                                    object_types=['site'])
+    # SSO temp pass role trusts.
+    def sso_temp_pass_role_trusts_setter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        sites_uuids = []
+        for site_name in sites:
+            result = backend.search(object_type='site',
+                                    attribute="name",
+                                    value=site_name,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            site_uuid = result[0]
+            sites_uuids.append(site_uuid)
+        return sites_uuids
+    def sso_temp_pass_role_trusts_getter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        _sites = []
+        for site_uuid in sites:
+            result = backend.search(object_type='site',
+                                    attribute="uuid",
+                                    value=site_uuid,
+                                    return_type="name")
+            if not result:
+                msg = _("Unknown site: {uuid}")
+                msg = msg.format(uuid=site_uuid)
+                raise ValueError(msg)
+            site_name = result[0]
+            _sites.append(site_name)
+        return _sites
+    config.register_config_parameter(name="sso_temp_pass_role_trusts",
+                                    ctype=list,
+                                    setter=sso_temp_pass_role_trusts_setter,
+                                    getter=sso_temp_pass_role_trusts_getter,
+                                    object_types=['site'])
     # Allow passkeys in SSO portal.
     config.register_config_parameter(name="sso_allow_passkeys",
                                     ctype=bool,
@@ -1946,6 +2024,8 @@ class Site(OTPmeObject):
                             "SSO_FQDN",
                             "FIDO2_CA_CERTS",
                             "ou",
+                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:allow_temp_paswords",
                             ],
                         },
                     }

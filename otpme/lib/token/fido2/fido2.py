@@ -562,7 +562,17 @@ class Fido2Token(Token):
             return callback.error(msg)
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
-        fido2_server = self.get_fido2_server()
+        # Cross-site auth: the browser is on the originating site's SSO
+        # portal and signs the assertion with that site's FQDN as origin.
+        # When verify() runs on the user's home site, self.rp (=
+        # config.site_sso_fqdn of *this* node) is the home FQDN and would
+        # reject the assertion with "Invalid origin in CollectedClientData".
+        # The auth_handler passes the originating rp_id through
+        # smartcard_data['rp_id'] -- honour it.
+        rp_id = smartcard_data.get('rp_id') or self.rp
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        #fido2_server = self.get_fido2_server()
+        fido2_server = Fido2Server(rp_data, attestation="direct")
         try:
             fido2_server.authenticate_complete(self.auth_state,
                                                 credentials,

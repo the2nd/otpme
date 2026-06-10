@@ -1066,39 +1066,40 @@ class OTPmeConfig(object):
                 msg = msg.format(parameter=parameter, e=e)
                 error_message(msg)
 
-        # Read backup repo pass file.
-        if os.path.exists(self.backup_repo_pass_file):
-            is_world_readable = bool(os.stat(self.backup_repo_pass_file).st_mode & stat.S_IROTH)
-            if is_world_readable:
-                msg = _("Backup repo pass file is world readable: {file}")
-                msg = msg.format(file=self.backup_repo_pass_file)
-                print(msg)
-            else:
-                try:
-                    fd = open(self.backup_repo_pass_file, "r")
-                    self.backup_repo_pass = fd.read().split("\n")[0].rstrip('\n')
-                    fd.close()
-                except Exception as e:
-                    msg = _("Failed to read backup repo pass file: {e}")
-                    msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+        if self.system_user() == "root":
+            # Read backup repo pass file.
+            if os.path.exists(self.backup_repo_pass_file):
+                is_world_readable = bool(os.stat(self.backup_repo_pass_file).st_mode & stat.S_IROTH)
+                if is_world_readable:
+                    msg = _("Backup repo pass file is world readable: {file}")
+                    msg = msg.format(file=self.backup_repo_pass_file)
+                    print(msg)
+                else:
+                    try:
+                        fd = open(self.backup_repo_pass_file, "r")
+                        self.backup_repo_pass = fd.read().split("\n")[0].rstrip('\n')
+                        fd.close()
+                    except Exception as e:
+                        msg = _("Failed to read backup repo pass file: {e}")
+                        msg = msg.format(e=e)
+                        raise OTPmeException(msg)
 
-        # Read backup key file.
-        if os.path.exists(self.backup_key_file):
-            is_world_readable = bool(os.stat(self.backup_key_file).st_mode & stat.S_IROTH)
-            if is_world_readable:
-                msg = _("Backup key file is world readable: {file}")
-                msg = msg.format(file=self.backup_key_file)
-                print(msg)
-            else:
-                try:
-                    fd = open(self.backup_key_file, "r")
-                    self.backup_key = fd.read().split("\n")[0].rstrip('\n')
-                    fd.close()
-                except Exception as e:
-                    msg = _("Failed to read backup key file: {e}")
-                    msg = msg.format(e=e)
-                    raise OTPmeException(msg)
+            # Read backup key file.
+            if os.path.exists(self.backup_key_file):
+                is_world_readable = bool(os.stat(self.backup_key_file).st_mode & stat.S_IROTH)
+                if is_world_readable:
+                    msg = _("Backup key file is world readable: {file}")
+                    msg = msg.format(file=self.backup_key_file)
+                    print(msg)
+                else:
+                    try:
+                        fd = open(self.backup_key_file, "r")
+                        self.backup_key = fd.read().split("\n")[0].rstrip('\n')
+                        fd.close()
+                    except Exception as e:
+                        msg = _("Failed to read backup key file: {e}")
+                        msg = msg.format(e=e)
+                        raise OTPmeException(msg)
 
         # Setup locale.
         self.setup_locale(self.language)
