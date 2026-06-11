@@ -1182,7 +1182,9 @@ class AuthHandler(object):
                 config.raise_exception()
 
         if verify_status is None:
-            return verify_status
+            return None
+        if verify_status is False:
+            return None
         # Mark auth as temp password auth.
         self.temp_password_auth = True
         # Make sure session is only valid as long as the temp password.

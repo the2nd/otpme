@@ -349,11 +349,11 @@
             if (!resp.ok) {
                 throw new Error(result.error || i18n.labelFailedDeleteDeviceToken || 'Failed to delete device token.');
             }
-            loadDeviceTokens();
+            preserveScrollAround(loadDeviceTokens);
         } catch (e) {
             // Reload anyway so any reveal panel is dropped; the next render
             // will surface the error context implicitly via stale state.
-            loadDeviceTokens();
+            preserveScrollAround(loadDeviceTokens);
         }
     }
 
@@ -530,7 +530,7 @@
                 throw new Error(result.error || i18n.labelFailedDeletePasskey || 'Failed to delete passkey.');
             }
             statusEl.textContent = i18n.labelPasskeyDeleted || 'Passkey deleted.';
-            loadPasskeys();
+            preserveScrollAround(loadPasskeys);
         } catch (e) {
             errorEl.textContent = e.message || i18n.labelFailedDeletePasskey || 'Failed to delete passkey.';
         }
@@ -694,7 +694,7 @@
                 throw new Error(result.error || i18n.labelFailedRevoke || 'Failed to revoke consent.');
             }
             statusEl.textContent = result.message || i18n.labelDisconnected || 'Disconnected.';
-            loadOidcConsents();
+            preserveScrollAround(loadOidcConsents);
         } catch (e) {
             errorEl.textContent = e.message || i18n.labelFailedRevoke || 'Failed to revoke consent.';
         }
@@ -731,7 +731,40 @@
         }
     }
 
+    // Preserve the current scroll position across an async reloader
+    // call (loadDeviceTokens / loadPasskeys / loadOidcConsents). The
+    // reloaders clear their container synchronously and re-fill it
+    // after a fetch; without a snap-back the page can jump because
+    // the layout collapses to zero height between clear and re-fill.
+    async function preserveScrollAround(fn) {
+        const y = window.scrollY;
+        try {
+            await fn();
+        } finally {
+            requestAnimationFrame(function () { window.scrollTo(0, y); });
+        }
+    }
+
+    // Scroll-position persistence across reloads. The settings page
+    // grows in height as the async loaders (device tokens, passkeys,
+    // admin access, oidc consents) populate their cards, so the
+    // browser's automatic scroll restoration fires too early -- the
+    // anchor it lands on hasn't been rendered yet. We take over: save
+    // the scroll position before unload and restore it after all
+    // loaders settle.
+    const SCROLL_KEY = 'settings:scrollY';
+
+    window.addEventListener('beforeunload', function () {
+        try {
+            sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+        } catch (e) { /* sessionStorage disabled — give up silently */ }
+    });
+
     document.addEventListener('DOMContentLoaded', function () {
+        if ('scrollRestoration' in history) {
+            history.scrollRestoration = 'manual';
+        }
+
         const pwBtn = document.getElementById('changePwBtn');
         if (pwBtn) pwBtn.addEventListener('click', changePassword);
 
@@ -744,17 +777,34 @@
         // Device-token cards (add/copy buttons) are wired up per role
         // inside loadDeviceTokens() / buildRoleCard() since the count
         // and ids depend on the user's configured device_token_roles.
-        loadDeviceTokens();
-
         const addPasskeyBtn = document.getElementById('addPasskeyBtn');
         if (addPasskeyBtn) addPasskeyBtn.addEventListener('click', addPasskey);
         attachNameSanitizer(document.getElementById('passkeyName'));
-        loadPasskeys();
 
         const adminToggle = document.getElementById('adminAccessToggle');
         if (adminToggle) adminToggle.addEventListener('change', onAdminAccessToggle);
-        loadAdminAccess();
 
-        loadOidcConsents();
+        // Kick off all async loaders in parallel; catch each so a
+        // single failure doesn't keep scroll restoration from firing.
+        Promise.all([
+            loadDeviceTokens().catch(() => {}),
+            loadPasskeys().catch(() => {}),
+            loadAdminAccess().catch(() => {}),
+            loadOidcConsents().catch(() => {}),
+        ]).then(function () {
+            let saved = null;
+            try {
+                saved = sessionStorage.getItem(SCROLL_KEY);
+                sessionStorage.removeItem(SCROLL_KEY);
+            } catch (e) { /* sessionStorage disabled */ }
+            if (saved === null) return;
+            const y = parseInt(saved, 10);
+            if (!Number.isFinite(y)) return;
+            // requestAnimationFrame to land after the post-load layout
+            // pass has happened.
+            requestAnimationFrame(function () {
+                window.scrollTo(0, y);
+            });
+        });
     });
 })();

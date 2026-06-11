@@ -74,7 +74,14 @@ def get_authd_conn(username,  password=None, node=None):
     return authd_conn
 
 def get_ssod_conn(username, mgmt=False):
+    use_socket = False
     if config.host_data['type'] == "node":
+        if mgmt:
+            if config.master_node:
+                use_socket = True
+        else:
+            use_socket = True
+    if use_socket:
         ssod_conn = connections.get("ssod",
                                     realm=config.realm,
                                     site=config.site,

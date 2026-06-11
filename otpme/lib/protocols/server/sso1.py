@@ -1102,7 +1102,10 @@ class OTPmeSsoP1(OTPmeServer1):
         return user.site in trusts
 
     def _site_trusts_site_for_temp_pass(self, site):
-        """ Check sites trust status for temp pass role. """
+        """ Does this site (config.site) list ``site`` under
+        ``sso_temp_pass_role_trusts``? Used on the user's home site to
+        decide whether to accept an admin-access modification from a
+        peer ssod (originator's SSO portal site). """
         local_site = backend.get_object(object_type="site",
                                         uuid=config.site_uuid)
         if local_site is None:
@@ -1116,15 +1119,17 @@ class OTPmeSsoP1(OTPmeServer1):
         return site in trusts
 
     def _resolve_temp_pass_role(self, user):
-        """ Resolve ``sso_temp_pass_role`` (single "<site>/<role>" path,
-        bare name defaults to the local site) to a role instance.
+        """ Resolve ``sso_temp_pass_role`` to a role instance.
 
-        Honours ``sso_temp_pass_role_trusts`` on the local site: trusted
-        users (own site or home site in the trust list) get the value
-        walked from ``user.get_config_parameter`` (user → unit → site of
-        the user, cluster-synced). Untrusted foreign users fall back to
-        the local site's own ``sso_temp_pass_role`` (site-only). Returns
-        ``None`` if unset or the role does not exist. """
+        Where the parameter is evaluated depends on the local site's
+        ``sso_temp_pass_role_trusts``:
+          - trusted user (own site or home in the trust list) →
+            ``user.get_config_parameter`` (user → unit → site cascade,
+            anchored at the user's home site).
+          - untrusted foreign user → the *local* site's
+            ``sso_temp_pass_role`` (site-only, no user/unit walk).
+        Returns ``None`` if the parameter is unset or the role does not
+        exist. """
         if self._site_trusts_user_home_for_temp_pass(user):
             try:
                 role_path = user.get_config_parameter("sso_temp_pass_role")
@@ -1160,12 +1165,15 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Tell the settings page whether the admin-access toggle is
         applicable for this user, and what its current state is.
 
-        ``available=False`` (sso_temp_pass_role unresolvable from the
-        relevant config -- user-scope when trusted, local-site-scope
-        otherwise) makes the frontend hide the card entirely.
-
-        ``enabled`` reflects ``allow_temp_paswords`` on the user object
-        *non-recursively* -- the toggle is per-user, not inherited. """
+        ``available`` depends on the role resolution (which honours the
+        local site's ``sso_temp_pass_role_trusts`` -- user-cascade for
+        trusted users, local-site config for untrusted foreign users).
+        ``enabled`` reads ``allow_temp_paswords`` on the user object
+        non-recursively and must always run on the user's home site --
+        for foreign users we redirect to home (carrying the originator's
+        resolved ``_temp_pass_role_uuid`` so home knows the toggle is
+        ``available=True`` without re-doing the resolution under its own
+        config). """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1174,11 +1182,41 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        # No cross-site redirect: the trust check in _resolve_temp_pass_role
-        # is anchored to the *local* site's sso_temp_pass_role_trusts, so it
-        # has to run here -- not on the user's home site. The user object
-        # is cluster-synced; reading allow_temp_paswords (recursive=False
-        # = per-user value) works on any node.
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_role_uuid = command_args.get('_temp_pass_role_uuid')
+        if is_cluster_peer and peer_role_uuid:
+            # Home side, peer-forwarded GET. Reciprocal trust gate, then
+            # just read enabled (peer already decided the role under its
+            # own policy).
+            if not self._site_trusts_site_for_temp_pass(self.peer.site):
+                return self.build_response(False, {
+                    'message': 'Admin access not available: peer site is not '
+                               'listed in sso_temp_pass_role_trusts.',
+                    'status': False})
+            try:
+                enabled = bool(user.get_config_parameter("allow_temp_paswords",
+                                                         recursive=False))
+            except Exception:
+                enabled = False
+            return self.build_response(True, {
+                    'available': True, 'enabled': enabled, 'status': True})
+        if user.site != config.site:
+            # Originator side, foreign user. Trust check decides where the
+            # role is evaluated; redirect so the authoritative
+            # ``allow_temp_paswords`` read happens on the user's home site.
+            role = self._resolve_temp_pass_role(user)
+            if role is None:
+                return self.build_response(True, {
+                        'available': False, 'enabled': False, 'status': True})
+            forward_args = dict(command_args)
+            forward_args['_temp_pass_role_uuid'] = role.uuid
+            return self.ssod_redirect_command(command="get_admin_access_state",
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        # Local user.
         role = self._resolve_temp_pass_role(user)
         if role is None:
             return self.build_response(True, {
@@ -1195,7 +1233,13 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Self-service: flip ``allow_temp_paswords`` on the user and
         grant / revoke the ``set_temp_password`` ACL (recursive, so it
         cascades to every one of the user's tokens) for the role
-        configured under ``sso_temp_pass_role``. """
+        configured under ``sso_temp_pass_role``.
+
+        Foreign users get redirected to their home site -- writes are
+        authoritative there. The home site additionally checks
+        ``sso_temp_pass_role_trusts`` against the originating peer's
+        site so a peer can't trigger admin-access changes on home
+        without an explicit reciprocal trust. """
         try:
             enabled = bool(command_args['enabled'])
         except Exception:
@@ -1208,22 +1252,24 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        # Trust check + role resolution must happen on the originating
-        # (local) site because sso_temp_pass_role_trusts is anchored
-        # there. The actual user-object writes (config_param, ACLs,
-        # temp-password cleanup) are authoritative on the user's home
-        # site, so foreign users get redirected -- with the resolved
-        # role_uuid attached so the home side doesn't re-resolve from
-        # its own (possibly different) config.
+        # Role resolution must honour the local site's
+        # sso_temp_pass_role_trusts -- it decides *where* the parameter
+        # is evaluated (user-cascade vs. local site). Do it on the
+        # originating side before the redirect so a peer-supplied
+        # role_uuid carries the originator's policy decision to the
+        # home site.
         is_cluster_peer = (not self.client.startswith("socket://")
                            and self.peer is not None
                            and self.peer.type == "node")
         peer_role_uuid = command_args.get('_temp_pass_role_uuid')
         if is_cluster_peer and peer_role_uuid:
+            # We're the home site receiving a peer-forwarded write.
+            # Reciprocal trust: only accept if our own
+            # sso_temp_pass_role_trusts lists the peer's site.
             if not self._site_trusts_site_for_temp_pass(self.peer.site):
                 return self.build_response(False, {
-                    'message': 'Admin access is not available: sso_temp_pass_role_trusts '
-                               'is not configured.',
+                    'message': 'Admin access not available: peer site is not '
+                               'listed in sso_temp_pass_role_trusts.',
                     'status': False})
             role = backend.get_object(object_type="role", uuid=peer_role_uuid)
         else:
@@ -1234,96 +1280,62 @@ class OTPmeSsoP1(OTPmeServer1):
                            'is not configured.',
                 'status': False})
         if user.site != config.site:
-            # Foreign user: home is authoritative for user-object writes
-            # (config_params, ACLs, token temp-password cleanup). After
-            # home accepts, mirror the same writes on this site so
-            # subsequent GETs see the new state immediately rather than
-            # waiting for cluster sync to propagate. Same idea as
-            # add_device_token's mirror-back.
             forward_args = dict(command_args)
             forward_args['_temp_pass_role_uuid'] = role.uuid
-            remote_status, remote_resp = self._remote_ssod_call(
+            return self.ssod_redirect_command(command="set_admin_access_state",
                                             user=user,
-                                            command="set_admin_access_state",
-                                            extra_args=forward_args,
+                                            command_args=forward_args,
                                             mgmt=True)
-            if not remote_status:
-                return self.build_response(False, remote_resp)
-            try:
-                self._apply_admin_access_writes(user, role, enabled)
-            except Exception as e:
-                log_msg = _("Admin-access local mirror failed for user '{u}': {e}",
-                            log=True)[1]
-                log_msg = log_msg.format(u=user.name, e=e)
-                self.logger.warning(log_msg)
-                # Home is authoritative and already committed; cluster
-                # sync will eventually update the local view. Don't
-                # surface the mirror failure to the caller.
-            emit_audit("Auth",
-                       "admin_access_enabled" if enabled else "admin_access_disabled",
-                       user=user.name,
-                       actor=user.name,
-                       role=f"{role.site}/{role.name}")
-            return self.build_response(True, {'enabled': enabled, 'status': True})
-        try:
-            self._apply_admin_access_writes(user, role, enabled)
-        except Exception as e:
-            log_msg = _("Admin-access toggle failed for user '{u}': {e}", log=True)[1]
-            log_msg = log_msg.format(u=user.name, e=e)
-            self.logger.warning(log_msg)
-            return self.build_response(False,
-                            {'message': str(e), 'status': False})
-        emit_audit("Auth",
-                   "admin_access_enabled" if enabled else "admin_access_disabled",
-                   user=user.name,
-                   actor=user.name,
-                   role=f"{role.site}/{role.name}")
-        return self.build_response(True, {'enabled': enabled, 'status': True})
-
-    def _apply_admin_access_writes(self, user, role, enabled):
-        """ Apply the admin-access flip on the user object. Used by
-        ``set_admin_access_state`` on both the authoritative home-site
-        write and the originator-side mirror write. Raises on failure. """
         callback = self.get_callback()
         callback.raise_exception = True
         acl = f"role:{role.uuid}:set_temp_password"
-        if enabled:
-            user.set_config_param("allow_temp_paswords", True,
-                                  verify_acls=False,
-                                  run_policies=False,
-                                  callback=callback)
-            user.add_acl(acl=acl,
-                         recursive_acls=False,
-                         apply_default_acls=False,
-                         verify_acls=False,
-                         run_policies=False,
-                         callback=callback)
-        else:
-            try:
-                user.set_config_param("allow_temp_paswords", delete=True,
+        try:
+            if enabled:
+                user.set_config_param("allow_temp_paswords", True,
                                       verify_acls=False,
                                       run_policies=False,
                                       callback=callback)
-            except Exception:
-                pass
-            try:
+                user.add_acl(acl=acl,
+                             recursive_acls=False,
+                             apply_default_acls=False,
+                             verify_acls=False,
+                             run_policies=False,
+                             callback=callback)
+            else:
+                try:
+                    user.set_config_param("allow_temp_paswords", delete=True,
+                                          verify_acls=False,
+                                          run_policies=False,
+                                          callback=callback)
+                except Exception:
+                    pass
                 user.del_acl(acl=acl,
                              recursive_acls=False,
                              apply_default_acls=False,
                              verify_acls=False,
                              run_policies=False,
                              callback=callback)
-            except Exception:
-                pass
-            for token in user.get_tokens(return_type="instance"):
-                if not token._temp_password_hash:
-                    continue
-                token.set_temp_password(force=True,
-                                        verify_acls=False,
-                                        remove=True,
-                                        run_policies=False,
-                                        callback=callback)
+                for token in user.get_tokens(return_type="instance"):
+                    if not token._temp_password_hash:
+                        continue
+                    token.set_temp_password(force=True,
+                                            verify_acls=False,
+                                            remove=True,
+                                            run_policies=False,
+                                            callback=callback)
+        except Exception as e:
+            log_msg = _("Admin-access toggle failed for user '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message': str(e), 'status': False})
         user._write(callback=callback)
+        emit_audit("Auth",
+                   "admin_access_enabled" if enabled else "admin_access_disabled",
+                   user=user.name,
+                   actor=user.name,
+                   role=f"{role.site}/{role.name}")
+        return self.build_response(True, {'enabled': enabled, 'status': True})
 
     def change_language(self, username, sso_jwt, command_args):
         """ Persist the user's preferred UI language on the User object.
@@ -2287,21 +2299,23 @@ class OTPmeSsoP1(OTPmeServer1):
                                                     mgmt=True)
             if not status:
                 return self.build_response(False, remote_resp)
+            add_to_trash = False
         else:
             add_to_trash = user.get_config_parameter("add_device_token_to_trash")
-            try:
-                user.del_token(token_name=token_name,
-                                force=True,
-                                verify_acls=False,
-                                run_policies=True,
-                                add_to_trash=add_to_trash,
-                                callback=callback)
-            except Exception as e:
-                log_msg = _("Failed to delete device token '{token}' for user '{user_name}': {e}", log=True)[1]
-                log_msg = log_msg.format(token=token_name, user_name=user.name, e=e)
-                self.logger.warning(log_msg)
-                response = {'message':'Failed to delete device token.', 'status':False}
-                return self.build_response(False, response)
+        # We need to delete device token even if user is from other site.
+        try:
+            user.del_token(token_name=token_name,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            add_to_trash=add_to_trash,
+                            callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to delete device token '{token}' for user '{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            response = {'message':'Failed to delete device token.', 'status':False}
+            return self.build_response(False, response)
         log_msg = _("Device token '{token}' deleted for user '{user_name}'.", log=True)[1]
         log_msg = log_msg.format(token=token_name, user_name=user.name)
         self.logger.info(log_msg)

@@ -558,7 +558,8 @@ class Fido2Token(Token):
         try:
             auth_response = json.loads(auth_response)
         except Exception:
-            msg = _("Failed to decode auth response.")
+            msg, log_msg = _("Failed to decode auth response.", log=True)
+            logger.warning(log_msg)
             return callback.error(msg)
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
@@ -578,8 +579,10 @@ class Fido2Token(Token):
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            msg = _("Token verififcation failed: {e}")
+            msg, log_msg = _("Token verififcation failed: {e}", log=True)
             msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
             return callback.error(msg)
         # Check fido2 counter.
         parsed = AuthenticationResponse.from_dict(auth_response)
@@ -592,7 +595,8 @@ class Fido2Token(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            msg = _("Token verififcation failed: Already used token counter")
+            msg, log_msg = _("Token verififcation failed: Already used token counter", log=True)
+            logger.warning(log_msg)
             return callback.error(msg)
         else:
             self._add_token_counter(token_counter=counter)

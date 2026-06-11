@@ -885,11 +885,12 @@ class OTPmeAuthP1(OTPmeServer1):
                 log_msg = log_msg.format(token_name=x_token.name, error=e)
                 self.logger.critical(log_msg)
                 continue
-            if verify_status is None:
+
+            if verify_status is not True:
                 continue
-            if verify_status is True:
-                auth_token = x_token
-                break
+
+            auth_token = x_token
+            break
 
         # Try temp password.
         if not auth_token and password:
@@ -915,11 +916,11 @@ class OTPmeAuthP1(OTPmeServer1):
                         self.logger.critical(log_msg)
                         continue
 
-                if verify_status is None:
+                if verify_status is not True:
                     continue
-                if verify_status is True:
-                    auth_token = x_token
-                    break
+
+                auth_token = x_token
+                break
 
         _jwt = None
         auth_status = False
