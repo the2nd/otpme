@@ -325,7 +325,6 @@ class PasskeyToken(Token):
     def verify(
         self,
         smartcard_data: dict,
-        callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Verify a passkey assertion. """
@@ -336,8 +335,9 @@ class PasskeyToken(Token):
         try:
             auth_response = json.loads(auth_response)
         except Exception:
-            msg = _("Failed to decode auth response.")
-            return callback.error(msg)
+            log_msg = _("Failed to decode auth response.", log=True)[1]
+            logger.warning(log_msg)
+            return False
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
         fido2_server = self.get_fido2_server()
@@ -346,17 +346,19 @@ class PasskeyToken(Token):
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            msg = _("Token verififcation failed: {e}")
-            msg = msg.format(e=e)
-            return callback.error(msg)
+            log_msg = _("Token verififcation failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
+            return False
         parsed = AuthenticationResponse.from_dict(auth_response)
         counter = parsed.response.authenticator_data.counter
         last_counter = self.get_token_counter()
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            msg = _("Token verififcation failed: Already used token counter")
-            return callback.error(msg)
+            log_msg = _("Token verififcation failed: Already used token counter", log=True)[1]
+            logger.warning(log_msg)
+            return False
         else:
             self._add_token_counter(token_counter=counter)
         return True

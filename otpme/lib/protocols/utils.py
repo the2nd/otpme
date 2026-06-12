@@ -149,12 +149,14 @@ def scauth(message_id, smartcard_type, smartcard_data):
             }
     return request
 
-def auth_jwt(message_id, username, reason, challenge):
+def auth_jwt(message_id, username, realm, site, reason, challenge):
     """ Sends request to client to get a JWT. """
     request = {
             'message_id': message_id,
             'command'   : 'OTPME_GET_JWT',
             'username'  : username,
+            'realm'     : realm,
+            'site'      : site,
             'reason'    : reason,
             'challenge' : challenge,
             }

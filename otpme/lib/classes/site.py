@@ -4641,7 +4641,7 @@ class Site(OTPmeObject):
         # Create base scopes.
         from otpme.lib.classes.scope import Scope
         from otpme.lib.classes.scope import BASE_SCOPE_DEFAULTS
-        default_scopes = []
+        default_scopes = {}
         base_scopes = config.get_base_objects("scope")
         for s in base_scopes:
             scope = Scope(name=s,
@@ -4650,7 +4650,6 @@ class Site(OTPmeObject):
             if scope.exists():
                 scope.add_default_policies()
                 continue
-
             if not scope.add(verify_acls=False, callback=callback):
                 msg = _("Problem adding base scope '{s}'.")
                 msg = msg.format(s=s)
@@ -4661,14 +4660,18 @@ class Site(OTPmeObject):
             default = defaults["default"]
             if not default:
                 continue
-            default_scopes.append(s)
+            # Add SSO user role to default scopes.
+            scope.add_role(sso_user_role.name,
+                            verify_acls=False,
+                            run_policies=False,
+                            callback=callback)
+            default_scopes[s] = scope
 
         # Add oidc_default_scopes paramter.
         if default_scopes:
             self.set_config_param(parameter="oidc_default_scopes",
-                                    value=default_scopes,
+                                    value=list(default_scopes),
                                     callback=callback)
-
         # Write objects.
         callback.write_modified_objects()
         cache.flush()

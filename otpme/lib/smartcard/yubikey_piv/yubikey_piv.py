@@ -95,12 +95,12 @@ class YubikeypivClientHandler(object):
             pre_deploy_result = {}
         try:
             private_key_backup_key = pre_deploy_result['private_key_backup_key']
-        except KeyError:
+        except Exception:
             private_key_backup_key = None
 
         try:
             server_private_key_backup = pre_deploy_result['private_key_backup']
-        except KeyError:
+        except Exception:
             server_private_key_backup = None
 
         try:

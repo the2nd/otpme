@@ -368,8 +368,10 @@ class Fido2Token(Token):
     def rp(self):
         return config.site_sso_fqdn
 
-    def get_fido2_server(self):
-        rp_data = {"id": self.rp, "name": "OTPme RP"}
+    def get_fido2_server(self, rp_id=None):
+        if rp_id is None:
+            rp_id = self.rp
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="direct")
         return fido2_server
 
@@ -520,8 +522,8 @@ class Fido2Token(Token):
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            msg = _("Token verififcation failed: {e}")
-            msg = msg.format(e=e)
+            msg = _("Token verififcation failed: {path}: {e}")
+            msg = msg.format(path=self.rel_path, e=e)
             return callback.error(msg)
         # Check fido2 counter.
         parsed = AuthenticationResponse.from_dict(auth_response)
@@ -547,7 +549,6 @@ class Fido2Token(Token):
     def verify(
         self,
         smartcard_data: dict,
-        callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Verify signature. """
@@ -558,9 +559,9 @@ class Fido2Token(Token):
         try:
             auth_response = json.loads(auth_response)
         except Exception:
-            msg, log_msg = _("Failed to decode auth response.", log=True)
+            log_msg = _("Failed to decode auth response.", log=True)[1]
             logger.warning(log_msg)
-            return callback.error(msg)
+            return False
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
         # Cross-site auth: the browser is on the originating site's SSO
@@ -571,19 +572,16 @@ class Fido2Token(Token):
         # The auth_handler passes the originating rp_id through
         # smartcard_data['rp_id'] -- honour it.
         rp_id = smartcard_data.get('rp_id') or self.rp
-        rp_data = {"id": rp_id, "name": "OTPme RP"}
-        #fido2_server = self.get_fido2_server()
-        fido2_server = Fido2Server(rp_data, attestation="direct")
+        fido2_server = self.get_fido2_server(rp_id)
         try:
             fido2_server.authenticate_complete(self.auth_state,
                                                 credentials,
                                                 auth_response)
         except Exception as e:
-            msg, log_msg = _("Token verififcation failed: {e}", log=True)
-            msg = msg.format(e=e)
-            log_msg = log_msg.format(e=e)
+            log_msg = _("Token verififcation failed: {path}: {e}", log=True)[1]
+            log_msg = log_msg.format(path=self.rel_path, e=e)
             logger.warning(log_msg)
-            return callback.error(msg)
+            return False
         # Check fido2 counter.
         parsed = AuthenticationResponse.from_dict(auth_response)
         counter = parsed.response.authenticator_data.counter
@@ -595,9 +593,9 @@ class Fido2Token(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            msg, log_msg = _("Token verififcation failed: Already used token counter", log=True)
+            log_msg = _("Token verififcation failed: Already used token counter", log=True)[1]
             logger.warning(log_msg)
-            return callback.error(msg)
+            return False
         else:
             self._add_token_counter(token_counter=counter)
         return True

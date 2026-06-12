@@ -135,14 +135,10 @@
         </div>
     </div>
 
-    <!-- Device Tokens (one card per configured device_token_roles role) -->
+    <!-- Device Tokens (one card per configured device_token_roles role).
+         When device_token_roles is not configured, nothing is rendered at
+         all — the section just disappears from the settings page. -->
     <div id="deviceRolesContainer"></div>
-    <div class="settings-card device-disabled-hint is-hidden" id="deviceDisabledHint">
-        <h3>{{ gettext("Device Tokens") }}</h3>
-        <p class="settings-desc">
-            {{ gettext("Device tokens are not available:") }} <code>device_token_roles</code> {{ gettext("is not configured.") }}
-        </p>
-    </div>
     <div id="deviceI18n"
          data-label-device-tokens="{{ gettext('Device Tokens') }}"
          data-label-device-name="{{ gettext('Device Name') }}"

@@ -4102,6 +4102,8 @@ class User(OTPmeObject):
 
         # Get max failed pass config parameter.
         max_failed_pass = self.get_config_parameter("failed_pass_history")
+        if max_failed_pass is None:
+            max_failed_pass = 32
 
         if max_fail > max_failed_pass:
             log_msg = _("Config parameter <failed_pass_history> overruled by <max_fail> of accessgroup {access_group}.", log=True)[1]

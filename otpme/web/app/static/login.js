@@ -8,6 +8,46 @@
         return el ? el.dataset : {};
     }
 
+    // Read a fetch response that may or may not be JSON. Returns
+    // {body, error} where body is the parsed JSON dict (or null), and
+    // error is a human-readable string when something went wrong --
+    // covers non-2xx, non-JSON bodies (HTML error pages, empty body,
+    // 302 redirects fetch followed silently to /login), and malformed
+    // JSON. Without this, `await resp.json()` on an HTML page raises
+    // the unhelpful "JSON.parse: unexpected character at line 1
+    // column 1 of the JSON data" the user sees in DevTools.
+    async function readJsonResponse(resp, fallbackLabel) {
+        const ct = (resp.headers.get('Content-Type') || '').toLowerCase();
+        let body = null;
+        if (ct.includes('application/json')) {
+            try {
+                body = await resp.json();
+            } catch (e) {
+                body = null;
+            }
+        }
+        if (resp.ok && body !== null) {
+            return {body: body, error: null};
+        }
+        // Either non-2xx, non-JSON, redirected, or unparseable.
+        // Prefer the server's own `error` field when present, fall
+        // back to a status-tagged generic message so the user (and
+        // any forwarded support ticket) sees what actually happened.
+        let error = body && body.error;
+        if (!error) {
+            if (resp.redirected) {
+                // fetch followed a 302 to a login/error page. The
+                // body is HTML; nothing useful for a user message.
+                error = (fallbackLabel || 'Authentication failed.')
+                        + ' (HTTP ' + resp.status + ', redirected)';
+            } else {
+                error = (fallbackLabel || 'Authentication failed.')
+                        + ' (HTTP ' + resp.status + ')';
+            }
+        }
+        return {body: body, error: error};
+    }
+
     async function fido2Login() {
         const pageData = document.getElementById('page-data').dataset;
         const i18n = getI18n();
@@ -44,11 +84,13 @@
                 method: 'POST',
                 body: JSON.stringify({username: username}),
             });
-            if (!beginResp.ok) {
-                const err = await beginResp.json();
-                throw new Error(err.error || i18n.labelFailedStart || 'Failed to start authentication.');
+            const beginResult = await readJsonResponse(
+                beginResp,
+                i18n.labelFailedStart || 'Failed to start authentication.');
+            if (beginResult.error) {
+                throw new Error(beginResult.error);
             }
-            const options = await beginResp.json();
+            const options = beginResult.body;
 
             const publicKey = options.publicKey;
             publicKey.challenge = base64urlToBuffer(publicKey.challenge);
@@ -82,11 +124,13 @@
                 method: 'POST',
                 body: JSON.stringify(authResponse),
             });
-            if (!completeResp.ok) {
-                const err = await completeResp.json();
-                throw new Error(err.error || i18n.labelAuthFailed || 'Authentication failed.');
+            const completeResult = await readJsonResponse(
+                completeResp,
+                i18n.labelAuthFailed || 'Authentication failed.');
+            if (completeResult.error) {
+                throw new Error(completeResult.error);
             }
-            const result = await completeResp.json();
+            const result = completeResult.body;
 
             statusEl.textContent = i18n.labelLoginSuccess || 'Login successful! Redirecting...';
             window.location.href = result.redirect;

@@ -518,7 +518,7 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
             connect_addresses = [config.site_address]
 
     if not connect_addresses:
-        mesg, log_msg = _("Unable to resolve site FQDN ({site_fqdn})", log=True)
+        msg, log_msg = _("Unable to resolve site FQDN ({site_fqdn})", log=True)
         log_msg = log_msg.format(site_fqdn=site_fqdn)
         logger.info(log_msg)
         msg = msg.format(site_fqdn=site_fqdn)

@@ -467,6 +467,8 @@ class JobCallback(object):
         # Build message string.
         message = auth_jwt(message_id=message_id,
                         username=user.name,
+                        realm=user.realm,
+                        site=user.site,
                         reason=reason,
                         challenge=challenge)
         # Send message.
@@ -487,6 +489,7 @@ class JobCallback(object):
                                    key=jwt_key,
                                    algorithm='RS256')
         except Exception as e:
+            print("PPPPPPPPPPPPPPPPPPPPPPPPPPPP", jwt)
             config.raise_exception()
             msg = _("JWT decoding failed.")
             raise OTPmeException(msg) from e

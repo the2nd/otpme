@@ -237,20 +237,6 @@ class AuthHandler(object):
             self.auth_message = "AUTH_CONFIG_ERROR"
             return
 
-        # If user of this request is not the token owner, authentication must
-        # fail. Token().owner_uuid should reference back to UUID of user.
-        if self.auth_token.uuid not in self.user.tokens:
-            # We found a token which is in list of user tokens but its
-            # owner_uuid does not match uuid of this user. This should
-            # normally not happen and is probably a configuration error.
-            log_msg = _("Warning: Token '{token_name}' is in list of tokens for user '{user_name}' but is owned by user '{token_owner}'. Possibly configuration error.", log=True)[1]
-            log_msg = log_msg.format(token_name=self.auth_token.name, user_name=self.user.name, token_owner=self.auth_token.owner)
-            self.logger.error(log_msg)
-            # Set auth_failed.
-            self.auth_failed = True
-            self.auth_message = "AUTH_CONFIG_ERROR"
-            return
-
         log_msg = _("Token '{token_name}' used at login is a token of user '{user_name}'.", log=True)[1]
         log_msg = log_msg.format(token_name=self.auth_token.name, user_name=self.user.name)
         self.logger.debug(log_msg)
@@ -1733,7 +1719,7 @@ class AuthHandler(object):
                 auth_ag_name = auth_accessgroup.split("/")[1]
             except IndexError:
                 log_msg = _("Invalid accessgroup: {access_group}", log=True)[1]
-                log_msg = msg.format(access_group=access_group)
+                log_msg = log_msg.format(access_group=auth_accessgroup)
                 self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_INVALID"
@@ -1741,13 +1727,15 @@ class AuthHandler(object):
                 return
 
             auth_ag_missmatch = False
-            if auth_ag_site != config.site:
-                auth_ag_missmatch = True
+            if auth_ag_site != self.user.site:
+                if auth_ag_site != config.site:
+                    auth_ag_missmatch = True
             if auth_ag_name != self.access_group:
                 auth_ag_missmatch = True
             if auth_ag_missmatch:
+                access_group = f"{config.site}/{self.access_group}"
                 log_msg = _("Outer JWT accessgroup mismatch: {access_group} <> {auth_accessgroup}", log=True)[1]
-                log_msg = log_msg.format(access_group=self.access_group, auth_accessgroup=auth_accessgroup)
+                log_msg = log_msg.format(access_group=access_group, auth_accessgroup=auth_accessgroup)
                 self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
@@ -2671,7 +2659,7 @@ class AuthHandler(object):
                 # secure manner (see offline_data_key below).
                 self.new_session_uuid = stuff.gen_uuid()
             if not self.auth_failed and self.auth_status is False:
-                if self.user.type == "user":
+                if self.user.type == "user" and not self.jwt_auth:
                     # Get user tokens that are valid for this request.
                     self.get_user_tokens()
         # Handle JWT (cross-site) authentication.
@@ -2948,6 +2936,7 @@ class AuthHandler(object):
                     reason = "SESSION_RENEG"
                 if self.session_refresh:
                     reason = "SESSION_REFRESH"
+                accessgroup = f"{config.site}/{self.access_group}"
                 jwt_data = {
                         'realm'             : config.realm,
                         'site'              : config.site,
@@ -2956,7 +2945,7 @@ class AuthHandler(object):
                         'challenge'         : self.jwt_challenge,
                         'login_time'        : time.time(),
                         'login_token'       : self.auth_token.uuid,
-                        'accessgroup'       : self.access_group,
+                        'accessgroup'       : accessgroup,
                         }
                 self.jwt = jwt.encode(payload=jwt_data,
                                     key=self.site_key,

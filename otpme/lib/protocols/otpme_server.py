@@ -84,6 +84,18 @@ class OTPmeServer1(object):
         except Exception:
             self.user = None
 
+        # Require host or user auth or none.
+        try:
+            self.require_auth
+        except Exception:
+            self.require_auth = "user"
+
+        # Redirect user on login/auth.
+        try:
+            self.redirect_user
+        except Exception:
+            self.redirect_user = False
+
         # The access group we authenticate users against.
         try:
             self.access_group
@@ -1138,21 +1150,21 @@ class OTPmeServer1(object):
                             }
                     return preauth_response
 
-                if self.user:
-                    # If user is from an other site we have to do redirected authentication.
-                    if self.user.site_uuid != config.site_uuid and not self.session_reneg:
-                        user_site = backend.get_object(object_type="site",
-                                                    uuid=self.user.site_uuid)
-                        if config.site_uuid not in user_site.trusted_sites:
-                            log_msg = _("Redirecting authentication for user from other site: {realm}/{site}/{user}", log=True)[1]
-                            log_msg = log_msg.format(realm=self.user.realm, site=self.user.site, user=self.user.name)
-                            self.logger.debug(log_msg)
-                            preauth_response = self.gen_jwt_auth_response(self.user,
-                                                            login,
-                                                            preauth_response,
-                                                            ecdh_server_pub_pem,
-                                                            redirect=True)
-                            return preauth_response
+            if self.user and self.redirect_user:
+                # If user is from an other site we have to do redirected authentication.
+                if self.user.site_uuid != config.site_uuid and not self.session_reneg:
+                    user_site = backend.get_object(object_type="site",
+                                                uuid=self.user.site_uuid)
+                    if config.site_uuid not in user_site.trusted_sites:
+                        log_msg = _("Redirecting authentication for user from other site: {realm}/{site}/{user}", log=True)[1]
+                        log_msg = log_msg.format(realm=self.user.realm, site=self.user.site, user=self.user.name)
+                        self.logger.debug(log_msg)
+                        preauth_response = self.gen_jwt_auth_response(self.user,
+                                                        login,
+                                                        preauth_response,
+                                                        ecdh_server_pub_pem,
+                                                        redirect=True)
+                        return preauth_response
 
         # Check if user exists.
         if username and not self.user:

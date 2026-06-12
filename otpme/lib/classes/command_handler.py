@@ -2338,7 +2338,9 @@ class CommandHandler(object):
             raise OTPmeException(msg) from e
         # Try to get username for logged in user from otpme-agent
         username = agent_conn.get_user()
-        return self.get_jwt(username, challenge)
+        realm = config.connect_realm
+        site = config.connect_site
+        return self.get_jwt(username, realm, site, challenge)
 
     def handle_reneg_command(self):
         """ Handle reneg command. """
@@ -4093,7 +4095,7 @@ class CommandHandler(object):
             return False
         return True
 
-    def get_jwt(self, username, challenge, reason="TESTING", access_group=None):
+    def get_jwt(self, username, realm, site, challenge, reason="TESTING", access_group=None):
         """ Request JWT from authd. """
         register_module("otpme.lib.classes.realm")
         from otpme.lib import connections
@@ -4101,10 +4103,11 @@ class CommandHandler(object):
             access_group = config.realm_access_group
         try:
             authd_conn = connections.get("authd",
-                                        realm=config.realm,
-                                        site=config.site,
+                                        realm=realm,
+                                        site=site,
                                         auto_auth=False,
                                         username=username,
+                                        allow_untrusted=True,
                                         interactive=True)
         except Exception as e:
             msg = _("Unable to get connection to authd: {e}")
@@ -5540,8 +5543,12 @@ class CommandHandler(object):
             subcommand = "del_token"
 
         token_path = object_identifier
-        token_user = token_path.split("/")[0]
-        token_name = token_path.split("/")[1]
+        try:
+            token_user = token_path.split("/")[0]
+            token_name = token_path.split("/")[1]
+        except Exception:
+            help_text = self.get_help()
+            raise OTPmeException(help_text)
 
         object_list = [token_user]
         command_args['token_name'] = token_name

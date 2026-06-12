@@ -245,7 +245,7 @@ class OTPmeJob(object):
             job_error = job_error.format(method_name=self.target_method.__name__, error=e)
             log_msg = log_msg.format(method_name=self.target_method.__name__, error=e)
             self.logger.warning(log_msg)
-            job_response = job_errora
+            job_response = job_error
             job_status = False
             config.raise_exception()
 

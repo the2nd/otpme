@@ -908,15 +908,7 @@ class OTPmeClient(OTPmeClientBase):
         """ Send command requests to daemon and handle response. """
         if command_args is None:
             command_args = {}
-        if self.proto_handler:
-            if self.proto_handler.redirect_connection:
-                return self.proto_handler.redirect_connection.send(command=command,
-                                                                command_args=command_args,
-                                                                handle_auth=handle_auth,
-                                                                handle_response=handle_response,
-                                                                blocking=blocking,
-                                                                timeout=timeout,
-                                                                **kwargs)
+
         if handle_response is None:
             handle_response = self.handle_response
         # Send command.
@@ -970,16 +962,7 @@ class OTPmeClient(OTPmeClientBase):
         """ Convert command args and actually send command to daemon. """
         if command_args is None:
             command_args = {}
-        if self.proto_handler:
-            if self.proto_handler.redirect_connection:
-                return self.proto_handler.redirect_connection._send(command=command,
-                                                                command_args=command_args,
-                                                                use_agent=use_agent,
-                                                                encode_request=encode_request,
-                                                                encrypt_request=encrypt_request,
-                                                                blocking=blocking,
-                                                                timeout=timeout,
-                                                                **kwargs)
+
         enc_key = None
         enc_mod = None
         if use_agent is None:
@@ -1233,11 +1216,13 @@ class OTPmeClient(OTPmeClientBase):
         """ Get JWT from authd (e.g. authonaction policy). """
         from otpme.lib.classes.command_handler import CommandHandler
         username = command_dict['username']
+        realm = command_dict['realm']
+        site = command_dict['site']
         reason = command_dict['reason']
         challenge = command_dict['challenge']
         command_handler = CommandHandler()
         try:
-            jwt = command_handler.get_jwt(username, challenge, reason)
+            jwt = command_handler.get_jwt(username, realm, site, challenge, reason)
         except Exception as e:
             msg, log_msg = _("JWT authentication failed: {error}", log=True)
             msg = msg.format(error=e)
@@ -2213,9 +2198,6 @@ class OTPmeClient(OTPmeClientBase):
 
     def close(self, keep_agent_conn=False):
         """ Close our connection. """
-        # Close redirect connection.
-        if self.redirect_connection:
-            self.redirect_connection.close()
         # Close connection.
         if self.connection:
             self.connection.close()
@@ -2361,7 +2343,10 @@ class OTPmeClient1(OTPmeClientBase):
         # Indicates if we should request a JWT.
         self.request_jwt = request_jwt
         # Indicates if we should verify a received JWT.
-        self.verify_jwt = verify_jwt
+        if verify_jwt is None:
+            self.verify_jwt = request_jwt
+        else:
+            self.verify_jwt = verify_jwt
         # JWT challenge we will sent to peer to be signed.
         self.jwt_challenge = jwt_challenge
         # JWT we get from peer on successful auth.
@@ -2500,7 +2485,6 @@ class OTPmeClient1(OTPmeClientBase):
         self.login_redirect = login_redirect
         # Will be set true if login to users home site was successful.
         self.login_redirect_status = False
-        self.redirect_connection = None
 
         # Indicates if we should start a session renegotiation.
         self.reneg = reneg
@@ -2704,8 +2688,8 @@ class OTPmeClient1(OTPmeClientBase):
                             offline_key_func_opts=self.offline_key_func_opts,
                             auto_auth=False,
                             sync_token_data=self.sync_token_data,
-                            request_jwt=self.request_jwt,
-                            verify_jwt=self.verify_jwt,
+                            request_jwt=True,
+                            verify_jwt=True,
                             jwt_challenge=challenge,
                             #jwt_key=self.jwt_key,
                             login_redirect=True,
@@ -2717,19 +2701,10 @@ class OTPmeClient1(OTPmeClientBase):
         auth_command = "auth"
         if login:
             auth_command = "login"
-        if self.reneg:
-            auth_command = "session_reneg"
         try:
             redirect_connection.authenticate(command=auth_command)
         finally:
-            # Close redirect connection.
-            if login:
-                redirect_connection.close(keep_agent_conn=True)
-                pass
-
-        if not login:
-            self.redirect_connection = redirect_connection
-            return
+            redirect_connection.close(keep_agent_conn=True)
 
         # If there was no exception we are logged in to users home site.
         self.login_redirect_status = True
@@ -3149,7 +3124,7 @@ class OTPmeClient1(OTPmeClientBase):
                     log_msg = _("Doing cross-site logout.", log=True)[1]
                     self.logger.debug(log_msg)
 
-            elif preauth_status == "redirect_auth":
+            else:
                 # Redirect connection.
                 auth_realm = self.preauth_response['auth_realm']
                 auth_site = self.preauth_response['auth_site']
@@ -4166,8 +4141,11 @@ class OTPmeClient1(OTPmeClientBase):
                     raise RefreshFailed(msg)
                 auth_message = "Session refresh successful."
             else:
-                msg = _("Authentication failed for user {username}: {message}")
-                msg = msg.format(username=self.username, message=response_message)
+                msg = _("Authentication failed for user {username} ({realm}/{site}): {message}")
+                msg = msg.format(username=self.username,
+                                realm=self.realm,
+                                site=self.site,
+                                message=response_message)
                 raise AuthFailed(msg)
 
         log_method(auth_message)

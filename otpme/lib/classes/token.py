@@ -3105,10 +3105,6 @@ class Token(OTPmeObject):
         **kwargs,
         ):
         """ Change token password. """
-        if force:
-            if not self.verify_acl("force_password"):
-                msg = _("You are not allowed to force a unsecure password.")
-                return callback.error(msg)
         # Use destination token if we have one.
         if self.destination_token:
             # Before changing password of the destination token we have to run
@@ -3195,9 +3191,12 @@ class Token(OTPmeObject):
 
                 if new_password1 == new_password2:
                     password = new_password1
-                    if not force:
-                        if not self.check_password(new_password1,
-                                                callback=callback):
+                    if not self.check_password(password, callback=callback):
+                        if force:
+                            if not self.verify_acl("force_password"):
+                                msg = _("You are not allowed to force a unsecure password.")
+                                return callback.error(msg)
+                        else:
                             return callback.error()
                         password_checked = True
                     break
@@ -3213,7 +3212,12 @@ class Token(OTPmeObject):
         if not force:
             if not password_checked:
                 if not self.check_password(password, callback=callback):
-                    return callback.error()
+                    if force:
+                        if not self.verify_acl("force_password"):
+                            msg = _("You are not allowed to force a unsecure password.")
+                            return callback.error(msg)
+                    else:
+                        return callback.error()
 
         # Create password hash.
         hash_args = self.get_hash_args()

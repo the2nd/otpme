@@ -260,7 +260,6 @@
         const urls = getUrls();
         const pageI18n = getPageI18n();
         const container = document.getElementById('deviceRolesContainer');
-        const disabledHint = document.getElementById('deviceDisabledHint');
         container.innerHTML = '';
         try {
             const resp = await fetchJSON(urls.urlListDeviceTokens);
@@ -270,16 +269,16 @@
             }
             const rolesConfigured = !!result.roles_configured;
             const roles = result.roles || [];
+            // device_token_roles not configured (or empty) -> render
+            // nothing. The whole device-tokens section disappears from
+            // the settings page rather than showing an explanatory hint.
             if (!rolesConfigured || roles.length === 0) {
-                disabledHint.classList.remove('is-hidden');
                 return;
             }
-            disabledHint.classList.add('is-hidden');
             for (const role of roles) {
                 container.appendChild(buildRoleCard(role));
             }
         } catch (e) {
-            disabledHint.classList.add('is-hidden');
             const errCard = document.createElement('div');
             errCard.className = 'settings-card';
             const p = document.createElement('p');

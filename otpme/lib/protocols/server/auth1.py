@@ -188,6 +188,8 @@ class OTPmeAuthP1(OTPmeServer1):
         # Authd does not require any authentication on client connect.
         self.require_auth = None
         self.require_preauth = True
+        # Redirect user to home site.
+        self.redirect_user = True
         # Instructs parent class to require a client certificate.
         self.require_client_cert = True
         # Auth request are allowed to any node.
@@ -404,7 +406,7 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = f"{log_msg}: {e}"
             self.logger.warning(log_msg)
             auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
-            return self.build_response(status, auth_response)
+            return self.build_response(False, auth_response)
         finally:
             authd_conn.close()
         return status, response
@@ -435,6 +437,7 @@ class OTPmeAuthP1(OTPmeServer1):
                         'client'            : client,
                         'client_ip'         : client_ip,
                         'sso_login'         : True,
+                        'sso_ag'            : sso_jwt_ag,
                         'sso_challenge'     : sso_challenge,
                         'smartcard_data'    : smartcard_data,
                         'jwt_reason'        : jwt_reason,
@@ -514,6 +517,14 @@ class OTPmeAuthP1(OTPmeServer1):
             status = False
             message = _("AUTHD_INCOMPLETE_COMMAND")
             return self.build_response(status, message)
+        try:
+            sso_ag_uuid = command_args['sso_ag_uuid']
+        except Exception:
+            sso_ag = backend.get_object(object_type="accessgroup",
+                                        name=config.sso_access_group,
+                                        realm=config.realm,
+                                        site=config.site)
+            sso_ag_uuid = sso_ag.uuid
         user = backend.get_object(object_type="user",
                                 name=username,
                                 realm=config.realm,
@@ -525,6 +536,7 @@ class OTPmeAuthP1(OTPmeServer1):
         # can't shorten the network roundtrip but we can guarantee a
         # floor that masks fast-path local responses).
         if user is not None and user.site != config.site:
+            command_args['sso_ag_uuid'] = sso_ag_uuid
             try:
                 status, \
                 message = self.authd_redirect_command(command="fido2_auth_begin",
@@ -555,9 +567,9 @@ class OTPmeAuthP1(OTPmeServer1):
         credentials = []
         credential_token_map = {}
         if user is not None:
-            user_tokens = backend.search(object_type="token",
-                                        attribute="owner_uuid",
-                                        value=user.uuid,
+            sso_ag = backend.get_object(object_type="accessgroup",
+                                        uuid=sso_ag_uuid)
+            user_tokens = user.get_tokens(access_group=sso_ag,
                                         return_type="instance")
             for token in user_tokens:
                 if token.token_type in ("fido2", "passkey") and token.credential_data:
@@ -746,8 +758,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     'message': 'Login failed.', 'status': False,
                 })
             try:
-                sso_session.update_reauth_time(
-                                        wait_for_cluster_writes=True)
+                sso_session.update_reauth_time(wait_for_cluster_writes=True)
             except Exception as e:
                 log_msg = _("Reauth: failed to persist reauth_time: {err}", log=True)[1]
                 log_msg = log_msg.format(err=e)
@@ -828,6 +839,10 @@ class OTPmeAuthP1(OTPmeServer1):
             sso_login = command_args['sso_login']
         except Exception:
             sso_login = False
+        try:
+            sso_ag = command_args['sso_ag']
+        except Exception:
+            sso_ag = None
         try:
             sso_challenge = command_args['sso_challenge']
         except Exception:
@@ -941,15 +956,14 @@ class OTPmeAuthP1(OTPmeServer1):
             if command == "token_verify_mschap":
                 nt_key = verify_status[1]
             sso_jwt = None
-            if sso_login:
+            if sso_login and sso_ag:
                 # Gen jwt for SSO auth.
-                jwt_ag = f"{config.site}/{config.sso_access_group}"
                 try:
                     sso_jwt = self.gen_jwt(username=user.name,
                                         token=auth_token,
                                         reason="SSO_AUTH",
                                         challenge=sso_challenge,
-                                        access_group=jwt_ag,
+                                        access_group=sso_ag,
                                         sso=True)
                 except AccessDenied as e:
                     status = False
@@ -1036,7 +1050,9 @@ class OTPmeAuthP1(OTPmeServer1):
                         'jwt_access_group'  : access_group,
                     }
         if client == config.sso_client_name:
+            sso_ag = f"{config.site}/{config.sso_access_group}"
             verify_args['sso_login'] = True
+            verify_args['sso_ag'] = sso_ag
             verify_args['sso_challenge'] = sso_challenge
 
         # Send verify request.
@@ -1060,9 +1076,9 @@ class OTPmeAuthP1(OTPmeServer1):
             authd_conn.close()
 
         if not status:
-            message, log_msg = _("Remote authentication failed: {user}", log=True)
-            log_msg = log_msg.format(user=user.name)
-            message = message.format(user=user.name)
+            message, log_msg = _("Remote authentication failed: {user}: {e}", log=True)
+            log_msg = log_msg.format(user=user.name, e=redirect_auth_response)
+            message = message.format(user=user.name, e=redirect_auth_response)
             self.logger.warning(log_msg)
             return self.build_response(status, message)
 
@@ -1363,8 +1379,7 @@ class OTPmeAuthP1(OTPmeServer1):
         except Exception:
             oidc_skip_backchannel_client = None
 
-        oidc_skip_backchannel = bool(command_args.get(
-                                            'oidc_skip_backchannel', False))
+        oidc_skip_backchannel = bool(command_args.get('oidc_skip_backchannel', False))
 
         # Set host IP from source IP if requested.
         if host_ip == "auto":
