@@ -31,7 +31,7 @@ LOCK_TYPE = "freeradius"
 locking.register_lock_type(LOCK_TYPE, module=__file__)
 
 PASSWORD_CONFIG_CMD = '''
-                Auth-Type := `otpme-auth verify --socket --cache ''' + str(config.radius_cache_time) + ''' '%{User-Name}' '%{User-Password}' '%{NAS-Identifier}' '%{Client-IP-Address}'`
+                Auth-Type := `otpme-auth verify --socket --cache ''' + str(config.radius_cache_time) + ''' '%{User-Name}' '%{User-Password}' '%{NAS-Identifier}' '%{%{Client-IP-Address}:-%{Packet-Src-IPv6-Address}}'`
                 '''
 
 PASSWORD_CONFIG_MOD = '''
@@ -251,7 +251,7 @@ def create_freeradius_conf():
         }
 
         mschap mschap_otp {
-            ntlm_auth = "otpme-auth verify_mschap --socket '%{%{Stripped-User-Name}:-%{%{User-Name}:-None}}' '%{%{mschap_otp:Challenge}:-00}' '%{%{mschap_otp:NT-Response}:-00}' '%{NAS-Identifier}' '%{Client-IP-Address}'"
+            ntlm_auth = "otpme-auth verify_mschap --socket '%{%{Stripped-User-Name}:-%{%{User-Name}:-None}}' '%{%{mschap_otp:Challenge}:-00}' '%{%{mschap_otp:NT-Response}:-00}' '%{NAS-Identifier}' '%{%{Client-IP-Address}:-%{Packet-Src-IPv6-Address}}'"
         }
 
         ''' + PYTHON_MOD_CONFIG + '''
@@ -418,6 +418,24 @@ def status():
         raise Exception(msg)
     return True
 
+#def reload():
+#    if not os.path.exists(freeradius_pidfile):
+#        msg = _("Freeradius not running.")
+#        raise NotRunning(msg)
+#    lock_caller = "reload"
+#    lock = locking.acquire_lock(lock_type=LOCK_TYPE,
+#                                lock_id=lock_caller,
+#                                lock_caller=lock_caller,
+#                                write=True, timeout=10)
+#    try:
+#        create_freeradius_conf()
+#        create_cert_files()
+#        create_clients_conf()
+#        pid = get_pid()
+#        stuff.kill_pid(pid, signal=1)
+#    finally:
+#        lock.release_lock(lock_caller=lock_caller)
+
 def reload():
     if not os.path.exists(freeradius_pidfile):
         msg = _("Freeradius not running.")
@@ -431,7 +449,20 @@ def reload():
         create_freeradius_conf()
         create_cert_files()
         create_clients_conf()
+        # FreeRADIUS SIGHUP cannot reload clients.conf; a full restart
+        # is the only option per upstream:
+        # https://lists.freeradius.org/pipermail/freeradius-users/2022-November/102639.html
         pid = get_pid()
-        stuff.kill_pid(pid, signal=1)
+        stuff.kill_pid(pid)
+        while stuff.check_pid(pid):
+            time.sleep(0.1)
+        start_cmd = [config.freeradius_bin, "-d", freeradius_dir]
+        system_command.run(command=start_cmd,
+                            user=config.user,
+                            group=config.group,
+                            close_fds=True,
+                            return_proc=True,
+                            shell=False,
+                            call=True)
     finally:
         lock.release_lock(lock_caller=lock_caller)

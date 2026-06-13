@@ -317,9 +317,6 @@ class ListenSocket(object):
                 tmp_files[self.cert_file] = self.ssl_cert
                 tmp_files[self.key_file] = ssl_key
                 tmp_files[self.ca_data_file] = self.ssl_ca_data
-                # FIXME: implement ssl.CERT_NONE!!??
-                #if self.ssl_verify_client:
-                #    tmp_files[self.ca_data_file] = self.ssl_ca_data
 
                 # Create all needed temp files.
                 for tmp_file in tmp_files:
@@ -379,7 +376,14 @@ class ListenSocket(object):
                                         password=passphrase)
                     ctx.load_verify_locations(cafile=self.ca_data_file,
                                             capath=None, cadata=None)
+                    # We need cert optional because on host/node leave we need the host.
                     ctx.verify_mode = ssl.CERT_OPTIONAL
+                    # Override default verify_flags (which include
+                    # VERIFY_X509_STRICT since Python 3.10) — STRICT trips
+                    # over real-world CA quirks and triggers a
+                    # certificate_unknown alert before we can inspect the
+                    # client cert. Match the REQUIRED branch.
+                    ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
                     self._socket = ctx.wrap_socket(self._socket,
                                             server_side=True,
                                             do_handshake_on_connect=False,

@@ -196,6 +196,8 @@ def authenticate(authData):
             nasid = t[1]
         elif t[0] == 'NAS-IP-Address':
             client_ip = t[1]
+        elif t[0] == 'NAS-IPv6-Address':
+            client_ip = t[1]
         elif t[0] == 'Client-IP-Address':
             client_ip = t[1]
         elif t[0] == 'Calling-Station-Id':
@@ -288,7 +290,7 @@ def authenticate(authData):
                 log_msg = _("Invalid request. Request is missing 'User-Password'.", log=True)[1]
                 logger.warning(log_msg)
             if not nasid and not client_ip:
-                log_msg = _("Invalid request. Request is missing NAS-Identifier and NAS-IP-Address.", log=True)[1]
+                log_msg = _("Invalid request. Request is missing NAS-Identifier and NAS-IP-Address/NAS-IPv6-Address.", log=True)[1]
                 logger.warning(log_msg)
 
             # Set request_failed.

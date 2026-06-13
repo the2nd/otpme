@@ -278,6 +278,24 @@ class OTPmeFsP1(OTPmeFsServer1):
             default_group = stuff.get_users_default_group(self.username)
             groups = stuff.get_users_groups(self.username)
             if self.restore_share:
+                if share.force_group_uuid is not None:
+                    group = backend.get_object(uuid=share.force_group_uuid)
+                    if not group:
+                        status = status_codes.UNKNOWN_OBJECT
+                        message, log_msg = _("Unknown force group: {group_uuid}", log=True)
+                        message = message.format(group_uuid=share.force_group_uuid)
+                        log_msg = log_msg.format(group_uuid=share.force_group_uuid)
+                        self.logger.warning(log_msg)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
+                    if group.name not in groups:
+                        status = status_codes.PERMISSION_DENIED
+                        message, log_msg = _("Force group enabled and user not in group: {group_name}", log=True)
+                        message = message.format(group_name=group.name)
+                        log_msg = log_msg.format(group_name=group.name)
+                        self.logger.warning(log_msg)
+                        response = {'try_other_node':False, 'message':message}
+                        return self.build_response(status, response)
                 repo_id = f"share/{restore_share.site}/{restore_share.name}"
                 self.backupd_conn = self.get_backupd_conn(host, backup_key=backup_key)
                 try:

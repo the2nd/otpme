@@ -1290,6 +1290,9 @@ class Share(OTPmeObject):
                     return callback.error(msg)
             self.restore_share = share.uuid
             self.encrypted = share.encrypted
+            if share.force_group_uuid:
+                self.force_group(group_uuid=share.force_group_uuid,
+                                    verify_acls=False)
             # Add object using parent class.
             add_result = super().add(verify_acls=verify_acls,
                                             verbose_level=verbose_level,
@@ -1423,25 +1426,33 @@ class Share(OTPmeObject):
     @audit_log()
     def force_group(
         self,
-        group_name,
+        group_name: str=None,
+        group_uuid: str=None,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        if not group_name:
+        if not group_name and not group_uuid:
             self.del_index('force_group_uuid', self.force_group_uuid)
             self.force_group_uuid = None
             return self._cache(callback=callback)
-        result = backend.search(object_type="group",
-                                attribute="name",
-                                value=group_name,
-                                return_type="instance")
-        if not result:
-            msg = _("Unknown group: {group_name}")
-            msg = msg.format(group_name=group_name)
-            return callback.error(msg)
-        group = result[0]
+        if group_name:
+            result = backend.search(object_type="group",
+                                    attribute="name",
+                                    value=group_name,
+                                    return_type="instance")
+            if not result:
+                msg = _("Unknown group: {group_name}")
+                msg = msg.format(group_name=group_name)
+                return callback.error(msg)
+            group = result[0]
+        else:
+            group = backend.get_object(object_type="group", uuid=group_uuid)
+            if not group:
+                msg = _("Unknown group: {group_uuid}")
+                msg = msg.format(group_uuid=group_uuid)
+                return callback.error(msg)
         if self.force_group_uuid == group.uuid:
             msg = _("Force group already set to: {group}")
             msg = msg.format(group=group)
