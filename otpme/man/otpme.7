@@ -361,6 +361,22 @@ If enabled, temporary passwords can be set on tokens.
 .br
 Object types: site, unit, user, token
 .TP
+.B sso_temp_pass_role \fR(str)
+Role whose members are allowed to set a temporary password on another user's token through the SSO portal admin\-access flow. Resolved per\-user with the standard cascade (token overrides user overrides unit overrides site). Foreign\-site users only resolve via this cascade if the local site lists the home site under
+.BR sso_temp_pass_role_trusts ;
+otherwise the local site's setting (site\-only, no user/unit walk) is used as a fallback.
+.br
+Object types: site, unit, user, token
+.TP
+.B sso_temp_pass_role_trusts \fR(list)
+Comma\-separated list of remote sites whose user\-scoped
+.B sso_temp_pass_role
+cascade this site trusts when a foreign user opens an SSO portal admin\-access session here. Sites not in the list fall back to the local site's
+.BR sso_temp_pass_role .
+Own\-site users are always trusted.
+.br
+Object types: site
+.TP
 .B password_allowed_chars \fR(str, default: 0-9A-Za-z!@#$%&*()_+-={}[]:;<>.?/)
 Character set allowed in passwords (used by the password policy).
 .br
@@ -420,9 +436,20 @@ Object types: site, unit, host, device, user, token
 .B device_token_roles \fR(list)
 Comma separated list of roles to which device tokens registered via the SSO portal are added. The role's info text is displayed in the SSO portal settings to inform users about the purpose and scope of the role. Each value can be a plain role name (resolved within the current site) or a
 .IR site/role
-path to reference a role on another site. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
+path to reference a role on another site. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site). Foreign\-site users only resolve via this cascade if the local site lists the home site under
+.BR device_token_roles_trusts ;
+otherwise the local site's setting is used as a fallback.
 .br
 Object types: site, unit, user
+.TP
+.B device_token_roles_trusts \fR(list)
+Comma\-separated list of remote sites whose user\-scoped
+.B device_token_roles
+cascade this site trusts when a foreign user registers a device token through the SSO portal here. Sites not in the list fall back to the local site's
+.BR device_token_roles .
+Own\-site users are always trusted.
+.br
+Object types: site
 .TP
 .B device_token_suffix \fR(str)
 Suffix appended to the device token name when the SSO portal registers a token under this role. A role without \fBdevice_token_suffix\fR is not shown in the SSO portal at all, so this parameter doubles as the opt\-in switch that makes a role eligible as an SSO device\-token target via
@@ -577,6 +604,57 @@ Object types: site, unit, node, host
 Whether \fBotpme\-tool who\fR may be invoked from non\-node hosts. Default false restricts the global session view to nodes; set true to allow ordinary OTPme hosts on the site to query active sessions of the users that are logged in there. Defense\-in\-depth: enable only when needed.
 .br
 Object types: site
+.SS Connection Limits
+Per\-daemon ceilings on the number of concurrent client connections accepted by each daemon. The most specific match wins (node overrides unit overrides site). Use these to harden a busy node against connection exhaustion or to deliberately throttle a quiet site. The defaults are sized for typical deployments — raise them only when traffic actually demands it.
+.TP
+.B mgmtd_max_conn \fR(int, default: 128)
+Maximum concurrent client connections accepted by
+.BR mgmtd .
+.br
+Object types: site, unit, node
+.TP
+.B joind_max_conn \fR(int, default: 128)
+Maximum concurrent client connections accepted by
+.BR joind .
+.br
+Object types: site, unit, node
+.TP
+.B syncd_max_conn \fR(int, default: 1024)
+Maximum concurrent client connections accepted by
+.BR syncd .
+.br
+Object types: site, unit, node
+.TP
+.B ssod_max_conn \fR(int, default: 1024)
+Maximum concurrent client connections accepted by
+.BR ssod .
+.br
+Object types: site, unit, node
+.TP
+.B clusterd_max_conn \fR(int, default: 512)
+Maximum concurrent peer connections accepted by
+.BR clusterd .
+.br
+Object types: site, unit, node
+.TP
+.B fsd_max_conn \fR(int, default: 1024)
+Maximum concurrent client connections accepted by
+.BR fsd .
+.br
+Object types: site, unit, node
+.TP
+.B idled_max_conn \fR(int, default: 1024)
+Maximum concurrent client connections accepted by
+.BR idled .
+.br
+Object types: site, unit, node
+.TP
+.B backupd_max_conn \fR(int, default: 256)
+Maximum concurrent client connections accepted by
+.BR backupd .
+Also applies on hosts because a host can act as a backup target that accepts incoming backup writes.
+.br
+Object types: site, unit, node, host
 .SS Backup
 .TP
 .B backup_enabled \fR(bool)

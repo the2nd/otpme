@@ -1560,6 +1560,45 @@ def register_config():
                                     setter=sso_temp_pass_role_trusts_setter,
                                     getter=sso_temp_pass_role_trusts_getter,
                                     object_types=['site'])
+    # Passkeys allowed trusts.
+    def sso_allow_passkeys_trusts_setter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        sites_uuids = []
+        for site_name in sites:
+            result = backend.search(object_type='site',
+                                    attribute="name",
+                                    value=site_name,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            site_uuid = result[0]
+            sites_uuids.append(site_uuid)
+        return sites_uuids
+    def sso_allow_passkeys_trusts_getter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        _sites = []
+        for site_uuid in sites:
+            result = backend.search(object_type='site',
+                                    attribute="uuid",
+                                    value=site_uuid,
+                                    return_type="name")
+            if not result:
+                msg = _("Unknown site: {uuid}")
+                msg = msg.format(uuid=site_uuid)
+                raise ValueError(msg)
+            site_name = result[0]
+            _sites.append(site_name)
+        return _sites
+    config.register_config_parameter(name="sso_allow_passkeys_trusts",
+                                    ctype=list,
+                                    setter=sso_allow_passkeys_trusts_setter,
+                                    getter=sso_allow_passkeys_trusts_getter,
+                                    object_types=['site'])
     # Allow passkeys in SSO portal.
     config.register_config_parameter(name="sso_allow_passkeys",
                                     ctype=bool,

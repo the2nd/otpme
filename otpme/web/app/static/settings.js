@@ -546,17 +546,19 @@
         if (!card || !toggle) return;
         try {
             const resp = await fetchJSON(urls.urlGetAdminAccess);
-            const result = await resp.json();
-            if (!resp.ok) {
-                throw new Error(result.error || i18n.labelAdminAccessFailedLoad || 'Failed to load admin access state.');
+            const {body, error} = await window.readJsonResponse(
+                resp,
+                i18n.labelAdminAccessFailedLoad || 'Failed to load admin access state.');
+            if (error) {
+                throw new Error(error);
             }
             // available=false → sso_temp_pass_role unresolvable for this
             // user; hide the entire card.
-            if (!result.available) {
+            if (!body.available) {
                 card.classList.add('is-hidden');
                 return;
             }
-            toggle.checked = !!result.enabled;
+            toggle.checked = !!body.enabled;
             card.classList.remove('is-hidden');
         } catch (e) {
             if (errorEl) {
@@ -580,14 +582,16 @@
                 method: 'POST',
                 body: JSON.stringify({enabled: desired}),
             });
-            const result = await resp.json();
-            if (!resp.ok) {
-                throw new Error(result.error || i18n.labelAdminAccessFailedSave || 'Failed to update admin access.');
+            const {body, error} = await window.readJsonResponse(
+                resp,
+                i18n.labelAdminAccessFailedSave || 'Failed to update admin access.');
+            if (error) {
+                throw new Error(error);
             }
             // Re-sync from server: handles the (rare) case where the
             // server clipped/overrode the request.
-            toggle.checked = !!result.enabled;
-            statusEl.textContent = result.enabled
+            toggle.checked = !!body.enabled;
+            statusEl.textContent = body.enabled
                 ? (i18n.labelAdminAccessOn || 'Admin access enabled.')
                 : (i18n.labelAdminAccessOff || 'Admin access disabled.');
         } catch (e) {

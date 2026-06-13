@@ -544,6 +544,24 @@ Object types: site, unit, user
 If enabled, temporary passwords can be set on tokens.  
 Object types: site, unit, user, token
 
+**sso_temp_pass_role (str)**  
+Role whose members are allowed to set a temporary password on another
+user's token through the SSO portal admin-access flow. Resolved per-user
+with the standard cascade (token overrides user overrides unit overrides
+site). Foreign-site users only resolve via this cascade if the local
+site lists the home site under **sso_temp_pass_role_trusts**; otherwise
+the local site's setting (site-only, no user/unit walk) is used as a
+fallback.  
+Object types: site, unit, user, token
+
+**sso_temp_pass_role_trusts (list)**  
+Comma-separated list of remote sites whose user-scoped
+**sso_temp_pass_role** cascade this site trusts when a foreign user
+opens an SSO portal admin-access session here. Sites not in the list
+fall back to the local site's **sso_temp_pass_role**. Own-site users are
+always trusted.  
+Object types: site
+
 **password_allowed_chars (str, default: 0-9A-Za-z!@#$%&\*()\_+-={}\[\]:;\<\>.?/)**  
 Character set allowed in passwords (used by the password policy).  
 Object types: site, unit, user
@@ -609,22 +627,32 @@ Object types: site, unit, host, device, user, token
 
 ## SSO Portal
 
-**sso_token_roles (list)**  
+**device_token_roles (list)**  
 Comma separated list of roles to which device tokens registered via the
 SSO portal are added. The role's info text is displayed in the SSO
 portal settings to inform users about the purpose and scope of the role.
 Each value can be a plain role name (resolved within the current site)
 or a *site/role* path to reference a role on another site. The parameter
 is resolved per user; the most specific match wins (user overrides unit
-overrides site).  
+overrides site). Foreign-site users only resolve via this cascade if the
+local site lists the home site under **device_token_roles_trusts**;
+otherwise the local site's setting is used as a fallback.  
 Object types: site, unit, user
+
+**device_token_roles_trusts (list)**  
+Comma-separated list of remote sites whose user-scoped
+**device_token_roles** cascade this site trusts when a foreign user
+registers a device token through the SSO portal here. Sites not in the
+list fall back to the local site's **device_token_roles**. Own-site
+users are always trusted.  
+Object types: site
 
 **device_token_suffix (str)**  
 Suffix appended to the device token name when the SSO portal registers a
 token under this role. A role without **device_token_suffix** is not
 shown in the SSO portal at all, so this parameter doubles as the opt-in
 switch that makes a role eligible as an SSO device-token target via
-**sso_token_roles**.  
+**device_token_roles**.  
 Object types: role
 
 **sso_allow_passkeys (bool, default: true)**  
@@ -814,6 +842,49 @@ false restricts the global session view to nodes; set true to allow
 ordinary OTPme hosts on the site to query active sessions of the users
 that are logged in there. Defense-in-depth: enable only when needed.  
 Object types: site
+
+## Connection Limits
+
+Per-daemon ceilings on the number of concurrent client connections
+accepted by each daemon. The most specific match wins (node overrides
+unit overrides site). Use these to harden a busy node against connection
+exhaustion or to deliberately throttle a quiet site. The defaults are
+sized for typical deployments — raise them only when traffic actually
+demands it.
+
+**mgmtd_max_conn (int, default: 128)**  
+Maximum concurrent client connections accepted by **mgmtd**.  
+Object types: site, unit, node
+
+**joind_max_conn (int, default: 128)**  
+Maximum concurrent client connections accepted by **joind**.  
+Object types: site, unit, node
+
+**syncd_max_conn (int, default: 1024)**  
+Maximum concurrent client connections accepted by **syncd**.  
+Object types: site, unit, node
+
+**ssod_max_conn (int, default: 1024)**  
+Maximum concurrent client connections accepted by **ssod**.  
+Object types: site, unit, node
+
+**clusterd_max_conn (int, default: 512)**  
+Maximum concurrent peer connections accepted by **clusterd**.  
+Object types: site, unit, node
+
+**fsd_max_conn (int, default: 1024)**  
+Maximum concurrent client connections accepted by **fsd**.  
+Object types: site, unit, node
+
+**idled_max_conn (int, default: 1024)**  
+Maximum concurrent client connections accepted by **idled**.  
+Object types: site, unit, node
+
+**backupd_max_conn (int, default: 256)**  
+Maximum concurrent client connections accepted by **backupd**. Also
+applies on hosts because a host can act as a backup target that accepts
+incoming backup writes.  
+Object types: site, unit, node, host
 
 ## Backup
 

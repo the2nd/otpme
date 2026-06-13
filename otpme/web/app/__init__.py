@@ -2,11 +2,12 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 from flask import Flask
+from flask import jsonify
 from flask import request
 from flask import session as flask_session
-from flask_babel import Babel, get_locale
+from flask_babel import Babel, get_locale, gettext as _gettext
 from flask_login import LoginManager
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_limiter import Limiter
 #from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -104,6 +105,33 @@ lm.init_app(app)
 # field); JSON-fetch callers send the same token via the
 # `X-CSRFToken` header -- see static/csrf.js / fetchJSON().
 csrf = CSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def _handle_csrf_error(e):
+    """ CSRF synchronizer-token mismatch / expiry handler.
+
+    The default Flask-WTF response is a 400 HTML page, which
+    ``fetchJSON()`` callers try to ``resp.json()`` -- producing the
+    unhelpful "JSON.parse: unexpected character at line 1 column 1"
+    in the browser when the user leaves a page (login, settings) open
+    long enough for the CSRF token bound to their Flask session to
+    expire. We sniff the ``X-CSRFToken`` request header -- always
+    attached by ``fetchJSON`` for state-mutating requests -- and serve
+    a JSON body the frontend's ``readJsonResponse`` helper can
+    surface as a readable message ("Your session expired..."). HTML
+    form posts (no ``X-CSRFToken`` header, just a hidden field) keep
+    the original 400 HTML behaviour. """
+    if request.headers.get('X-CSRFToken') is not None \
+            or 'application/json' in request.headers.get('Accept', ''):
+        payload = {
+            'error': _gettext(
+                "Your session expired. Please reload the page "
+                "and try again."),
+            'session_expired': True,
+        }
+        return jsonify(payload), 400
+    return e.description, 400
 
 
 def _ratelimit_key():

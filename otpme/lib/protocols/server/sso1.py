@@ -748,12 +748,90 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         return f"passkey-{sanitized}"
 
+    def _site_trusts_user_home_for_passkeys(self, user):
+        """ Originator side: does the local site list the user's home
+        site under ``sso_allow_passkeys_trusts``? Own-site users are
+        implicitly trusted. Returns False when the trust list is
+        unset/empty. """
+        if user.site == config.site:
+            return True
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return False
+        try:
+            trusts = local_site.get_config_parameter("sso_allow_passkeys_trusts")
+        except Exception:
+            trusts = None
+        if not trusts:
+            return False
+        return user.site in trusts
+
+    def _site_trusts_site_for_passkeys(self, site):
+        """ Home side: does the local site list ``site`` under
+        ``sso_allow_passkeys_trusts``? Used to accept a peer-forwarded
+        passkey operation only when reciprocal trust exists. """
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return False
+        try:
+            trusts = local_site.get_config_parameter("sso_allow_passkeys_trusts")
+        except Exception:
+            trusts = None
+        if not trusts:
+            return False
+        return site in trusts
+
+    def _resolve_passkeys_allowed(self, user):
+        """ Resolve ``sso_allow_passkeys`` to a bool, honouring the
+        local site's ``sso_allow_passkeys_trusts``:
+          - trusted user (own site or home in the trust list) →
+            ``user.get_config_parameter`` (user → unit → site cascade
+            anchored at the user's home site).
+          - untrusted foreign user → the *local* site's
+            ``sso_allow_passkeys`` (site-only, no user/unit walk).
+
+        ``get_config_parameter`` returns the value from the first
+        cascade level that has the parameter explicitly set, else
+        ``None`` -- the ``default_value=True`` registered at the
+        config layer is NOT auto-applied at read time. Apply it
+        ourselves so foreign users (whose home cascade often has no
+        explicit value) don't fall through to a False-looking None
+        and see "Passkeys are not enabled." """
+        try:
+            registered_default = bool(
+                    config.get_config_parameter("sso_allow_passkeys")['default'])
+        except Exception:
+            registered_default = True
+        if self._site_trusts_user_home_for_passkeys(user):
+            try:
+                value = user.get_config_parameter("sso_allow_passkeys")
+            except Exception:
+                value = None
+        else:
+            local_site = backend.get_object(object_type="site",
+                                            uuid=config.site_uuid)
+            if local_site is None:
+                return False
+            try:
+                value = local_site.get_config_parameter("sso_allow_passkeys")
+            except Exception:
+                value = None
+        if value is None:
+            return registered_default
+        return bool(value)
+
     def list_passkeys(self, username, sso_jwt, command_args):
         """ Return the user's passkey tokens (name + friendly description).
 
-        Gated by the ``sso_allow_passkeys`` config parameter (walks
-        user → unit → site). When disabled, return ``allowed=False``
-        and an empty list so the frontend can hide the entire card. """
+        Gated by the ``sso_allow_passkeys`` config parameter, resolved
+        under ``sso_allow_passkeys_trusts`` (mirrors the
+        ``sso_temp_pass_role_trusts`` pattern: originator decides under
+        its own trust policy before the cross-site redirect, home
+        re-validates with a reciprocal trust check). When disabled,
+        return ``allowed=False`` and an empty list so the frontend can
+        hide the entire card. """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -761,12 +839,36 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
-        if user.site != config.site:
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_allowed = command_args.get('_passkeys_allowed')
+        if is_cluster_peer and peer_allowed is not None:
+            # Home, peer-forwarded. Accept the originator's decision
+            # only when the peer's site is reciprocally trusted.
+            if not self._site_trusts_site_for_passkeys(self.peer.site):
+                return self.build_response(True, {
+                        'passkeys': [], 'allowed': False, 'status': True})
+            if not bool(peer_allowed):
+                return self.build_response(True, {
+                        'passkeys': [], 'allowed': False, 'status': True})
+        elif user.site != config.site:
+            # Originator, foreign user. Resolve under local trust policy
+            # before redirecting so an untrusted home doesn't even get
+            # asked.
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(True, {
+                        'passkeys': [], 'allowed': False, 'status': True})
+            forward_args = dict(command_args)
+            forward_args['_passkeys_allowed'] = True
             return self.ssod_redirect_command(command="list_passkeys",
                                             user=user,
-                                            command_args=command_args)
-        if not user.get_config_parameter("sso_allow_passkeys"):
-            return self.build_response(True, {'passkeys': [], 'allowed': False, 'status': True})
+                                            command_args=forward_args)
+        else:
+            # Local user.
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(True, {
+                        'passkeys': [], 'allowed': False, 'status': True})
         passkeys = []
         for token_uuid in user.tokens:
             try:
@@ -814,13 +916,33 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
-        if user.site != config.site:
+        # Resolve sso_allow_passkeys under sso_allow_passkeys_trusts.
+        # See list_passkeys for the full pattern.
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_allowed = command_args.get('_passkeys_allowed')
+        if is_cluster_peer and peer_allowed is not None:
+            if not self._site_trusts_site_for_passkeys(self.peer.site):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+            if not bool(peer_allowed):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+        elif user.site != config.site:
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+            forward_args = dict(command_args)
+            forward_args['_passkeys_allowed'] = True
             return self.ssod_redirect_command(command="passkey_register_begin",
                                             user=user,
-                                            command_args=command_args,
+                                            command_args=forward_args,
                                             mgmt=True)
-        if not user.get_config_parameter("sso_allow_passkeys"):
-            return self.build_response(False, {'message':'Passkeys are not enabled.', 'status':False})
+        else:
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
         token_name = self._sanitize_passkey_token_name(device_name)
         if not token_name:
             return self.build_response(False, {'message':'Invalid device name.', 'status':False})
@@ -902,11 +1024,36 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
-        if user.site != config.site:
+        # Resolve sso_allow_passkeys under sso_allow_passkeys_trusts.
+        # The originator already gated this in passkey_register_begin;
+        # gate again here on complete because the redirect carries a
+        # fresh command_args and we don't want a peer to skip the
+        # check by calling complete directly.
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_allowed = command_args.get('_passkeys_allowed')
+        if is_cluster_peer and peer_allowed is not None:
+            if not self._site_trusts_site_for_passkeys(self.peer.site):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+            if not bool(peer_allowed):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+        elif user.site != config.site:
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+            forward_args = dict(command_args)
+            forward_args['_passkeys_allowed'] = True
             return self.ssod_redirect_command(command="passkey_register_complete",
                                             user=user,
-                                            command_args=command_args,
+                                            command_args=forward_args,
                                             mgmt=True)
+        else:
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
         # Pop the reg state under passkey_state_id. delete() is
         # single-use; a second complete with the same state-id misses.
         try:
@@ -920,8 +1067,6 @@ class OTPmeSsoP1(OTPmeServer1):
         reg_state = state_data['state']
         device_name = state_data['device_name']
         token_name = state_data['token_name']
-        if not user.get_config_parameter("sso_allow_passkeys"):
-            return self.build_response(False, {'message':'Passkeys are not enabled.', 'status':False})
         if user.token(token_name):
             return self.build_response(False, {'message':'A passkey with this name already exists.', 'status':False})
         rp_data = {"id": rp_id, "name": "OTPme RP"}

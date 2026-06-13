@@ -34,9 +34,54 @@
         if (opts.body !== undefined && !('Content-Type' in headers)) {
             headers['Content-Type'] = 'application/json';
         }
+        // Accept hint -- some endpoints (CSRF error handler) sniff this
+        // to pick a JSON error body over the default HTML 400.
+        if (!('Accept' in headers)) {
+            headers['Accept'] = 'application/json';
+        }
         if (stateMutating) {
             headers['X-CSRFToken'] = csrfToken();
         }
         return fetch(url, Object.assign({}, opts, {headers: headers}));
+    };
+
+    // readJsonResponse(resp, fallbackLabel) -- safely consume a
+    // fetchJSON response that may or may not actually carry JSON.
+    // Returns {body, error}:
+    //   - body: parsed JSON dict on success, else null.
+    //   - error: human-readable string when the response is non-2xx,
+    //     not application/json, has a redirected URL (fetch silently
+    //     followed a 302 to /login), or fails to parse. The server's
+    //     own `error` field is preferred, with the CSRF error handler's
+    //     "Your session expired..." surfacing here on token expiry.
+    //
+    // Without this helper, `await resp.json()` on a Flask flash+redirect
+    // (302 to /login) or a CSRF 400 HTML page raises the unhelpful
+    // "JSON.parse: unexpected character at line 1 column 1" the user
+    // sees in DevTools.
+    window.readJsonResponse = async function (resp, fallbackLabel) {
+        const ct = (resp.headers.get('Content-Type') || '').toLowerCase();
+        let body = null;
+        if (ct.includes('application/json')) {
+            try {
+                body = await resp.json();
+            } catch (e) {
+                body = null;
+            }
+        }
+        if (resp.ok && body !== null) {
+            return {body: body, error: null};
+        }
+        let error = body && body.error;
+        if (!error) {
+            if (resp.redirected) {
+                error = (fallbackLabel || 'Request failed.')
+                        + ' (HTTP ' + resp.status + ', redirected)';
+            } else {
+                error = (fallbackLabel || 'Request failed.')
+                        + ' (HTTP ' + resp.status + ')';
+            }
+        }
+        return {body: body, error: error};
     };
 })();
