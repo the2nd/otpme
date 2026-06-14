@@ -253,14 +253,23 @@ class OTPmeIdleP1(OTPmeServer1):
                 raise OTPmeException(msg)
             for share_id in dict(shares):
                 share = shares[share_id]
+                hosts = []
                 try:
-                    hosts = share.pop('hosts')
+                    host = share.pop('host')
                 except KeyError:
-                    msg = _("Received share_add_host event without host information: {share}")
-                    msg = msg.format(share=share_id)
-                    raise OTPmeException(msg)
-                if self.peer.name in hosts:
-                    continue
+                    host = None
+                    try:
+                        hosts = share.pop('hosts')
+                    except KeyError:
+                        msg = _("Received share_add_host event without host information: {share}")
+                        msg = msg.format(share=share_id)
+                        raise OTPmeException(msg)
+                if host:
+                    if self.peer.name == host:
+                        continue
+                if hosts:
+                    if self.peer.name in hosts:
+                        continue
                 shares.pop(share_id)
             if not shares:
                 return False
@@ -281,14 +290,23 @@ class OTPmeIdleP1(OTPmeServer1):
                 raise OTPmeException(msg)
             for share_id in dict(shares):
                 share = shares[share_id]
+                hosts = []
                 try:
-                    hosts = share.pop('hosts')
+                    host = share.pop('host')
                 except KeyError:
-                    msg = _("Received share_remove_host event without host information: {share}")
-                    msg = msg.format(share=share_id)
-                    raise OTPmeException(msg)
-                if self.peer.name not in hosts:
-                    continue
+                    host = None
+                    try:
+                        hosts = share.pop('hosts')
+                    except KeyError:
+                        msg = _("Received share_add_host event without host information: {share}")
+                        msg = msg.format(share=share_id)
+                        raise OTPmeException(msg)
+                if host:
+                    if self.peer.name != host:
+                        continue
+                if hosts:
+                    if self.peer.name in hosts:
+                        continue
                 shares.pop(share_id)
             if not shares:
                 return False
