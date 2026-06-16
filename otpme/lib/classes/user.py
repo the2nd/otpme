@@ -76,7 +76,7 @@ read_acls = [
         ]
 
 write_acls = [
-            "deploy",
+            #"deploy",
             "gen_keys",
             "del_keys",
             "unblock",
@@ -1495,19 +1495,6 @@ class User(OTPmeObject):
         self.login_script = None
         self.login_script_enabled = False
         self.used_pass_salt = None
-        # SSO session data.
-        self.sso_session_data = {}
-        # OIDC consent decisions, keyed by client UUID. Each entry:
-        #   {client_uuid: {
-        #       'scopes':     ['openid', 'profile', ...],
-        #       'granted_at': <unix_ts>,
-        #   }}
-        # Set by Site/Unit/Client ``oidc_require_consent=True``: the
-        # /authorize handler stores the user's approval here so a
-        # subsequent login for the same (user, client) skips the
-        # consent screen unless the RP asks for a wider scope or
-        # forces it via prompt=consent.
-        self.oidc_consents = {}
         self.auth_script = None
         self.auth_script_enabled = False
         # User photo.
@@ -1693,12 +1680,6 @@ class User(OTPmeObject):
                         'USED_PASS_SALT'            : {
                                                         'var_name'  : 'used_pass_salt',
                                                         'type'      : str,
-                                                        'required'  : False,
-                                                        'encryption': config.disk_encryption,
-                                                    },
-                        'SSO_SESSION_DATA'          : {
-                                                        'var_name'  : 'sso_session_data',
-                                                        'type'      : dict,
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
                                                     },
@@ -2393,6 +2374,10 @@ class User(OTPmeObject):
             self.language = "en"
             self.language_set = False
         else:
+            if language not in config.supported_languages:
+                msg = _("Unsupported language: {lang}")
+                msg = msg.format(lang=language)
+                return callback.error(msg)
             self.language = language
             self.language_set = True
         return self._cache(callback=callback)
@@ -4315,6 +4300,7 @@ class User(OTPmeObject):
                 if not self.add_token(new_token=cur_token,
                                     replace=replace,
                                     force=True,
+                                    verify_acls=False,
                                     _caller=_caller,
                                     callback=callback):
                     return callback.error("Error replacing token.")
@@ -4328,7 +4314,7 @@ class User(OTPmeObject):
                     return callback.abort()
         else:
             if pre_deploy:
-                if not self.verify_acl("add:token"):
+                if not self.verify_acl("deploy:token"):
                     msg = ("Permission denied.")
                     return callback.error(msg, exception=PermissionDenied)
             if _caller == "CLIENT" and verbose_level > 0:
@@ -4338,6 +4324,7 @@ class User(OTPmeObject):
             if not self.add_token(token_name=token_name,
                                 token_type=token_type,
                                 replace=replace,
+                                verify_acls=False,
                                 force=True,
                                 _caller=_caller,
                                 callback=callback):
@@ -4530,14 +4517,7 @@ class User(OTPmeObject):
                         return callback.error(msg)
 
         # Check if given token exists.
-        token_path = f"{self.name}/{token_name}"
-        result = backend.search(object_type="token",
-                                attribute="rel_path",
-                                value=token_path,
-                                return_type="instance")
-        cur_token = None
-        if result:
-            cur_token = result[0]
+        cur_token = self.token(token_name)
 
         if replace:
             if not cur_token:
@@ -4628,6 +4608,7 @@ class User(OTPmeObject):
             for x in cur_token.acls:
                 new_token.add_acl(raw_acl=x,
                                 verify_acls=False,
+                                ignore_unknown_owner=True,
                                 callback=callback)
             # Remove orphan ACLs.
             for x in list(new_token.acls):

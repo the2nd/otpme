@@ -544,8 +544,10 @@ class OTPmeConfig(object):
         self.register_config_var("base_dir", str, None)
         self.base_dir = os.path.dirname(self.otpme_lib_dir)
         self.register_config_var("locale_dir", str, None)
-        self.register_config_var("language", str, 'en',
-                                config_file_parameter="LANGUAGE")
+        self.register_config_var("supported_languages", list, ["en"])
+        self.register_config_var("language", str, 'env',
+                                config_file_parameter="LANGUAGE",
+                                user_config_file_parameter="LANGUAGE")
         self.register_config_var("log_language", str, 'en',
                                 config_file_parameter="LOG_LANGUAGE")
         self.locale_dir = os.path.join(self.base_dir, "locale")
@@ -964,9 +966,9 @@ class OTPmeConfig(object):
         import builtins
         builtins._ = get_locales
 
-
     def load(self, command=None, quiet=False, configure_logger=None):
         """ Load config. """
+        from otpme.lib import stuff
         from otpme.lib import filetools
         from otpme.lib.register import register_module
         # Set own PID.
@@ -1102,6 +1104,14 @@ class OTPmeConfig(object):
                         raise OTPmeException(msg)
 
         # Setup locale.
+        self.supported_languages += os.listdir(self.locale_dir)
+        if self.language == "env":
+            self.language = stuff.get_console_lang()
+        if self.language not in self.supported_languages:
+            msg = "Unsupported language: {lang}: Falling back to: en"
+            msg = msg.format(lang=self.language)
+            print(msg)
+            self.language = "en"
         self.setup_locale(self.language)
 
         # Set realm/site stuff.

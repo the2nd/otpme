@@ -1263,6 +1263,8 @@ class AuthHandler(object):
         if _sftoken and _sftoken.pass_type == "smartcard":
             found_smartcard_token = True
         if found_smartcard_token:
+            if not self.smartcard_data:
+                return
             # Add smartcard data to token verify parameters.
             token_verify_parms['smartcard_data'] = self.smartcard_data
 

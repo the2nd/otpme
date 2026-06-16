@@ -116,6 +116,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.require_master_node = True
         # Original (on impersonate_token) auth token.
         self.org_auth_token = None
+        self.org_auth_user = None
         # call parent class init
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -2775,47 +2776,6 @@ class OTPmeMgmtP1(OTPmeServer1):
         if not self.use_cached_objects:
             cache.clear(keep_func_caches=True, update_clear_time=False)
 
-        if not config.use_api:
-            try:
-                impersonate_token = command_args.pop("impersonate_token")
-            except KeyError:
-                if self.org_auth_token:
-                    config.auth_token = self.org_auth_token
-                    self.org_auth_token = None
-            else:
-                token_user = impersonate_token.split("/")[0]
-                token_name = impersonate_token.split("/")[1]
-                impersonate_token = backend.get_object(object_type="token",
-                                                        realm=config.realm,
-                                                        user=token_user,
-                                                        name=token_name)
-                if self.org_auth_token:
-                    auth_token = self.org_auth_token
-                else:
-                    auth_token = config.auth_token
-                if not auth_token.is_admin():
-                    message = _("Permission denied.")
-                    return self.build_response(False, message)
-                if not impersonate_token:
-                    message = _("Invalid token: {token}")
-                    message = message.format(token=impersonate_token)
-                    return self.build_response(False, message)
-                if impersonate_token.uuid == config.admin_token_uuid:
-                    message = _("Permission denied.")
-                    return self.build_response(False, message)
-                if impersonate_token.uuid == auth_token.uuid:
-                    message = _("Cannot impersonate own token.")
-                    return self.build_response(False, message)
-                log_msg = _("User impersonated token: {token}", log=True)[1]
-                log_msg = log_msg.format(token=impersonate_token.rel_path)
-                self.logger.info(log_msg)
-                audit_logger = config.audit_logger
-                if audit_logger:
-                    audit_logger.info(log_msg)
-                if not self.org_auth_token:
-                    self.org_auth_token = config.auth_token
-                config.auth_token = impersonate_token
-
         # Try to get object identifier from command.
         try:
             object_identifier = command_args['object_identifier']
@@ -3227,10 +3187,64 @@ class OTPmeMgmtP1(OTPmeServer1):
                 message = _("Please auth first.")
                 return self.build_response(status, message)
 
+        # Handle impersonate token.
+        if not config.use_api:
+            try:
+                impersonate_token = command_args.pop("impersonate_token")
+            except KeyError:
+                if self.org_auth_token:
+                    config.auth_token = self.org_auth_token
+                    config.auth_user = self.org_auth_user
+                    self.org_auth_token = None
+                    self.org_auth_user = None
+            else:
+                token_user = impersonate_token.split("/")[0]
+                token_name = impersonate_token.split("/")[1]
+                impersonate_token = backend.get_object(object_type="token",
+                                                        realm=config.realm,
+                                                        user=token_user,
+                                                        name=token_name)
+                if self.org_auth_token:
+                    auth_token = self.org_auth_token
+                else:
+                    auth_token = config.auth_token
+                if not auth_token.is_admin():
+                    message = _("Permission denied.")
+                    return self.build_response(False, message)
+                if not impersonate_token:
+                    message = _("Invalid token: {token}")
+                    message = message.format(token=impersonate_token)
+                    return self.build_response(False, message)
+                if impersonate_token.uuid == config.admin_token_uuid:
+                    message = _("Permission denied.")
+                    return self.build_response(False, message)
+                if impersonate_token.uuid == auth_token.uuid:
+                    message = _("Cannot impersonate own token.")
+                    return self.build_response(False, message)
+                log_msg = _("User impersonated token: {token}", log=True)[1]
+                log_msg = log_msg.format(token=impersonate_token.rel_path)
+                self.logger.info(log_msg)
+                audit_logger = config.audit_logger
+                if audit_logger:
+                    audit_logger.info(log_msg)
+                if not self.org_auth_token:
+                    self.org_auth_token = config.auth_token
+                    self.org_auth_user = config.auth_user
+                config.auth_token = impersonate_token
+                config.auth_user = backend.get_object(object_type="user",
+                                                uuid=config.auth_token.owner_uuid)
+
         # Enable localization for user.
         if config.auth_user:
-            if config.auth_user.language is not None:
-                config.setup_locale(config.auth_user.language)
+            try:
+                language = command_args['language']
+            except KeyError:
+                pass
+            else:
+                if config.auth_user.language is not None:
+                    if config.auth_user.language_set:
+                        language = config.auth_user.language
+                config.setup_locale(language)
 
         # Check if authenticated user is admin.
         self.is_admin = False

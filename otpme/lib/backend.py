@@ -28,6 +28,7 @@ from otpme.lib.cache import ldif_cache
 from otpme.lib.cache import search_cache
 from otpme.lib.typing import match_typing
 from otpme.lib.cache import ldap_search_cache
+from otpme.lib.cache import index_search_cache
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.object_config import ObjectConfig
 
@@ -397,6 +398,7 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     cache.clear(object_id, cache_type=cache_type)
     # Clear search cache.
     search_cache.invalidate()
+    index_search_cache.invalidate()
     if object_type in config.tree_object_types:
         # Clear ldif cache.
         ldif_cache.invalidate()

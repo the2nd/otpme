@@ -1196,6 +1196,70 @@ def register_config():
                                     getter=backup_pass_getter,
                                     warn_if_exists=True,
                                     object_types=object_types)
+    # Backup report settings.
+    config.register_config_parameter(name="backup_report_enabled",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_smtp_server",
+                                    ctype=str,
+                                    default_value="127.0.0.1",
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_smtp_port",
+                                    ctype=int,
+                                    default_value=25,
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_smtp_starttls",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_mail_from",
+                                    ctype=str,
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_mail_to",
+                                    ctype=str,
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_smtp_auth",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="backup_report_smtp_username",
+                                    ctype=str,
+                                    object_types=object_types)
+    def backup_smtp_pass_setter(smtp_pass, callback=default_callback, **kwargs):
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        try:
+            smtp_pass = my_site._key.encrypt(cleartext=smtp_pass,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
+        except Exception as e:
+            msg = _("Failed to encrypt backup report smtp pass: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        smtp_pass = smtp_pass.hex()
+        return smtp_pass
+    def backup_smtp_pass_getter(smtp_pass, callback=default_callback, **kwargs):
+        smtp_pass = bytes.fromhex(smtp_pass)
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        if not my_site._key:
+            return "<hidden>"
+        try:
+            smtp_pass = my_site._key.decrypt(ciphertext=smtp_pass,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
+        except Exception as e:
+            msg = _("Failed to decrypt backup key: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        smtp_pass = smtp_pass.decode()
+        return smtp_pass
+    config.register_config_parameter(name="backup_report_smtp_password",
+                                    ctype=str,
+                                    getter=backup_smtp_pass_getter,
+                                    setter=backup_smtp_pass_setter,
+                                    object_types=object_types)
     # Object types our config parameter is valid for.
     object_types = [
                     'node',

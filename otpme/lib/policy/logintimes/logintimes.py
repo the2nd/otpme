@@ -332,8 +332,8 @@ class LogintimesPolicy(Policy):
                                 value=test_object,
                                 return_type="instance")
         if not result:
-            msg = _("Unknown object: {}")
-            msg = msg.format(test_object)
+            msg = _("Unknown object: {test_object}")
+            msg = msg.format(test_object=test_object)
             return callback.error(msg)
         hook_object = result[0]
         # Get token.
@@ -342,8 +342,8 @@ class LogintimesPolicy(Policy):
                                 value=token,
                                 return_type="instance")
         if not result:
-            msg = _("Unknown token: {}")
-            msg = msg.format(token)
+            msg = _("Unknown token: {token}")
+            msg = msg.format(token=token)
             return callback.error(msg)
         _token = result[0]
         try:

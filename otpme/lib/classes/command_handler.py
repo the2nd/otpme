@@ -1613,20 +1613,29 @@ class CommandHandler(object):
             self.logger.info(log_msg)
             backupd_conn.start_backup(mode=backup_mode)
         client = BackupClient(server=backupd_conn, key=aes_key, compress=True)
-        client.backup(source=source_dir,
-                    special_files=special_files,
-                    excludes=exclude,
-                    includes=include,
-                    dry_run=dry_run)
+        result = client.backup(source=source_dir,
+                                special_files=special_files,
+                                excludes=exclude,
+                                includes=include,
+                                dry_run=dry_run)
         if not apply_retention:
-            return
+            return result
+        log_lines = []
         log_msg = _("Applying retention: {backup_object}", log=True)[1]
         log_msg = log_msg.format(backup_object=backup_object)
-        self.logger.info(log_msg)
+        log_lines.append(log_msg)
         backupd_conn.apply_retention()
         log_msg = _("Backup finished: {backup_object}", log=True)[1]
         log_msg = log_msg.format(backup_object=backup_object)
-        self.logger.info(log_msg)
+        log_lines.append(log_msg)
+
+        for line in log_lines:
+            self.logger.info(line)
+
+        backup_log = result['log']
+        backup_log += log_lines
+        result['log'] = backup_log
+        return result
 
     def list_backup_snapshots(self, backup_object):
         from otpme.lib.classes.backup import _format_size

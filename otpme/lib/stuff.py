@@ -2420,3 +2420,12 @@ def add_decorator(decorator, module, blacklist_functions=None,
                 continue
             f_decorator = decorator(f)
             setattr(module, x, f_decorator)
+
+def get_console_lang(default="en"):
+    """ Return the console/shell language code (e.g. en/de/es/fr/it). """
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        val = os.environ.get(var)
+        if not val or val in ("C", "POSIX"):
+            continue
+        return val.split("_", 1)[0].split(".", 1)[0].lower()
+    return default

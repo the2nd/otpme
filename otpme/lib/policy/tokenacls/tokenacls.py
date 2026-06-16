@@ -328,6 +328,8 @@ class TokenaclsPolicy(Policy):
             try:
                 acl_status = user_acl_method(acl=acl,
                                             owner_uuid=token.uuid,
+                                            owner_type="token",
+                                            ignore_unknown_owner=True,
                                             verify_acls=False,
                                             callback=callback)
             except Exception as e:
@@ -356,6 +358,8 @@ class TokenaclsPolicy(Policy):
             try:
                 acl_status = token_acl_method(acl=acl,
                                             owner_uuid=token.uuid,
+                                            owner_type="token",
+                                            ignore_unknown_owner=True,
                                             verify_acls=False,
                                             callback=callback)
             except Exception as e:
@@ -381,6 +385,8 @@ class TokenaclsPolicy(Policy):
             try:
                 token_acl_method(acl=acl,
                                 owner_uuid=x_token.uuid,
+                                owner_type="token",
+                                ignore_unknown_owner=True,
                                 verify_acls=False,
                                 callback=callback)
             except Exception as e:
@@ -410,6 +416,8 @@ class TokenaclsPolicy(Policy):
             try:
                 token_acl_method(acl=acl,
                                 owner_uuid=config.auth_token.uuid,
+                                owner_type="token",
+                                ignore_unknown_owner=True,
                                 verify_acls=False,
                                 callback=callback)
                 acl_status = True

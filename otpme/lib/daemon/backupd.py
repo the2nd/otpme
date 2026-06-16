@@ -19,6 +19,7 @@ from otpme.lib import log
 from otpme.lib import config
 from otpme.lib import script
 from otpme.lib import backend
+from otpme.lib.mail import send_mail
 from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
@@ -128,6 +129,68 @@ class BackupDaemon(OTPmeDaemon):
             # Window spans midnight, e.g. 23:00 - 03:00
             in_window = now >= start_time or now <= end_time
         return in_window
+
+    def send_backup_report(self, backup_object, status, subject, result):
+        """ Send backup report. """
+        backup_report_enabled = backup_object.get_config_parameter("backup_report_enabled")
+        if not backup_report_enabled:
+            return
+        server = backup_object.get_config_parameter("backup_report_smtp_server")
+        if not server:
+            log_msg = _("Cannot send backup report: backup_report_smtp_server not configured.", log=True)[1]
+            self.logger.warning(log_msg)
+            return False
+        mail_from = backup_object.get_config_parameter("backup_report_mail_from")
+        if not mail_from:
+            log_msg = _("Cannot send backup report: backup_report_mail_from not configured.", log=True)[1]
+            self.logger.warning(log_msg)
+            return False
+        mail_to = backup_object.get_config_parameter("backup_report_mail_to")
+        if not mail_to:
+            log_msg = _("Cannot send backup report: backup_report_mail_to not configured.", log=True)[1]
+            self.logger.warning(log_msg)
+            return False
+        port = backup_object.get_config_parameter("backup_report_smtp_port")
+        if port is None:
+            port = 25
+        starttls = backup_object.get_config_parameter("backup_report_smtp_starttls")
+        if starttls is None:
+            starttls = False
+        smtp_auth = backup_object.get_config_parameter("backup_report_smtp_auth")
+        if smtp_auth is None:
+            smtp_auth = False
+        username = None
+        password = None
+        if smtp_auth:
+            username = backup_object.get_config_parameter("backup_report_smtp_username")
+            if username is None:
+                log_msg = _("Cannot send backup report: backup_report_smtp_auth configured without backup_report_smtp_username.", log=True)[1]
+                self.logger.warning(log_msg)
+                return False
+            password = backup_object.get_config_parameter("backup_report_smtp_password")
+            if password is None:
+                log_msg = _("Cannot send backup report: backup_report_smtp_auth configured without backup_report_smtp_password.", log=True)[1]
+                self.logger.warning(log_msg)
+                return False
+
+        message = "\n".join(result['log'])
+
+        try:
+            send_mail(mail_from=mail_from,
+                    mail_to=mail_to,
+                    subject=subject,
+                    message=message,
+                    server=server,
+                    port=port,
+                    starttls=starttls,
+                    username=username,
+                    password=password)
+        except Exception as e:
+            log_msg = _("Failed to send backup report: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return False
+        return True
 
     def process_backups(self):
         """ Check if we have to run a backup. """
@@ -254,13 +317,21 @@ class BackupDaemon(OTPmeDaemon):
         if backup_script:
             self.run_backup_script(backup_script, backup_object, "pre")
 
+        subject = _("Backup {status} {backup_object}")
+
         backup_start_time = time.time()
         command_handler = CommandHandler()
         try:
-            command_handler.start_backup(backup_object)
+            result = command_handler.start_backup(backup_object)
         except Exception as e:
             log_msg = _("Failed to run backup: {backup_object}: {e}", log=True)[1]
             log_msg = log_msg.format(backup_object=backup_object, e=e)
+            result = {'log':[log_msg]}
+            subject = subject.format(status="failed", backup_object=backup_object)
+            self.send_backup_report(backup_object=o,
+                                    status=False,
+                                    subject=subject,
+                                    result=result)
             self.logger.warning(log_msg)
             multiprocessing.cleanup(keep_queues=True)
             sys.exit(1)
@@ -270,6 +341,11 @@ class BackupDaemon(OTPmeDaemon):
                     update_last_modified_by=False)
         if backup_script:
             self.run_backup_script(backup_script, backup_object, "post")
+        subject = subject.format(status="successful", backup_object=backup_object)
+        self.send_backup_report(backup_object=o,
+                                status=True,
+                                subject=subject,
+                                result=result)
         multiprocessing.cleanup(keep_queues=True)
         sys.exit()
 

@@ -6857,6 +6857,7 @@ class OTPmeObject(OTPmeBaseObject):
         owner_type: Union[str,None]=None,
         owner_name: Union[str,None]=None,
         owner_uuid: Union[str,None]=None,
+        ignore_unknown_owner: str=False,
         object_types: Union[List,None]=None,
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
@@ -6926,12 +6927,13 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
             owner_type = _acl.owner_type
             owner_uuid = _acl.owner_uuid
-            if action == "add":
-                owner_oid = backend.get_oid(uuid=owner_uuid)
-                if not owner_oid:
-                    msg = _("Cannot add ACL for unknown owner: {owner_uuid}: {acl}")
-                    msg = msg.format(owner_uuid=owner_uuid, acl=raw_acl)
-                    return callback.error(msg)
+            if not ignore_unknown_owner:
+                if action == "add":
+                    owner_oid = backend.get_oid(uuid=owner_uuid)
+                    if not owner_oid:
+                        msg = _("Cannot add ACL for unknown owner: {owner_uuid}: {acl}")
+                        msg = msg.format(owner_uuid=owner_uuid, acl=raw_acl)
+                        return callback.error(msg)
         # Try to get object type and UUID from ACL.
         elif not owner_type and not owner_uuid:
             try:
@@ -9403,11 +9405,15 @@ class OTPmeObject(OTPmeBaseObject):
             # Try to get the default value genner.
             try:
                 default_genner = para_data['default_genner']
-                value = default_genner(config_object=self, callback=callback)
-            except Exception as e:
-                msg = _("Failed to generate default value: {e}")
-                msg = msg.format(e=e)
-                return callback.error(msg)
+            except KeyError:
+                default_genner = None
+            if default_genner:
+                try:
+                    value = default_genner(config_object=self, callback=callback)
+                except Exception as e:
+                    msg = _("Failed to generate default value: {e}")
+                    msg = msg.format(e=e)
+                    return callback.error(msg)
         if value is None:
             msg = _("Cannot determine default value.")
             return callback.error(msg)

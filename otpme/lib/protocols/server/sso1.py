@@ -1894,6 +1894,13 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {
                 'message': 'JWT_INVALID', 'status': False,
             })
+        # Consent state is authoritative on the user's home site -- the
+        # local replica may be stale or empty. Redirect for foreign users.
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="list_oidc_consents",
+                                              user=user,
+                                              command_args=command_args,
+                                              mgmt=True)
         consents = []
         for cid, rec in user.list_oidc_consents().items():
             client = backend.get_object(object_type="client", uuid=cid)
@@ -1939,6 +1946,15 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {
                 'message': 'client_uuid missing', 'status': False,
             })
+        # Consent persistence belongs on the user's home site; writing
+        # the revoke to the local replica would be a no-op against the
+        # authoritative copy. Redirect for foreign users -- the home
+        # site will run its own session sweep too.
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="revoke_oidc_consent",
+                                              user=user,
+                                              command_args=command_args,
+                                              mgmt=True)
         removed = user.revoke_oidc_consent(client_uuid)
         if removed:
             try:
@@ -1975,6 +1991,68 @@ class OTPmeSsoP1(OTPmeServer1):
         return self.build_response(True, {'status':          True,
                                           'was_present':     removed,
                                           'sessions_killed': killed})
+
+    def oidc_get_consent_for_client(self, username, sso_jwt, command_args):
+        """ Return the stored OIDC consent record for (user, client_uuid)
+        on the user's home site. Targeted RPC used by
+        ``oidc_authorize_validate`` when the OP site is not the user's
+        home -- the authorize endpoint stays local (client + access
+        group are site-local) but the consent state is read from home.
+        """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'JWT_INVALID', 'status': False,
+            })
+        client_uuid = command_args.get('client_uuid')
+        if not client_uuid:
+            return self.build_response(False, {
+                'message': 'client_uuid missing', 'status': False,
+            })
+        record = user.get_oidc_consent(client_uuid) or {}
+        return self.build_response(True, {
+            'status':  True,
+            'consent': record,
+        })
+
+    def oidc_set_consent_for_client(self, username, sso_jwt, command_args):
+        """ Persist an OIDC consent record for (user, client_uuid) on
+        the user's home site. Counterpart to
+        ``oidc_get_consent_for_client``; called by the OP from a
+        foreign site after the user clicked Allow on the consent
+        screen.
+        """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'JWT_INVALID', 'status': False,
+            })
+        client_uuid = command_args.get('client_uuid')
+        if not client_uuid:
+            return self.build_response(False, {
+                'message': 'client_uuid missing', 'status': False,
+            })
+        scopes = command_args.get('scopes') or []
+        user.set_oidc_consent(client_uuid, scopes)
+        try:
+            user._write(callback=self.get_callback())
+        except Exception as e:
+            log_msg = _("Failed to persist OIDC consent for user '{user}' / client '{cid}': {err}", log=True)[1]
+            log_msg = log_msg.format(user=user.name,
+                                      cid=client_uuid, err=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'PERSIST_FAILED', 'status': False,
+            })
+        return self.build_response(True, {'status': True})
 
     def list_device_tokens(self, username, sso_jwt, command_args):
         # Verify SSO jwt. Use JWT_INVALID so the Flask wrapper redirects
@@ -4257,13 +4335,36 @@ class OTPmeSsoP1(OTPmeServer1):
         # prompt=none on top: any consent gap becomes interaction_required.
         requested_scopes = set(scope.split())
         try:
-            require_consent = client.get_config_parameter(
-                    "oidc_require_consent")
+            require_consent = client.get_config_parameter("oidc_require_consent")
         except Exception:
             require_consent = False
         force_consent = "consent" in prompt_values
         if force_consent or require_consent:
-            stored = user.get_oidc_consent(client.uuid) or {}
+            # Consent state is authoritative on the user's home site.
+            # For a foreign user we read it via a targeted RPC -- the
+            # OP stays local because the OIDC client and access group
+            # are registered here, only the per-(user,client) consent
+            # record lives on home.
+            if user.site != config.site:
+                ok, remote_resp = self._remote_ssod_call(
+                        user=user,
+                        command="oidc_get_consent_for_client",
+                        extra_args={
+                            'username':    username,
+                            'sso_jwt':     sso_jwt,
+                            'client_uuid': client.uuid,
+                        })
+                if not ok:
+                    msg = (remote_resp.get('message')
+                           if isinstance(remote_resp, dict) else None) \
+                          or 'unknown'
+                    return _err('server_error',
+                                f"failed to read consent from home site: {msg}",
+                                can_redirect=True)
+                stored = (remote_resp.get('consent')
+                          if isinstance(remote_resp, dict) else None) or {}
+            else:
+                stored = user.get_oidc_consent(client.uuid) or {}
             stored_scopes = set(stored.get('scopes') or [])
             covered = (not force_consent
                        and requested_scopes.issubset(stored_scopes))
@@ -4311,14 +4412,37 @@ class OTPmeSsoP1(OTPmeServer1):
                     'claims_preview':    claims_preview,
                 })
             if consent_granted:
-                user.set_oidc_consent(client.uuid, requested_scopes)
-                try:
-                    user._write(callback=self.get_callback())
-                except Exception as e:
-                    log_msg = _("Failed to persist OIDC consent for user '{user}' / client '{cid}': {err}", log=True)[1]
-                    log_msg = log_msg.format(user=user.name,
-                                              cid=client_id, err=e)
-                    self.logger.warning(log_msg)
+                if user.site != config.site:
+                    ok, remote_resp = self._remote_ssod_call(
+                            user=user,
+                            command="oidc_set_consent_for_client",
+                            extra_args={
+                                'username':    username,
+                                'sso_jwt':     sso_jwt,
+                                'client_uuid': client.uuid,
+                                'scopes':      sorted(requested_scopes),
+                            },
+                            mgmt=True)
+                    if not ok:
+                        # Persistence failed on home -- log and continue.
+                        # Authorize keeps going (the user did click Allow)
+                        # but they'll be re-prompted on the next request.
+                        msg = (remote_resp.get('message')
+                               if isinstance(remote_resp, dict) else None) \
+                              or 'unknown'
+                        log_msg = _("Failed to persist OIDC consent on home site for user '{user}' / client '{cid}': {err}", log=True)[1]
+                        log_msg = log_msg.format(user=user.name,
+                                                  cid=client_id, err=msg)
+                        self.logger.warning(log_msg)
+                else:
+                    user.set_oidc_consent(client.uuid, requested_scopes)
+                    try:
+                        user._write(callback=self.get_callback())
+                    except Exception as e:
+                        log_msg = _("Failed to persist OIDC consent for user '{user}' / client '{cid}': {err}", log=True)[1]
+                        log_msg = log_msg.format(user=user.name,
+                                                  cid=client_id, err=e)
+                        self.logger.warning(log_msg)
                 emit_audit("OIDC", 'authorize_consent_granted',
                                 user=user.name,
                                 client=client_id,
@@ -4769,6 +4893,8 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_authorize_validate",
                             "list_oidc_consents",
                             "revoke_oidc_consent",
+                            "oidc_get_consent_for_client",
+                            "oidc_set_consent_for_client",
                         ]
 
         # OIDC commands are server-to-server (or browser-to-server
@@ -4973,6 +5099,16 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command revoke_oidc_consent.", log=True)[1]
             self.logger.info(log_msg)
             return self.revoke_oidc_consent(username, sso_jwt, command_args)
+
+        if command == "oidc_get_consent_for_client":
+            log_msg = _("Processing command oidc_get_consent_for_client.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.oidc_get_consent_for_client(username, sso_jwt, command_args)
+
+        if command == "oidc_set_consent_for_client":
+            log_msg = _("Processing command oidc_set_consent_for_client.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.oidc_set_consent_for_client(username, sso_jwt, command_args)
 
         return self.build_response(status, message)
 

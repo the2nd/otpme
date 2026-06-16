@@ -692,6 +692,57 @@ Password for authenticating to the backup server.
 .br
 Object types: site, unit, node, share
 .TP
+.B backup_report_enabled \fR(bool, default: false)
+Enable e\-mail reports about completed backup runs (success and failure). When disabled, none of the other
+.B backup_report_*
+parameters take effect.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_smtp_server \fR(str, default: 127.0.0.1)
+SMTP server to use when sending backup reports.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_smtp_port \fR(int, default: 25)
+TCP port of the SMTP server.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_smtp_starttls \fR(bool, default: false)
+Issue \fBSTARTTLS\fR before sending the report.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_smtp_auth \fR(bool, default: false)
+Authenticate to the SMTP server with
+.B backup_report_smtp_username
+and
+.BR backup_report_smtp_password .
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_smtp_username \fR(str)
+Login name for SMTP authentication.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_smtp_password \fR(str)
+Password for SMTP authentication. Stored encrypted with the site key; shown as \fI<hidden>\fR by
+.BR show_config .
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_mail_from \fR(str)
+Envelope and \fBFrom:\fR address of the report e\-mail.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_mail_to \fR(str)
+Recipient address for the report e\-mail.
+.br
+Object types: site, unit, node, share
+.TP
 .B backup_mode \fR(str, default: pack)
 Backup storage mode. Valid values: \fBpack\fR, \fBtree\fR.
 In \fBpack\fR mode, backup data is stored in pack files (default, more space-efficient).

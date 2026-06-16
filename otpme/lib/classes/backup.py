@@ -3006,15 +3006,31 @@ class BackupClient:
         else:
             duration = f"{elapsed:.1f}s"
 
-        logger.info("Done: %d files, %d skipped, %d new blocks, %d dedup blocks", file_count, skipped_files, new_blocks, dedup_blocks)
-        logger.info("Data: %.1f MiB total → %.1f MiB stored (%.1f%% saved)", total_mb, stored_mb, saved_pct)
-        logger.info("Duration: %s", duration)
+        log_lines = []
+        log_msg = _("Done: {file_count} files, {skipped_files} skipped, {new_blocks} new blocks, {dedup_blocks} dedup blocks", log=True)[1]
+        log_msg = log_msg.format(file_count=file_count, skipped_files=skipped_files, new_blocks=new_blocks, dedup_blocks=dedup_blocks)
+        log_lines.append(log_msg)
+        log_msg = _("Data: {total_mb} MiB total → {stored_mb} MiB stored ({saved_pct}% saved)", log=True)[1]
+        log_msg = log_msg.format(total_mb=f"{total_mb:.2f}",
+                         stored_mb=f"{stored_mb:.2f}",
+                         saved_pct=f"{saved_pct:.2f}")
+        log_lines.append(log_msg)
+        log_msg = _("Duration: {duration}", log=True)[1]
+        log_msg = log_msg.format(duration=duration)
+        log_lines.append(log_msg)
+
         self._close_prev_index()
         self.server.finalize_snapshot(snap_name,
                                       total_bytes=total_bytes,
                                       stored_bytes=stored_bytes)
-        logger.info("Snapshot: %s", self.server.snap_dir(snap_name))
-        return snap_name
+        log_msg = _("Snapshot: {snap_name}", log=True)[1]
+        log_msg = log_msg.format(snap_name=self.server.snap_dir(snap_name))
+
+        for line in log_lines:
+            logger.info(line)
+
+        result = {'snap_name':snap_name, 'log':log_lines}
+        return result
 
     def restore(self, snap_name: str, dest: str,
                 filter_path: Optional[str] = None,

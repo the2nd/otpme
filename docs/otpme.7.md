@@ -917,6 +917,46 @@ Object types: site, unit, node, share
 Password for authenticating to the backup server.  
 Object types: site, unit, node, share
 
+**backup_report_enabled (bool, default: false)**  
+Enable e-mail reports about completed backup runs (success and failure).
+When disabled, none of the other **backup_report\_\*** parameters take
+effect.  
+Object types: site, unit, node, share
+
+**backup_report_smtp_server (str, default: 127.0.0.1)**  
+SMTP server to use when sending backup reports.  
+Object types: site, unit, node, share
+
+**backup_report_smtp_port (int, default: 25)**  
+TCP port of the SMTP server.  
+Object types: site, unit, node, share
+
+**backup_report_smtp_starttls (bool, default: false)**  
+Issue **STARTTLS** before sending the report.  
+Object types: site, unit, node, share
+
+**backup_report_smtp_auth (bool, default: false)**  
+Authenticate to the SMTP server with **backup_report_smtp_username** and
+**backup_report_smtp_password**.  
+Object types: site, unit, node, share
+
+**backup_report_smtp_username (str)**  
+Login name for SMTP authentication.  
+Object types: site, unit, node, share
+
+**backup_report_smtp_password (str)**  
+Password for SMTP authentication. Stored encrypted with the site key;
+shown as *\<hidden\>* by **show_config**.  
+Object types: site, unit, node, share
+
+**backup_report_mail_from (str)**  
+Envelope and **From:** address of the report e-mail.  
+Object types: site, unit, node, share
+
+**backup_report_mail_to (str)**  
+Recipient address for the report e-mail.  
+Object types: site, unit, node, share
+
 **backup_mode (str, default: pack)**  
 Backup storage mode. Valid values: **pack**, **tree**. In **pack** mode,
 backup data is stored in pack files (default, more space-efficient). In
