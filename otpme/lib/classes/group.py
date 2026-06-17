@@ -990,7 +990,7 @@ class Group(OTPmeObject):
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_add_host", callback,
+            share._notify_share_metadata_change("share_add_host", callback, host=host_name,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
@@ -1021,7 +1021,7 @@ class Group(OTPmeObject):
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_remove_host", callback,
+            share._notify_share_metadata_change("share_remove_host", callback, host=host_name,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result

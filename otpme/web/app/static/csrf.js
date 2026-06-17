@@ -72,6 +72,20 @@
         if (resp.ok && body !== null) {
             return {body: body, error: null};
         }
+        // Session expiry: the Flask side emits 401 + JSON
+        // {error, redirect, session_expired} when @login_required
+        // fires on an idle tab (or the SSO JWT is invalid). Navigate
+        // to /login instead of surfacing "Unauthorized" -- without
+        // this the user sees a bare error string and has to find the
+        // login page themselves. `replace()` so the dead settings URL
+        // doesn't sit in browser history.
+        if (resp.status === 401 && body && body.redirect) {
+            window.location.replace(body.redirect);
+            // Navigation is async; return a non-error result so the
+            // caller's catch path doesn't flash a message in the UI
+            // before the page swaps.
+            return {body: body, error: null};
+        }
         let error = body && body.error;
         if (!error) {
             if (resp.redirected) {

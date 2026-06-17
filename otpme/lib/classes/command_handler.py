@@ -1566,7 +1566,8 @@ class CommandHandler(object):
                                             dry_run=dry_run)
 
     def start_backup(self, backup_object, exclude=None, include=None,
-        skip_special=None, apply_retention=True, mode=None, dry_run=False):
+        return_result=False, skip_special=None, apply_retention=True,
+        mode=None, dry_run=False):
         if exclude is None:
             exclude = []
         if include is None:
@@ -1619,18 +1620,30 @@ class CommandHandler(object):
                                 includes=include,
                                 dry_run=dry_run)
         if not apply_retention:
+            if not return_result:
+                return
             return result
         log_lines = []
         log_msg = _("Applying retention: {backup_object}", log=True)[1]
         log_msg = log_msg.format(backup_object=backup_object)
         log_lines.append(log_msg)
-        backupd_conn.apply_retention()
+        deleted_snapshots = backupd_conn.apply_retention()
+        if deleted_snapshots:
+            log_msg = _("Retention deleted snapshots: {deleted_snapshots}", log=True)[1]
+            log_msg = log_msg.format(deleted_snapshots=deleted_snapshots)
+            log_lines.append(log_msg)
+        else:
+            log_msg = _("Retention deleted no snapshots.", log=True)[1]
+            log_lines.append(log_msg)
         log_msg = _("Backup finished: {backup_object}", log=True)[1]
         log_msg = log_msg.format(backup_object=backup_object)
         log_lines.append(log_msg)
 
         for line in log_lines:
             self.logger.info(line)
+
+        if not return_result:
+            return
 
         backup_log = result['log']
         backup_log += log_lines

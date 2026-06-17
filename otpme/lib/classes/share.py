@@ -2765,74 +2765,9 @@ class Share(OTPmeObject):
                                     site=self.site,
                                     name=host_name)
 
-        share_tokens = self.get_tokens(skip_disabled=False,
-                                        include_roles=True,
-                                        return_type="rel_path")
-        # Get share nodes.
-        share_nodes = self.get_nodes(include_pools=True,
-                                    return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=self.realm,
-                                        site=self.site,
-                                        return_type="instance")
-        node_fqdns = []
-        for node in share_nodes:
-            node_fqdns.append(node.fqdn)
-
-        shares = {}
-        share_id = self.share_id
-        shares[share_id] = {}
-        shares[share_id]['name'] = self.name
-        shares[share_id]['site'] = self.site
-        shares[share_id]['nodes'] = node_fqdns
-        shares[share_id]['host'] = host.name
-        shares[share_id]['encrypted'] = self.encrypted
-
-        if persist_mount is None:
-            persist_mount = not bool(self.restore_share)
-
-        # Collect notifications.
-        user_shares = {}
-        already_processed = []
-        for token_path in share_tokens:
-            username = token_path.split("/")[0]
-            if username == ADMIN_USER:
-                continue
-            if token_path in already_processed:
-                continue
-            try:
-                x_shares = user_shares[username]
-            except KeyError:
-                x_shares = {}
-            try:
-                tokens = x_shares[share_id]['tokens']
-            except KeyError:
-                tokens = []
-            tokens.append(token_path)
-            share_data = stuff.copy_object(shares)
-            x_shares.update(share_data)
-            x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = persist_mount
-            user_shares[username] = x_shares
-            already_processed.append(token_path)
-
-        notifys = []
-        for username in user_shares:
-            shares = user_shares[username]
-            notifys.append((username, "share_add_host", shares))
-
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
-
-        if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
-
-        if share_notifications:
-            callback.post_methods.append(post_method)
+        self._notify_share_metadata_change("share_add_host", callback, host=host.name,
+                                            persist_mount=persist_mount,
+                                            share_notifications=share_notifications)
         return result
 
     @check_acls(['remove:host'])
@@ -2861,74 +2796,9 @@ class Share(OTPmeObject):
                                 site=self.site,
                                 name=host_name)
 
-        share_tokens = self.get_tokens(skip_disabled=False,
-                                        include_roles=True,
-                                        return_type="rel_path")
-        # Get share nodes.
-        share_nodes = self.get_nodes(include_pools=True,
-                                    return_type="instance")
-        if not share_nodes:
-            share_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=self.realm,
-                                        site=self.site,
-                                        return_type="instance")
-        node_fqdns = []
-        for node in share_nodes:
-            node_fqdns.append(node.fqdn)
-
-        shares = {}
-        share_id = self.share_id
-        shares[share_id] = {}
-        shares[share_id]['name'] = self.name
-        shares[share_id]['site'] = self.site
-        shares[share_id]['nodes'] = node_fqdns
-        shares[share_id]['host'] = host.uuid
-        shares[share_id]['encrypted'] = self.encrypted
-
-        if persist_mount is None:
-            persist_mount = not bool(self.restore_share)
-
-        # Collect notifications.
-        user_shares = {}
-        already_processed = []
-        for token_path in share_tokens:
-            username = token_path.split("/")[0]
-            if username == ADMIN_USER:
-                continue
-            if token_path in already_processed:
-                continue
-            try:
-                x_shares = user_shares[username]
-            except KeyError:
-                x_shares = {}
-            try:
-                tokens = x_shares[share_id]['tokens']
-            except KeyError:
-                tokens = []
-            tokens.append(token_path)
-            share_data = stuff.copy_object(shares)
-            x_shares.update(share_data)
-            x_shares[share_id]['tokens'] = tokens
-            x_shares[share_id]['persist'] = persist_mount
-            user_shares[username] = x_shares
-            already_processed.append(token_path)
-
-        notifys = []
-        for username in user_shares:
-            shares = user_shares[username]
-            notifys.append((username, "share_remove_host", shares))
-
-        def post_method():
-            for x in notifys:
-                notify(username=x[0], event_type=x[1], data=x[2])
-
-        if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
-
-        if share_notifications:
-            callback.post_methods.append(post_method)
+        self._notify_share_metadata_change("share_remove_host", callback, host=host.name,
+                                            persist_mount=persist_mount,
+                                            share_notifications=share_notifications)
         return result
 
     @cli.check_rapi_opts()
@@ -3117,6 +2987,7 @@ class Share(OTPmeObject):
         return result
 
     def _notify_share_metadata_change(self, event_type, callback,
+                                      host: str=None,
                                       persist_mount: bool=None,
                                       share_notifications: bool=None):
         """ Send a share_mount / share_unmount event to every user
@@ -3147,9 +3018,13 @@ class Share(OTPmeObject):
             persist_mount = not bool(self.restore_share)
 
         def post_method():
+            nonlocal host
             share_hosts = self.get_hosts(include_groups=True,
                                         include_roles=True,
                                         return_type="name")
+            if event_type == "share_remove_host":
+                if host and host in share_hosts:
+                    host = None
 
             share_id = self.share_id
             share_name = self.name
@@ -3184,6 +3059,8 @@ class Share(OTPmeObject):
                     'tokens': tokens,
                     'persist': persist_mount,
                 }
+                if host:
+                    x_shares[share_id]['host'] = host
                 user_shares[username] = x_shares
                 already_processed.append(token_path)
             for username in user_shares:
@@ -3237,7 +3114,7 @@ class Share(OTPmeObject):
         ):
         """ Return list with all hosts assigned to this share. """
         result = super().get_hosts(return_type=return_type,
-                                    _caller=_caller,
+                                    _caller="API",
                                     callback=callback)
 
         if include_groups:

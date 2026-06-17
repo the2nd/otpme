@@ -322,7 +322,7 @@ class BackupDaemon(OTPmeDaemon):
         backup_start_time = time.time()
         command_handler = CommandHandler()
         try:
-            result = command_handler.start_backup(backup_object)
+            result = command_handler.start_backup(backup_object, return_result=True)
         except Exception as e:
             log_msg = _("Failed to run backup: {backup_object}: {e}", log=True)[1]
             log_msg = log_msg.format(backup_object=backup_object, e=e)

@@ -3,8 +3,10 @@
 import os
 from flask import Flask
 from flask import jsonify
+from flask import redirect
 from flask import request
 from flask import session as flask_session
+from flask import url_for
 from flask_babel import Babel, get_locale, gettext as _gettext
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect, CSRFError
@@ -98,6 +100,39 @@ def _inject_get_locale():
 
 lm = LoginManager()
 lm.init_app(app)
+# Plain GET navigation to a @login_required route (e.g. /settings)
+# without a live session previously hit Flask-Login's default
+# ``abort(401)`` -- the browser rendered a bare "Unauthorized" page.
+# Pointing ``login_view`` at the login route turns that into a 302 to
+# /login so an idle tab degrades gracefully.
+lm.login_view = 'login'
+
+
+@lm.unauthorized_handler
+def _handle_unauthorized():
+    """ Flask-Login dispatches here when ``@login_required`` fires
+    without a current_user.
+
+    For AJAX/JSON callers (settings page buttons -- admin access
+    toggle, device tokens, passkey list, ...), we return a structured
+    401 with a ``redirect`` URL and a ``session_expired`` marker.
+    The frontend's ``readJsonResponse`` helper navigates to /login
+    on that signal instead of surfacing the bare "Unauthorized" text.
+
+    Plain browser navigation falls through to the standard
+    ``login_view`` redirect (302 /login). """
+    accept = request.headers.get('Accept', '')
+    is_ajax = ('application/json' in accept
+               or request.headers.get('X-CSRFToken') is not None
+               or request.headers.get('X-Requested-With') == 'XMLHttpRequest')
+    if is_ajax:
+        return jsonify({
+            'error': _gettext(
+                "Your session expired. Please log in again."),
+            'redirect': url_for('login', _external=True, _scheme='https'),
+            'session_expired': True,
+        }), 401
+    return redirect(url_for('login'))
 
 # CSRF protection covers every state-mutating method (POST/PUT/PATCH/
 # DELETE) on every route by default. HTML forms keep working via

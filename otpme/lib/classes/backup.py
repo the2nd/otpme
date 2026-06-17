@@ -69,6 +69,14 @@ from otpme.lib import config
 
 from otpme.lib.exceptions import *
 
+try:
+    _
+except NameError:
+    def _(s, log=False):
+        if log:
+            return s, s
+        return s
+
 """
 OTPMe Backup - Deduplicated, encrypted backup with filesystem-native metadata.
 
@@ -2111,9 +2119,9 @@ class BackupServer:
             if name not in keep:
                 if dry_run:
                     logger.info("Retention: would delete snapshot '%s'", name)
+                    deleted.append(name)
                 else:
                     to_delete.append(name)
-                deleted.append(name)
 
         if to_delete:
             # Build Bloom filter from snapshots we're keeping
@@ -2127,6 +2135,7 @@ class BackupServer:
                     if bloom is None or h not in bloom:
                         orphaned.add(h)
                 self._remove_snapshot(name)
+                deleted.append(name)
             if orphaned:
                 self._gc_remove_from_index(orphaned)
                 logger.info("Retention GC: %d orphaned blocks removed.",
@@ -3102,6 +3111,7 @@ class BackupClient:
                         os.makedirs(dst_entry, exist_ok=True)
 
                     elif entry_type == "symlink":
+                        os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
                         if os.path.lexists(dst_entry):
                             os.unlink(dst_entry)
                         os.symlink(entry["symlink_target"], dst_entry)

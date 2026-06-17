@@ -4205,6 +4205,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         result.sort()
 
+        if _caller == "API":
+            return result
         if _caller == "RAPI":
             result = ",".join(result)
         if _caller == "CLIENT":

@@ -1636,8 +1636,12 @@ class Role(OTPmeObject):
         if not result:
             return result
 
+        if not host_name:
+            host = backend.get_object(uuid=host_uuid)
+            host_name = host.name
+
         for share in affected_shares:
-            share._notify_share_metadata_change("share_add_host", callback,
+            share._notify_share_metadata_change("share_add_host", callback, host=host_name,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
@@ -1667,7 +1671,7 @@ class Role(OTPmeObject):
             return result
 
         for share in affected_shares:
-            share._notify_share_metadata_change("share_remove_host", callback,
+            share._notify_share_metadata_change("share_remove_host", callback, host=host_name,
                                                 persist_mount=persist_mount,
                                                 share_notifications=share_notifications)
         return result
