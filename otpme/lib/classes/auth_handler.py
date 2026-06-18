@@ -894,6 +894,18 @@ class AuthHandler(object):
                 self.auth_message = "AUTH_SITE_DISABLED"
                 return
 
+            user_unit = backend.get_object(object_type="unit",
+                                        uuid=self.user.unit_uuid)
+            if not user_unit.enabled:
+                log_msg = _("User unit disabled: {unit_path}", log=True)[1]
+                log_msg = log_msg.format(unit_path=user_unit.rel_path)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.count_fails = False
+                self.auth_message = "AUTH_UNIT_DISABLED"
+                return
+
+
         # Make sure users unit is not disabled.
         if not self.user_is_admin \
         and not self.realm_logout \
@@ -909,7 +921,8 @@ class AuthHandler(object):
                 return
 
         # If user is disabled or locked authentication is failed.
-        if not self.user.enabled:
+        if not self.user.allow_disabled_login \
+        and not self.user.enabled:
             log_msg = _("User '{user_name}' is disabled.", log=True)[1]
             log_msg = log_msg.format(user_name=self.user.name)
             self.logger.warning(log_msg)

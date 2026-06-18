@@ -6140,11 +6140,6 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(object_type=object_type, object_name=self.name)
             return callback.error(msg)
 
-        base_access_groups = config.get_base_objects("accessgroup")
-        if self.name in base_access_groups:
-            msg = ("Cannot disable base accessgroup.")
-            return callback.error(msg)
-
         msg = _("Disable {type} '{name}'?: ")
         msg = msg.format(type=self.type, name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):

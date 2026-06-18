@@ -231,6 +231,7 @@ class Cache(object):
                 _shared_cache = self.get_shared_cache(cache_name)
 
             # Try to get result from cache.
+            result = None
             if check_cache:
                 try:
                     result = _cache[k]
@@ -264,7 +265,7 @@ class Cache(object):
                         pass
 
             # Try to get result from shared cache.
-            if check_shared_cache:
+            if check_shared_cache and result is None:
                 try:
                     result = _shared_cache.get(k)
                     # Update local cache from shared cache.
@@ -315,7 +316,10 @@ class Cache(object):
                         try:
                             _cache[k] = json.dumps(result)
                         except TypeError:
-                            _cache[k] = result
+                            # Not JSON-serializable (e.g. contains instances/OIDs).
+                            # Skip caching rather than store a raw reference that
+                            # callers could mutate and poison the cache with.
+                            pass
                     else:
                         _cache[k] = result
                     # Logging.
