@@ -550,10 +550,11 @@ def init(init_file_dir_perms=False):
 
 def is_available(write=True):
     """ Check if index is available. """
+    socket_dir = get_socket_dir()
     if write:
-        if not os.access(INDEX_DIR, os.W_OK):
+        if not os.access(socket_dir, os.W_OK):
             return False
-    if not os.access(INDEX_DIR, os.R_OK):
+    if not os.access(socket_dir, os.R_OK):
         return False
     return True
 

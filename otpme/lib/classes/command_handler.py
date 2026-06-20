@@ -6361,6 +6361,10 @@ class CommandHandler(object):
         parser.add_argument('mount', nargs='?')
         args = parser.parse_args(sys.argv)
 
+        login_status = self.get_login_status()
+        if not login_status:
+            raise OTPmeException(_("Not logged in."))
+
         share_id = args.share
         mount_point = args.mount
         master_password_mount = args.master_password_mount

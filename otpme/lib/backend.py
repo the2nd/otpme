@@ -397,8 +397,8 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     # the checksum cache.
     cache.clear(object_id, cache_type=cache_type)
     # Clear search cache.
-    search_cache.invalidate()
-    index_search_cache.invalidate()
+    search_cache.invalidate(object_type=object_type)
+    index_search_cache.invalidate(object_type=object_type)
     if object_type in config.tree_object_types:
         # Clear ldif cache.
         ldif_cache.invalidate()
@@ -1192,8 +1192,43 @@ def get_object_from_cache(
 #    return result
 
 @match_typing
-@search_cache.cache_function()
 def search(
+    return_type: str="uuid",
+    return_attributes: List=None,
+    **kwargs
+    ) -> Union[List,dict]:
+    """ Search objects. """
+    result = []
+
+    # Search via index.
+    _result = do_search(return_type=return_type,
+                        return_attributes=return_attributes,
+                        **kwargs)
+
+    if return_type == "instance":
+        for object_id in _result:
+            object_id = oid.get(object_id)
+            o = get_object(object_id)
+            # Skip objects deleted while search was running.
+            if not o:
+                continue
+            result.append(o)
+    elif return_attributes and "instance" in return_attributes:
+        for uuid in _result:
+            # Skip objects deleted while search was running.
+            o = get_object(uuid=uuid)
+            if not o:
+                continue
+            _result[uuid]['instance'] = o
+        result = _result
+    else:
+        result = _result
+
+    return result
+
+@match_typing
+@search_cache.cache_function()
+def do_search(
     attribute: str=None,
     value: str=None,
     values: List=None,
@@ -1223,8 +1258,6 @@ def search(
     """ Search objects. """
     if attributes is None:
         attributes = {}
-    _result = []
-    result = []
 
     _verify_acls = None
     if verify_acls:
@@ -1241,12 +1274,12 @@ def search(
         _return_acls = otpme_acl.get_raw_acls(return_acls, config.auth_token)
 
     if return_type == "instance":
-        search_return_type = "oid"
+        search_return_type = "full_oid"
     else:
         search_return_type = return_type
 
     # Search via index.
-    _result = index_search(realm=realm,
+    result = index_search(realm=realm,
                         site=site,
                         verify_acls=_verify_acls,
                         return_acls=_return_acls,
@@ -1270,21 +1303,6 @@ def search(
                         object_types=object_types,
                         object_type=object_type,
                         **kwargs)
-
-    if return_type == "instance":
-        for object_id in _result:
-            x = get_object(object_id)
-            # Skip objects deleted while search was running.
-            if not x:
-                continue
-            result.append(x)
-    elif return_attributes and "instance" in return_attributes:
-        for uuid in _result:
-            o = get_object(uuid=uuid)
-            _result[uuid]['instance'] = o
-        result = _result
-    else:
-        result = _result
 
     return result
 

@@ -226,6 +226,8 @@ def init():
     object_caches['tree_object']['cache_type'] = "lru"
     object_caches['tree_object']['ignore_args'] = ["session"]
     object_caches['tree_object']['ignore_classes'] = ["OTPmeOid"]
+    search_cache._cache_kwargs['caches'] = object_caches
+    search_cache._cache_kwargs['cache_name_func'] = get_cache_name
     index_search_cache._cache_kwargs['caches'] = object_caches
     index_search_cache._cache_kwargs['cache_name_func'] = get_cache_name
 

@@ -182,7 +182,7 @@ class OTPmeIdleP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 return self.build_response(False, str(e))
             try:
-                result = self.process_event(username, event)
+                result = self.process_event(username, login_token, event)
             except Exception as e:
                 log_msg = _("Failed to process event: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -191,7 +191,7 @@ class OTPmeIdleP1(OTPmeServer1):
             if result:
                 return result
 
-    def process_event(self, username, event):
+    def process_event(self, username, login_token, event):
         try:
             event_type = event['event_type']
         except KeyError:
@@ -206,6 +206,27 @@ class OTPmeIdleP1(OTPmeServer1):
             if not shares:
                 msg = _("Got share unmount event without shares.")
                 raise OTPmeException(msg)
+            for share_id in dict(shares):
+                share = shares[share_id]
+                try:
+                    tokens = share['tokens']
+                except KeyError:
+                    msg = _("Got share unmount event without tokens.")
+                    raise OTPmeException(msg)
+                if login_token in tokens:
+                    try:
+                        limit_hosts = share.pop('limit_hosts')
+                    except KeyError:
+                        limit_hosts = False
+                    try:
+                        share_hosts = share.pop('hosts')
+                    except KeyError:
+                        share_hosts = []
+                    if not limit_hosts:
+                        continue
+                    if self.peer.name in share_hosts:
+                        continue
+                shares.pop(share_id)
             share_ids = ",".join(shares.keys())
             log_msg = _("Sending share unmount notification ({shares}) to {username} on host {host}", log=True)[1]
             log_msg = log_msg.format(shares=share_ids, username=username, host=self.peer.name)
@@ -223,17 +244,23 @@ class OTPmeIdleP1(OTPmeServer1):
             for share_id in dict(shares):
                 share = shares[share_id]
                 try:
-                    limit_hosts = share.pop('limit_hosts')
+                    tokens = share['tokens']
                 except KeyError:
-                    limit_hosts = False
-                try:
-                    share_hosts = share.pop('hosts')
-                except KeyError:
-                    share_hosts = []
-                if not limit_hosts:
-                    continue
-                if self.peer.name in share_hosts:
-                    continue
+                    msg = _("Got share mount event without tokens.")
+                    raise OTPmeException(msg)
+                if login_token in tokens:
+                    try:
+                        limit_hosts = share.pop('limit_hosts')
+                    except KeyError:
+                        limit_hosts = False
+                    try:
+                        share_hosts = share.pop('hosts')
+                    except KeyError:
+                        share_hosts = []
+                    if not limit_hosts:
+                        continue
+                    if self.peer.name in share_hosts:
+                        continue
                 shares.pop(share_id)
             if not shares:
                 return False
@@ -249,38 +276,44 @@ class OTPmeIdleP1(OTPmeServer1):
             except KeyError:
                 shares = None
             if not shares:
-                msg = _("Got share mount event without shares.")
+                msg = _("Got share_add_host event without shares.")
                 raise OTPmeException(msg)
             for share_id in dict(shares):
                 share = shares[share_id]
                 try:
-                    limit_hosts = share.pop('limit_hosts')
+                    tokens = share['tokens']
                 except KeyError:
-                    limit_hosts = False
-                if not limit_hosts:
-                    continue
-                try:
-                    host = share.pop('host')
-                    found_host = True
-                except KeyError:
-                    found_host = False
-                    host = None
-                try:
-                    hosts = share.pop('hosts')
-                    found_hosts = True
-                except KeyError:
-                    hosts = []
-                    found_hosts = False
-                if not found_host and not found_hosts:
-                    msg = _("Received share_add_host event without host information: {share}")
-                    msg = msg.format(share=share_id)
+                    msg = _("Got share_add_host event without tokens.")
                     raise OTPmeException(msg)
-                if found_host:
-                    if self.peer.name == host:
+                if login_token in tokens:
+                    try:
+                        limit_hosts = share.pop('limit_hosts')
+                    except KeyError:
+                        limit_hosts = False
+                    if not limit_hosts:
                         continue
-                if found_hosts:
-                    if self.peer.name in hosts:
-                        continue
+                    try:
+                        host = share.pop('host')
+                        found_host = True
+                    except KeyError:
+                        found_host = False
+                        host = None
+                    try:
+                        hosts = share.pop('hosts')
+                        found_hosts = True
+                    except KeyError:
+                        hosts = []
+                        found_hosts = False
+                    if not found_host and not found_hosts:
+                        msg = _("Received share_add_host event without host information: {share}")
+                        msg = msg.format(share=share_id)
+                        raise OTPmeException(msg)
+                    if found_host:
+                        if self.peer.name == host:
+                            continue
+                    if found_hosts:
+                        if self.peer.name in hosts:
+                            continue
                 shares.pop(share_id)
             if not shares:
                 return False
@@ -297,38 +330,44 @@ class OTPmeIdleP1(OTPmeServer1):
             except KeyError:
                 shares = None
             if not shares:
-                msg = _("Got share unmount event without shares.")
+                msg = _("Got share_remove_host event without shares.")
                 raise OTPmeException(msg)
             for share_id in dict(shares):
                 share = shares[share_id]
                 try:
-                    limit_hosts = share.pop('limit_hosts')
+                    tokens = share['tokens']
                 except KeyError:
-                    limit_hosts = False
-                if not limit_hosts:
-                    continue
-                try:
-                    host = share.pop('host')
-                    found_host = True
-                except KeyError:
-                    host = None
-                    found_host = False
-                try:
-                    hosts = share.pop('hosts')
-                    found_hosts = True
-                except KeyError:
-                    found_hosts = False
-                    hosts = []
-                if not found_host and not found_hosts:
-                    msg = _("Received share_remove_host event without host information: {share}")
-                    msg = msg.format(share=share_id)
+                    msg = _("Got share_remove_host event without tokens.")
                     raise OTPmeException(msg)
-                if found_host:
-                    if self.peer.name == host:
+                if login_token in tokens:
+                    try:
+                        limit_hosts = share.pop('limit_hosts')
+                    except KeyError:
+                        limit_hosts = False
+                    if not limit_hosts:
                         continue
-                if found_hosts:
-                    if self.peer.name not in hosts:
-                        continue
+                    try:
+                        host = share.pop('host')
+                        found_host = True
+                    except KeyError:
+                        host = None
+                        found_host = False
+                    try:
+                        hosts = share.pop('hosts')
+                        found_hosts = True
+                    except KeyError:
+                        found_hosts = False
+                        hosts = []
+                    if not found_host and not found_hosts:
+                        msg = _("Received share_remove_host event without host information: {share}")
+                        msg = msg.format(share=share_id)
+                        raise OTPmeException(msg)
+                    if found_host:
+                        if self.peer.name == host:
+                            continue
+                    if found_hosts:
+                        if self.peer.name not in hosts:
+                            continue
                 shares.pop(share_id)
             if not shares:
                 return False

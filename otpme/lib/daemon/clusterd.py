@@ -1579,7 +1579,12 @@ class ClusterDaemon(OTPmeDaemon):
                 os._exit(0)
             if self.node_disabled:
                 self.exit_child()
-            multiprocessing.cluster_out_event.wait()
+            try:
+                multiprocessing.cluster_out_event.wait(timeout=3)
+            except TimeoutReached:
+                pass
+            finally:
+                multiprocessing.cluster_out_event.close()
             if config.two_node_setup:
                 multiprocessing.two_node_setup_event.set()
                 multiprocessing.two_node_setup_event.close()
@@ -2794,7 +2799,12 @@ class ClusterDaemon(OTPmeDaemon):
         self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
 
         while True:
-            multiprocessing.two_node_setup_event.wait()
+            try:
+                multiprocessing.two_node_setup_event.wait(timeout=3)
+            except TimeoutReached:
+                pass
+            finally:
+                multiprocessing.two_node_setup_event.close()
 
             if config.daemon_shutdown:
                 os._exit(0)
@@ -4428,6 +4438,15 @@ class ClusterDaemon(OTPmeDaemon):
         daemon_command = None
         while True:
             if config.daemon_shutdown:
+                # Run socket cleanup so the listen child processes see
+                # self.shutdown=True (shared bool) and exit their accept
+                # loop. Without this they outlive the parent as orphans.
+                try:
+                    self.close()
+                except Exception as e:
+                    log_msg = _("Error during shutdown close: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
                 os._exit(0)
 
             if first_run:

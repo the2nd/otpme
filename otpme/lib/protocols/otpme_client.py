@@ -963,6 +963,9 @@ class OTPmeClient(OTPmeClientBase):
         if command_args is None:
             command_args = {}
 
+        if config.impersonate_token:
+            command_args['impersonate_token'] = config.impersonate_token
+
         enc_key = None
         enc_mod = None
         if use_agent is None:

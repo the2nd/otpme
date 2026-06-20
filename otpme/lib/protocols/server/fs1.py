@@ -3,6 +3,7 @@
 import os
 import grp
 import zlib
+import time
 import errno
 import setproctitle
 
@@ -66,6 +67,7 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.allow_sotp_reuse = True
         # Will hold share name.
         self.share = None
+        self._share = None
         # Will hold share root.
         self.root = None
         # Share mounted.
@@ -94,6 +96,12 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.backupd_conn = None
         # AES key for block decryption (set externally before FUSE read).
         self.aes_key = None
+        # Deny access set by handle_share_setttings().
+        self.block_access = False
+        # Indicates shutdown of connection.
+        self.shutdown = False
+        # Share settings handler thread.
+        self.share_handler_thread = None
         # Call parent class init.
         OTPmeFsServer1.__init__(self, **kwargs)
 
@@ -103,6 +111,8 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.pid = os.getpid()
         # Do atfork stuff.
         multiprocessing.atfork(quiet=True)
+        self.share_handler_thread = multiprocessing.start_thread(name=self.name,
+                                                target=self.handle_share_setttings)
 
     def set_proctitle(self, username, share):
         """ Set proctitle to contain sharename. """
@@ -113,6 +123,67 @@ class OTPmeFsP1(OTPmeFsServer1):
                                             username=username,
                                             share=share)
         setproctitle.setproctitle(new_proctitle)
+
+    def handle_share_setttings(self):
+        while True:
+            # Break on shutdown.
+            if self.shutdown:
+                break
+            time.sleep(1)
+            # No share set yet.
+            if not self.share:
+                continue
+            result = backend.search(object_type="share",
+                                    attribute="uuid",
+                                    value=self._share.uuid,
+                                    return_attributes=['last_modified'])
+            try:
+                last_modified = result[0]
+            except Exception:
+                continue
+            # Nothing to do if share is unchanged.
+            if self._share.last_modified == last_modified:
+                continue
+            # Reload share.
+            result = backend.search(object_type="share",
+                                    attribute="name",
+                                    value=self.share,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if not result:
+                continue
+            self._share = result[0]
+            # Block access on disabled share.
+            if not self._share.enabled:
+                self.block_access = True
+                continue
+            # Unblock share if its enabled.
+            self.block_access = False
+            # Check token assignment.
+            if not self._share.is_assigned_token(token_uuid=config.auth_token.uuid):
+                self.block_access = True
+                continue
+            # Check host limitations.
+            if self._share.limit_by_hosts:
+                if not self._share.is_assigned_host(host_uuid=self.peer.uuid,
+                                                    include_groups=True,
+                                                    include_roles=True):
+                    self.block_access = True
+                    continue
+            # Nothing more to do for restore shares.
+            if self._share.restore_share:
+                continue
+            # Set share settings.
+            self.read_only = self._share.read_only
+            if self._share.directory_mode == "0o000":
+                self.directory_mode = None
+            else:
+                self.directory_mode = int(self._share.directory_mode, 0)
+            if self._share.create_mode == "0o000":
+                self.create_mode = None
+            else:
+                self.create_mode = int(self._share.create_mode, 0)
 
     def get_backupd_conn(self, host, backup_key=None):
         try:
@@ -146,6 +217,12 @@ class OTPmeFsP1(OTPmeFsServer1):
             status = status_codes.NEED_USER_AUTH
             response = {'try_other_node':False, 'message':message}
             return self.build_response(status, response)
+
+        if self.block_access:
+            message, log_msg = _("Permission denied.", log=True)
+            self.logger.warning(log_msg)
+            response = {'try_other_node':False, 'message':message}
+            return self.build_response(False, response)
 
         if self.mounted and self.root:
             try:
@@ -214,6 +291,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
             share = result[0]
+            self._share = share
             if not share.enabled:
                 status = status_codes.PERMISSION_DENIED
                 message, log_msg = _("Share disabled: {share}", log=True)
@@ -277,6 +355,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             # Get user groups.
             default_group = stuff.get_users_default_group(self.username)
             groups = stuff.get_users_groups(self.username)
+            # Our handle_share_setttings threads requires backend access.
+            groups.append(config.group)
             if self.restore_share:
                 if share.force_group_uuid is not None:
                     group = backend.get_object(uuid=share.force_group_uuid)
@@ -383,7 +463,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                     response = {'try_other_node':False, 'message':message}
                     return self.build_response(status, response)
                 try:
-                    self.root = os.path.realpath(share.root_dir)
+                    self.root = share.root_dir
                 except Exception as e:
                     status = status_codes.UNKNOWN_OBJECT
                     message, log_msg = _("Failed to mount share: {share}", log=True)
@@ -1106,3 +1186,10 @@ class OTPmeFsP1(OTPmeFsServer1):
         except KeyError:
             pass
         return self.backupd_conn.release(path)
+
+    def _close(self, *args, **kwargs):
+        self.shutdown = True
+        if not self.share_handler_thread:
+            return
+        self.share_handler_thread.join()
+

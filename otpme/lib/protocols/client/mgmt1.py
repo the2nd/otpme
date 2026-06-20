@@ -49,8 +49,6 @@ class OTPmeMgmtP1(OTPmeClient1):
             args['force'] = config.force
         if 'language' not in args:
             args['language'] = config.language
-        if config.impersonate_token:
-            args['impersonate_token'] = config.impersonate_token
         args['job_timeout'] = config.job_timeout
         args['lock_timeout'] = config.lock_timeout
         args['lock_wait_timeout'] = config.lock_wait_timeout

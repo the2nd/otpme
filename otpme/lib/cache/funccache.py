@@ -538,11 +538,17 @@ class FuncCache(object):
             return wrapped
         return wrapper
 
-    def invalidate(self, cache_name=None):
+    def invalidate(self, cache_name=None, object_type=None):
         """ Invalidate the cache. """
         from otpme.lib import config
         if not config.cache_enabled:
             return
+        _cache = self.get_cache()
+        if cache_name is None:
+            if object_type:
+                c_args = ()
+                c_kwargs = {'object_type':object_type}
+                cache_name = _cache.get_cache_name(c_args, c_kwargs)
         trigger_name = cache_name
         if trigger_name is None:
             trigger_name = "all"
@@ -558,5 +564,4 @@ class FuncCache(object):
                                                         clear_trigger,
                                                         expire=3600)
         # Get cache of this thread.
-        _cache = self.get_cache()
         _cache.clear_cache(cache_name)

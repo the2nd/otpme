@@ -2360,10 +2360,15 @@ class AuthHandler(object):
             else:
                 self.log_auth_data = False
 
-        # Hold DB session through auth requests.
-        if not config.session:
-            _index = config.get_index_module()
-            config.session = _index.get_db_connection()
+        # Hold DB session through auth requests — only for authd, which
+        # serves one request per worker (no thread parallelism). In other
+        # daemons (e.g. mgmtd) the worker spawns job threads that would
+        # otherwise share this process-global session and corrupt the
+        # MySQL packet sequence ("Packet sequence number wrong").
+        if config.daemon_name == "authd":
+            if not config.session:
+                _index = config.get_index_module()
+                config.session = _index.get_db_connection()
 
         # Will be set to True if authentication was successful.
         self.auth_status = False

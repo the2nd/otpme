@@ -31,18 +31,30 @@ filehandlers = {}
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 
+def _within_root(root: str, path: str) -> bool:
+    """ True iff `path` is `root` itself or a descendant of `root`.
+
+    Plain str.startswith is unsafe — with root="/srv/share" it would also
+    accept "/srv/share-evil/...". commonpath compares whole components.
+    Expects both args to be absolute, normalized paths (e.g. via abspath
+    or realpath).
+    """
+    try:
+        return os.path.commonpath([root, path]) == root
+    except ValueError:
+        return False
+
 def with_root_path(allow_symlinks=False):
     def wrapper(f):
         @wraps(f)
         def wrapped(self, path, *args, **kwargs):
-            path = self.root + path
             # Get absolut path to prevent break out of root dir.
-            path = os.path.abspath(path)
-            if not path.startswith(self.root):
+            path = os.path.abspath(self.root + path)
+            if not _within_root(self.root, path):
                 raise OSError(errno.ENOENT, "No such file or directory")
             if not allow_symlinks:
                 path = os.path.realpath(path)
-                if not path.startswith(self.root):
+                if not _within_root(self.root, path):
                     raise OSError(errno.ENOENT, "No such file or directory")
             return f(self, path, *args, **kwargs)
         return wrapped
@@ -52,7 +64,7 @@ class OTPmeFsServer1(OTPmeServer1):
     """ Class that implements fileserver. """
     def __init__(self, **kwargs):
         # Root dir.
-        self.root = None
+        self._root = None
         # Share is readonly.
         self.read_only = False
         # Get logger.
@@ -65,6 +77,20 @@ class OTPmeFsServer1(OTPmeServer1):
         self.force_group_gid = None
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
+
+    @property
+    def root(self) -> Optional[str]:
+        return self._root
+
+    @root.setter
+    def root(self, value: Optional[str]) -> None:
+        # Always normalize via realpath so the prefix checks in
+        # with_root_path / _within_root operate on canonical paths
+        # (no trailing slash, symlinks resolved).
+        if value is None:
+            self._root = None
+            return
+        self._root = os.path.realpath(value)
 
     @with_root_path()
     def chmod(self, path: str, mode: int) -> int:
@@ -158,7 +184,10 @@ class OTPmeFsServer1(OTPmeServer1):
         entries = os.listdir(path)
         for entry in entries:
             entry_path = os.path.join(path, entry)
-            entry_path = entry_path.replace(self.root, "")
+            # Strip only the root prefix, not every occurrence — a file named
+            # like the root segment (e.g. root=/srv/share, entry=share-photo)
+            # would otherwise lose characters with str.replace.
+            entry_path = entry_path[len(self.root):]
             # getattr cache.
             result['getattr'][entry_path] = {}
             try:
@@ -196,7 +225,7 @@ class OTPmeFsServer1(OTPmeServer1):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         new = os.path.abspath(self.root + new)
-        if not new.startswith(self.root + "/"):
+        if not _within_root(self.root, new):
             raise OSError(errno.ENOENT, "No such file or directory")
         return os.rename(old, new)
 
@@ -215,7 +244,7 @@ class OTPmeFsServer1(OTPmeServer1):
             abs_source = os.path.abspath(os.path.join(os.path.dirname(target), source))
         else:
             abs_source = os.path.abspath(self.root + source)
-        if not abs_source.startswith(self.root + "/"):
+        if not _within_root(self.root, abs_source):
             raise OSError(errno.ENOENT, "No such file or directory")
         result = os.symlink(source, target)
         if self.force_group_gid:
@@ -335,7 +364,7 @@ class OTPmeFsServer1(OTPmeServer1):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         source = os.path.abspath(self.root + source)
-        if not source.startswith(self.root + "/"):
+        if not _within_root(self.root, source):
             raise OSError(errno.ENOENT, "No such file or directory")
         return os.link(source, target)
 

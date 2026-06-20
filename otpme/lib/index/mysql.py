@@ -33,9 +33,9 @@ CONF_FILE = os.path.join(INDEX_DIR, CONF_FILE_NAME)
 LOGFILE = os.path.join(config.log_dir, "mysqld.log")
 ETC_CONF_FILE = os.path.join(config.config_dir, CONF_FILE_NAME)
 
-DBAPI = "cymysql"
+DBAPI = "pymysql"
+#DBAPI = "cymysql"
 #DBAPI = "mysqldb"
-#DBAPI = "pymysql"
 MAX_CONNECTIONS = 500
 KEY_BUFFER_SIZE = "160M"
 THREAD_STACK = "192K"
@@ -567,10 +567,11 @@ def init(init_file_dir_perms=False):
 
 def is_available(write=True):
     """ Check if index is available. """
+    socket_dir = get_socket_dir()
     if write:
-        if not os.access(INDEX_DIR, os.W_OK):
+        if not os.access(socket_dir, os.W_OK):
             return False
-    if not os.access(INDEX_DIR, os.R_OK):
+    if not os.access(socket_dir, os.R_OK):
         return False
     return True
 
@@ -596,25 +597,21 @@ def get_db_engine():
             msg = msg.format(mysql_dbapi)
             raise OTPmeException(msg)
 
-        #from sqlalchemy.pool import QueuePool
-        # FIXME: Using NullPool to prevent "Aborted connection ..." error in mysqld.log.
-        # https://www.mail-archive.com/sqlalchemy@googlegroups.com/msg45126.html
-        from sqlalchemy.pool import NullPool
+        # QueuePool amortizes the connect/auth roundtrip across queries
+        # (NullPool reconnected on every checkout, which was 5-20x slower).
+        # pool_pre_ping issues a cheap SELECT 1 before handing out a
+        # connection — this catches fork-stale and server-timeout
+        # connections that motivated the old NullPool workaround
+        # (https://www.mail-archive.com/sqlalchemy@googlegroups.com/msg45126.html).
+        from sqlalchemy.pool import QueuePool
         engine = create_engine(db_uri,
-                            # FIXME: make this a config file option.
-                            pool_pre_ping=False,
-                            #isolation_level="SERIALIZABLE",
+                            pool_pre_ping=True,
+                            pool_recycle=3600,
+                            pool_size=32,
+                            max_overflow=16,
                             isolation_level="READ UNCOMMITTED",
-                            #isolation_level="READ COMMITTED",
-                            #isolation_level="REPEATABLE READ",
-                            #connect_args={'connect_timeout ':10},
-                            connect_args={'connect_timeout': 10,},
-                            #convert_unicode=True,
-                            #pool_recycle=3600,
-                            #pool_size=64,
-                            #max_overflow=16,
-                            #poolclass=QueuePool,
-                            poolclass=NullPool,
+                            connect_args={'connect_timeout': 10},
+                            poolclass=QueuePool,
                             echo=False)
 
         # https://docs.sqlalchemy.org/en/20/core/pooling.html#switching-pool-implementations
