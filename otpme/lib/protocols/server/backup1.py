@@ -29,6 +29,8 @@ from otpme.lib.protocols.server.fs import OTPmeFsServer1
 from otpme.lib.exceptions import *
 
 filehandlers = {}
+getattr_cache = {}
+readdir_cache = {}
 
 PASS_FILE = ".password"
 
@@ -1057,6 +1059,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
 
     @fix_snapshot_path()
     def getattr(self, path: str, fh: Optional[int] = None) -> dict[str, Any]:
+        global getattr_cache
+        try:
+            result = getattr_cache[path]
+        except KeyError:
+            pass
+        else:
+            return result
         result = super().getattr(path, fh)
         mode = result.get("st_mode", 0)
         # Directories are real dirs in tree/ — nothing to fix.
@@ -1088,6 +1097,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
                     result["st_blksize"] = 4194304
             except (IOError, OSError, ValueError, IndexError) as e:
                 pass
+        # Update cache.
+        getattr_cache[path] = result
         return result
 
     def mkdir(self, path: str, mode: int) -> int:
@@ -1095,7 +1106,16 @@ class OTPmeBackupP1(OTPmeFsServer1):
 
     @fix_snapshot_path()
     def readdir(self, path: str) -> list:
-        result = super().readdir(path)
+        global readdir_cache
+        if self.snapshot:
+            cache_key = f"{self.snapshot}:{path}"
+            try:
+                result = readdir_cache[cache_key]
+            except KeyError:
+                pass
+            else:
+                return result
+        result = super().readdir(path, permanent_cache=True)
         if not self.snapshot:
             return result
         readdir_result = []
@@ -1161,6 +1181,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
             x_path = "/".join(x_path)
             x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
             result['getxattr'][x_path] = x_data
+        # Update cache.
+        if self.snapshot:
+            readdir_cache[cache_key] = result
         return result
 
     @fix_snapshot_path()

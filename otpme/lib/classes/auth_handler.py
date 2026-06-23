@@ -1270,16 +1270,17 @@ class AuthHandler(object):
                 token_verify_parms['response'] = self.response
 
         # Handle smartcard tokens.
-        found_smartcard_token = False
-        if _verify_token.pass_type == "smartcard":
-            found_smartcard_token = True
-        if _sftoken and _sftoken.pass_type == "smartcard":
-            found_smartcard_token = True
-        if found_smartcard_token:
-            if not self.smartcard_data:
-                return
-            # Add smartcard data to token verify parameters.
-            token_verify_parms['smartcard_data'] = self.smartcard_data
+        if not temp:
+            found_smartcard_token = False
+            if _verify_token.pass_type == "smartcard":
+                found_smartcard_token = True
+            if _sftoken and _sftoken.pass_type == "smartcard":
+                found_smartcard_token = True
+            if found_smartcard_token:
+                if not self.smartcard_data:
+                    return
+                # Add smartcard data to token verify parameters.
+                token_verify_parms['smartcard_data'] = self.smartcard_data
 
         # Add session UUID.
         token_verify_parms['session_uuid'] = self.new_session_uuid

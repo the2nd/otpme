@@ -482,8 +482,15 @@ Per\-username rate limit on the SSO portal /login POST endpoint. Targets account
 .br
 Object types: site
 .TP
-.B httpd_socket_uri \fR(str, default: tcp://[::]:443)
-Listen socket URI for the SSO portal HTTPS daemon. Supports \fBtcp://address:port\fR. The most specific match wins (node/host override unit overrides site) so individual SSO hosts can bind a non\-default port (e.g. when fronted by a reverse proxy).
+.B httpd_ssl_socket_uri \fR(str, default: tcp://[::]:443)
+Listen socket URI for the SSO portal HTTPS (TLS) daemon. Supports \fBtcp://address:port\fR. The most specific match wins (node/host override unit overrides site) so individual SSO hosts can bind a non\-default port (e.g. when fronted by a reverse proxy).
+.br
+Object types: site, unit, node, host
+.TP
+.B httpd_socket_uri \fR(str, default: tcp://[::]:80)
+Listen socket URI for the plain\-HTTP CA\-publish listener that serves the Realm and Site CA certificates (\fBrealm_ca.pem\fR, \fBsite_ca.pem\fR) for trust\-store bootstrapping. Supports \fBtcp://address:port\fR. The most specific match wins (node/host override unit overrides site). Disable the listener by setting
+.B httpd_workers
+to 0 (typical when port 80 is owned by a reverse proxy or ACME http\-01 responder).
 .br
 Object types: site, unit, node, host
 .TP
@@ -593,10 +600,17 @@ worker processes. Increase on busy nodes to handle more concurrent authenticatio
 .br
 Object types: site, unit, node
 .TP
-.B httpd_workers \fR(int, default: 8)
+.B httpd_ssl_workers \fR(int, default: 8)
 Number of preforked
 .B httpd
-worker processes serving the SSO portal. Increase on busy SSO hosts to handle more concurrent HTTPS requests. The most specific match wins (node/host override unit overrides site).
+worker processes serving the SSO portal over HTTPS. Increase on busy SSO hosts to handle more concurrent TLS requests. The most specific match wins (node/host override unit overrides site).
+.br
+Object types: site, unit, node, host
+.TP
+.B httpd_workers \fR(int, default: 2)
+Number of preforked worker processes for the plain\-HTTP CA\-publish listener bound on
+.BR httpd_socket_uri .
+Set to 0 to disable the listener entirely (e.g. when port 80 is owned by a reverse proxy or ACME http\-01 responder).
 .br
 Object types: site, unit, node, host
 .TP

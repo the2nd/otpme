@@ -1491,8 +1491,8 @@ class OTPmeServer1(object):
                                                 client_ip)
             if len(found_clients) > 1:
                 msg, log_msg = _("More than one client has configured IP '{client_ip}': {clients}", log=True)
-                msg = msg.format(client_ip=self.client_ip, clients=', '.join(found_clients))
-                log_msg = log_msg.format(client_ip=self.client_ip, clients=', '.join(found_clients))
+                msg = msg.format(client_ip=client_ip, clients=', '.join(found_clients))
+                log_msg = log_msg.format(client_ip=client_ip, clients=', '.join(found_clients))
                 self.logger.warning(log_msg)
                 log_msg = _("If you have clients that send requests without a client name (e.g. NAS-ID for radius) you can map a client name to this clients by adding the correspondig IP to the client config. But only to one client!", log=True)[1]
                 self.logger.warning(log_msg)

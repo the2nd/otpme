@@ -28,6 +28,7 @@ from otpme.lib.pki.cert import SSLCert
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
 from otpme.web.app import app
+from otpme.web.certs import app as certs_app
 
 from otpme.lib.exceptions import *
 
@@ -48,14 +49,28 @@ class HttpDaemon(OTPmeDaemon):
         # Stop gunicorn. terminate() sends SIGTERM (graceful). If gunicorn
         # doesn't exit within the timeout (stuck greenlet, hung worker),
         # fall back to SIGKILL so daemon shutdown can't hang forever.
-        self.gunicorn_child.terminate()
-        self.gunicorn_child.join(timeout=35)
-        if self.gunicorn_child.is_alive():
-            log_msg = _("gunicorn did not exit gracefully within 35s; sending SIGKILL", log=True)[1]
-            self.logger.warning(log_msg)
-            self.gunicorn_child.kill()
-            self.gunicorn_child.join(timeout=5)
-        self.gunicorn_child.close()
+        # Both the SSL/SSO gunicorn AND the optional plain-HTTP CA
+        # publisher share this lifecycle -- iterate over the bundle.
+        for label, child in (("https", self.gunicorn_ssl_child),
+                              ("http", self.gunicorn_child)):
+            if child is None:
+                continue
+            try:
+                child.terminate()
+                child.join(timeout=35)
+                if child.is_alive():
+                    log_msg = _("gunicorn ({label}) did not exit gracefully "
+                                "within 35s; sending SIGKILL", log=True)[1]
+                    log_msg = log_msg.format(label=label)
+                    self.logger.warning(log_msg)
+                    child.kill()
+                    child.join(timeout=5)
+                child.close()
+            except Exception as e:
+                log_msg = _("Error stopping gunicorn ({label}): {error}",
+                            log=True)[1]
+                log_msg = log_msg.format(label=label, error=e)
+                self.logger.warning(log_msg)
         # Remove cert/key files.
         if os.path.exists(self.cert_file):
             os.remove(self.cert_file)
@@ -67,6 +82,10 @@ class HttpDaemon(OTPmeDaemon):
         """ Start daemon loop. """
         # Setup logger.
         self.logger = log.setup_logger(pid=True)
+        self.gunicorn_ssl_child = None
+        # Separate gunicorn child for the plain-HTTP CA publisher.
+        # ``None`` means "not started" (either disabled via config or
+        # spawn failed) -- signal_handler tolerates that.
         self.gunicorn_child = None
 
         # Configure ourselves (e.g. certificates etc.)
@@ -183,10 +202,10 @@ class HttpDaemon(OTPmeDaemon):
 
         # Gunicorn options
         own_host = backend.get_object(uuid=config.uuid)
-        socket_uri = own_host.get_config_parameter("httpd_socket_uri")
+        socket_uri = own_host.get_config_parameter("httpd_ssl_socket_uri")
         if not socket_uri:
             socket_uri = "tcp://[::]:443"
-        httpd_workers = own_host.get_config_parameter("httpd_workers")
+        httpd_workers = own_host.get_config_parameter("httpd_ssl_workers")
         if not httpd_workers:
             httpd_workers = 4
         options = {
@@ -203,13 +222,13 @@ class HttpDaemon(OTPmeDaemon):
           'ssl_context': create_ssl_context,
           'user': self.user,
           'group': self.group,
-          'proc_name': 'otpme-httpd',
+          'proc_name': 'otpme-httpd-https',
           'logger_class': CustomLogger,
         }
 
         # Wrapper to fix "ggevent.py:38: MonkeyPatchWarning: Monkey-patching ssl after ssl has already been imported may lead to errors, including..."
         # https://github.com/benoitc/gunicorn/issues/2796
-        def start_gunicorn():
+        def start_https_gunicorn():
             #import sys
             #del sys.modules['ssl']
             try:
@@ -221,10 +240,71 @@ class HttpDaemon(OTPmeDaemon):
 
         # Start Gunicorn.
         gunicorn_app = GunicornApp(app, options)
-        self.gunicorn_child = multiprocessing.start_process(name="gunicorn",
+        self.gunicorn_ssl_child = multiprocessing.start_process(name="gunicorn-https",
                                                 #target=gunicorn_app.run,
-                                                target=start_gunicorn,
+                                                target=start_https_gunicorn,
                                                 new_process_group=True)
+
+        # Plain-HTTP CA publisher: a second gunicorn instance binds the
+        # CA-publish app on the configured non-TLS socket. We can't
+        # share the SSO master because gunicorn's TLS config is
+        # per-master -- every bound socket on a single instance is
+        # either all-TLS or all-plain. Disabling is opt-in via
+        # ``httpd_workers=0`` -- typical use case is a host where
+        # port 80 is owned by a reverse proxy / ACME http-01 responder.
+        http_workers = own_host.get_config_parameter("httpd_workers")
+        if http_workers is None:
+            http_workers = 2
+        http_socket_uri = own_host.get_config_parameter("httpd_socket_uri")
+        if not http_socket_uri:
+            http_socket_uri = "tcp://[::]:80"
+
+        if http_workers > 0:
+            http_options = {
+                'bind': http_socket_uri,
+                'workers': http_workers,
+                'worker_class': 'gevent',
+                'worker_connections': 100,
+                'timeout': 30,
+                'keepalive': 5,
+                'user': self.user,
+                'group': self.group,
+                'proc_name': 'otpme-httpd-http',
+                'logger_class': CustomLogger,
+            }
+
+            def start_http_gunicorn():
+                # Same gevent-monkey-patch ordering rationale as the SSL
+                # child: patch BEFORE gunicorn imports its stdlib bits,
+                # else we get the MonkeyPatchWarning + sporadic SSL/IO
+                # races.
+                try:
+                    import gevent.monkey
+                    gevent.monkey.patch_all()
+                except ImportError:
+                    pass
+                GunicornApp(certs_app, http_options).run()
+
+            try:
+                self.gunicorn_child = multiprocessing.start_process(
+                                                name="gunicorn-http",
+                                                target=start_http_gunicorn,
+                                                new_process_group=True)
+                log_msg = _("Started plain-HTTP httpd on {uri} ({workers} workers).", log=True)[1]
+                log_msg = log_msg.format(uri=http_socket_uri,
+                                          workers=http_workers)
+                self.logger.info(log_msg)
+            except Exception as e:
+                # A failed spawn must NOT block the SSO gunicorn. The
+                # CA publisher is auxiliary; log and continue.
+                log_msg = _("Failed to start plain-HTTP CA publisher on "
+                            "{uri}: {error}", log=True)[1]
+                log_msg = log_msg.format(uri=http_socket_uri, error=e)
+                self.logger.warning(log_msg, exc_info=True)
+                self.gunicorn_child = None
+        else:
+            log_msg = _("Plain-HTTP httpd disabled (httpd_workers=0).", log=True)[1]
+            self.logger.info(log_msg)
 
         # Start main loop.
         self.__run()
@@ -288,11 +368,11 @@ class HttpDaemon(OTPmeDaemon):
         # gracefully restarted (drain + replace), each new worker
         # invokes create_ssl_context which re-reads the updated files.
         try:
-            os.kill(self.gunicorn_child.pid, signal.SIGHUP)
+            os.kill(self.gunicorn_ssl_child.pid, signal.SIGHUP)
         except Exception as e:
             log_msg = _("Cert reload: failed to SIGHUP gunicorn "
                         "(pid={pid}): {error}", log=True)[1]
-            log_msg = log_msg.format(pid=getattr(self.gunicorn_child,
+            log_msg = log_msg.format(pid=getattr(self.gunicorn_ssl_child,
                                                   'pid', '?'), error=e)
             self.logger.warning(log_msg, exc_info=True)
             return False

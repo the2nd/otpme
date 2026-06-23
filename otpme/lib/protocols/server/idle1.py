@@ -159,6 +159,7 @@ class OTPmeIdleP1(OTPmeServer1):
                         'connect_time'  : time.time(),
                         'login_time'    : login_time,
                         'login_token'   : login_token,
+                        'client_ip'     : self.client,
                         }
             self.q = self.dispatcher.subscribe(username, host, login_data=login_data)
             self.subscribed_username = username

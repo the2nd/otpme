@@ -856,14 +856,16 @@ class JsonFile(object):
 
     @write_lock(write=True)
     def write(self, object_config, full_data_update=None,
-        user=None, group=True, mode=0o660, user_acls=None, group_acls=None):
+        user=None, group=True, mode=0o660,
+        user_acls=None, group_acls=None):
         """ Write dictionary to JSON config file. """
+        from otpme.lib import stuff
+        from otpme.lib import config
+
         if user_acls is None:
             user_acls = []
         if group_acls is None:
             group_acls = []
-        from otpme.lib import stuff
-        from otpme.lib import config
 
         if user is None:
             user = config.user
@@ -907,37 +909,40 @@ class JsonFile(object):
         except ValueError:
             pass
 
-        new_db = False
-        if not os.path.exists(self.file_path):
-            new_db = True
+        if full_data_update is True:
+            self.write_file(object_config,
+                            user=user,
+                            group=group,
+                            mode=mode,
+                            user_acls=user_acls,
+                            group_acls=group_acls)
+            return object_config
 
-        if not new_db:
+        new_file = False
+        if not os.path.exists(self.file_path):
+            new_file = True
+
+        increment_ids = []
+        _incremental_updates = []
+        if not new_file:
             current_oc = self.read_file()
-            new_incr_id = None
             if incremental_updates:
-                # Generate increment ID.
-                new_incr_id = json.dumps(incremental_updates)
-                new_incr_id = stuff.gen_md5(new_incr_id)
-                # Skip already written increment.
+                # Get increment IDs.
                 try:
                     increment_ids = current_oc["INCREMENT_IDS"]
                 except KeyError:
                     increment_ids = []
-                increment_ids = sorted(increment_ids)
-                for x in increment_ids:
-                    incr_id = x[1]
-                    if new_incr_id == incr_id:
-                        return
-
-            if full_data_update is True:
-                self.write_file(object_config,
-                                user=user,
-                                group=group,
-                                mode=mode)
-                return object_config
+                # Skip already written increment.
+                for x in incremental_updates:
+                    new_incr_id = json.dumps(x)
+                    new_incr_id = stuff.gen_md5(new_incr_id)
+                    if new_incr_id in increment_ids:
+                        continue
+                    increment_ids.append(new_incr_id)
+                    _incremental_updates.append(x)
 
             _modified_attributes = modified_attributes.copy()
-            for x in incremental_updates:
+            for x in _incremental_updates:
                 attr = x[1]
                 action = x[2]
                 value_type = x[3]
@@ -1040,24 +1045,13 @@ class JsonFile(object):
             for attr in deleted_attributes:
                 current_oc.pop(attr)
         else:
-            new_incr_id = None
-            increment_ids = []
             # Set new increment ID.
             current_oc = object_config
 
         # Save increment ID.
-        if new_incr_id:
-            try:
-                _increment_ids = current_oc['INCREMENT_IDS']
-            except KeyError:
-                _increment_ids = []
-            for x in _increment_ids:
-                if x in increment_ids:
-                    continue
-                increment_ids.append(x)
-            increment_ids.append([time.time(), new_incr_id])
-            increment_ids = sorted(increment_ids)[-500:]
+        if _incremental_updates:
             current_oc['INCREMENT_IDS'] = increment_ids
+
         # Make sure data is written.
         self.write_file(current_oc,
                         user=user,

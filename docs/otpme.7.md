@@ -687,11 +687,20 @@ auto_disable policy. NAT-safe because the key is the submitted
 username.  
 Object types: site
 
-**httpd_socket_uri (str, default: tcp://\[::\]:443)**  
-Listen socket URI for the SSO portal HTTPS daemon. Supports
+**httpd_ssl_socket_uri (str, default: tcp://\[::\]:443)**  
+Listen socket URI for the SSO portal HTTPS (TLS) daemon. Supports
 **tcp://address:port**. The most specific match wins (node/host override
 unit overrides site) so individual SSO hosts can bind a non-default port
 (e.g. when fronted by a reverse proxy).  
+Object types: site, unit, node, host
+
+**httpd_socket_uri (str, default: tcp://\[::\]:80)**  
+Listen socket URI for the plain-HTTP CA-publish listener that serves the
+Realm and Site CA certificates (**realm_ca.pem**, **site_ca.pem**) for
+trust-store bootstrapping. Supports **tcp://address:port**. The most
+specific match wins (node/host override unit overrides site). Disable
+the listener by setting **httpd_workers** to 0 (typical when port 80 is
+owned by a reverse proxy or ACME http-01 responder).  
 Object types: site, unit, node, host
 
 **auth_jwt_valid (time, default: 60s)**  
@@ -830,10 +839,18 @@ to handle more concurrent authentication requests. The most specific
 match wins (node overrides unit overrides site).  
 Object types: site, unit, node
 
-**httpd_workers (int, default: 8)**  
-Number of preforked **httpd** worker processes serving the SSO portal.
-Increase on busy SSO hosts to handle more concurrent HTTPS requests. The
-most specific match wins (node/host override unit overrides site).  
+**httpd_ssl_workers (int, default: 8)**  
+Number of preforked **httpd** worker processes serving the SSO portal
+over HTTPS. Increase on busy SSO hosts to handle more concurrent TLS
+requests. The most specific match wins (node/host override unit
+overrides site).  
+Object types: site, unit, node, host
+
+**httpd_workers (int, default: 2)**  
+Number of preforked worker processes for the plain-HTTP CA-publish
+listener bound on **httpd_socket_uri**. Set to 0 to disable the listener
+entirely (e.g. when port 80 is owned by a reverse proxy or ACME http-01
+responder).  
 Object types: site, unit, node, host
 
 **allow_who_from_hosts (bool, default: false)**  

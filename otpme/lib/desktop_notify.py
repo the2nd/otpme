@@ -306,6 +306,49 @@ def notify(summary, body="", app_name="otpme-agent",
         return None
 
 
+def get_capabilities(user=None):
+    """ Query the notification daemon for the capabilities it advertises
+    via org.freedesktop.Notifications.GetCapabilities. Returns the list
+    of capability strings (e.g. 'body', 'body-markup', 'body-hyperlinks',
+    'actions', 'icon-static'), or None if the bus is unreachable. """
+    try:
+        from jeepney import DBusAddress, new_method_call
+        from jeepney.io.blocking import open_dbus_connection
+    except ImportError:
+        return None
+
+    bus_address = _session_bus_address(user=user)
+    if bus_address is None:
+        return None
+
+    notify_address = DBusAddress(
+        object_path='/org/freedesktop/Notifications',
+        bus_name='org.freedesktop.Notifications',
+        interface='org.freedesktop.Notifications',
+    )
+    msg = new_method_call(notify_address, 'GetCapabilities')
+    try:
+        with open_dbus_connection(bus=bus_address) as conn:
+            reply = conn.send_and_get_reply(msg)
+    except Exception:
+        return None
+    try:
+        return list(reply.body[0])
+    except Exception:
+        return None
+
+
+def supports_hyperlinks(user=None):
+    """ True iff the notification daemon advertises 'body-hyperlinks',
+    i.e. <a href="..."> in the body will be rendered as a clickable
+    link. Returns False on any error (bus unreachable, jeepney missing,
+    daemon doesn't list the capability). """
+    caps = get_capabilities(user=user)
+    if not caps:
+        return False
+    return "body-hyperlinks" in caps
+
+
 def close(notification_id, user=None):
     """ Dismiss a previously-issued notification by id. Returns True on
     success, False otherwise. Never raises. """

@@ -450,6 +450,17 @@ class OTPmeFS(fuse.Operations):
                     raise OSError(errno.EHOSTUNREACH, _("Server unreachable")) from e
                 time.sleep(1)
                 continue
+            if response_code == status_codes.BACKUP_CONNECTION_BROKEN:
+                try:
+                    try_other_node = response['try_other_node']
+                except:
+                    try_other_node = False
+                self.fsd_conn.close()
+                self.fsd_conn = None
+                time.sleep(1)
+                if not try_other_node:
+                    raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
+                continue
             break
         return status, response_code, response, binary_data
 
@@ -555,10 +566,13 @@ class OTPmeFS(fuse.Operations):
         try:
             getattr_cached_data = getattr_cache[path]
             cache_time = getattr_cached_data['cache_time']
-            now = time.time()
             use_cache = False
-            if (now - cache_time) <= 5:
+            if cache_time is None:
                 use_cache = True
+            else:
+                now = time.time()
+                if (now - cache_time) <= 5:
+                    use_cache = True
         except KeyError:
             use_cache = False
         if use_cache:
@@ -987,10 +1001,13 @@ class OTPmeFS(fuse.Operations):
         try:
             getxattr_cached_data = getxattr_cache[path][name]
             cache_time = getxattr_cached_data['cache_time']
-            now = time.time()
             use_cache = False
-            if (now - cache_time) <= 5:
+            if cache_time is None:
                 use_cache = True
+            else:
+                now = time.time()
+                if (now - cache_time) <= 5:
+                    use_cache = True
         except KeyError:
             use_cache = False
         if use_cache:

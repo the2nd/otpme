@@ -179,7 +179,11 @@ class OTPmeFsServer1(OTPmeServer1):
         return mkdir_result
 
     @with_root_path()
-    def readdir(self, path: str) -> list:
+    def readdir(self, path: str, permanent_cache=False) -> list:
+        if permanent_cache:
+            cache_time = None
+        else:
+            cache_time = time.time()
         result = {'getattr':{}, 'getxattr':{}}
         entries = os.listdir(path)
         for entry in entries:
@@ -195,7 +199,7 @@ class OTPmeFsServer1(OTPmeServer1):
                 result['getattr'][entry_path]['result'] = x_getattr
             except Exception as e:
                 result['getattr'][entry_path]['exc'] = e.errno
-            result['getattr'][entry_path]['cache_time'] = time.time()
+            result['getattr'][entry_path]['cache_time'] = cache_time
             # getxattr cache.
             result['getxattr'][entry_path] = {}
             result['getxattr'][entry_path]['security.selinux'] = {}
@@ -204,14 +208,14 @@ class OTPmeFsServer1(OTPmeServer1):
                 result['getxattr'][entry_path]['security.selinux']['result'] = x_getxattr.hex()
             except Exception as e:
                 result['getxattr'][entry_path]['security.selinux']['exc'] = e.errno
-            result['getxattr'][entry_path]['security.selinux']['cache_time'] = time.time()
+            result['getxattr'][entry_path]['security.selinux']['cache_time'] = cache_time
             result['getxattr'][entry_path]['system.posix_acl_access'] = {}
             try:
                 x_getxattr = self.getxattr(entry_path, "system.posix_acl_access")
                 result['getxattr'][entry_path]['system.posix_acl_access']['result'] = x_getxattr.hex()
             except Exception as e:
                 result['getxattr'][entry_path]['system.posix_acl_access']['exc'] = e.errno
-            result['getxattr'][entry_path]['system.posix_acl_access']['cache_time'] = time.time()
+            result['getxattr'][entry_path]['system.posix_acl_access']['cache_time'] = cache_time
         readdir = ['.', '..', *entries]
         result['readdir'] = readdir
         return result

@@ -479,7 +479,11 @@ class OTPmeAgent(UnixDaemon):
                 try:
                     login_time = self.login_sessions[login_pid]['server_sessions'][realm][site]['login_time']
                 except Exception as e:
-                    login_time = None
+                    try:
+                        idled_conn.close()
+                    except Exception:
+                        pass
+                    return
 
                 command_args = {
                                 'username'      : login_user,
@@ -564,12 +568,17 @@ class OTPmeAgent(UnixDaemon):
                             self.logger.info(log_msg)
                             continue
 
-                        msg = _("{share_id} now available at {mount_point}")
-                        msg = msg.format(share_id=share_id, mount_point=mount_point)
+                        if desktop_notify.supports_hyperlinks(user=login_user):
+                            body = _('{share_id} now available. Open <a href="file://{mount_point}">{mount_point}</a>')
+                            body = body.format(share_id=share_id, mount_point=mount_point)
+                        else:
+                            body = _("{share_id} now available at {mount_point}")
+                            body = body.format(share_id=share_id, mount_point=mount_point)
+
                         try:
                             desktop_notify.notify(
                               summary="Share mounted",
-                              body=msg,
+                              body=body,
                               icon="folder-remote",
                               urgency="normal",
                               user=login_user,

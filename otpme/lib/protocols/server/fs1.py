@@ -377,14 +377,19 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                 repo_id = f"share/{restore_share.site}/{restore_share.name}"
-                self.backupd_conn = self.get_backupd_conn(host, backup_key=backup_key)
+                try:
+                    self.backupd_conn = self.get_backupd_conn(host, backup_key=backup_key)
+                except Exception:
+                    status = status_codes.BACKUP_CONNECTION_BROKEN
+                    response = {'try_other_node':True, 'message':'Backupd connection failed.'}
+                    return self.build_response(status, response)
                 try:
                     self.backupd_conn.mount(repo_id,
                                             username=self.username,
                                             default_group=default_group,
                                             groups=groups)
                 except Exception as e:
-                    status = False
+                    status = status_codes.BACKUP_CONNECTION_BROKEN
                     message, log_msg = _("Failed to mount restore share: {share_name}: {e}", log=True)
                     message = message.format(share_name=share.name, e=e)
                     log_msg = log_msg.format(share_name=share.name, e=e)
@@ -395,7 +400,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                     try:
                         file_data = self.backupd_conn.read_cryptfs_settings()[1]
                     except Exception as e:
-                        status = False
+                        status = status_codes.BACKUP_CONNECTION_BROKEN
                         message, log_msg = _("Failed to read cryptfs settings from backup server: {share_name}: {e}", log=True)
                         message = message.format(share_name=share.name, e=e)
                         log_msg = log_msg.format(share_name=share.name, e=e)
@@ -408,7 +413,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                         chunk_hashes = [l for l in lines[2:] if l]
                         buf = b""
                         for h in chunk_hashes:
-                            blob = self.backupd_conn.get_chunk(h)[1]
+                            try:
+                                blob = self.backupd_conn.get_chunk(h)[1]
+                            except Exception as e:
+                                status = status_codes.BACKUP_CONNECTION_BROKEN
+                                message, log_msg = _("Failed to read cryptfs settings: {e}", log=True)
+                                message = message.format(e=e)
+                                log_msg = log_msg.format(e=e)
+                                self.logger.warning(log_msg)
+                                response = {'try_other_node':True, 'message':message}
+                                return self.build_response(status, response)
                             # Decrypt and decompress.
                             flag, encrypted = blob[:1], blob[1:]
                             data = decrypt_block(self.aes_key, encrypted)
@@ -715,7 +729,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.exists(path)
+            try:
+                status, message = self.backupd_conn.exists(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run exists command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "get_mtime":
@@ -725,7 +748,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.get_mtime(path)
+            try:
+                status, message = self.backupd_conn.get_mtime(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run get_mtime command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "get_ctime":
@@ -735,7 +767,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.get_ctime(path)
+            try:
+                status, message = self.backupd_conn.get_ctime(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run get_ctime command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "access":
@@ -751,7 +792,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing amode.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.access(path, amode)
+            try:
+                status, message = self.backupd_conn.access(path, amode)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run access command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "create":
@@ -767,7 +817,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing mode.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.create(path, mode)
+            try:
+                status, message = self.backupd_conn.create(path, mode)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run create command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "getattr":
@@ -777,7 +836,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.getattr(path)
+            try:
+                status, message = self.backupd_conn.getattr(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run getattr command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "link":
@@ -793,7 +861,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing target.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.link(target, source)
+            try:
+                status, message = self.backupd_conn.link(target, source)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run link command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "read":
@@ -826,7 +903,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.readdir(path)
+            try:
+                status, message = self.backupd_conn.readdir(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run readdir command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "readlink":
@@ -836,7 +922,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.readlink(path)
+            try:
+                status, message = self.backupd_conn.readlink(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run readlink command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "rename":
@@ -852,7 +947,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing new.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.rename(old, new)
+            try:
+                status, message = self.backupd_conn.rename(old, new)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run rename command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "statfs":
@@ -862,7 +966,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.statfs(path)
+            try:
+                status, message = self.backupd_conn.statfs(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run statfs command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "symlink":
@@ -878,7 +991,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing target.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.symlink(target, source)
+            try:
+                status, message = self.backupd_conn.symlink(target, source)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run symlink command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "link":
@@ -894,7 +1016,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing target.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.link(target, source)
+            try:
+                status, message = self.backupd_conn.link(target, source)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run link command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "truncate":
@@ -910,7 +1041,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing length.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.truncate(path, length)
+            try:
+                status, message = self.backupd_conn.truncate(path, length)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run truncate command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "utimens":
@@ -926,7 +1066,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing times.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.utimens(path, times)
+            try:
+                status, message = self.backupd_conn.utimens(path, times)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run utimens command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "unlink":
@@ -936,7 +1085,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.unlink(path)
+            try:
+                status, message = self.backupd_conn.unlink(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run unlink command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "mkdir":
@@ -952,7 +1110,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing mode.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.mkdir(path, mode)
+            try:
+                status, message = self.backupd_conn.mkdir(path, mode)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run mkdir command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "rmdir":
@@ -962,7 +1129,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.rmdir(path)
+            try:
+                status, message = self.backupd_conn.rmdir(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run rmdir command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "chmod":
@@ -978,7 +1154,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing mode.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.chmod(path, mode)
+            try:
+                status, message = self.backupd_conn.chmod(path, mode)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run chmod command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "chown":
@@ -1000,7 +1185,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing gid.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.chown(path, uid, gid)
+            try:
+                status, message = self.backupd_conn.chown(path, uid, gid)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run chown command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "write":
@@ -1016,7 +1210,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing offset.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.write(path, binary_data, offset)
+            try:
+                status, message = self.backupd_conn.write(path, binary_data, offset)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run write command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "open":
@@ -1032,7 +1235,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing flags.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.open(path, flags)
+            try:
+                status, message = self.backupd_conn.open(path, flags)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run open command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "release":
@@ -1059,7 +1271,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 message = _("Missing name.")
                 return self.build_response(status, message)
             position = command_args.get('position', 0)
-            status, binary_data = self.backupd_conn.getxattr(path, name, position)
+            try:
+                status, binary_data = self.backupd_conn.getxattr(path, name, position)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run getxattr command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             message = _("Extended attribute data.")
             return self.build_response(status, message, binary_data=binary_data)
 
@@ -1089,7 +1310,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 message = _("Missing options.")
                 return self.build_response(status, message)
             position = command_args.get('position', 0)
-            status, message = self.backupd_conn.setxattr(path, name, value, options, position)
+            try:
+                status, message = self.backupd_conn.setxattr(path, name, value, options, position)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run setxattr command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "listxattr":
@@ -1099,7 +1329,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.listxattr(path)
+            try:
+                status, message = self.backupd_conn.listxattr(path)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run listxattr command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         elif command == "removexattr":
@@ -1115,7 +1354,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing name.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.removexattr(path, name)
+            try:
+                status, message = self.backupd_conn.removexattr(path, name)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run removexattr command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             return self.build_response(status, message)
 
         else:

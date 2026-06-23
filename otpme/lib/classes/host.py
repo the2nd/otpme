@@ -1014,6 +1014,8 @@ class Host(OTPmeHost, OTPmeDevice):
                         'sso_host'  : [
                                 "CONFIG_PARAMS:httpd_workers",
                                 "CONFIG_PARAMS:httpd_socket_uri",
+                                "CONFIG_PARAMS:httpd_ssl_workers",
+                                "CONFIG_PARAMS:httpd_ssl_socket_uri",
                                 "CONFIG_PARAMS:backupd_max_conn",
                                 ],
                         },

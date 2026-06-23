@@ -5359,7 +5359,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg)
 
-        table = PrettyTable(["user", "login token", "host", "connect time", "login time"],
+        table = PrettyTable(["user", "login token", "host", "ip", "connect time", "login time"],
                             header_style="title",
                             vrules=NONE,
                             hrules=HEADER)
@@ -5377,6 +5377,7 @@ class CommandHandler(object):
             for host in sorted(response[user]):
                 entry = response[user][host] or {}
                 host = entry.get("host", "-")
+                ip = entry.get("client_ip", "-")
                 login_token = entry.get("login_token")
                 login_time = entry.get("login_time")
                 if login_time is None:
@@ -5390,7 +5391,7 @@ class CommandHandler(object):
                 else:
                     connect_time_str = datetime.datetime.fromtimestamp(
                         connect_time).strftime("%Y-%m-%d %H:%M:%S")
-                table.add_row([user, login_token, host, connect_time_str, login_time_str])
+                table.add_row([user, login_token, host, ip, connect_time_str, login_time_str])
 
         return table.get_string()
 
@@ -7004,18 +7005,24 @@ class CommandHandler(object):
                     'master_node'   : None,
                     'cluster_status': False,
                     }
-        node_threads = {}
+        nodes = []
         for node in result:
             if not node.enabled:
                 data_dict['node_status'][node.name] = {}
                 data_dict['node_status'][node.name]['status'] = False
                 continue
+            nodes.append(node)
+        nodes_count = len(nodes)
+        node_threads = {}
+        for node in nodes:
             full = False
-            if full_data_diff:
-                full = True
+            if nodes_count >= 2:
+                if full_data_diff:
+                    full = True
             full_index = False
-            if full_index_diff:
-                full_index = True
+            if nodes_count >= 2:
+                if full_index_diff:
+                    full_index = True
             node_data_thread = multiprocessing.start_thread(name=node.name,
                                                         target=get_node_data,
                                                         target_args=(node, data_dict),
