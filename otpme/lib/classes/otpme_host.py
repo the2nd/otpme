@@ -1141,6 +1141,19 @@ class OTPmeHost(OTPmeClientObject):
 
         return self._write(callback=callback)
 
+    def check_fqdn(self):
+        """ Make sure FQDN is not used by site. """
+        site = backend.get_object(uuid=self.site_uuid)
+        if self.fqdn == site.auth_fqdn:
+            msg = _("Host conflicts with site auth FQDN.")
+            raise OTPmeException(msg)
+        if self.fqdn == site.mgmt_fqdn:
+            msg = _("Host conflicts with site mgmt FQDN.")
+            raise OTPmeException(msg)
+        if self.fqdn == site.sso_fqdn:
+            msg = _("Host conflicts with site SSO FQDN.")
+            raise OTPmeException(msg)
+
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
@@ -1156,6 +1169,14 @@ class OTPmeHost(OTPmeClientObject):
         **kwargs,
         ):
         """ Add a host. """
+        # Check FQDN.
+        try:
+            self.check_fqdn()
+        except Exception as e:
+            msg = _("Invalid FQDN: {fqdn}: {e}")
+            msg = msg.format(fqdn=self.fqdn, e=e)
+            return callback.error(msg)
+
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(check_exists=False,
                                     callback=callback,

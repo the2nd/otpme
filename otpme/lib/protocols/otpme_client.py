@@ -1394,7 +1394,7 @@ class OTPmeClient(OTPmeClientBase):
 
         # When not in interactive mode we cannot call key script.
         if not self.interactive:
-            msg = (_("Cannot call key script in non-interactive mode."))
+            msg = _("Cannot call key script in non-interactive mode.")
             raise OTPmeException(msg)
 
         password = None
@@ -1404,25 +1404,14 @@ class OTPmeClient(OTPmeClientBase):
 
         command_handler = CommandHandler()
         try:
-            user_private_key, \
-            user_public_key = command_handler.gen_user_keys(username,
-                                                            password=password,
-                                                            key_len=key_len)
-            status = True
-            status_message = "Keys generated."
+            response = command_handler.gen_user_keys(username,
+                                                    password=password,
+                                                    key_len=key_len)
         except Exception as e:
             config.raise_exception()
-            user_private_key = None
-            user_public_key = None
-            status = False
-            status_message = str(e)
-
-        response = {
-                'status'        : status,
-                'message'       : status_message,
-                'private_key'   : user_private_key,
-                'public_key'    : user_public_key,
-                }
+            msg = _("Failed to generate keys: {e]")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
 
         return response
 
@@ -1450,6 +1439,9 @@ class OTPmeClient(OTPmeClientBase):
         except Exception as e:
             msg = "Failed to decode sign request."
             raise OTPmeException(msg) from e
+        # Optional: signer algo. Default rsa for backwards compat with
+        # older servers that don't include it.
+        sign_key_type = sign_request.get('sign_key_type', 'rsa')
 
         # Ask user for confirmation.
         if not config.force:
@@ -1477,6 +1469,9 @@ class OTPmeClient(OTPmeClientBase):
         script_command = [ "sign" ]
         if key_mode == "server":
             script_command.append("--server-key")
+        # Pass the signer's algo so the script dispatches openssl correctly
+        # (RSA-PSS vs pkeyutl -sign -rawin for Ed25519 etc.).
+        script_command += [ "--algo", sign_key_type ]
         script_options = [ sign_object_file, '/dev/stdout' ]
 
         # Run key script.

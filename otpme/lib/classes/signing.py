@@ -19,7 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import sign_key_cache
 from otpme.lib.encoding.base import decode
-from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib import encryption
 from otpme.lib.classes.data_objects.revoked_signature import RevokedSignature
 
 from otpme.lib.exceptions import *
@@ -274,7 +274,7 @@ class OTPmeSigner(object):
 
     def __str__(self):
         tags = None
-        if self.object_oid is not None:
+        if self.tags is not None:
             tags = ",".join(self.tags)
         msg = (f"OTPmeSigner(type={self.signer_type}, object_oid={self.object_oid}, tags={tags})")
         return msg
@@ -862,10 +862,10 @@ class OTPmeSignature(object):
         """ Verify signature. """
         # Check if signature was revoked.
         self.check_revoked()
-        # Load users public key.
+        # Load users public key via the algo-dispatching factory.
         try:
             key = decode(public_key, "base64")
-            key = RSAKey(key=key)
+            key = encryption.load_public_key(key)
         except Exception as e:
             msg = _("Unable to load public key: {e}")
             msg = msg.format(e=e)

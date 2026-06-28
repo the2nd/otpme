@@ -189,15 +189,26 @@ def get_socket_file():
     socket_file = os.path.join(socket_dir, "mysqld.sock")
     return socket_file
 
+def _mysql_env():
+    """ Subprocess env with MYSQL_PWD set so the password never reaches
+    argv / /proc/<pid>/cmdline. The mysql/mysqladmin clients use
+    MYSQL_PWD as the connection password automatically; using
+    `-p<pw>` would leak the cleartext to any local /proc reader for
+    the lifetime of the client process. """
+    env = os.environ.copy()
+    env["MYSQL_PWD"] = config.get_db_pass()
+    return env
+
 def cli():
     from otpme.lib import system_command
     socket_file = get_socket_file()
     cli_cmd = [config.mysql_bin, "-u", config.user,
                 "-S", socket_file,
-                f"-p{config.user}", DB_NAME]
+                DB_NAME]
     return_code = system_command.run(command=cli_cmd,
                                 user=config.user,
                                 group=config.group,
+                                env=_mysql_env(),
                                 call=True)
     if return_code == 0:
         return True
@@ -233,7 +244,6 @@ def status():
     socket_file = get_socket_file()
     status_cmd = [ config.mysql_admin_bin,
                 "-u", config.user,
-                f"-p{config.user}",
                 "-S", socket_file,
                 'ping']
     return_code = system_command.run(command=status_cmd,
@@ -241,6 +251,7 @@ def status():
                                     group=config.group,
                                     stdout=None,
                                     stderr=None,
+                                    env=_mysql_env(),
                                     call=True)
     if return_code == 0:
         return True
@@ -288,7 +299,6 @@ def stop():
     socket_file = get_socket_file()
     stop_cmd = [ config.mysql_admin_bin,
                 "-u", config.user,
-                f"-p{config.user}",
                 "-S", socket_file,
                 "shutdown"]
     return_code = system_command.run(command=stop_cmd,
@@ -296,6 +306,7 @@ def stop():
                                     group=config.group,
                                     stdout=None,
                                     stderr=None,
+                                    env=_mysql_env(),
                                     call=True)
     if return_code == 0:
         return True
@@ -312,7 +323,6 @@ def _reload():
     socket_file = get_socket_file()
     reload_cmd = [ config.mysql_admin_bin,
                 "-u", config.user,
-                f"-p{config.user}",
                 "-S", socket_file,
                 "--local",
                 "flush-error-log",
@@ -325,6 +335,7 @@ def _reload():
                                     group=config.group,
                                     stdout=None,
                                     stderr=None,
+                                    env=_mysql_env(),
                                     call=True)
     if return_code == 0:
         return True
@@ -333,7 +344,7 @@ def _reload():
 def create_db_user(username):
     from otpme.lib import system_command
     socket_file = get_socket_file()
-    user_statement = f"CREATE USER '{config.user}'@'localhost' IDENTIFIED BY '{config.user}';"
+    user_statement = f"CREATE USER '{config.user}'@'localhost' IDENTIFIED BY '{config.get_db_pass()}';"
     user_cmd = [config.mysql_bin,
                 "-u", config.system_user(),
                 "-S", socket_file,
@@ -359,7 +370,7 @@ def create_db_user(username):
 def set_db_user_pass(username):
     from otpme.lib import system_command
     socket_file = get_socket_file()
-    user_statement = f"ALTER USER '{config.user}'@'localhost' IDENTIFIED BY '{config.user}';"
+    user_statement = f"ALTER USER '{config.user}'@'localhost' IDENTIFIED BY '{config.get_db_pass()}';"
     user_cmd = [config.mysql_bin,
                 "-u", config.system_user(),
                 "-S", socket_file,
@@ -417,6 +428,11 @@ def init_db():
         os.rename(CONF_FILE, org_conf)
     # Create default config.
     set_default_config()
+    # Generate a per-install random DB password and persist it to
+    # config.db_pass_file BEFORE any mysql client invocation -- start()
+    # calls status() which reads MYSQL_PWD via _mysql_env(), and
+    # get_db_pass() raises if the file is missing.
+    config.set_db_pass()
     # Init DB directory.
     init_cmd = [config.mysql_install_db, f'--defaults-file={CONF_FILE}',]
     return_code = system_command.run(command=init_cmd,
@@ -575,6 +591,12 @@ def is_available(write=True):
         return False
     return True
 
+def exists():
+    """ Check if index exists. """
+    if not os.path.exists(INDEX_DIR):
+        return False
+    return True
+
 def get_db_engine():
     # Import here to speedup import time.
     from sqlalchemy import exc
@@ -591,7 +613,7 @@ def get_db_engine():
         or mysql_dbapi == "pymysql" \
         or mysql_dbapi == "cymysql":
             socket_file = get_socket_file()
-            db_uri = f"mysql+{mysql_dbapi}://{config.user}:{config.user}@/{DB_NAME}?unix_socket={socket_file}"
+            db_uri = f"mysql+{mysql_dbapi}://{config.user}:{config.get_db_pass()}@/{DB_NAME}?unix_socket={socket_file}"
         else:
             msg = _("Unknown sqlalchemy mysql dbapi: {}")
             msg = msg.format(mysql_dbapi)

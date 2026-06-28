@@ -54,7 +54,7 @@ read_value_acls = {
 write_value_acls = {
                     "add"       : [ "words", "dictionary" ],
                     "edit"      : [ "config" ],
-                    "delete"    : [ "dictionary" ],
+                    "delete"    : [ "words", "dictionary" ],
             }
 
 default_acls = []
@@ -688,8 +688,10 @@ class Dictionary(OTPmeObject):
         # Update index.
         self.update_index("dict_size", self.dict_size)
 
+    @check_acls(['delete:words'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def clear(
         self,
         _caller: str="API",

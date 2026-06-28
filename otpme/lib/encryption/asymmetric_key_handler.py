@@ -29,8 +29,8 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.exceptions import *
 
 class AsymmetricKeyHandler(object):
-    def __init__(self, key_file=None, key=None, key_password=None,
-        password=None, aes_key=None, **kwargs):
+    def __init__(self, key_file=None, key=None, key_instance=None,
+        key_password=None, password=None, aes_key=None, **kwargs):
         self._public_key = None
         self._private_key = None
         self._public_key_base64 = None
@@ -38,20 +38,28 @@ class AsymmetricKeyHandler(object):
         self._ssh_public_key = None
         #self._ssh_private_key = None
         self.pass_hash_type = "PBKDF2"
-        if key_file:
-            fd = open(key_file, "r")
-            key = fd.read()
-            fd.close()
-        if key:
-            if password or aes_key:
-                key = self.decrypt_key(key_pack=key,
-                                    password=password,
-                                    aes_key=aes_key)
-            if isinstance(key_password, str):
-                key_password = key_password.encode()
-            self.load_key(key=key, password=key_password)
+        if key_instance is not None:
+            # Pre-parsed cryptography key object -- skip PEM parsing.
+            # Private keys have a private_bytes() method, public keys don't.
+            if hasattr(key_instance, 'private_bytes'):
+                self._private_key = key_instance
+            else:
+                self._public_key = key_instance
         else:
-            self._private_key = self.gen_key(**kwargs)
+            if key_file:
+                fd = open(key_file, "r")
+                key = fd.read()
+                fd.close()
+            if key:
+                if password or aes_key:
+                    key = self.decrypt_key(key_pack=key,
+                                        password=password,
+                                        aes_key=aes_key)
+                if isinstance(key_password, str):
+                    key_password = key_password.encode()
+                self.load_key(key=key, password=key_password)
+            else:
+                self._private_key = self.gen_key(**kwargs)
         super().__init__()
 
     @property

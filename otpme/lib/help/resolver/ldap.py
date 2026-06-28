@@ -52,6 +52,15 @@ cmd_help = {
                 },
 
 
+    'ca_data'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver ca_data {resolver} [ca_cert_file]'),
+                    'cmd'   :   '<|object|> [file:ca_data]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set CA certificate(s) used to verify the LDAP server TLS certificate. Pass a PEM file; its contents are stored on the resolver and shipped to every node that runs it. Clear with an empty file argument.'),
+                                },
+                },
+
+
     'add_server'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver add_server {resolver} {server_uri}'),
                     'cmd'   :   '<|object|> <server_uri>',

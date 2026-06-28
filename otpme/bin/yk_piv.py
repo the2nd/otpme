@@ -45,6 +45,12 @@ from otpme.lib.smartcard.yubikey.piv import import_rsa_key
 from otpme.lib.smartcard.yubikey.piv import derive_password
 
 
+# Per-op default slots: sign+derive run against the sign key (9A);
+# decrypt runs against the encrypt key (9D). --slot overrides explicitly.
+SIGN_SLOT_DEFAULT = "AUTHENTICATION"
+ENCRYPT_SLOT_DEFAULT = "KEY_MANAGEMENT"
+
+
 def _resolve_pin(pin_arg):
     """Resolve PIN similar to openssl -pass: pass:<val>, file:<path>, fd:<n>, env:<var>."""
     if pin_arg is None:
@@ -73,10 +79,15 @@ def _get_agent():
 
 def main():
     parser = argparse.ArgumentParser(description="YubiKey PIV management tool")
-    parser.add_argument("--slot", default="AUTHENTICATION", choices=slot_map.keys(),
-                        help="PIV slot (default: AUTHENTICATION / 9a)")
-    parser.add_argument("--mgmt-key", default=None, help="Management key (hex)")
-    parser.add_argument("--pin", default=None, help="PIN")
+    parser.add_argument("--slot", default=None, choices=slot_map.keys(),
+                        help="PIV slot. Default per operation: AUTHENTICATION (9a) "
+                             "for --sign / --verify / --derive-password, "
+                             "KEY_MANAGEMENT (9d) for --decrypt. "
+                             "Required for --import.")
+    parser.add_argument("--mgmt-key", default=None,
+                        help="Management key (hex). Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production so the key never appears on argv / /proc/<pid>/cmdline.")
+    parser.add_argument("--pin", default=None,
+                        help="PIN. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
     parser.add_argument("--serial", type=int, default=None, help="YubiKey serial number")
     parser.add_argument("--use-agent", action="store_true",
                         help="Use otpme-agent for PIV operations")
@@ -87,10 +98,14 @@ def main():
     parser.add_argument("--passphrase", action="store_true", help="Prompt for PEM passphrase")
     parser.add_argument("--change-pin", action="store_true", help="Change PIN")
     parser.add_argument("--change-puk", action="store_true", help="Change PUK")
-    parser.add_argument("--old-pin", default=None, help="Current PIN")
-    parser.add_argument("--new-pin", default=None, help="New PIN")
-    parser.add_argument("--old-puk", default=None, help="Current PUK")
-    parser.add_argument("--new-puk", default=None, help="New PUK")
+    parser.add_argument("--old-pin", default=None,
+                        help="Current PIN. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
+    parser.add_argument("--new-pin", default=None,
+                        help="New PIN. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
+    parser.add_argument("--old-puk", default=None,
+                        help="Current PUK. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
+    parser.add_argument("--new-puk", default=None,
+                        help="New PUK. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
     parser.add_argument("--decrypt", action="store_true", help="Decrypt stdin to stdout")
     parser.add_argument("--sign", action="store_true", help="Sign stdin, write signature to stdout")
     parser.add_argument("--verify", action="store_true", help="Verify stdin against --signature")
@@ -125,11 +140,12 @@ def main():
     elif args.derive_password:
         if not args.challenge:
             parser.error("--derive-password requires --challenge")
+        slot = args.slot or SIGN_SLOT_DEFAULT
         if args.use_agent:
             agent = _get_agent()
             pw = agent.piv_derive_password(
                 challenge=args.challenge,
-                slot=args.slot,
+                slot=slot,
                 length=args.derive_length,
             )
         else:
@@ -137,7 +153,7 @@ def main():
             pw = derive_password(
                 challenge=args.challenge,
                 pin=pin,
-                slot=args.slot,
+                slot=slot,
                 length=args.derive_length,
                 serial=args.serial,
             )
@@ -150,26 +166,31 @@ def main():
         list_keys(serial=args.serial)
 
     elif args.change_pin:
-        change_pin(old_pin=args.old_pin, new_pin=args.new_pin, serial=args.serial)
+        change_pin(old_pin=_resolve_pin(args.old_pin),
+                   new_pin=_resolve_pin(args.new_pin),
+                   serial=args.serial)
 
     elif args.change_puk:
-        change_puk(old_puk=args.old_puk, new_puk=args.new_puk, serial=args.serial)
+        change_puk(old_puk=_resolve_pin(args.old_puk),
+                   new_puk=_resolve_pin(args.new_puk),
+                   serial=args.serial)
 
     elif args.decrypt:
         data = sys.stdin.buffer.read()
+        slot = args.slot or ENCRYPT_SLOT_DEFAULT
         if args.use_agent:
             agent = _get_agent()
             data = data.hex()
             plain_text = agent.piv_decrypt(
                 data=data,
-                slot=args.slot,
+                slot=slot,
                 padding=args.padding or "oaep",
             )
             plain_text = bytes.fromhex(plain_text)
         else:
             plain_text = decrypt(
                 cipher_text=data,
-                slot=args.slot,
+                slot=slot,
                 pin=_resolve_pin(args.pin),
                 padding=args.padding or "oaep",
                 serial=args.serial,
@@ -186,11 +207,12 @@ def main():
         if args.public_key:
             with open(args.public_key, "rb") as f:
                 public_key = load_pem_public_key(f.read())
+        slot = args.slot or SIGN_SLOT_DEFAULT
         valid = verify(
             data=data,
             signature=signature,
             public_key=public_key,
-            slot=slot_map[args.slot],
+            slot=slot_map[slot],
             padding=args.padding or "pss",
             serial=args.serial,
         )
@@ -202,12 +224,13 @@ def main():
 
     elif args.sign:
         data = sys.stdin.buffer.read()
+        slot = args.slot or SIGN_SLOT_DEFAULT
         if args.use_agent:
             agent = _get_agent()
             data = data.hex()
             signature = agent.piv_sign(
                 data=data,
-                slot=args.slot,
+                slot=slot,
                 padding=args.padding or "pss",
             )
             signature = bytes.fromhex(signature)
@@ -215,7 +238,7 @@ def main():
             pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
             signature = sign(
                 data=data,
-                slot=args.slot,
+                slot=slot,
                 pin=pin,
                 padding=args.padding or "pss",
                 serial=args.serial,
@@ -223,6 +246,11 @@ def main():
         sys.stdout.buffer.write(signature)
 
     elif args.import_key:
+        if not args.slot:
+            parser.error(
+                "--import requires --slot — choose AUTHENTICATION (9a) for the "
+                "sign key or KEY_MANAGEMENT (9d) for the encrypt key."
+            )
         pem_data = sys.stdin.buffer.read()
         if args.passphrase:
             pem_password = getpass.getpass("PEM passphrase: ").encode()
@@ -230,7 +258,7 @@ def main():
             pem_data = key.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption())
         kwargs = dict(slot=args.slot, serial=args.serial)
         if args.mgmt_key:
-            kwargs["mgmt_key"] = bytes.fromhex(args.mgmt_key)
+            kwargs["mgmt_key"] = bytes.fromhex(_resolve_pin(args.mgmt_key))
         if _resolve_pin(args.pin):
             kwargs["pin"] = _resolve_pin(args.pin)
         import_rsa_key(pem_data, **kwargs)

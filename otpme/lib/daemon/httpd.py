@@ -29,6 +29,13 @@ from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
 from otpme.web.app import app
 from otpme.web.certs import app as certs_app
+from otpme.web.certs import bp as certs_bp
+
+# Expose /certs/* on the HTTPS SSO app too so the same URLs keep
+# working once the CA is in the trust store. Idempotent: registering
+# a blueprint a second time is a no-op in Flask.
+if 'certs' not in app.blueprints:
+    app.register_blueprint(certs_bp, url_prefix='/certs')
 
 from otpme.lib.exceptions import *
 

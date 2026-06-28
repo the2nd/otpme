@@ -619,8 +619,8 @@ class JobCallback(object):
         return response
 
     @handle_exception
-    def gen_user_keys(self, username,
-        key_len=2048, stdin_pass=False, timeout=1):
+    def gen_user_keys(self, username, sign_algo="rsa",
+        encrypt_algo="rsa", key_len=2048, stdin_pass=False, timeout=1):
         """ Send message to client to generate users privat/public keys. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
@@ -633,6 +633,8 @@ class JobCallback(object):
         message = gen_user_keys(message_id,
                             username=username,
                             key_len=key_len,
+                            sign_algo=sign_algo,
+                            encrypt_algo=encrypt_algo,
                             stdin_pass=stdin_pass)
         # Send message.
         response = self._send_message(message_id, message, timeout=timeout)

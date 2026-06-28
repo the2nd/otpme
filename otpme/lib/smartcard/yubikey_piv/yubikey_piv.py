@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import json as stdlib_json
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 
@@ -19,7 +20,40 @@ from otpme.lib import config
 from otpme.lib.help import command_map
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.smartcard.yubikey import piv
-#from otpme.lib.messages import error_message
+
+
+# PIV slot roles used by this handler.
+SIGN_SLOT = "AUTHENTICATION"     # 9A — ECDSA/RSA sign, derive_password
+ENCRYPT_SLOT = "KEY_MANAGEMENT"  # 9D — RSA-decrypt / ECDH-unwrap
+
+
+def _load_backup_file(path):
+    """ Load a deploy backup file. New format: JSON dict
+    {'sign_key': PEM, 'encrypt_key': PEM}. """
+    with open(path, "r") as fd:
+        data = stdlib_json.load(fd)
+    if not isinstance(data, dict) or 'sign_key' not in data \
+            or 'encrypt_key' not in data:
+        raise OTPmeException(
+            "Backup file must contain JSON dict with "
+            "'sign_key' and 'encrypt_key' PEMs."
+        )
+    return data['sign_key'], data['encrypt_key']
+
+
+def _write_backup_file(path, sign_pem, encrypt_pem):
+    data = {'sign_key': sign_pem, 'encrypt_key': encrypt_pem}
+    with open(path, "w") as fd:
+        stdlib_json.dump(data, fd, indent=2)
+
+
+def _load_rsakey_pem(pem):
+    """ Load an RSA PEM with optional password prompt on TypeError. """
+    try:
+        return RSAKey(key=pem)
+    except TypeError:
+        pw = cli.read_pass(prompt='Key file password: ')
+        return RSAKey(key=pem, key_password=pw)
 
 from otpme.lib. exceptions import *
 
@@ -108,20 +142,30 @@ class YubikeypivClientHandler(object):
         except KeyError:
             add_user_key = False
 
-        # Handle deployment of yubikey PIV applet.
-        public_key = None
+        sign_public_key = None
+        encrypt_public_key = None
+        sign_key_type = None
+        encrypt_key_type = None
         private_key_backup = None
+
         if no_token_write:
             token_password = cli.read_pass(prompt='Smartcard password: ')
             if self.restore_from_server:
                 msg = _("-n conflicts with --restore-from-server")
                 raise OTPmeException(msg)
-            # Try to get public key of already initialized yubikey.
-            pub_key = piv.get_public_key()
-            public_key = pub_key.public_bytes(Encoding.PEM,
-                                            PublicFormat.SubjectPublicKeyInfo)
-            public_key = public_key.decode()
-            ssh_public_key = pub_key.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+            # Read both slots from an already-initialized yubikey.
+            sign_pub = piv.get_public_key(slot=SIGN_SLOT)
+            encrypt_pub = piv.get_public_key(slot=ENCRYPT_SLOT)
+            # Detect what algos are actually on the card so the token
+            # object stores the correct sign_key_type / encrypt_key_type.
+            sign_key_type = piv.algo_for_public_key(sign_pub)
+            encrypt_key_type = piv.algo_for_public_key(encrypt_pub)
+            sign_public_key = sign_pub.public_bytes(Encoding.PEM,
+                                            PublicFormat.SubjectPublicKeyInfo).decode()
+            encrypt_public_key = encrypt_pub.public_bytes(Encoding.PEM,
+                                            PublicFormat.SubjectPublicKeyInfo).decode()
+            # SSH key always derives from the sign key (SSH is signature-based).
+            ssh_public_key = sign_pub.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
             ssh_public_key_type, \
             ssh_public_key = ssh_public_key.decode().split()
             ssh_public_key_type = ssh_public_key_type.split("-")[1]
@@ -147,7 +191,7 @@ class YubikeypivClientHandler(object):
                 except Exception:
                     restore_file = None
                     if private_key_backup_key is None:
-                        backup_file = "/dev/shm/" + object_identifier.replace("/", "_")
+                        backup_file = "/dev/shm/" + self.object_identifier.replace("/", "_")
 
             if restore_file and not os.path.exists(restore_file):
                 msg = _("Restore file does not exist: {file}")
@@ -157,47 +201,38 @@ class YubikeypivClientHandler(object):
             # We cannot backup and restore at the same time.
             if restore_file and backup_file:
                 return command_handler.get_help(command="deploy",
-                                                subcommand=token_type,
+                                                subcommand=self.token_type,
                                                 command_map=command_map)
-            if backup_file:
-                if os.path.exists(backup_file):
-                    msg = _("Backup file already exists: {backup_file}")
-                    msg = msg.format(backup_file=backup_file)
-                    raise OTPmeException(msg)
+            if backup_file and os.path.exists(backup_file):
+                msg = _("Backup file already exists: {backup_file}")
+                msg = msg.format(backup_file=backup_file)
+                raise OTPmeException(msg)
 
             # Get token password.
             token_password = cli.get_password(prompt='Smartcard password: ', min_len=8)
 
             if self.restore_from_server:
-                # Get key backup and parameters.
+                # Decrypt server-side backup envelope and pull out both PEMs.
                 try:
                     enc_mod = server_private_key_backup['enc_mod']
-                except KeyError as err:
-                    msg = _("Server key backup misses encryption module.")
-                    raise OTPmeException(msg) from err
-                try:
                     enc_key_encrypted = server_private_key_backup['enc_key']
-                except KeyError as err:
-                    msg = _("Server key backup misses encryption key.")
-                    raise OTPmeException(msg) from err
-                try:
                     _private_key_backup = server_private_key_backup['private_key_backup']
                 except KeyError as err:
-                    msg = _("Server key backup misses private key.")
+                    msg = _("Server key backup missing field: {err}")
+                    msg = msg.format(err=err)
                     raise OTPmeException(msg) from err
-                # Try to load backup key.
+                # Load the user's master backup key (used to wrap the fernet key).
                 try:
                     backup_key = RSAKey(key_file=self.master_backup_key_file)
-                except TypeError as e:
+                except TypeError:
                     backup_key_pass = cli.read_pass(prompt='Master backup key password: ')
                     try:
                         backup_key = RSAKey(key_file=self.master_backup_key_file,
                                             key_password=backup_key_pass)
                     except Exception as e:
-                        msg = _("Error loading masetr backup key: {e}")
+                        msg = _("Error loading master backup key: {e}")
                         msg = msg.format(e=e)
                         raise OTPmeException(msg) from e
-                # Try to decrypt fernet key.
                 try:
                     enc_key_encrypted = bytes.fromhex(enc_key_encrypted)
                     enc_key = backup_key.decrypt(enc_key_encrypted)
@@ -216,69 +251,63 @@ class YubikeypivClientHandler(object):
                                                     encryption=enc_mod,
                                                     enc_key=enc_key)
                 except Exception as e:
-                    msg = _("Faild to decode key backup: {error}")
+                    msg = _("Failed to decode key backup: {error}")
                     msg = msg.format(error=e)
                     raise OTPmeException(msg) from e
                 try:
-                    private_key_pem = _private_key_backup['private_key']
+                    sign_private_pem = _private_key_backup['sign_key']
+                    encrypt_private_pem = _private_key_backup['encrypt_key']
                 except KeyError as err:
-                    msg = _("Private key backup does not include private key.")
+                    msg = _("Server backup missing key: {err}")
+                    msg = msg.format(err=err)
                     raise OTPmeException(msg) from err
                 try:
-                    token_key = RSAKey(key=private_key_pem)
+                    sign_token_key = _load_rsakey_pem(sign_private_pem)
+                    encrypt_token_key = _load_rsakey_pem(encrypt_private_pem)
                 except Exception as e:
-                    msg = _("Failed to load backup key: {e}")
+                    msg = _("Failed to load backup keys: {e}")
                     msg = msg.format(e=e)
                     raise OTPmeException(msg) from e
             elif restore_file:
                 try:
-                    token_key = RSAKey(key_file=restore_file)
-                except TypeError:
-                    backup_password = cli.read_pass(prompt='Key file password: ')
-                    try:
-                        token_key = RSAKey(key_file=restore_file,
-                                    key_password=backup_password)
-                    except Exception as e:
-                        msg = _("Error loading RSA key: {e}")
-                        msg = msg.format(e=e)
-                        raise OTPmeException(msg) from e
+                    sign_private_pem, encrypt_private_pem = _load_backup_file(restore_file)
+                    sign_token_key = _load_rsakey_pem(sign_private_pem)
+                    encrypt_token_key = _load_rsakey_pem(encrypt_private_pem)
                 except Exception as e:
-                    msg = _("Error loading RSA key: {e}")
-                    msg = msg.format(e=e)
+                    msg = _("Error loading RSA keys from {file}: {e}")
+                    msg = msg.format(file=restore_file, e=e)
                     raise OTPmeException(msg) from e
-                # Get private key as PEM.
-                private_key_pem = token_key.export_private_key(encoding='PEM')
             else:
-                # Gen RSA key.
+                # Gen two RSA keys: one for sign, one for encrypt.
                 try:
-                    token_key = RSAKey(bits=key_len)
+                    sign_token_key = RSAKey(bits=key_len)
+                    encrypt_token_key = RSAKey(bits=key_len)
                 except Exception as e:
-                    msg = _("Error creating RSA key: {e}")
+                    msg = _("Error creating RSA keys: {e}")
                     msg = msg.format(e=e)
                     raise OTPmeException(msg) from e
 
                 if private_key_backup_key is None:
-                    # Backup RSA key.
+                    # Local backup file (JSON dict, each PEM password-encrypted).
                     x = cli.user_input("Use token password to protect backup file? (y/n) ")
                     if x.lower() != "n":
                         backup_password = token_password
                     else:
                         backup_password = cli.get_password(prompt="Backup password: ", min_len=8)
 
-                    private_key_enc_pem = token_key.export_private_key(encoding='PEM',
+                    sign_pem_enc = sign_token_key.export_private_key(encoding='PEM',
+                                                                password=backup_password)
+                    encrypt_pem_enc = encrypt_token_key.export_private_key(encoding='PEM',
                                                                 password=backup_password)
                     try:
-                        fd = open(backup_file, "w")
+                        _write_backup_file(backup_file, sign_pem_enc, encrypt_pem_enc)
                     except Exception as e:
-                        msg = _("Failed to open backup file: {e}")
+                        msg = _("Failed to write backup file: {e}")
                         msg = msg.format(e=e)
                         raise OTPmeException(msg) from e
-                    # Write key.
-                    try:
-                        fd.write(private_key_enc_pem)
-                    finally:
-                        fd.close()
                 else:
+                    # Server-side backup: encrypt both PEMs under a fresh fernet key,
+                    # then wrap that fernet key with the user's master backup pubkey.
                     try:
                         backup_key_pub = RSAKey(key=private_key_backup_key)
                     except Exception as e:
@@ -291,67 +320,87 @@ class YubikeypivClientHandler(object):
                         msg = _("Failed to load backup key encryption: {error}")
                         msg = msg.format(error=e)
                         raise OTPmeException(msg) from e
-                    # Gen fernet encryption key.
                     enc_key = enc_mod.gen_key()
-                    # Get private key as PEM.
-                    private_key_pem = token_key.export_private_key(encoding='PEM')
-                    private_key_backup = {
-                                    'private_key'   : private_key_pem,
-                                    }
+                    backup_content = {
+                            'sign_key'      : sign_token_key.export_private_key(encoding='PEM'),
+                            'encrypt_key'   : encrypt_token_key.export_private_key(encoding='PEM'),
+                        }
                     try:
-                        private_key_backup = json.encode(private_key_backup,
+                        backup_content_enc = json.encode(backup_content,
                                                         encryption=enc_mod,
                                                         enc_key=enc_key)
                     except Exception as e:
-                        msg = _("Faild to build preauth request: {error}")
+                        msg = _("Failed to encode key backup: {error}")
                         msg = msg.format(error=e)
                         raise OTPmeException(msg) from e
-                    # Encrypt fernet key with backup key.
-                    enc_key_encrypted = backup_key_pub.encrypt(enc_key)
-                    enc_key_encrypted = enc_key_encrypted.hex()
-                    # Build private key backup dict.
+                    enc_key_encrypted = backup_key_pub.encrypt(enc_key).hex()
                     private_key_backup = {
                                             'enc_mod'               : 'FERNET',
                                             'enc_key'               : enc_key_encrypted,
-                                            'private_key_backup'    : private_key_backup,
+                                            'private_key_backup'    : backup_content_enc,
                                         }
 
-            # Reset PIV.
+            # Reset PIV applet and set PIN/PUK.
             reset_status = piv.reset()
             if not reset_status:
                 msg = _("Aborted.")
                 raise OTPmeException(msg)
 
-            # Set PIN/PUK.
             piv.change_pin(old_pin=piv.DEFAULT_PIN, new_pin=token_password)
             piv.change_puk(old_puk=piv.DEFAULT_PUK, new_puk=token_password)
 
-            # Write RSA key to yubikey.
-            piv.import_rsa_key(private_key=private_key_pem,
-                                slot="AUTHENTICATION",
-                                pin=token_password)
-                                #serial=serial)
-            public_key = token_key.export_public_key(encoding="PEM")
+            # Import sign key → 9A, encrypt key → 9D.
+            piv.import_rsa_key(
+                private_key=sign_token_key.export_private_key(encoding='PEM'),
+                slot=SIGN_SLOT,
+                pin=token_password)
+            piv.import_rsa_key(
+                private_key=encrypt_token_key.export_private_key(encoding='PEM'),
+                slot=ENCRYPT_SLOT,
+                pin=token_password)
+
+            # Replace the factory-default management key with a fresh
+            # random one, stored PIN-protected on the card. Done after
+            # imports so they still authenticate with DEFAULT_MGMT_KEY.
+            try:
+                piv.protect_management_key(pin=token_password)
+            except Exception as e:
+                msg = _("Failed to protect management key: {error}")
+                msg = msg.format(error=e)
+                raise OTPmeException(msg) from e
+
+            sign_public_key = sign_token_key.export_public_key(encoding="PEM")
+            encrypt_public_key = encrypt_token_key.export_public_key(encoding="PEM")
+            # New-deploy path generates RSA keys today (via RSAKey(bits=...)).
+            # When the script later grows --sign-algo/--encrypt-algo flags,
+            # derive these from the generated key class instead.
+            sign_key_type = "rsa"
+            encrypt_key_type = "rsa"
+            # SSH always uses the sign key.
             ssh_public_key_type, \
-            ssh_public_key = token_key.ssh_public_key.decode().split()
+            ssh_public_key = sign_token_key.ssh_public_key.decode().split()
             ssh_public_key_type = ssh_public_key_type.split("-")[1]
 
-        # Without public key we cannot continue.
-        if not public_key:
-            msg = (_("Cannot continue without public key."))
+        if not sign_public_key or not encrypt_public_key:
+            msg = _("Cannot continue without sign + encrypt public keys.")
             raise OTPmeException(msg)
+
+        # Derive dot1x secret on the sign slot (deterministic primitive).
         try:
             dot1x_secret = piv.derive_password(challenge="dot1x",
                                     pin=token_password,
-                                    slot="AUTHENTICATION",
+                                    slot=SIGN_SLOT,
                                     length=32)
         except Exception as e:
             msg = _("Error deriving dot1x secret: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
-        # Add SSH public key to deployment args.
+
         deploy_args = {}
-        deploy_args['public_key'] = public_key
+        deploy_args['sign_public_key'] = sign_public_key
+        deploy_args['encrypt_public_key'] = encrypt_public_key
+        deploy_args['sign_key_type'] = sign_key_type
+        deploy_args['encrypt_key_type'] = encrypt_key_type
         deploy_args['add_user_key'] = add_user_key
         deploy_args['ssh_public_key'] = ssh_public_key
         deploy_args['ssh_public_key_type'] = ssh_public_key_type

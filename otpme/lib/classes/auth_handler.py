@@ -1269,8 +1269,14 @@ class AuthHandler(object):
                 token_verify_parms['challenge'] = self.challenge
                 token_verify_parms['response'] = self.response
 
+        # Handle dot1x auth.
+        do_dot1x_auth = False
+        if self.auth_client and self.auth_client.dot1x_auth:
+            if _verify_token.support_dot1x:
+                do_dot1x_auth = True
+
         # Handle smartcard tokens.
-        if not temp:
+        if not temp and not do_dot1x_auth:
             found_smartcard_token = False
             if _verify_token.pass_type == "smartcard":
                 found_smartcard_token = True
@@ -1289,16 +1295,11 @@ class AuthHandler(object):
         log_msg = log_msg.format(token_type=token.token_type, token_path=token.rel_path)
         self.logger.debug(log_msg)
 
-        do_dot1x_auth = False
         if temp:
             # Try to verify token. A status of None means continue to next token.
             verify_status = self.try_temp_pass_auth(_verify_token,
                                                 token_verify_parms)
         else:
-            # Try normal token verify.
-            if self.auth_client and self.auth_client.dot1x_auth:
-                if _verify_token.support_dot1x:
-                    do_dot1x_auth = True
             if do_dot1x_auth:
                 try:
                     verify_status = _verify_token.verify_dot1x(**token_verify_parms)

@@ -444,9 +444,9 @@ class JoinHandler(object):
                 if object_type == "user":
                     x_user = backend.get_object(object_type="user",
                                                 object_id=object_id)
-                    if x_user.public_key:
+                    if x_user.sign_public_key:
                         try:
-                            sign_key_cache.add_cache(object_id, x_user.public_key)
+                            sign_key_cache.add_cache(object_id, x_user.sign_public_key)
                         except Exception as e:
                             log_msg = _("Unable to add signer cache: {obj_id}: {error}", log=True)[1]
                             log_msg = log_msg.format(obj_id=object_id, error=e)

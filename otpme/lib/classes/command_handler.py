@@ -251,8 +251,7 @@ class CommandHandler(object):
         if daemon == "mgmtd":
             if config.use_api:
                 username = config.system_user()
-
-            if config.use_socket:
+            elif config.use_socket:
                 self.init(use_backend=False)
 
             # Get management client.
@@ -408,6 +407,72 @@ class CommandHandler(object):
         key_mode = mgmtd_conn.get_user_key_mode(username)
         return key_mode
 
+    def get_user_sign_key_type(self, username):
+        # Make sure we have our realm set.
+        self.init()
+        # Get user site.
+        hostd_conn = connections.get("hostd")
+        user_site = hostd_conn.get_user_site(username)
+        # Get mgmtd connection to users site.
+        if config.use_mgmtd_socket:
+            if not config.use_api:
+                login_status = self.get_login_status()
+                if not login_status:
+                    config.use_socket = True
+        conn_kwargs = {}
+        conn_kwargs['use_agent'] = True
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        if config.use_socket:
+            conn_kwargs['use_agent'] = False
+            conn_kwargs['use_ssl'] = False
+            conn_kwargs['local_socket'] = True
+            conn_kwargs['handle_host_auth'] = False
+            conn_kwargs['handle_user_auth'] = False
+            conn_kwargs['encrypt_session'] = False
+            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        mgmtd_conn = connections.get(daemon="mgmtd",
+                                    realm=config.realm,
+                                    site=user_site,
+                                    **conn_kwargs)
+        # Get key mode of users private key (server or client).
+        sign_key_type = mgmtd_conn.get_user_sign_key_type(username)
+        return sign_key_type
+
+    def get_user_enc_key_type(self, username):
+        # Make sure we have our realm set.
+        self.init()
+        # Get user site.
+        hostd_conn = connections.get("hostd")
+        user_site = hostd_conn.get_user_site(username)
+        # Get mgmtd connection to users site.
+        if config.use_mgmtd_socket:
+            if not config.use_api:
+                login_status = self.get_login_status()
+                if not login_status:
+                    config.use_socket = True
+        conn_kwargs = {}
+        conn_kwargs['use_agent'] = True
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        if config.use_socket:
+            conn_kwargs['use_agent'] = False
+            conn_kwargs['use_ssl'] = False
+            conn_kwargs['local_socket'] = True
+            conn_kwargs['handle_host_auth'] = False
+            conn_kwargs['handle_user_auth'] = False
+            conn_kwargs['encrypt_session'] = False
+            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        mgmtd_conn = connections.get(daemon="mgmtd",
+                                    realm=config.realm,
+                                    site=user_site,
+                                    **conn_kwargs)
+        # Get key mode of users private key (server or client).
+        enc_key_type = mgmtd_conn.get_user_enc_key_type(username)
+        return enc_key_type
+
     def get_user_key_script_path(self, username, **kwargs):
         # Make sure we have our realm set.
         self.init()
@@ -494,9 +559,17 @@ class CommandHandler(object):
         # Can hold function to get default object if none was given.
         self.get_default_object = None
 
-        log_msg = _("Processing command: {command}: {command_line}", log=True)[1]
-        log_msg = log_msg.format(command=command, command_line=command_line)
-        self.logger.debug(log_msg)
+        # command_line is list(sys.argv) and may carry cleartext secrets
+        # (e.g. `otpme-user add alice --password X`, `otpme-resolver
+        # login_password <r> <pw>`). Routing this through self.logger
+        # would persist it -- daemon-mode logging defaults to a file
+        # under /var/log/otpme/, and syslog handlers ship lines off the
+        # host entirely. We bypass the logger here and write to the
+        # invoker's stderr only when --debug is enabled, so the dump
+        # stays in the CLI session that already has the cleartext.
+        if config.debug_enabled:
+            print(f"Processing command: {command}: {command_line}",
+                  file=sys.stderr)
 
         try:
             need_command = self.command_map[command][config.cli_object_type]['_need_command']
@@ -794,7 +867,8 @@ class CommandHandler(object):
             object_type = f"{command}_type"
             self.command_args[object_type] = config.cli_object_type
 
-        if command == "user" and subcommand == "dump_key":
+        if command == "user" and subcommand in ("dump_sign_key",
+                                                 "dump_encrypt_key"):
             return self.handle_user_dump_key_command(command, subcommand)
 
         # Resync login token if none is given.
@@ -839,7 +913,8 @@ class CommandHandler(object):
 
         # When generating users RSA keys on server side we may have to read
         # key password from stdin.
-        if command == "user" and subcommand == "import_key":
+        if command == "user" and subcommand in ("import_sign_key",
+                                                 "import_encrypt_key"):
             if config.read_stdin_pass:
                 msg = _("--stdin-key option conflicts with global --stdin-pass option.")
                 raise OTPmeException(msg)
@@ -933,8 +1008,10 @@ class CommandHandler(object):
             return self.handle_token_add_del_command(command, subcommand)
 
         # Send command.
+        login_user = config.login_user
         try:
             result = self.send_command(daemon="mgmtd",
+                                    username=login_user,
                                     client_type=client_type)
             status = True
         except OTPmeException as e:
@@ -945,7 +1022,8 @@ class CommandHandler(object):
         # Do not add newline when exporting data.
         if command == "export" \
         or command == "dump_cert" \
-        or command == "dump_key" \
+        or command == "dump_sign_key" \
+        or command == "dump_encrypt_key" \
         or command == "dump_ca_chain" \
         or command == "dump_ca_data" \
         or command == "dump_crl":
@@ -2444,7 +2522,7 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
 
         # Make sure index is ready.
-        if not _index.is_available():
+        if not _index.exists():
             if _index.status():
                 _index.stop()
             _index.command("drop")
@@ -3304,57 +3382,65 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         return
 
-    def gen_user_keys(self, username, password=None, key_len=None):
-        """ Generate users private/public key pair. """
-        # Build key script options.
-        script_command = [ "gen_keys" ]
-        if key_len is not None:
-            script_options = [ "-b", str(key_len) ]
+    def gen_user_keys(self, username, password=None, key_len=None,
+                      sign_algo="rsa", encrypt_algo="rsa"):
+        """ Generate both user key pairs (sign + encrypt) via key_script.
+        Returns a dict suitable for user.gen_keys's client-mode response. """
+        def _run_one(algo):
+            script_command = [ "gen_keys" ]
+            script_options = [ "--algo", algo ]
+            if key_len is not None:
+                script_options += [ "-b", str(key_len) ]
+            try:
+                script_status, \
+                script_stdout, \
+                script_stderr, \
+                script_pid = stuff.run_key_script(username=username,
+                                                key_pass=password, call=False,
+                                                script_command=script_command,
+                                                script_options=script_options)
+            except Exception as e:
+                config.raise_exception()
+                msg = _("Failed to run key script: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
 
-        # Run key script.
+            if isinstance(script_stdout, bytes):
+                script_stdout = script_stdout.decode()
+            if isinstance(script_stderr, bytes):
+                script_stderr = script_stderr.decode()
+
+            if script_status != 0:
+                output = script_stderr or script_stdout
+                msg = _("Error running key script: {output}")
+                msg = msg.format(output=output)
+                raise OTPmeException(msg)
+            if not script_stdout:
+                raise OTPmeException(_("Got no keys from script."))
+            try:
+                priv = script_stdout.split(" ")[0]
+                pub = script_stdout.split(" ")[1].replace("\n", "")
+            except Exception:
+                raise OTPmeException(
+                    _("Unable to parse private/public key from script.")
+                ) from None
+            return priv, pub
+
         try:
-            script_status, \
-            script_stdout, \
-            script_stderr, \
-            script_pid = stuff.run_key_script(username=username,
-                                            key_pass=password, call=False,
-                                            script_command=script_command,
-                                            script_options=script_options)
-        except Exception as e:
-            config.raise_exception()
-            msg = _("Failed to run key script: {e}")
-            msg = msg.format(e=e)
-            raise OTPmeException(msg) from e
-
-        # Make sure script output is string.
-        if isinstance(script_stdout, bytes):
-            script_stdout = script_stdout.decode()
-        if isinstance(script_stderr, bytes):
-            script_stderr = script_stderr.decode()
-
-        if script_status != 0:
-            if script_stderr == "":
-                output = script_stdout
-            else:
-                output = script_stderr
-            msg = _("Error running key script: {output}")
-            msg = msg.format(output=output)
-            raise OTPmeException(msg)
-
-        if not script_stdout:
-            raise OTPmeException(_("Got no keys from script."))
-
-        try:
-            user_private_key = script_stdout.split(" ")[0]
-        except Exception:
-            raise OTPmeException(_("Unable to get private key from script.")) from None
-
-        try:
-            user_public_key = script_stdout.split(" ")[1].replace("\n", "")
-        except Exception:
-            raise OTPmeException(_("Unable to get public key from script.")) from None
-
-        return user_private_key, user_public_key
+            sign_priv, sign_pub = _run_one(sign_algo)
+            enc_priv, enc_pub = _run_one(encrypt_algo)
+        except OTPmeException as e:
+            return {'status': False, 'message': str(e)}
+        return {
+            'status'                : True,
+            'message'               : 'ok',
+            'sign_private_key'      : sign_priv,
+            'sign_public_key'       : sign_pub,
+            'encrypt_private_key'   : enc_priv,
+            'encrypt_public_key'    : enc_pub,
+            'sign_key_type'         : sign_algo,
+            'encrypt_key_type'      : encrypt_algo,
+        }
 
     def deploy_token(self, token_rel_path, token_type, no_token_write=False):
         """ Deploy token. """
@@ -6230,10 +6316,13 @@ class CommandHandler(object):
 
             user_private_key = script_stdout
 
-            # Send private key to server.
+            # TODO: client-mode change_key_pass currently only handles the
+            # sign slot. Loop over both roles once the script's
+            # change_key_pass command rewraps both keys in one shot.
             try:
                 self.set_user_key(username=login_user,
                                 key=user_private_key,
+                                key_role="sign",
                                 private=True,
                                 force=True)
             except Exception as e:
@@ -6244,7 +6333,8 @@ class CommandHandler(object):
         return ""
 
     def handle_user_key_import(self, command, subcommand, private_key):
-        """ Handle user key import command. """
+        """ Handle user key import command (sign or encrypt). """
+        key_role = "encrypt" if subcommand == "import_encrypt_key" else "sign"
         # Init otpme.
         #self.init()
         # Get login user.
@@ -6326,6 +6416,7 @@ class CommandHandler(object):
         try:
             self.set_user_key(username=object_identifier,
                             key=enc_private_key,
+                            key_role=key_role,
                             private=True,
                             force=True)
         except Exception as e:
@@ -6333,10 +6424,11 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
 
-        # Send private key to server.
+        # Send public key to server.
         try:
             self.set_user_key(username=object_identifier,
                             key=public_key,
+                            key_role=key_role,
                             private=False,
                             force=True)
         except Exception as e:
@@ -6835,8 +6927,9 @@ class CommandHandler(object):
                 private = False
 
             if private and unencrypted:
-                # Run key script
-                script_command = [ 'export_key' ]
+                # Map subcommand to script role: dump_sign_key → sign etc.
+                key_role = "encrypt" if subcommand == "dump_encrypt_key" else "sign"
+                script_command = [ 'export_key', key_role ]
                 script_status, \
                 script_stdout, \
                 script_stderr, \
@@ -7914,7 +8007,30 @@ class CommandHandler(object):
         except Exception:
             pass
 
-        script_options = [ file1, file2 ]
+        algo = None
+        if script_command[0] == "sign" \
+        or script_command[0] == "verify":
+            try:
+                algo = self.get_user_sign_key_type(login_user)
+            except Exception as e:
+                msg = _("Error getting sign key type: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+
+        if script_command[0] == "encrypt" \
+        or script_command[0] == "decrypt":
+            try:
+                algo = self.get_user_enc_key_type(login_user)
+            except Exception as e:
+                msg = _("Error getting sign key type: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+
+        script_options = []
+        if algo:
+            script_options = [ "--algo", algo]
+
+        script_options += [ file1, file2 ]
 
         script_status, \
         script_stdout, \

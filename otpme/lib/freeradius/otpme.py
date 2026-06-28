@@ -62,7 +62,12 @@ from otpme.lib.register import register_module
 # Get logger.
 logger = config.logger
 
-# Cache for VLAN attributes per user session (used to pass from inner tunnel to outer).
+# Cache for VLAN attributes per user session (used to pass from inner
+# tunnel to outer). Keyed by (calling_station_id, username) so a
+# supplicant that spoofs another user's MAC but authenticates with its
+# own credentials cannot inherit the other user's VLAN in post_auth.
+# Bounded growth: one entry per (MAC, user) pair that successfully
+# authenticated; eviction/TTL is a separate hardening lift.
 _vlan_cache = {}
 client_cache = {}
 
@@ -365,9 +370,9 @@ def authenticate(authData):
                     log_msg = log_msg.format(error=e)
                     logger.warning(log_msg)
                 if auth_status:
-                    if calling_station_id:
+                    if calling_station_id and username:
                         try:
-                            vlan = _vlan_cache[calling_station_id]
+                            vlan = _vlan_cache[(calling_station_id, username)]
                         except KeyError:
                             vlan = None
 
@@ -419,8 +424,8 @@ def authenticate(authData):
                                                         ('Tunnel-Medium-Type', '6'),     # IEEE-802
                                                         ('Tunnel-Private-Group-Id', vlan),  # VLAN-ID
                                                     )
-                    if calling_station_id:
-                        _vlan_cache[calling_station_id] = vlan
+                    if calling_station_id and username:
+                        _vlan_cache[(calling_station_id, username)] = vlan
 
 
                 # Build configTuple for rlm_python.
@@ -581,9 +586,11 @@ def authenticate(authData):
                                                         ('Tunnel-Medium-Type', '6'),     # IEEE-802
                                                         ('Tunnel-Private-Group-Id', vlan),  # VLAN-ID
                                                     )
-                    # Cache VLAN for post_auth.
-                    if calling_station_id:
-                        _vlan_cache[calling_station_id] = vlan
+                    # Cache VLAN for post_auth, keyed on the authenticated
+                    # user so a different supplicant on the same MAC cannot
+                    # inherit this VLAN.
+                    if calling_station_id and username:
+                        _vlan_cache[(calling_station_id, username)] = vlan
 
                 log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
                 #log(radiusd.L_DBG, log_msg)
@@ -645,19 +652,30 @@ def post_auth(authData):
         elif t[0] == 'User-Name':
             username = t[1]
 
+    # Strip surrounding "..." quotes so the lookup key matches the
+    # form used by authenticate() when it wrote the cache entry.
+    if username:
+        username = re.sub('^"', '', username)
+        username = re.sub('"$', '', username)
+
     response_tuple = ()
 
-    # Add cached VLAN attributes.
-    if calling_station_id and calling_station_id in _vlan_cache:
-        vlan = _vlan_cache[calling_station_id]
-        response_tuple = response_tuple + (
-            ('Tunnel-Type', '13'),
-            ('Tunnel-Medium-Type', '6'),
-            ('Tunnel-Private-Group-Id', vlan),
-        )
-        log_msg = _("post_auth: Adding VLAN attributes for user {username} ({calling_station_id}): vlan={vlan}", log=True)[1]
-        log_msg = log_msg.format(username=username, calling_station_id=calling_station_id, vlan=vlan)
-        #log(radiusd.L_INFO, log_msg)
+    # Add cached VLAN attributes. Key is (calling_station_id, username):
+    # without the username component a supplicant that spoofs another
+    # user's MAC and successfully authenticates with its own credentials
+    # would inherit the spoofed user's cached VLAN.
+    if calling_station_id and username:
+        cache_key = (calling_station_id, username)
+        if cache_key in _vlan_cache:
+            vlan = _vlan_cache[cache_key]
+            response_tuple = response_tuple + (
+                ('Tunnel-Type', '13'),
+                ('Tunnel-Medium-Type', '6'),
+                ('Tunnel-Private-Group-Id', vlan),
+            )
+            log_msg = _("post_auth: Adding VLAN attributes for user {username} ({calling_station_id}): vlan={vlan}", log=True)[1]
+            log_msg = log_msg.format(username=username, calling_station_id=calling_station_id, vlan=vlan)
+            #log(radiusd.L_INFO, log_msg)
 
     return (radiusd.RLM_MODULE_UPDATED, response_tuple, ())
 

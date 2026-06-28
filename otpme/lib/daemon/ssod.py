@@ -59,7 +59,11 @@ class SSODaemon(OTPmeDaemon):
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
 
-        # Add ssod unix socket.
+        # Add ssod unix socket. Restricted to owner/group (otpme:otpme):
+        # ssod is only ever spoken to by the per-node web interfaces
+        # running as otpme:otpme. mgmtd/authd/hostd stay world-accessible
+        # because every local user can legitimately reach them (ACL-
+        # gated mgmt commands, auth, login flows).
         self.socket_path = config.ssod_socket_path
         try:
             self.add_socket(self.socket_path,
@@ -67,7 +71,7 @@ class SSODaemon(OTPmeDaemon):
                             banner=self.socket_banner,
                             user=self.user,
                             group=self.group,
-                            mode=0o666)
+                            mode=0o660)
         except Exception as e:
             log_msg = _("Failed to add unix socket: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)

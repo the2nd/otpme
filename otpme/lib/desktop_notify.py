@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2014 the2nd <the2nd@otpme.org>
+# This module was written by claude code.
 """Desktop notification helper for otpme-agent.
 
 Wraps the freedesktop Notifications spec (org.freedesktop.Notifications)

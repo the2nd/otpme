@@ -33,23 +33,65 @@ if os.path.exists(PYTHONPATH_FILE):
     finally:
         fd.close()
 
-import getpass
+# Set proctitle as early as possible: /proc/<pid>/cmdline shows the
+# original argv until setproctitle() rewrites the kernel-visible name.
+# Doing it ahead of the PYTHONPATH file read and the rest of the
+# imports narrows the window during which a legacy positional
+# `otpme-auth verify <user> <password>` invocation would leak the
+# password to any local /proc reader. setproctitle is a system C
+# extension that does not depend on PYTHONPATH overrides.
 import setproctitle
+tool_name = str(os.path.basename(sys.argv[0]))
+_current_proctitle = setproctitle.getproctitle()
+if tool_name == "otpme-auth":
+    _new_proctitle = tool_name
+else:
+    _new_proctitle = _current_proctitle.split()
+    _new_proctitle = " ".join(_new_proctitle[2:])
+    _new_proctitle = f"{tool_name} {_new_proctitle}"
+setproctitle.setproctitle(_new_proctitle)
+
+# `otpme-auth verify --env-password VAR <username> ...` reads the
+# password from $VAR instead of taking it as a positional, so the
+# cleartext never appears in argv / /proc/<pid>/cmdline. Convention:
+# the flag pair must sit IMMEDIATELY before <username>. With
+# FreeRADIUS rlm_exec this is the natural shape:
+#     program = "/usr/bin/otpme-auth verify --env-password User_Password %{User-Name} %{NAS-Identifier}"
+# We strip the flag pair and inject the resolved password right after
+# <username>, so the downstream cmd_syntax `<username> <password> ...`
+# is satisfied without changes to get_opts.
+if tool_name == "otpme-auth" and "--env-password" in sys.argv:
+    _idx = sys.argv.index("--env-password")
+    if _idx + 1 >= len(sys.argv):
+        sys.stderr.write("--env-password requires VARNAME.\n")
+        sys.exit(1)
+    _var = sys.argv[_idx + 1]
+    try:
+        _pw = os.environ[_var]
+    except KeyError:
+        sys.stderr.write(
+            f"--env-password: environment variable not set: {_var}\n")
+        sys.exit(1)
+    # FreeRADIUS' backtick-exec exports request attributes wrapped in
+    # double quotes (e.g. USER_PASSWORD='"secret"'). Strip a matched
+    # pair so the value handed to authd matches what the user actually
+    # typed -- same convention freeradius/otpme.py already applies to
+    # User-Name / User-Password coming in via rlm_python.
+    if len(_pw) >= 2 and _pw.startswith('"') and _pw.endswith('"'):
+        _pw = _pw[1:-1]
+    if _idx + 2 >= len(sys.argv):
+        sys.stderr.write(
+            "--env-password must sit immediately before <username>.\n")
+        sys.exit(1)
+    sys.argv = (sys.argv[:_idx]
+                + sys.argv[_idx + 2 : _idx + 3]
+                + [_pw]
+                + sys.argv[_idx + 3 :])
+    del _idx, _var, _pw
+
+import getpass
 # python3.
 from importlib import reload
-
-# Get tool name.
-tool_name = str(os.path.basename(sys.argv[0]))
-
-# Set proctitle.
-current_proctitle = setproctitle.getproctitle()
-if tool_name == "otpme-auth":
-    new_proctitle = tool_name
-else:
-    new_proctitle = current_proctitle.split()
-    new_proctitle = " ".join(new_proctitle[2:])
-    new_proctitle = f"{tool_name} {new_proctitle}"
-setproctitle.setproctitle(new_proctitle)
 
 # Workaround for "ValueError: unsupported hash type md4" error on hashlib.new('md4')
 import ctypes
@@ -120,10 +162,10 @@ def otpme_commands(no_debug=False):
                         request_cacheable = False
                     if request_cacheable:
                         if cache == "redis":
-                            redis_db.set(cache_key, nt_hash, ex=cache_seconds)
+                            redis_db.set(cache_key, cache_value, ex=cache_seconds)
                         if cache == "memcached":
                             with pool.reserve() as mc:
-                                mc.set(cache_key, nt_hash, time=cache_seconds)
+                                mc.set(cache_key, cache_value, time=cache_seconds)
                 message("Accept")
             else:
                 message("Reject")
@@ -318,19 +360,28 @@ if not help_needed:
                         cache_key = f"otpme-auth-cache-{username}-{client}"
                     else:
                         cache_key = f"otpme-auth-cache-{username}-{client_ip}"
-                    nt_hash = stuff.gen_nt_hash(str(password))
+                    # HMAC-SHA256 under the node-local auth-cache key.
+                    # The previous unsalted MD4 (gen_nt_hash) made cached
+                    # entries offline-crackable for anyone with read
+                    # access to the cache; HMAC under a per-node secret
+                    # closes that even if a Redis dump leaks.
+                    cache_value = stuff.auth_cache_hmac(password)
                     try:
                         if cache == "redis":
-                            _nt_hash = redis_db.get(cache_key)
+                            _cached = redis_db.get(cache_key)
                         if cache == "memcached":
                             with pool.reserve() as mc:
-                                _nt_hash = mc.get(cache_key)
+                                _cached = mc.get(cache_key)
                     except KeyError:
-                        _nt_hash = None
-                    if _nt_hash is not None:
-                        if isinstance(_nt_hash, bytes):
-                            _nt_hash = _nt_hash.decode()
-                        if _nt_hash == nt_hash:
+                        _cached = None
+                    if _cached is not None:
+                        # compare_digest defeats timing oracles and also
+                        # tolerates the str/bytes returns the two cache
+                        # backends differ on.
+                        import hmac as _hmac
+                        if isinstance(_cached, str):
+                            _cached = _cached.encode("latin-1")
+                        if _hmac.compare_digest(_cached, cache_value):
                             message("Accept")
                             sys.exit(0)
 

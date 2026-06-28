@@ -43,19 +43,35 @@ cmd_help = {
                                 },
                     },
 
-    'public_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token public_key {token} {public_key}'),
-                    'cmd'   :   '<|object|> <public_key>',
+    'sign_public_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token sign_public_key {token} {public_key}'),
+                    'cmd'   :   '<|object|> <file:public_key>',
                     '_help' :   {
-                                    'cmd'                   : _('Set token public key.'),
+                                    'cmd'                   : _('Set token signing public key (verifies token-issued signatures).'),
                                 },
                 },
 
-    'dump_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token dump_key {token}'),
+    'encrypt_public_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token encrypt_public_key {token} {public_key}'),
+                    'cmd'   :   '<|object|> <file:public_key>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set token encryption public key (wraps secrets for the token).'),
+                                },
+                },
+
+    'dump_sign_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token dump_sign_key {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Dump tokens public key.'),
+                                    'cmd'                   : _('Dump tokens signing public key.'),
+                                },
+                },
+
+    'dump_encrypt_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token dump_encrypt_key {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump tokens encryption public key.'),
                                 },
                 },
 

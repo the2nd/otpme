@@ -145,29 +145,67 @@ class OTPmeMgmtP1(OTPmeClient1):
             raise OTPmeException(msg) from e
         return users
 
-    def get_user_key(self, username=None, user_uuid=None, private=False):
-        """ Get users RSA key. """
-        if not username and not user_uuid:
-            msg = (_("Need 'username' or 'user_uuid'."))
-            raise OTPmeException(msg)
-        log_msg = _("Requesting users RSA key...", log=True)[1]
+    #def get_user_key(self, username=None, user_uuid=None, private=False):
+    #    """ Get users RSA key. """
+    #    if not username and not user_uuid:
+    #        msg = (_("Need 'username' or 'user_uuid'."))
+    #        raise OTPmeException(msg)
+    #    log_msg = _("Requesting users RSA key...", log=True)[1]
+    #    self.logger.debug(log_msg)
+    #    command = "user"
+    #    command_args = {}
+    #    command_args['subcommand'] = "dump_key"
+    #    command_args['object_identifier'] = username
+    #    if private:
+    #        command_args['private'] = True
+    #    try:
+    #        status, user_key = self.send_command(command, command_args)
+    #    except Exception as e:
+    #        msg = _("Unable to get users RSA key: {e}")
+    #        msg = msg.format(e=e)
+    #        raise OTPmeException(msg) from e
+    #    return user_key
+
+    def get_user_sign_key_type(self, username):
+        """ Get sign key type for the given user. """
+        log_msg = _("Requesting users sign key type...", log=True)[1]
         self.logger.debug(log_msg)
         command = "user"
-        command_args = {}
-        command_args['subcommand'] = "dump_key"
-        command_args['object_identifier'] = username
-        if private:
-            command_args['private'] = True
+        command_args = {
+                        'subcommand'        : 'get_sign_key_type',
+                        'object_identifier' : username,
+                        }
         try:
-            status, user_key = self.send_command(command, command_args)
+            status, sing_key_type = self.send_command(command, command_args)
         except Exception as e:
-            msg = _("Unable to get users RSA key: {e}")
+            msg = _("Unable to get users key mode: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
-        return user_key
+        if not sing_key_type:
+            sing_key_type = None
+        return sing_key_type
+
+    def get_user_enc_key_type(self, username):
+        """ Get encryption key type for the given user. """
+        log_msg = _("Requesting users encryption key type...", log=True)[1]
+        self.logger.debug(log_msg)
+        command = "user"
+        command_args = {
+                        'subcommand'        : 'get_enc_key_type',
+                        'object_identifier' : username,
+                        }
+        try:
+            status, enc_key_type = self.send_command(command, command_args)
+        except Exception as e:
+            msg = _("Unable to get users key mode: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+        if not enc_key_type:
+            enc_key_type = None
+        return enc_key_type
 
     def get_user_key_mode(self, username):
-        """ Get key key mode (client or server) for the given user. """
+        """ Get key mode (client or server) for the given user. """
         log_msg = _("Requesting users key mode...", log=True)[1]
         self.logger.debug(log_msg)
         command = "user"
@@ -269,19 +307,21 @@ class OTPmeMgmtP1(OTPmeClient1):
             raise OTPmeException(msg) from e
         return script_signatures
 
-    def set_user_key(self, username, key, private=False, force=None):
-        """ Set users RSA key. """
+    def set_user_key(self, username, key, key_role, private=False, force=None):
+        """ Set users RSA key for the given role ("sign" or "encrypt"). """
+        if key_role not in ("sign", "encrypt"):
+            raise OTPmeException(f"Invalid key_role: {key_role}")
         command = "user"
         command_args = {}
         command_args['object_identifier'] = username
         if private:
-            command_args['subcommand'] = "private_key"
+            command_args['subcommand'] = f"{key_role}_private_key"
             command_args['private_key'] = key
-            key_type = "private"
+            key_type = f"{key_role} private"
         else:
-            command_args['subcommand'] = "public_key"
+            command_args['subcommand'] = f"{key_role}_public_key"
             command_args['public_key'] = key
-            key_type = "public"
+            key_type = f"{key_role} public"
 
         # set_user_key() needs an force option independent of config.force
         # to allow forcing when called from "key_pass" command.

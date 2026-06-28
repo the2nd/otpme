@@ -524,6 +524,10 @@ class OTPmeConfig(object):
         self.master_pass_salt_file_name = f"{self.my_name.lower()}.key_salt"
         self.register_config_var("password_hash_salt_file_name", str, None)
         self.password_hash_salt_file_name = f"{self.my_name.lower()}.pass_salt"
+        self.register_config_var("auth_cache_key_file_name", str, None)
+        self.auth_cache_key_file_name = f"{self.my_name.lower()}.auth_cache_key"
+        self.register_config_var("db_pass_file_name", str, None)
+        self.db_pass_file_name = f"{self.my_name.lower()}.db_pass"
 
         # Set some default file paths.
         self.register_config_var("config_dir", str, None)
@@ -536,6 +540,26 @@ class OTPmeConfig(object):
         self.master_pass_salt_file = os.path.join(self.config_dir, self.master_pass_salt_file_name)
         self.register_config_var("password_hash_salt_file", str, None)
         self.password_hash_salt_file = os.path.join(self.config_dir, self.password_hash_salt_file_name)
+        # Node-local HMAC key that protects the otpme-auth-cache entries
+        # in Redis/Memcached. Lazily created on first use (see
+        # get_auth_cache_key()). Mode 0o600 / otpme:otpme -- same access
+        # bracket as the Redis socket (SOCKET_PERMS=700).
+        self.register_config_var("auth_cache_key_file", str, None)
+        self.auth_cache_key_file = os.path.join(self.config_dir, self.auth_cache_key_file_name)
+        # Cached HMAC key bytes for the lifetime of the process.
+        self.register_config_var("_auth_cache_key", bytes, None)
+        # MySQL DB password file for the otpme DB user. Lazily created
+        # on first use (see get_db_pass()). Mode 0o640 / otpme:otpme --
+        # the otpme group is the same access bracket as the MySQL Unix
+        # socket itself (0o770), and fsd may run as another OS user
+        # that is a member of the otpme group to talk to the DB. Before
+        # this file existed, the DB password was hardcoded to
+        # `config.user` ("otpme"), which is what get_db_pass() falls
+        # back to so existing installs keep working without explicit
+        # migration code.
+        self.register_config_var("db_pass_file", str, None)
+        self.db_pass_file = os.path.join(self.config_dir, self.db_pass_file_name)
+        self.register_config_var("_db_pass", str, None)
         self.register_config_var("signers_dir", str, None)
         self.signers_dir = os.path.join(self.config_dir, "signers")
 
@@ -791,6 +815,7 @@ class OTPmeConfig(object):
         self.register_config_var("supported_compression_types", dict, {})
         self.register_config_var("supported_hash_types", dict, {})
         self.register_config_var("supported_ecdh_curves", dict, {})
+        self.register_config_var("supported_ec_signing_curves", dict, {})
 
         self.register_config_var("sync_object_types", dict, {})
         self.register_config_var("cluster_object_types", list, [])
@@ -2059,6 +2084,27 @@ class OTPmeConfig(object):
         self.supported_ecdh_curves[ecdh_curve]['after'] = after
         self.supported_ecdh_curves[ecdh_curve]['before'] = before
 
+    def get_ec_signing_curves(self):
+        """ Get supported EC signing curves ordered by strength. """
+        from otpme.lib import stuff
+        order_data = dict(self.supported_ec_signing_curves)
+        signing_curves = stuff.order_data_by_deps(order_data)
+        return signing_curves
+
+    def register_ec_signing_curve(self, signing_curve, before=None, after=None):
+        """ Register EC signing curve (ECDSA/EdDSA). """
+        if before is None:
+            before = []
+        if after is None:
+            after = []
+        if signing_curve in self.supported_ec_signing_curves:
+            msg = _("EC signing curve already registered: {signing_curve}")
+            msg = msg.format(signing_curve=signing_curve)
+            raise AlreadyRegistered(msg)
+        self.supported_ec_signing_curves[signing_curve] = {}
+        self.supported_ec_signing_curves[signing_curve]['after'] = after
+        self.supported_ec_signing_curves[signing_curve]['before'] = before
+
     def get_hash_types(self):
         """ Get supported hash types ordered by strength. """
         from otpme.lib import stuff
@@ -2688,7 +2734,97 @@ class OTPmeConfig(object):
             fd = open(self.password_hash_salt_file, "r")
             salt = fd.read().replace("\n", "")
             fd.close()
+
         return salt
+
+    def set_auth_cache_key(self, key=None):
+        """ Persist (or generate) the node-local HMAC key used to protect
+        the otpme-auth-cache values in Redis/Memcached. Without this key
+        the cache stored unsalted MD4 hashes -- anyone able to read the
+        cache (uid otpme) got an offline-crackable hash file for every
+        recently-authenticated user. With this key, an attacker who only
+        sees the cache (e.g. from a backup of /var/run/otpme/cache or a
+        rogue Redis dump) cannot derive the password.
+
+        The key is per-node (not realm-wide / not synced via join):
+        each node has its own cache, so each node has its own key. """
+        from otpme.lib import filetools
+        if key is None:
+            if os.path.exists(self.auth_cache_key_file):
+                return
+            key = os.urandom(32)
+        try:
+            filetools.create_file(path=self.auth_cache_key_file,
+                                    content=key,
+                                    user=self.user,
+                                    group=self.group,
+                                    mode=0o600)
+        except Exception as e:
+            msg = _("Error writing auth-cache key file: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+
+    def get_auth_cache_key(self):
+        """ Lazy-load the auth-cache HMAC key, creating it on first use.
+        Cached for the lifetime of the process. Returns bytes. """
+        if self._auth_cache_key is not None:
+            return self._auth_cache_key
+        if not os.path.exists(self.auth_cache_key_file):
+            self.set_auth_cache_key()
+        fd = open(self.auth_cache_key_file, "rb")
+        try:
+            key = fd.read()
+        finally:
+            fd.close()
+        self._auth_cache_key = key
+        return key
+
+    def set_db_pass(self, password=None):
+        """ Persist (or generate) the MySQL DB user password. Without
+        this file the password used to be hardcoded to config.user
+        ("otpme") -- a member of the otpme group could authenticate
+        to MySQL by guessing "otpme/otpme" without finding any secret
+        in the codebase. Random 32-byte hex token keeps the SQL
+        statement injection-safe (no quote/special chars). """
+        from otpme.lib import stuff
+        from otpme.lib import filetools
+        if password is None:
+            password = stuff.gen_secret(32)
+        try:
+            filetools.create_file(path=self.db_pass_file,
+                                    content=password,
+                                    user=self.user,
+                                    group=self.group,
+                                    mode=0o640)
+        except Exception as e:
+            msg = _("Error writing DB password file: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+        self._db_pass = password
+
+    def get_db_pass(self):
+        """ Return the MySQL DB user password from db_pass_file. The
+        file is created by init_db() / set_db_pass() and must exist
+        before the DB engine can be built. Legacy installs that
+        predate the file need to re-run `otpme-tool index init` or
+        place a value at the path manually. """
+        if self._db_pass is not None:
+            return self._db_pass
+        if not os.path.exists(self.db_pass_file):
+            msg = _("DB password file missing: {f}. Re-run "
+                    "`otpme-tool index init` or create the file "
+                    "manually (mode 0640, owner {u}:{g}).")
+            msg = msg.format(f=self.db_pass_file,
+                             u=self.user,
+                             g=self.group)
+            raise OTPmeException(msg)
+        fd = open(self.db_pass_file, "r")
+        try:
+            password = fd.read().replace("\n", "")
+        finally:
+            fd.close()
+        self._db_pass = password
+        return password
 
     def get_agent_socket(self, user=None):
         """ Get path to agent socket. """

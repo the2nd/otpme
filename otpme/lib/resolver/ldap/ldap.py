@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import re
+import ssl
 import ldap3
 
 try:
@@ -53,6 +54,7 @@ read_value_acls = {
                             "ldap_base",
                             "login_dn",
                             "login_password",
+                            "ca_data",
                             ],
             }
 
@@ -71,6 +73,7 @@ write_value_acls = {
                             "ldap_base",
                             "login_dn",
                             "login_password",
+                            "ca_data",
                             ],
                 }
 
@@ -127,6 +130,15 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_login_password',
                     'args'              : ['login_password'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'ca_data'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_ca_data',
+                    'oargs'              : ['ca_data'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -296,6 +308,7 @@ def register_hooks():
     config.register_auth_on_action_hook("resolver", "change_login_dn")
     config.register_auth_on_action_hook("resolver", "change_ldap_base")
     config.register_auth_on_action_hook("resolver", "change_login_password")
+    config.register_auth_on_action_hook("resolver", "change_ca_data")
     config.register_auth_on_action_hook("resolver", "show_config_parameters")
 
 class LdapResolver(Resolver):
@@ -331,6 +344,15 @@ class LdapResolver(Resolver):
         self.ldap_base = None
         self.login_dn = None
         self.login_password = None
+        # PEM bundle (one or more CA certs as a string) used to verify
+        # the LDAP server's TLS certificate. Stored on the resolver
+        # object itself so the bundle travels with the resolver to
+        # every node that runs it; passed to ldap3 via Tls(
+        # ca_certs_data=...) so no on-disk temp file is needed.
+        # Required for any ldaps:// or StartTLS connection -- without
+        # it the resolver refuses to connect rather than fall back to
+        # ldap3's silent CERT_NONE default.
+        self.ca_data = None
         self.id_attributes = []
         self.attribute_mappings = {}
 
@@ -364,6 +386,11 @@ class LdapResolver(Resolver):
                                             'type'          : str,
                                             'required'      : False,
                                             'encryption'    : config.disk_encryption,
+                                        },
+            'CA_DATA'                   : {
+                                            'var_name'      : 'ca_data',
+                                            'type'          : str,
+                                            'required'      : False,
                                         },
             'ID_ATTRIBUTES'             : {
                                             'var_name'      : 'id_attributes',
@@ -641,12 +668,35 @@ class LdapResolver(Resolver):
             self.login_password = login_password
         return self._cache(callback=callback)
 
+    @check_acls(['edit:ca_data'])
+    @object_lock()
+    @backend.transaction
+    @audit_log(ignore_args=['ca_data'])
+    def change_ca_data(self, ca_data=None, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Set the PEM CA bundle used to verify the LDAP server's TLS
+        certificate. The bundle is stored on the resolver object and
+        handed to ldap3 inline at connection time, so it travels with
+        the resolver to every node that runs it. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_ca_data",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+        self.ca_data = ca_data
+        return self._cache(callback=callback)
+
     @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a resolver. """
         return callback.ok()
 
-    def get_ldap_connection(self, server_uri):
+    def get_ldap_connection(self, server_uri, callback=default_callback):
         """ Get connection type and LDAP port from server URI. """
         use_ssl = False
         use_start_tls = False
@@ -686,10 +736,39 @@ class LdapResolver(Resolver):
             msg = msg.format(server_uri=server_uri)
             raise Exception(msg)
 
-        # Bind to server.
+        # TLS handling. For ldaps:// and StartTLS we want to verify the
+        # server certificate against an explicitly configured CA bundle
+        # held in self.ca_data (PEM, handed to ldap3 inline via
+        # ca_certs_data so no on-disk tempfile is needed). ldap3 defaults
+        # to ssl.CERT_NONE if no Tls() is passed -- any certificate would
+        # be silently accepted, and an on-path attacker could intercept
+        # the simple-bind DN+password and feed forged user/group objects
+        # back into the next OTPme sync. If ca_data is not configured we
+        # surface a warning via the callback (so operator sees it) and
+        # fall back to the unverified default; configuring ca_data is
+        # strongly recommended.
+        tls_config = None
+        if use_ssl or use_start_tls:
+            if self.ca_data:
+                tls_config = ldap3.Tls(validate=ssl.CERT_REQUIRED,
+                                       ca_certs_data=self.ca_data)
+            else:
+                warn_msg, log_msg = _("WARNING: LDAP resolver connecting to "
+                                      "{server_uri} without server certificate "
+                                      "verification (no ca_data configured). "
+                                      "An on-path attacker could intercept "
+                                      "credentials and inject forged objects. "
+                                      "Configure ca_data on this resolver.",
+                                      log=True)
+                warn_msg = warn_msg.format(server_uri=server_uri)
+                log_msg = log_msg.format(server_uri=server_uri)
+                logger.warning(log_msg)
+                callback.error(warn_msg)
+
         ldap_server = ldap3.Server(host=server_address,
                                 port=server_port,
                                 use_ssl=use_ssl,
+                                tls=tls_config,
                                 get_info='ALL',
                                 connect_timeout=3)
         login_dn = None
@@ -699,20 +778,29 @@ class LdapResolver(Resolver):
                 login_dn = self.login_dn
                 login_password = self.login_password
         try:
-            conn = ldap3.Connection(ldap_server,
-                                    user=login_dn,
-                                    password=login_password)
-            if not conn.bind():
-                raise Exception(_("Bind failed."))
+            if use_start_tls:
+                # StartTLS must complete BEFORE the simple-bind PDU is
+                # sent, otherwise login_dn/login_password traverse the
+                # network in cleartext. AUTO_BIND_TLS_BEFORE_BIND issues
+                # StartTLS first and only binds once the handshake (and,
+                # if tls_config is set, CERT_REQUIRED validation) has
+                # succeeded.
+                conn = ldap3.Connection(ldap_server,
+                                        user=login_dn,
+                                        password=login_password,
+                                        auto_bind=ldap3.AUTO_BIND_TLS_BEFORE_BIND)
+            else:
+                conn = ldap3.Connection(ldap_server,
+                                        user=login_dn,
+                                        password=login_password)
+                if not conn.bind():
+                    raise Exception(_("Bind failed."))
         except Exception as e:
             msg, log_msg = _("Error connecting to server: {server_uri}: {error}", log=True)
             msg = msg.format(server_uri=server_uri, error=e)
             log_msg = log_msg.format(server_uri=server_uri, error=e)
             logger.warning(log_msg)
             raise Exception(msg) from e
-
-        if use_start_tls:
-            conn.start_tls()
 
         return conn
 
@@ -849,7 +937,8 @@ class LdapResolver(Resolver):
 
         for server_uri in self.ldap_servers:
             try:
-                ldap_conn = self.get_ldap_connection(server_uri)
+                ldap_conn = self.get_ldap_connection(server_uri,
+                                                     callback=callback)
                 break
             except Exception:
                 pass
@@ -893,7 +982,8 @@ class LdapResolver(Resolver):
             ldap_result = None
 
             try:
-                ldap_conn = self.get_ldap_connection(server_uri)
+                ldap_conn = self.get_ldap_connection(server_uri,
+                                                     callback=callback)
             except Exception as e:
                 ldap_conn = None
                 error_msg = str(e)

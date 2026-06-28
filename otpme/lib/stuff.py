@@ -305,6 +305,23 @@ def gen_nt_hash(password):
     nt_hash = encode(nt_hash, "hex")
     return nt_hash
 
+def auth_cache_hmac(password):
+    """ HMAC-SHA256 of a password under the node-local auth-cache key.
+    Used as the stored value for otpme-auth-cache-* entries in
+    Redis/Memcached. Returns raw bytes (32 bytes for SHA-256).
+
+    Replaces an earlier unsalted MD4 (gen_nt_hash) at this exact slot:
+    that was offline-crackable for anyone with cache-read access. With
+    HMAC keyed on a per-node secret stored under config_dir (0o600),
+    cache-leak alone no longer yields password material. """
+    import hmac
+    import hashlib
+    from otpme.lib import config
+    key = config.get_auth_cache_key()
+    if isinstance(password, str):
+        password = password.encode("utf-8")
+    return hmac.new(key, password, hashlib.sha256).digest()
+
 def gen_md5(string):
     """ Generate MD5 hash from string. """
     import hashlib

@@ -32,7 +32,7 @@ cleanup () {
 }
 trap "cleanup" EXIT
 
-set -e
+#set -e
 
 BASENAME="$(basename "$0" | cut -d '.' -f 1)"
 # Default encryption for data is AES.
@@ -42,6 +42,9 @@ AES_KEY_ENC="rsa"
 CIPHER="aes-256-cbc"
 ITERATIONS="5000000"
 KEY_MODE="client"
+# Asymmetric key algorithm. "rsa" today; later "ed25519" (sign) or
+# "x25519" (encrypt). Overridable per call via --algo.
+ALGO="rsa"
 
 PASS_DECRYPT_SCRIPT='#!/bin/bash
 SELF_LINES="$(head -n '$SCRIPT_LINES_OFFSET' "$0" | grep "#OTPME_SCRIPT_LINES:" | cut -d ":" -f 2)"
@@ -85,7 +88,7 @@ exit
 # Get command line options
 get_opts () {
         # Get options
-        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l use-agent-piv -l server-key -l force-pass -l no-self-decrypt -l reason u:b:h $*` ; then
+        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l algo: -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l use-agent-piv -l server-key -l force-pass -l no-self-decrypt -l reason u:b:h $*` ; then
                 show_help
                 return 1
         fi
@@ -161,6 +164,21 @@ get_opts () {
                         --rsa)
 							USE_RSA="True"
 							ENC_TYPE="RSA"
+							shift
+                        ;;
+
+
+                        --algo)
+							shift
+							ALGO="$1"
+							case "$ALGO" in
+								rsa|ed25519|x25519)
+									;;
+								*)
+									echo "Unknown algo: $ALGO" 1>&2
+									return 1
+									;;
+							esac
 							shift
                         ;;
 
@@ -317,6 +335,9 @@ tty_message () {
 }
 
 get_public_key () {
+	# Always returns the ENCRYPT public key -- get_public_key is called from
+	# the encrypt paths (rsa_encrypt, encrypt). For verify (sign pubkey)
+	# use otpme-user dump_sign_key directly.
 	if [ "$1" = "" ] ; then
 		local USERNAME="$_OTPME_KEYSCRIPT_USER"
 	else
@@ -328,9 +349,9 @@ get_public_key () {
 			return
 		fi
 	fi
-	tty_message "Loading public key: $USERNAME"
-	if ! PUBLIC_KEY="$(otpme-user $OTPME_OPTS dump_key "$USERNAME")" ; then
-		tty_message "Unable to load public key: $USERNAME"
+	tty_message "Loading encrypt public key: $USERNAME"
+	if ! PUBLIC_KEY="$(otpme-user $OTPME_OPTS dump_encrypt_key "$USERNAME")" ; then
+		tty_message "Unable to load encrypt public key: $USERNAME"
 		exit 1
 	fi
 
@@ -338,17 +359,37 @@ get_public_key () {
 }
 
 dump_private_key () {
-	if [ "$_OTPME_KEYSCRIPT_PRIVATE_KEY" != "" ] ; then
-		echo "$_OTPME_KEYSCRIPT_PRIVATE_KEY"
+	# Role arg: "sign" or "encrypt". Picks the matching cache env var
+	# and otpme-user subcommand.
+	local ROLE="${1:-sign}"
+	local CACHE_VAR=""
+	local DUMP_CMD=""
+	case "$ROLE" in
+		sign)
+			CACHE_VAR="$_OTPME_KEYSCRIPT_SIGN_PRIVATE_KEY"
+			DUMP_CMD="dump_sign_key"
+		;;
+		encrypt)
+			CACHE_VAR="$_OTPME_KEYSCRIPT_ENCRYPT_PRIVATE_KEY"
+			DUMP_CMD="dump_encrypt_key"
+		;;
+		*)
+			echo "dump_private_key: unknown role: $ROLE" 1>&2
+			return 1
+		;;
+	esac
+	if [ "$CACHE_VAR" != "" ] ; then
+		echo "$CACHE_VAR"
 		return
 	fi
-	tty_message "Loading private key..."
-	PRIVATE_KEY="$(otpme-user $OTPME_OPTS dump_key -p "$_OTPME_KEYSCRIPT_USER")"
+	tty_message "Loading $ROLE private key..."
+	PRIVATE_KEY="$(otpme-user $OTPME_OPTS $DUMP_CMD -p "$_OTPME_KEYSCRIPT_USER")"
 	echo $PRIVATE_KEY
 }
 
 get_private_key () {
-	if ! PRIVATE_KEY="$(dump_private_key)" ; then
+	local ROLE="${1:-sign}"
+	if ! PRIVATE_KEY="$(dump_private_key "$ROLE")" ; then
 		return 1
 	fi
 	echo "$PRIVATE_KEY" | base64 -d | decrypt_key
@@ -628,7 +669,6 @@ decrypt_file () {
 				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT)"
 			elif [ "$KEY_MODE" = "server" ] ; then
 				if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
-					#if ! AES_KEY="$(otpme-user $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
 					if ! AES_KEY="$(echo -n "$AES_KEY_ENCRYPTED" | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
 						return 1
 					fi
@@ -638,8 +678,19 @@ decrypt_file () {
 					fi
 				fi
 			elif [ "$KEY_MODE" = "client" ] ; then
-				PRIVATE_KEY="$(get_private_key)"
-				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256)"
+				PRIVATE_KEY="$(get_private_key encrypt)"
+				case "$ALGO" in
+					rsa)
+						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256)"
+					;;
+					x25519)
+						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-hpke decrypt --recipient-priv <(echo -n "$PRIVATE_KEY"))"
+					;;
+					*)
+						echo "decrypt_file: unsupported algo $ALGO for AES-key unwrap" 1>&2
+						return 1
+					;;
+				esac
 			fi
 		fi
 		# Finally decrypt AES data.
@@ -675,7 +726,7 @@ decrypt_file () {
 				echo "$_OTPME_KEYSCRIPT_KEY_PASS" | $(which otpme-user) $OTPME_OPTS decrypt --data "$RSA_DATA" --stdin-pass "$_OTPME_KEYSCRIPT_USER"
 			fi
 		elif [ "$KEY_MODE" = "client" ] ; then
-			PRIVATE_KEY="$(get_private_key)"
+			PRIVATE_KEY="$(get_private_key encrypt)"
 			base64 -d | openssl pkeyutl -decrypt  -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
 		fi
 	fi
@@ -708,20 +759,43 @@ fi
 
 case "$COMMAND" in
 	export_key)
-		get_private_key
+		# Positional role arg: "sign" or "encrypt" (default sign).
+		ROLE="${PARAMETERS[0]:-sign}"
+		get_private_key "$ROLE"
 	;;
 
 	gen_keys)
-		tty_message "Generating key ($KEY_LEN)..."
-		if ! PRIVATE_KEY="$(openssl genrsa $KEY_LEN)" ; then
-			echo "Error generating key." 1>&2
-			exit 1
-		fi
+		tty_message "Generating key (algo=$ALGO, len=$KEY_LEN)..."
+		case "$ALGO" in
+			rsa)
+				if ! PRIVATE_KEY="$(openssl genrsa $KEY_LEN)" ; then
+					echo "Error generating RSA key." 1>&2
+					exit 1
+				fi
+			;;
+			ed25519)
+				if ! PRIVATE_KEY="$(openssl genpkey -algorithm ed25519)" ; then
+					echo "Error generating Ed25519 key." 1>&2
+					exit 1
+				fi
+			;;
+			x25519)
+				if ! PRIVATE_KEY="$(openssl genpkey -algorithm x25519)" ; then
+					echo "Error generating X25519 key." 1>&2
+					exit 1
+				fi
+			;;
+			*)
+				echo "Unknown algo: $ALGO" 1>&2
+				exit 1
+			;;
+		esac
 		if ! PRIVATE_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
 			exit 1
 		fi
-		if ! PUBLIC_KEY="$(echo "$PRIVATE_KEY" | openssl rsa -pubout -in /dev/stdin)" ; then
-			echo "Error extacting public key." 1>&2
+		# openssl pkey -pubout works for RSA, EC, Ed25519 and X25519.
+		if ! PUBLIC_KEY="$(echo "$PRIVATE_KEY" | openssl pkey -pubout -in /dev/stdin)" ; then
+			echo "Error extracting public key." 1>&2
 			exit 1
 		fi
 		PUBLIC_KEY_ENC="$(echo -n "$PUBLIC_KEY" | base64 -w 0)"
@@ -729,7 +803,7 @@ case "$COMMAND" in
 	;;
 
 	gen_csr)
-		PRIVATE_KEY="$(get_private_key)"
+		PRIVATE_KEY="$(get_private_key sign)"
 		CSR_SUBJECT="/C=DE/ST=NRW/L=Koeln/O=OTPme/OU=Development/CN=otpme.org"
 		OPENSSL_CSR_CMD="openssl req -new -nodes -key /dev/stdin -subj "$CSR_SUBJECT""
 		if ! CSR="$(echo "$PRIVATE_KEY" | $OPENSSL_CSR_CMD)" ; then
@@ -746,8 +820,9 @@ case "$COMMAND" in
 		if ! PRIVATE_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
 			exit 1
 		fi
-		if ! PUBLIC_KEY="$(echo "$PRIVATE_KEY" | openssl rsa -pubout -in /dev/stdin)" ; then
-			echo "Error extacting public key." 1>&2
+		# openssl pkey -pubout works for RSA, EC, Ed25519 and X25519.
+		if ! PUBLIC_KEY="$(echo "$PRIVATE_KEY" | openssl pkey -pubout -in /dev/stdin)" ; then
+			echo "Error extracting public key." 1>&2
 			exit 1
 		fi
 		PUBLIC_KEY_ENC="$(echo -n "$PUBLIC_KEY" | base64 -w 0)"
@@ -759,7 +834,8 @@ case "$COMMAND" in
 			echo "Cannot change key passphrase in GPG mode." > /dev/stderr
 			exit 1
 		fi
-		PRIVATE_KEY="$(get_private_key)"
+		# TODO: change_key_pass should loop over sign+encrypt; deferred.
+		PRIVATE_KEY="$(get_private_key sign)"
 		_OTPME_KEYSCRIPT_KEY_PASS="$_OTPME_KEYSCRIPT_KEY_PASS_NEW"
 		if PRIVATE_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
 			echo "$PRIVATE_KEY_ENC"
@@ -774,7 +850,18 @@ case "$COMMAND" in
 		else
 			PUBLIC_KEY="$(get_public_key "$ENC_USERNAME")"
 		fi
-		openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0
+		case "$ALGO" in
+			rsa)
+				openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0
+			;;
+			ed25519)
+				echo "rsa_encrypt: ed25519 is not an encryption algorithm" 1>&2
+				exit 1
+			;;
+			x25519)
+				otpme-hpke encrypt --recipient-pub <(echo -n "$PUBLIC_KEY") | base64 -w 0
+			;;
+		esac
 		exit $?
 	;;
 
@@ -802,8 +889,19 @@ case "$COMMAND" in
 			#otpme-user $OTPME_OPTS decrypt --data "$DATA" "$_OTPME_KEYSCRIPT_USER" | base64 -d
 			cat - | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d
 		elif [ "$KEY_MODE" = "client" ] ; then
-			PRIVATE_KEY="$(get_private_key)"
-			cat - | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+			PRIVATE_KEY="$(get_private_key encrypt)"
+			case "$ALGO" in
+				rsa)
+					cat - | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+				;;
+				ed25519)
+					echo "rsa_decrypt: ed25519 is not an encryption algorithm" 1>&2
+					exit 1
+				;;
+				x25519)
+					cat - | base64 -d | otpme-hpke decrypt --recipient-priv <(echo -n "$PRIVATE_KEY")
+				;;
+			esac
 		fi
 		exit $?
 	;;
@@ -850,14 +948,36 @@ case "$COMMAND" in
 				fi
 			fi
 		elif [ "$KEY_MODE" = "client" ] ; then
-			PRIVATE_KEY="$(get_private_key)"
-			# Sign PKCS1_v1_5
-			#OPENSSL_SIGN_CMD="openssl dgst -sha256 -sign /dev/stdin "$FILE""
-			# Sign PKCS1_PSS
-			OPENSSL_SIGN_CMD="openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -sign /dev/stdin "$FILE""
-			if ! SIGNATURE="$(echo "$PRIVATE_KEY" | $OPENSSL_SIGN_CMD | base64 -w 0)" ;  then
-				exit 1
-			fi
+			PRIVATE_KEY="$(get_private_key sign)"
+			case "$ALGO" in
+				rsa)
+					# Sign PKCS1_PSS (PKCS1_v1_5: "openssl dgst -sha256 -sign /dev/stdin")
+					OPENSSL_SIGN_CMD="openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -sign /dev/stdin "$FILE""
+					if ! SIGNATURE="$(echo "$PRIVATE_KEY" | $OPENSSL_SIGN_CMD | base64 -w 0)" ;  then
+						exit 1
+					fi
+				;;
+				ed25519)
+					# EdDSA does its own SHA-512; we feed the SHA-256 of the
+					# file as the message (matches Ed25519Key.sign(digest=...)).
+					# openssl pkeyutl -rawin needs a seekable -in; piping via
+					# stdin fails with "unable to determine file size for
+					# oneshot operation". So we tempfile the SHA-256 bytes.
+					SIG_INPUT="$TMP_DIR/sig_input.bin"
+					sha256sum "$FILE" | awk '{ print $1 }' | xxd -r -p > "$SIG_INPUT"
+					if ! SIGNATURE="$(openssl pkeyutl -sign -rawin \
+						-inkey <(echo "$PRIVATE_KEY") -in "$SIG_INPUT" \
+						| base64 -w 0)" ; then
+						rm -f "$SIG_INPUT"
+						exit 1
+					fi
+					rm -f "$SIG_INPUT"
+				;;
+				x25519)
+					echo "sign: x25519 is not a signing algorithm" 1>&2
+					exit 1
+				;;
+			esac
 		fi
 		if [ "$SIGNATURE" = "" ] ; then
 			exit 1
@@ -889,13 +1009,48 @@ case "$COMMAND" in
 			error_message "Unable to get signer from signature file: $SIG_FILE"
 			exit 1
 		fi
-		SIGNER_PUBLIC_KEY="$(otpme-user $OTPME_OPTS dump_key "$SIGNER" | base64 -d)"
+		SIGNER_PUBLIC_KEY="$(otpme-user $OTPME_OPTS dump_sign_key "$SIGNER" | base64 -d)"
+		# Verify must use the signer's algo, not whatever the script was
+		# invoked with: callers don't know the signer in advance. Fetch
+		# from server, fall back to --algo (defaults to rsa) so legacy
+		# RSA sigs still verify without a roundtrip.
+		SIGNER_ALGO="$(otpme-user $OTPME_OPTS get_sign_key_type "$SIGNER")"
+		if [ -z "$SIGNER_ALGO" ] ; then
+			SIGNER_ALGO="$ALGO"
+		fi
 		cat "$SIG_FILE" | grep "^SIGNATURE=" | cut -d '"' -f 2 | base64 -d > "$TMP_FILE"
-		# Sign PKCS1_v1_5
-		#OPENSSL_VERIFY_CMD="openssl dgst -sha256 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
-		# Sign PKCS1_PSS
-		OPENSSL_VERIFY_CMD="openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
-		echo "$SIGNER_PUBLIC_KEY" | $OPENSSL_VERIFY_CMD
+		case "$SIGNER_ALGO" in
+			rsa)
+				# Verify PKCS1_PSS (PKCS1_v1_5: "openssl dgst -sha256 -verify /dev/stdin -signature ...")
+				OPENSSL_VERIFY_CMD="openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
+				echo "$SIGNER_PUBLIC_KEY" | $OPENSSL_VERIFY_CMD
+			;;
+			ed25519)
+				# Mirror of the ed25519 sign path: feed SHA-256 of file
+				# as the message that was signed. openssl pkeyutl -rawin
+				# needs SEEKABLE files for both -in (message) and -inkey
+				# (key) -- process substitution is a FIFO and triggers
+				# "unable to determine file size for oneshot operation".
+				# Pubkey on disk is no security concern, so tempfile both.
+				SIG_INPUT="$TMP_DIR/sig_input.bin"
+				sha256sum "$FILE" | awk '{ print $1 }' | xxd -r -p > "$SIG_INPUT"
+				openssl pkeyutl -verify -rawin \
+					-pubin -inkey <(echo -n "$SIGNER_PUBLIC_KEY") \
+					-in "$SIG_INPUT" \
+					-sigfile "$TMP_FILE"
+				rm -f "$SIG_INPUT"
+			;;
+			x25519)
+				echo "verify: x25519 is not a signing algorithm" 1>&2
+				rm "$TMP_FILE"
+				exit 1
+			;;
+			*)
+				echo "verify: unsupported signer algo: $SIGNER_ALGO" 1>&2
+				rm "$TMP_FILE"
+				exit 1
+			;;
+		esac
 		rm "$TMP_FILE"
 	;;
 
@@ -921,15 +1076,34 @@ case "$COMMAND" in
 			else
 				PUBLIC_KEY="$(get_public_key "$ENC_USERNAME")"
 			fi
-			if [ "$ENC_TYPE" = "RSA" ] ; then
-				cat "$FILE" | openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0 > "$OUTFILE"
-				# We need a newline to get the first line with bash's read builtin in handle_file_type()
-				echo -en "\n" >> "$OUTFILE"
-				exit $?
-			else
-				AES_KEY="$(openssl rand -base64 32)"
-				AES_KEY_ENCRYPTED="$(echo "$AES_KEY" | openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0)"
-			fi
+			case "$ALGO" in
+				rsa)
+					if [ "$ENC_TYPE" = "RSA" ] ; then
+						cat "$FILE" | openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0 > "$OUTFILE"
+						# We need a newline to get the first line with bash's read builtin in handle_file_type()
+						echo -en "\n" >> "$OUTFILE"
+						exit $?
+					fi
+
+					AES_KEY="$(openssl rand -base64 32)"
+					AES_KEY_ENCRYPTED="$(echo "$AES_KEY" | openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0)"
+				;;
+				ed25519)
+					echo "encrypt: ed25519 is not an encryption algorithm" 1>&2
+					exit 1
+				;;
+				x25519)
+					if [ "$ENC_TYPE" = "RSA" ] ; then
+						# Direct HPKE-encrypt of the file to the recipient.
+						cat "$FILE" | otpme-hpke encrypt --recipient-pub <(echo -n "$PUBLIC_KEY") | base64 -w 0 > "$OUTFILE"
+						echo -en "\n" >> "$OUTFILE"
+						exit $?
+					fi
+					# AES-key wrapped with HPKE for the recipient.
+					AES_KEY="$(openssl rand -base64 32)"
+					AES_KEY_ENCRYPTED="$(echo -n "$AES_KEY" | otpme-hpke encrypt --recipient-pub <(echo -n "$PUBLIC_KEY") | base64 -w 0)"
+				;;
+			esac
 		else
 			AES_KEY="$(openssl rand -base64 32)"
 			# Do not encrypt AES key with GPG if we got a AES passphrase via $_OTPME_KEYSCRIPT_AES_PASS

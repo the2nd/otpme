@@ -55,7 +55,8 @@ read_value_acls = {
                 "view"      : [
                             "key_type",
                             "auth_script",
-                            "public_key",
+                            "sign_public_key",
+                            "encrypt_public_key",
                             "ssh_public_key",
                             "dot1x_secret",
                             "private_key_backup",
@@ -79,7 +80,8 @@ write_value_acls = {
                             ],
                 "edit"      : [
                             "key_type",
-                            "public_key",
+                            "sign_public_key",
+                            "encrypt_public_key",
                             "ssh_public_key",
                             "auth_script",
                             "offline_expiry",
@@ -102,19 +104,36 @@ default_acls = []
 recursive_default_acls = []
 
 commands = {
-    'public_key'   : {
+    'sign_public_key'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'change_public_key',
+                    'method'            : 'change_sign_public_key',
                     'oargs'             : ['public_key'],
                     'job_type'          : 'process',
                     },
                 },
             },
-    'dump_key'   : {
+    'encrypt_public_key'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'dump_key',
+                    'method'            : 'change_encrypt_public_key',
+                    'oargs'             : ['public_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'dump_sign_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_sign_key',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'dump_encrypt_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_encrypt_key',
                     'job_type'          : 'process',
                     },
                 },
@@ -273,7 +292,8 @@ def register():
 
 def register_hooks():
     config.register_auth_on_action_hook("token", "key_type")
-    config.register_auth_on_action_hook("token", "public_key")
+    config.register_auth_on_action_hook("token", "sign_public_key")
+    config.register_auth_on_action_hook("token", "encrypt_public_key")
     config.register_auth_on_action_hook("token", "ssh_public_key")
     config.register_auth_on_action_hook("token", "show_config_parameters")
     config.register_auth_on_action_hook("token", "add_sign")
@@ -316,7 +336,13 @@ class YubikeypivToken(Token):
         self.token_type = "yubikey_piv"
         # Set password type.
         self.pass_type = "smartcard"
-        self.public_key = None
+        # Public keys come in pairs: sign for ECDSA-style verify,
+        # encrypt for HPKE/RSA-OAEP wrap. On YubiKey-PIV they live in
+        # slots 9A (AUTHENTICATION) and 9D (KEY_MANAGEMENT) respectively.
+        self.sign_public_key = None
+        self.sign_key_type = None
+        self.encrypt_public_key = None
+        self.encrypt_key_type = None
         # Set SSH key type.
         self.ssh_public_key = None
         self.key_type = "rsa"
@@ -340,6 +366,8 @@ class YubikeypivToken(Token):
                     'host'  : {
                         'trusted'  : [
                             "KEY_TYPE",
+                            "SIGN_PUBLIC_KEY",
+                            "ENCRYPT_PUBLIC_KEY",
                             "SSH_PUBLIC_KEY",
                             "SIGNATURES",
                             ]
@@ -348,6 +376,8 @@ class YubikeypivToken(Token):
                     'node'  : {
                         'untrusted'  : [
                             "KEY_TYPE",
+                            "SIGN_PUBLIC_KEY",
+                            "ENCRYPT_PUBLIC_KEY",
                             "SSH_PUBLIC_KEY",
                             "SIGNATURES",
                             ]
@@ -357,10 +387,25 @@ class YubikeypivToken(Token):
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
         token_config = {
-            'PUBLIC_KEY'                : {
-                                            'var_name'      : 'public_key',
+            'SIGN_PUBLIC_KEY'           : {
+                                            'var_name'      : 'sign_public_key',
                                             'type'          : str,
                                             'required'      : False,
+                                        },
+            'SIGN_KEY_TYPE'             : {
+                                            'var_name'      : 'sign_key_type',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+            'ENCRYPT_PUBLIC_KEY'        : {
+                                            'var_name'      : 'encrypt_public_key',
+                                            'type'          : str,
+                                            'required'      : False,
+            'ENCRYPT_KEY_TYPE'             : {
+                                            'var_name'      : 'encrypt_key_type',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
                                         },
             'SSH_PUBLIC_KEY'            : {
                                             'var_name'      : 'ssh_public_key',
@@ -400,7 +445,10 @@ class YubikeypivToken(Token):
 
     def get_offline_data(self):
         offline_data = {
-                        'public_key'        : self.public_key,
+                        'sign_public_key'       : self.sign_public_key,
+                        'sign_key_type'         : self.sign_key_type,
+                        'encrypt_public_key'    : self.encrypt_public_key,
+                        'encrypt_key_type'      : self.encrypt_key_type,
                     }
         return offline_data
 
@@ -410,10 +458,10 @@ class YubikeypivToken(Token):
         challenge = challenge.hex()
         return challenge
 
-    @check_acls(['edit:public_key'])
+    @check_acls(['edit:sign_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    def change_public_key(
+    def change_sign_public_key(
         self,
         public_key: str,
         force: bool=False,
@@ -423,13 +471,13 @@ class YubikeypivToken(Token):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set tokens RSA public key. """
+        """ Set tokens signing public key (verification of token-signed data). """
         if run_policies:
             try:
                 self.run_policies("modify",
                                     callback=callback,
                                     _caller=_caller)
-                self.run_policies("change_public_key",
+                self.run_policies("change_sign_public_key",
                                     callback=callback,
                                     _caller=_caller)
             except Exception as e:
@@ -437,16 +485,54 @@ class YubikeypivToken(Token):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.public_key is not None:
-            msg = _("Replace existing public key?: ")
+        if self.sign_public_key is not None:
+            msg = _("Replace existing sign public key?: ")
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
 
         if public_key == "":
-            self.public_key = None
+            self.sign_public_key = None
         else:
-            # Set public key.
-            self.public_key = public_key
+            self.sign_public_key = public_key
+
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:encrypt_public_key'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    def change_encrypt_public_key(
+        self,
+        public_key: str,
+        force: bool=False,
+        verbose_level: int=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set tokens encryption public key (wrap secrets for the token). """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                    callback=callback,
+                                    _caller=_caller)
+                self.run_policies("change_encrypt_public_key",
+                                    callback=callback,
+                                    _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        if self.encrypt_public_key is not None:
+            msg = _("Replace existing encrypt public key?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+        if public_key == "":
+            self.encrypt_public_key = None
+        else:
+            self.encrypt_public_key = public_key
 
         return self._cache(callback=callback)
 
@@ -463,7 +549,7 @@ class YubikeypivToken(Token):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set tokens RSA public key. """
+        """ Set tokens SSH public key. """
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -482,11 +568,10 @@ class YubikeypivToken(Token):
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
 
-        if ssh_public_key == "":
+        if public_key == "":
             self.ssh_public_key = None
         else:
-            # Set public key.
-            self.ssh_public_key = ssh_public_key
+            self.ssh_public_key = public_key
 
         return self._cache(callback=callback)
 
@@ -526,17 +611,29 @@ class YubikeypivToken(Token):
         self.key_type = key_type
         return self._cache(callback=callback)
 
-    @check_acls(['view:public_key'])
+    @check_acls(['view:sign_public_key'])
     @audit_log()
-    def dump_key(
+    def dump_sign_key(
         self,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Dump tokens RSA public key. """
-        return callback.ok(self.public_key)
+        """ Dump tokens signing public key. """
+        return callback.ok(self.sign_public_key)
+
+    @check_acls(['view:encrypt_public_key'])
+    @audit_log()
+    def dump_encrypt_key(
+        self,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Dump tokens encryption public key. """
+        return callback.ok(self.encrypt_public_key)
 
     @check_acls(['view:private_key_backup'])
     @audit_log()
@@ -610,9 +707,9 @@ class YubikeypivToken(Token):
         """ Call default verify method. """
         challenge = smartcard_data['challenge']
         signature = smartcard_data['signature']
-        if not self.public_key:
+        if not self.sign_public_key:
             return
-        key = RSAKey(key=self.public_key)
+        key = RSAKey(key=self.sign_public_key)
         try:
             verify_status = key.verify(signature=signature,
                                         message=challenge,
@@ -661,7 +758,10 @@ class YubikeypivToken(Token):
     @audit_log()
     def deploy(
         self,
-        public_key: str,
+        sign_public_key: str,
+        sign_key_type: str,
+        encrypt_public_key: str,
+        encrypt_key_type: str,
         add_user_key: bool=False,
         ssh_public_key: str=None,
         ssh_public_key_type: str=None,
@@ -671,12 +771,16 @@ class YubikeypivToken(Token):
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         ):
-        """ Deploy RSA key token. """
+        """ Deploy RSA key pair (sign + encrypt) to the token. """
         if verbose_level > 0:
-            msg = _("Setting public key to token: {token_path}")
+            msg = _("Setting sign + encrypt public keys on token: {token_path}")
             msg = msg.format(token_path=self.rel_path)
             callback.send(msg)
-        self.public_key = public_key
+        self.sign_public_key = sign_public_key
+        self.sign_key_type = sign_key_type
+        self.encrypt_public_key = encrypt_public_key
+        self.sign_key_type = sign_key_type
+        self.encrypt_key_type = encrypt_key_type
         if add_user_key:
             owner = self.owner
             result = backend.search(object_type="user",
@@ -686,8 +790,14 @@ class YubikeypivToken(Token):
                                     site=config.site,
                                     return_type="instance")
             user = result[0]
-            pub_key_b64 = encode(public_key, "base64")
-            user.change_public_key(public_key=pub_key_b64,
+            user.sign_key_type = sign_key_type
+            user.encrypt_key_type = encrypt_key_type
+            sign_pub_b64 = encode(sign_public_key, "base64")
+            encrypt_pub_b64 = encode(encrypt_public_key, "base64")
+            user.change_sign_public_key(public_key=sign_pub_b64,
+                                    verify_acls=False,
+                                    force=True)
+            user.change_encrypt_public_key(public_key=encrypt_pub_b64,
                                     verify_acls=False,
                                     force=True)
         if private_key_backup:
@@ -715,10 +825,25 @@ class YubikeypivToken(Token):
 
         lines = []
 
-        if self.verify_acl("view:public_key"):
-            lines.append(f'PUBLIC_KEY="{self.public_key}"')
+        if self.verify_acl("view:sign_public_key"):
+            lines.append(f'SIGN_PUBLIC_KEY="{self.sign_public_key}"')
         else:
-            lines.append('PUBLIC_KEY=""')
+            lines.append('SIGN_PUBLIC_KEY=""')
+
+        if self.verify_acl("view:sign_key_type"):
+            lines.append(f'SIGN_KEY_TYPE="{self.sign_key_type}"')
+        else:
+            lines.append('SIGN_KEY_TYPE=""')
+
+        if self.verify_acl("view:encrypt_public_key"):
+            lines.append(f'ENCRYPT_PUBLIC_KEY="{self.encrypt_public_key}"')
+        else:
+            lines.append('ENCRYPT_PUBLIC_KEY=""')
+
+        if self.verify_acl("view:encrypt_key_type"):
+            lines.append(f'ENCRYPT_KEY_TYPE="{self.encrypt_key_type}"')
+        else:
+            lines.append('ENCRYPT_KEY_TYPE=""')
 
         if self.verify_acl("view:ssh_public_key"):
             lines.append(f'SSH_PUBLIC_KEY="{self.ssh_public_key}"')

@@ -14,6 +14,8 @@ from yubikit.piv import SLOT
 from yubikit.piv import PivSession
 from yubikit.piv import PIN_POLICY
 from yubikit.piv import TOUCH_POLICY
+from yubikit.piv import MANAGEMENT_KEY_TYPE
+from yubikit.core import NotSupportedError
 from ykman.device import list_all_devices
 from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidSignature
@@ -22,6 +24,80 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
+from cryptography.hazmat.primitives.asymmetric import ec as _ec
+from cryptography.hazmat.primitives.asymmetric import ed25519 as _ed25519
+from cryptography.hazmat.primitives.asymmetric import x25519 as _x25519
+
+
+def algo_for_public_key(public_key):
+    """ Map a cryptography public key object to an OTPme algo tag
+    ("rsa" / "ed25519" / "x25519" / "ec"). Used to read back what's
+    in an already-initialised PIV slot. """
+    if isinstance(public_key, _rsa.RSAPublicKey):
+        return "rsa"
+    if isinstance(public_key, _ed25519.Ed25519PublicKey):
+        return "ed25519"
+    if isinstance(public_key, _x25519.X25519PublicKey):
+        return "x25519"
+    if isinstance(public_key, _ec.EllipticCurvePublicKey):
+        return "ec"
+    raise RuntimeError(
+        f"Unknown public key type: {type(public_key).__name__}"
+    )
+
+
+def protect_management_key(
+    pin: str,
+    current_mgmt_key: bytes = None,
+    serial: int = None,
+):
+    """ Replace the factory-default PIV management key with a fresh
+    random one and store it PIN-protected on the card itself.
+
+    After this, all admin ops (importing keys, writing certs, future
+    re-deploys) can be unlocked with just the PIN -- no separate
+    mgmt-key secret needs to be remembered or stored externally.
+
+    Without this, anyone with physical access to the YubiKey could
+    overwrite the slot keys via the well-known default mgmt key
+    (010203...0708), effectively impersonating the user.
+
+    AES-192 is the modern default (YubiKey FW >= 5.4); falls back to
+    3DES (TDES) automatically for older firmware. """
+    from ykman.piv import generate_random_management_key, pivman_set_mgm_key
+    if current_mgmt_key is None:
+        current_mgmt_key = DEFAULT_MGMT_KEY
+    with _open_piv(serial) as conn:
+        piv = PivSession(conn)
+        piv.authenticate(current_mgmt_key)
+        piv.verify_pin(pin)
+        try:
+            algorithm = MANAGEMENT_KEY_TYPE.AES192
+            new_key = generate_random_management_key(algorithm)
+            pivman_set_mgm_key(piv, new_key, algorithm,
+                               touch=False, store_on_device=True)
+        except NotSupportedError:
+            # YubiKey firmware < 5.4 only supports 3DES.
+            algorithm = MANAGEMENT_KEY_TYPE.TDES
+            new_key = generate_random_management_key(algorithm)
+            pivman_set_mgm_key(piv, new_key, algorithm,
+                               touch=False, store_on_device=True)
+
+
+def get_slot_algo(slot: str = "AUTHENTICATION", serial: int = None,
+        piv_session: PivSession = None):
+    """ Return the OTPme algo tag of the key currently in the slot,
+    or None if the slot is empty. """
+    slot_obj = slot_map[slot]
+    if piv_session is None:
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+    try:
+        pub = get_public_key(slot, serial=serial, piv_session=piv_session)
+    except Exception:
+        return None
+    return algo_for_public_key(pub)
 
 DEFAULT_PIN = "123456"
 DEFAULT_PUK = "12345678"

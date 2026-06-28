@@ -26,6 +26,8 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.idle import notify
+from otpme.lib import encryption
 from otpme.lib.encryption import aes
 from otpme.lib import sign_key_cache
 from otpme.lib.audit import audit_log
@@ -36,7 +38,6 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.cache import user_tokens_cache
-from otpme.lib.idle import notify
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
@@ -85,7 +86,8 @@ write_acls = [
 
 read_value_acls = {
             "view_all"      : [
-                        "private_key",
+                        "sign_private_key",
+                        "encrypt_private_key",
                         "key_script",
                         "auth_script",
                         "agent_script",
@@ -95,7 +97,8 @@ read_value_acls = {
             "view"      : [
                         "token",
                         "group",
-                        "public_key",
+                        "sign_public_key",
+                        "encrypt_public_key",
                         "failcount",
                         "session",
                         "auto_mount",
@@ -126,9 +129,11 @@ write_value_acls = {
                                 "config",
                                 "group",
                                 "key_mode",
-                                "private_key",
+                                "sign_private_key",
+                                "encrypt_private_key",
                                 "private_key_pass",
-                                "public_key",
+                                "sign_public_key",
+                                "encrypt_public_key",
                                 "key_script",
                                 "auth_script",
                                 "agent_script",
@@ -522,6 +527,22 @@ commands = {
                     },
                 },
             },
+    'get_sign_key_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_sign_key_type',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'get_enc_key_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_enc_key_type',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'gen_keys'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -530,6 +551,8 @@ commands = {
                                         'key_mode',
                                         'encrypt_key',
                                         'key_len',
+                                        'sign_algo',
+                                        'encrypt_algo',
                                         'aes_key',
                                         'aes_key_enc',
                                         'stdin_pass',
@@ -554,38 +577,75 @@ commands = {
                     },
                 },
             },
-    'private_key'   : {
+    'sign_private_key'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'change_private_key',
+                    'method'            : 'change_sign_private_key',
                     'oargs'             : ['private_key'],
                     'job_type'          : 'process',
                     },
                 },
             },
-    'public_key'   : {
+    'encrypt_private_key'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'change_public_key',
+                    'method'            : 'change_encrypt_private_key',
+                    'oargs'             : ['private_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'sign_public_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sign_public_key',
                     'oargs'             : ['public_key'],
                     'job_type'          : 'process',
                     },
                 },
             },
-    'import_key'   : {
+    'encrypt_public_key'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'import_key',
+                    'method'            : 'change_encrypt_public_key',
+                    'oargs'             : ['public_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'import_sign_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'import_sign_key',
                     'args'              : ['private_key'],
                     'oargs'             : ['encrypt_key', 'aes_key'],
                     'job_type'          : 'thread',
                     },
                 },
             },
-    'dump_key'   : {
+    'import_encrypt_key'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'get_key',
+                    'method'            : 'import_encrypt_key',
+                    'args'              : ['private_key'],
+                    'oargs'             : ['encrypt_key', 'aes_key'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_sign_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_sign_key',
+                    'oargs'             : ['private', 'decrypt', 'aes_key'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_encrypt_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_encrypt_key',
                     'oargs'             : ['private', 'decrypt', 'aes_key'],
                     'job_type'          : 'thread',
                     },
@@ -1060,8 +1120,10 @@ def register_hooks():
     config.register_auth_on_action_hook("user", "change_key_pass")
     config.register_auth_on_action_hook("user", "enable_autosign")
     config.register_auth_on_action_hook("user", "disable_autosign")
-    config.register_auth_on_action_hook("user", "change_private_key")
-    config.register_auth_on_action_hook("user", "change_public_key")
+    config.register_auth_on_action_hook("user", "change_sign_private_key")
+    config.register_auth_on_action_hook("user", "change_encrypt_private_key")
+    config.register_auth_on_action_hook("user", "change_sign_public_key")
+    config.register_auth_on_action_hook("user", "change_encrypt_public_key")
     config.register_auth_on_action_hook("user", "enable_auth_script")
     config.register_auth_on_action_hook("user", "disable_auth_script")
     config.register_auth_on_action_hook("user", "enable_login_script")
@@ -1480,11 +1542,17 @@ class User(OTPmeObject):
         # Users keys can be handled by the key script on client side or by this
         # class.
         self.key_mode = "client"
-        # Will hold users RSA private key or stuff needed to get it
-        # via self.key_script.
-        #self.private_key = {}
-        # Will hold users RSA public key.
-        self.public_key = None
+        # User holds two asymmetric key pairs: a sign key (verify
+        # signatures + derive_password slot) and an encrypt key (wrap
+        # secrets for the user). Today both are RSA; later the sign
+        # side becomes Ed25519 and the encrypt side X25519.
+        # The {sign,encrypt}_key_type tags let callers (e.g.
+        # key_script.sh) dispatch to the right openssl primitive
+        # without parsing the PEM.
+        self.sign_public_key = None
+        self.encrypt_public_key = None
+        self.sign_key_type = "rsa"
+        self.encrypt_key_type = "rsa"
         # Indicates if user auto-sign feature is enabled.
         self.autosign_enabled = False
         # The OTPmeScript used to handle users private key.
@@ -1509,7 +1577,10 @@ class User(OTPmeObject):
                     'host'  : {
                         'trusted'  : [
                             "TOKENS",
-                            "PUBLIC_KEY",
+                            "SIGN_PUBLIC_KEY",
+                            "ENCRYPT_PUBLIC_KEY",
+                            "SIGN_KEY_TYPE",
+                            "ENCRYPT_KEY_TYPE",
                             "DEFAULT_TOKEN",
                             "EXTENSIONS",
                             "EXTENSION_ATTRIBUTES",
@@ -1528,7 +1599,10 @@ class User(OTPmeObject):
                     'node'  : {
                         'untrusted'  : [
                             "TOKENS",
-                            "PUBLIC_KEY",
+                            "SIGN_PUBLIC_KEY",
+                            "ENCRYPT_PUBLIC_KEY",
+                            "SIGN_KEY_TYPE",
+                            "ENCRYPT_KEY_TYPE",
                             "DEFAULT_TOKEN",
                             "EXTENSIONS",
                             "EXTENSION_ATTRIBUTES",
@@ -1602,19 +1676,46 @@ class User(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
-                        'PRIVATE_KEY'               : {
-                                                        'var_name'  : 'private_key',
+                        'SIGN_PRIVATE_KEY'          : {
+                                                        'var_name'  : 'sign_private_key',
                                                         'type'      : dict,
                                                         'required'  : False,
                                                         'encoding'  : 'BASE64',
                                                         'encryption': config.disk_encryption,
                                                     },
 
-                        'PUBLIC_KEY'                : {
-                                                        'var_name'  : 'public_key',
+                        'ENCRYPT_PRIVATE_KEY'       : {
+                                                        'var_name'  : 'encrypt_private_key',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                        'encoding'  : 'BASE64',
+                                                        'encryption': config.disk_encryption,
+                                                    },
+
+                        'SIGN_PUBLIC_KEY'           : {
+                                                        'var_name'  : 'sign_public_key',
                                                         'type'      : str,
                                                         'required'  : False,
                                                         'encoding'  : 'BASE64',
+                                                    },
+
+                        'ENCRYPT_PUBLIC_KEY'        : {
+                                                        'var_name'  : 'encrypt_public_key',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                        'encoding'  : 'BASE64',
+                                                    },
+
+                        'SIGN_KEY_TYPE'             : {
+                                                        'var_name'  : 'sign_key_type',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+
+                        'ENCRYPT_KEY_TYPE'          : {
+                                                        'var_name'  : 'encrypt_key_type',
+                                                        'type'      : str,
+                                                        'required'  : False,
                                                     },
 
                         'KEY_SCRIPT'                : {
@@ -2352,9 +2453,9 @@ class User(OTPmeObject):
 
     def _write(self, **kwargs):
         """ Wrapper to make sure users signing public key added to cache. """
-        if self.public_key:
+        if self.sign_public_key:
             try:
-                sign_key_cache.add_cache(self.oid, self.public_key)
+                sign_key_cache.add_cache(self.oid, self.sign_public_key)
             except Exception as e:
                 config.raise_exception()
                 log_msg = _("Unable to add signer cache: {self_oid}: {e}", log=True)[1]
@@ -2399,29 +2500,50 @@ class User(OTPmeObject):
             key_mode = "client"
         return callback.ok(key_mode)
 
+    def get_sign_key_type(self, callback: JobCallback=default_callback, **kwargs):
+        """ Get users sign key type. """
+        return callback.ok(self.sign_key_type)
+
+    def get_enc_key_type(self, callback: JobCallback=default_callback, **kwargs):
+        """ Get users encryption key type. """
+        return callback.ok(self.encrypt_key_type)
+
+    def _key_attr(self, key_role: str, private: bool=True):
+        """ Map ("sign"/"encrypt", private=True/False) → the attribute name. """
+        if key_role not in ("sign", "encrypt"):
+            raise OTPmeException(f"Unknown key_role: {key_role}")
+        suffix = "private_key" if private else "public_key"
+        return f"{key_role}_{suffix}"
+
     def _set_key(
         self,
+        key_role: str,
         aes_key: Union[str,None]=None,
         rsa_key: Union[str,None]=None,
         encrypted: bool=False,
         ):
         """
         Encode (create one line string with AES+RSA key) private key string.
+        key_role is "sign" or "encrypt" -- selects which key slot to write.
         """
-        self.private_key = {'aes_key':aes_key, 'rsa_key':rsa_key, 'encrypted':encrypted}
+        setattr(self, self._key_attr(key_role),
+                {'aes_key':aes_key, 'rsa_key':rsa_key, 'encrypted':encrypted})
 
-    def _get_key(self):
+    def _get_key(self, key_role: str):
+        """ Decode the sign or encrypt private-key dict into
+        (aes_key, rsa_key, encrypted). """
+        priv = getattr(self, self._key_attr(key_role))
         if self.key_mode == "server":
             try:
-                aes_key = self.private_key['aes_key']
-                rsa_key = self.private_key['rsa_key']
-                encrypted = self.private_key['encrypted']
+                aes_key = priv['aes_key']
+                rsa_key = priv['rsa_key']
+                encrypted = priv['encrypted']
             except KeyError as err:
                 msg = "Failed to load private key: Wrong key mode set?"
                 raise OTPmeException(msg) from err
         else:
             aes_key = None
-            rsa_key = self.private_key['key_blob']
+            rsa_key = priv['key_blob']
             encrypted = False
         return aes_key, rsa_key, encrypted
 
@@ -2482,10 +2604,40 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(['edit:private_key'])
+    def _change_private_key(
+        self,
+        key_role: str,
+        private_key: str,
+        force: bool,
+        run_policies: bool,
+        callback: JobCallback,
+        _caller: str,
+        ):
+        attr = self._key_attr(key_role)
+        hook = f"change_{key_role}_private_key"
+        if run_policies:
+            try:
+                self.run_policies("modify", callback=callback, _caller=_caller)
+                self.run_policies(hook, callback=callback, _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+        if getattr(self, attr) is not None:
+            msg = _("Replace existing {role} private key?: ")
+            msg = msg.format(role=key_role)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+        if private_key == "":
+            setattr(self, attr, {})
+        else:
+            setattr(self, attr, {'key_blob': private_key})
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sign_private_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    def change_private_key(
+    def change_sign_private_key(
         self,
         private_key: str,
         force: bool=False,
@@ -2495,38 +2647,61 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set users RSA private key or stuff to get it. """
+        """ Set users sign private key (used for signing data). """
+        return self._change_private_key("sign", private_key, force,
+                                        run_policies, callback, _caller)
+
+    @check_acls(['edit:encrypt_private_key'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    def change_encrypt_private_key(
+        self,
+        private_key: str,
+        force: bool=False,
+        verbose_level=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set users encrypt private key (used for decrypting secrets). """
+        return self._change_private_key("encrypt", private_key, force,
+                                        run_policies, callback, _caller)
+
+    def _change_public_key(
+        self,
+        key_role: str,
+        public_key: str,
+        force: bool,
+        run_policies: bool,
+        callback: JobCallback,
+        _caller: str,
+        ):
+        attr = self._key_attr(key_role, private=False)
+        hook = f"change_{key_role}_public_key"
         if run_policies:
             try:
-                self.run_policies("modify",
-                                    callback=callback,
-                                    _caller=_caller)
-                self.run_policies("change_private_key",
-                                    callback=callback,
-                                    _caller=_caller)
+                self.run_policies("modify", callback=callback, _caller=_caller)
+                self.run_policies(hook, callback=callback, _caller=_caller)
             except Exception as e:
                 msg = _("Error running policies: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
-
-        if self.private_key is not None:
-            msg = _("Replace existing private key?: ")
+        if getattr(self, attr) is not None:
+            msg = _("Replace existing {role} public key?: ")
+            msg = msg.format(role=key_role)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
-
-        if private_key == "":
-            self.private_key = {}
+        if public_key == "":
+            setattr(self, attr, None)
         else:
-            # Set private key.
-            self.private_key = {}
-            self.private_key['key_blob'] = private_key
-
+            setattr(self, attr, public_key)
         return self._cache(callback=callback)
 
-    @check_acls(['edit:public_key'])
+    @check_acls(['edit:sign_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    def change_public_key(
+    def change_sign_public_key(
         self,
         public_key: str,
         force: bool=False,
@@ -2536,32 +2711,26 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set users RSA public key. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                    callback=callback,
-                                    _caller=_caller)
-                self.run_policies("change_public_key",
-                                    callback=callback,
-                                    _caller=_caller)
-            except Exception as e:
-                msg = _("Error running policies: {e}")
-                msg = msg.format(e=e)
-                return callback.error(msg)
+        """ Set users signing public key. """
+        return self._change_public_key("sign", public_key, force,
+                                        run_policies, callback, _caller)
 
-        if self.public_key is not None:
-            msg = _("Replace existing public key?: ")
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                return callback.abort()
-
-        if public_key == "":
-            self.public_key = None
-        else:
-            # Set public key.
-            self.public_key = public_key
-
-        return self._cache(callback=callback)
+    @check_acls(['edit:encrypt_public_key'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    def change_encrypt_public_key(
+        self,
+        public_key: str,
+        force: bool=False,
+        verbose_level: int=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set users encryption public key. """
+        return self._change_public_key("encrypt", public_key, force,
+                                        run_policies, callback, _caller)
 
     def get_key_script(
         self,
@@ -2646,7 +2815,45 @@ class User(OTPmeObject):
                 result = script
         return callback.ok(result)
 
-    def get_key(
+    def _get_key_dispatch(
+        self,
+        key_role: str,
+        private: bool,
+        decrypt: bool,
+        aes_key: Union[str,None],
+        callback: JobCallback,
+        _caller: str,
+        ):
+        """ Implementation shared by get_sign_key / get_encrypt_key. """
+        priv_attr = self._key_attr(key_role, private=True)
+        pub_attr = self._key_attr(key_role, private=False)
+        if private:
+            if not self.verify_acl(f"view_all:{priv_attr}"):
+                msg = ("Permission denied.")
+                return callback.error(msg, exception=PermissionDenied)
+        if private and getattr(self, priv_attr):
+            try:
+                private_key = self.get_private_key(key_role=key_role,
+                                                decrypt=decrypt,
+                                                aes_key=aes_key,
+                                                callback=callback,
+                                                _caller=_caller)
+                return callback.ok(private_key)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+        elif not private and getattr(self, pub_attr):
+            pub = getattr(self, pub_attr)
+            if decrypt:
+                pub = decode(pub, "base64")
+            return callback.ok(pub)
+        if private:
+            msg = f"No {key_role} private key set."
+        else:
+            msg = f"No {key_role} public key set."
+        return callback.error(msg)
+
+    def get_sign_key(
         self,
         private: bool=False,
         decrypt: bool=False,
@@ -2656,37 +2863,23 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Return user key as string. """
-        if private:
-            if not self.verify_acl("view_all:private_key"):
-                msg = ("Permission denied.")
-                return callback.error(msg, exception=PermissionDenied)
-        if private and self.private_key:
-            # Get private key. We need to pass on callback to allow decryption
-            # of private key if key mode is server.
-            try:
-                private_key = self.get_private_key(decrypt=decrypt,
-                                                aes_key=aes_key,
-                                                callback=callback,
-                                                _caller=_caller)
-                # Send private key to client.
-                return callback.ok(private_key)
-            except Exception as e:
-                msg = str(e)
-                return callback.error(msg)
-        elif not private and self.public_key:
-            # If decrypt (-n) is set we return the public key in its original
-            # form (e.g. not as a one line base64 string).
-            if decrypt:
-                public_key = decode(self.public_key, "base64")
-            else:
-                public_key = self.public_key
-            return callback.ok(public_key)
-        if private:
-            msg = "No private key set."
-        else:
-            msg = "No public key set."
-        return callback.error(msg)
+        """ Return user sign key as string. """
+        return self._get_key_dispatch("sign", private, decrypt, aes_key,
+                                        callback, _caller)
+
+    def get_encrypt_key(
+        self,
+        private: bool=False,
+        decrypt: bool=False,
+        aes_key: Union[str,None]=None,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Return user encrypt key as string. """
+        return self._get_key_dispatch("encrypt", private, decrypt, aes_key,
+                                        callback, _caller)
 
     @check_acls(['gen_keys'])
     @check_special_user()
@@ -2700,6 +2893,8 @@ class User(OTPmeObject):
         aes_key: Union[str,None]=None,
         aes_key_enc: Union[str,None]=None,
         key_len: Union[int,None]=None,
+        sign_algo: str="rsa",
+        encrypt_algo: str="rsa",
         pass_hash_type: str="PBKDF2",
         force: bool=False,
         run_policies: bool=True,
@@ -2740,7 +2935,8 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.private_key or self.public_key:
+        if (self.sign_private_key or self.sign_public_key
+                or self.encrypt_private_key or self.encrypt_public_key):
             msg = _("Replace existing user keys?: ")
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
@@ -2748,9 +2944,11 @@ class User(OTPmeObject):
         self.key_mode = key_mode
 
         if key_mode == "client":
-            # Ask client to create users keys.
+            # Ask client to create both user keys (sign + encrypt).
             response = callback.gen_user_keys(username=self.name,
                                             key_len=key_len,
+                                            sign_algo=sign_algo,
+                                            encrypt_algo=encrypt_algo,
                                             stdin_pass=stdin_pass)
             if response is None:
                 return callback.abort()
@@ -2769,22 +2967,20 @@ class User(OTPmeObject):
                 msg = msg.format(message=message)
                 return callback.error(msg)
 
-            # Get keys from response.
-            try:
-                self.private_key = {}
-                self.private_key['key_blob'] = response['private_key']
-            except KeyError:
-                pass
-            try:
-                self.public_key = response['public_key']
-            except KeyError:
-                pass
+            # Client must return two key pairs in the new format.
+            for field in ('sign_private_key', 'sign_public_key',
+                          'encrypt_private_key', 'encrypt_public_key'):
+                if field not in response:
+                    msg = _("Client did not return {field}.")
+                    msg = msg.format(field=field)
+                    return callback.error(msg)
 
-            if not self.public_key:
-                return callback.error("Got no public key.")
-
-            if not self.private_key:
-                return callback.error("Got no private key.")
+            self.sign_private_key = {'key_blob': response['sign_private_key']}
+            self.sign_public_key = response['sign_public_key']
+            self.encrypt_private_key = {'key_blob': response['encrypt_private_key']}
+            self.encrypt_public_key = response['encrypt_public_key']
+            self.sign_key_type = response.get('sign_key_type', 'rsa')
+            self.encrypt_key_type = response.get('encrypt_key_type', 'rsa')
 
             return self._cache(callback=callback)
 
@@ -2792,6 +2988,26 @@ class User(OTPmeObject):
             msg = "Need 'aes_key_enc' when 'aes_key' is set."
             return callback.error(msg)
 
+        # sign_algo must be a signing-capable algo, encrypt_algo an
+        # encryption-capable algo. Wrong combinations get rejected up
+        # front -- the encryption.gen_keypair factory would also raise,
+        # but a structured error here is more user-friendly.
+        valid_sign = {"rsa", "ed25519"}
+        valid_encrypt = {"rsa", "x25519"}
+        if sign_algo not in valid_sign:
+            msg = _("Invalid sign_algo: {algo} (expected one of {valid})")
+            msg = msg.format(algo=sign_algo,
+                             valid=", ".join(sorted(valid_sign)))
+            return callback.error(msg)
+        if encrypt_algo not in valid_encrypt:
+            msg = _("Invalid encrypt_algo: {algo} (expected one of {valid})")
+            msg = msg.format(algo=encrypt_algo,
+                             valid=", ".join(sorted(valid_encrypt)))
+            return callback.error(msg)
+
+        # One AES wrap key shared by both private keys -- they belong to the
+        # same user so the threat model is identical and the storage layout
+        # stays simple.
         if encrypt_key and not aes_key:
             aes_key = aes.gen_key()
             aes_key_enc = callback.encrypt(aes_key, use_rsa_key=False)
@@ -2799,32 +3015,41 @@ class User(OTPmeObject):
                 msg = ("Got no encrypted AES key from client.")
                 return callback.error(msg)
 
-        msg = _("Generating keys ({key_len} bits)...")
-        msg = msg.format(key_len=key_len)
+        msg = _("Generating keys (sign={sign_algo}, encrypt={encrypt_algo})...")
+        msg = msg.format(sign_algo=sign_algo, encrypt_algo=encrypt_algo)
         callback.send(msg)
-        # Generate new key pair.
+
         try:
-            key = RSAKey(bits=key_len)
+            # key_len only meaningful for RSA; 25519 curves are fixed-size.
+            sign_kwargs = {"bits": key_len} if sign_algo == "rsa" else {}
+            enc_kwargs = {"bits": key_len} if encrypt_algo == "rsa" else {}
+            sign_key = encryption.gen_keypair(sign_algo, **sign_kwargs)
+            enc_key_obj = encryption.gen_keypair(encrypt_algo, **enc_kwargs)
         except Exception as e:
-            msg = _("Error creating RSA key: {e}")
+            msg = _("Error creating user keys: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
 
-        # Encrypt private key if we got a AES key.
-        if aes_key:
-            try:
-                key_encrypted = key.encrypt_key(aes_key=aes_key,
+        try:
+            if aes_key:
+                sign_encrypted = sign_key.encrypt_key(aes_key=aes_key,
                                             hash_type=pass_hash_type)
-                self._set_key(aes_key_enc, key_encrypted, encrypted=True)
-            except Exception as e:
-                msg = _("Error encrypting private key: {e}")
-                msg = msg.format(e=e)
-                return callback.error(msg)
-        else:
-            self._set_key(rsa_key=private_key_base64)
+                enc_encrypted = enc_key_obj.encrypt_key(aes_key=aes_key,
+                                            hash_type=pass_hash_type)
+                self._set_key("sign", aes_key_enc, sign_encrypted, encrypted=True)
+                self._set_key("encrypt", aes_key_enc, enc_encrypted, encrypted=True)
+            else:
+                self._set_key("sign", rsa_key=sign_key.private_key_base64)
+                self._set_key("encrypt", rsa_key=enc_key_obj.private_key_base64)
+        except Exception as e:
+            msg = _("Error encrypting private keys: {e}")
+            msg = msg.format(e=e)
+            return callback.error(msg)
 
-        # Set public key.
-        self.public_key = encode(key.public_key_base64, "base64")
+        self.sign_public_key = encode(sign_key.public_key_base64, "base64")
+        self.encrypt_public_key = encode(enc_key_obj.public_key_base64, "base64")
+        self.sign_key_type = sign_algo
+        self.encrypt_key_type = encrypt_algo
 
         # Add ACLs to allow default token to do encrypt stuff.
         if self.default_token:
@@ -2875,7 +3100,8 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if not self.private_key and not self.public_key:
+        if not (self.sign_private_key or self.sign_public_key
+                or self.encrypt_private_key or self.encrypt_public_key):
             msg = "No user keys present."
             return callback.error(msg)
 
@@ -2883,38 +3109,32 @@ class User(OTPmeObject):
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
 
-        self.private_key = {}
-        self.public_key = None
+        self.sign_private_key = {}
+        self.sign_public_key = None
+        self.encrypt_private_key = {}
+        self.encrypt_public_key = None
 
         return self._cache(callback=callback)
 
-    @check_acls(['import_key'])
-    @check_special_user()
-    @cli.check_rapi_opts()
-    #@object_lock(full_lock=True)
-    @audit_log()
-    def import_key(
+    def _import_key(
         self,
+        key_role: str,
         private_key: str,
-        encrypt_key: bool=True,
-        aes_key: Union[str,None]=None,
-        aes_key_enc: Union[str,None]=None,
-        pass_hash_type: str="PBKDF2",
-        force: bool=False,
-        run_policies: bool=True,
-        verbose_level: int=0,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
+        encrypt_key: bool,
+        aes_key: Union[str,None],
+        aes_key_enc: Union[str,None],
+        pass_hash_type: str,
+        force: bool,
+        run_policies: bool,
+        callback: JobCallback,
+        _caller: str,
         ):
-        """ Import RSA private/public key. """
         if self.key_mode == "client":
             msg = "Cannot import key in client mode."
             return callback.error(msg)
 
-        # Try to load RSA key.
         try:
-            key = RSAKey(key=private_key)
+            key = encryption.load_private_key(private_key)
         except Exception as e:
             config.raise_exception()
             msg = _("Error loading private key: {e}")
@@ -2926,7 +3146,7 @@ class User(OTPmeObject):
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("import_key",
+                self.run_policies(f"import_{key_role}_key",
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
@@ -2934,8 +3154,11 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.private_key or self.public_key:
-            msg = _("Replace existing user keys?: ")
+        priv_attr = self._key_attr(key_role, private=True)
+        pub_attr = self._key_attr(key_role, private=False)
+        if getattr(self, priv_attr) or getattr(self, pub_attr):
+            msg = _("Replace existing {role} user key?: ")
+            msg = msg.format(role=key_role)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()
 
@@ -2950,37 +3173,82 @@ class User(OTPmeObject):
                 msg = ("Got no encrypted AES key from client.")
                 return callback.error(msg)
 
-        # Encrypt private key if we got a AES key.
         if aes_key:
             try:
                 key_encrypted = key.encrypt_key(aes_key=aes_key,
                                             hash_type=pass_hash_type)
-                self._set_key(aes_key_enc, key_encrypted, encrypted=True)
+                self._set_key(key_role, aes_key_enc, key_encrypted, encrypted=True)
             except Exception as e:
                 msg = _("Error encrypting private key: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
         else:
-            self._set_key(rsa_key=key.private_key_base64)
+            self._set_key(key_role, rsa_key=key.private_key_base64)
 
-        # Set public key.
-        self.public_key = encode(key.public_key_base64, "base64")
+        setattr(self, pub_attr, encode(key.public_key_base64, "base64"))
 
         return self._cache(callback=callback)
 
+    @check_acls(['import_sign_key'])
+    @check_special_user()
+    @cli.check_rapi_opts()
+    @audit_log()
+    def import_sign_key(
+        self,
+        private_key: str,
+        encrypt_key: bool=True,
+        aes_key: Union[str,None]=None,
+        aes_key_enc: Union[str,None]=None,
+        pass_hash_type: str="PBKDF2",
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Import users sign private/public key pair. """
+        return self._import_key("sign", private_key, encrypt_key, aes_key,
+                                aes_key_enc, pass_hash_type, force,
+                                run_policies, callback, _caller)
+
+    @check_acls(['import_encrypt_key'])
+    @check_special_user()
+    @cli.check_rapi_opts()
+    @audit_log()
+    def import_encrypt_key(
+        self,
+        private_key: str,
+        encrypt_key: bool=True,
+        aes_key: Union[str,None]=None,
+        aes_key_enc: Union[str,None]=None,
+        pass_hash_type: str="PBKDF2",
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Import users encrypt private/public key pair. """
+        return self._import_key("encrypt", private_key, encrypt_key, aes_key,
+                                aes_key_enc, pass_hash_type, force,
+                                run_policies, callback, _caller)
+
     def get_private_key(
         self,
+        key_role: str,
         decrypt: bool=True,
         aes_key: Union[str,None]=None,
         callback: JobCallback=default_callback,
         _caller="API",
         ):
-        """ Get private key (e.g. decrypt it). """
-        if not self.private_key:
-            msg = "No private key set."
+        """ Get sign or encrypt private key (e.g. decrypt it). """
+        priv_attr = self._key_attr(key_role, private=True)
+        if not getattr(self, priv_attr):
+            msg = f"No {key_role} private key set."
             return callback.error(msg)
-        # Decode private key stuff.
-        aes_key, rsa_key, encrypted = self._get_key()
+        aes_key, rsa_key, encrypted = self._get_key(key_role)
         if encrypted:
             if decrypt:
                 if not aes_key:
@@ -2992,9 +3260,11 @@ class User(OTPmeObject):
                 if not isinstance(aes_key, str):
                     msg = ("Unable to decrypt private key.")
                     return callback.error(msg)
-                # Try to decrypt RSA key.
+                # Try to unwrap and load the private key (factory dispatches
+                # on the actual algo so Ed25519/X25519 keys export through
+                # the right PEM format).
                 try:
-                    key = RSAKey(key=rsa_key, aes_key=aes_key)
+                    key = encryption.load_private_key(rsa_key, aes_key=aes_key)
                     private_key = key.private_key_base64
                 except Exception as e:
                     config.raise_exception()
@@ -3021,9 +3291,9 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Change private key passphrase. """
-        if not self.private_key:
-            return callback.error("No private key set.")
+        """ Re-wrap both private keys with a fresh AES key. """
+        if not (self.sign_private_key or self.encrypt_private_key):
+            return callback.error("No private keys set.")
         if self.key_mode != "server":
             msg = ("Private key is not handled by server.")
             return callback.error(msg)
@@ -3041,57 +3311,38 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        remove_key_pass = False
-        # Check if the current key is encrypted.
-        if self.private_key.startswith("RSA{"):
-            # Try to get keypack string.
-            try:
-                aes_key_enc, key_string = self._decode_key()
-            except Exception:
-                msg = ("Error decoding private key value.")
-                return callback.error(msg)
-            # Try to get decrypted AES key from client.
-            aes_key = callback.decrypt(aes_key_enc)
-        else:
-            # Try to get private key string.
-            try:
-                key_string = self.private_key.split("[")[1].split("]")[0]
-                key_string = decode(key_string, "base64")
-            except Exception:
-                msg = ("Error decoding private key value.")
-                return callback.error(msg)
-            aes_key = False
+        # New wrap key, shared by both private keys.
+        new_aes_key = aes.gen_key()
+        new_aes_key_enc = callback.encrypt(new_aes_key, use_rsa_key=False)
+        if not new_aes_key_enc:
+            return callback.error("Got no encrypted AES key from client.")
 
-        try:
-            user_key = RSAKey(key=key_string, aes_key=aes_key)
-            private_key = user_key.private_key_base64
-        except Exception as e:
-            msg = _("Error decrypting private key: {e}")
-            msg = msg.format(e=e)
-            return callback.error(msg)
-
-        if aes_key:
-            msg = _("Remove key password?: ")
-            if self.ask_change_confirmation(msg, force=False, callback=callback):
-                remove_key_pass = True
-
-        if remove_key_pass:
-            private_key = encode(user_key.private_key_base64, "base64")
-            self.private_key = f"RSA[{private_key}]"
-        else:
-            # Gen new AES key.
-            aes_key = aes.gen_key()
-            # Try to get encrypted AES key from client.
-            aes_key_enc = callback.encrypt(aes_key, use_rsa_key=False)
-            # Try to encrypt RSA key.
+        for key_role in ("sign", "encrypt"):
+            priv_attr = self._key_attr(key_role, private=True)
+            if not getattr(self, priv_attr):
+                continue
             try:
-                key_encrypted = user_key.encrypt_key(aes_key=aes_key)
+                old_aes_enc, rsa_key, encrypted = self._get_key(key_role)
             except Exception as e:
-                msg = _("Error encrypting private key: {e}")
-                msg = msg.format(e=e)
+                msg = _("Error decoding {role} private key: {e}")
+                msg = msg.format(role=key_role, e=e)
                 return callback.error(msg)
-            # Encode keys.
-            self._set_key(aes_key_enc, key_encrypted, encrypted=True)
+            if encrypted:
+                old_aes_key = callback.decrypt(old_aes_enc)
+                if not isinstance(old_aes_key, str):
+                    msg = _("Unable to decrypt current {role} private key.")
+                    msg = msg.format(role=key_role)
+                    return callback.error(msg)
+            else:
+                old_aes_key = None
+            try:
+                user_key = encryption.load_private_key(rsa_key, aes_key=old_aes_key)
+                key_encrypted = user_key.encrypt_key(aes_key=new_aes_key)
+            except Exception as e:
+                msg = _("Error re-encrypting {role} private key: {e}")
+                msg = msg.format(role=key_role, e=e)
+                return callback.error(msg)
+            self._set_key(key_role, new_aes_key_enc, key_encrypted, encrypted=True)
 
         return self._cache(callback=callback)
 
@@ -3108,15 +3359,15 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Sign given data with users private key. """
+        """ Sign given data with users sign private key. """
         if not data and not digest:
             msg = ("Need at least 'data' or 'digest'.")
             raise OTPmeException(msg)
         if self.key_mode != "server":
             msg = ("Private key is not handled by server.")
             return callback.error(msg)
-        if not self.private_key:
-            msg = ("User does not have a private key.")
+        if not self.sign_private_key:
+            msg = ("User does not have a sign private key.")
             return callback.error(msg)
         if run_policies:
             try:
@@ -3127,23 +3378,21 @@ class User(OTPmeObject):
                 msg = _("Error running policies: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
-        # Try to get private key (e.g. decrypt)
         try:
-            private_key = self.get_private_key(decrypt=True,
+            private_key = self.get_private_key(key_role="sign",
+                                            decrypt=True,
                                             aes_key=aes_key,
                                             _caller=_caller,
                                             callback=callback)
         except Exception as e:
             return callback.error(str(e))
 
-        # Try to load private key.
         try:
-            key = RSAKey(key=private_key)
+            key = encryption.load_private_key(private_key)
         except Exception as e:
             msg = _("Error loading private key: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
-        # Try to sign data.
         try:
             signature = key.sign(message=data, digest=digest)
             signature = encode(signature, "base64")
@@ -3165,15 +3414,15 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Verify given data+message with users public key. """
+        """ Verify signature against users sign public key. """
         if not data and not digest:
             msg = ("Need at least 'data' or 'digest'.")
             raise OTPmeException(msg)
         if self.key_mode != "server":
             msg = ("Private key is not handled by server.")
             return callback.error(msg)
-        if not self.public_key:
-            msg = ("User does not have a public key.")
+        if not self.sign_public_key:
+            msg = ("User does not have a sign public key.")
             return callback.error(msg)
         if run_policies:
             try:
@@ -3185,7 +3434,7 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
         try:
-            key = RSAKey(key=decode(self.public_key, "base64"))
+            key = encryption.load_public_key(decode(self.sign_public_key, "base64"))
         except Exception as e:
             msg = _("Error loading public key: {e}")
             msg = msg.format(e=e)
@@ -3210,11 +3459,11 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Encrypt given data with users public key. """
+        """ Encrypt given data with users encrypt public key. """
         if self.key_mode != "server":
             return callback.error("Key is not handled by server.")
-        if not self.public_key:
-            return callback.error("User does not have a private key.")
+        if not self.encrypt_public_key:
+            return callback.error("User does not have an encrypt public key.")
         if run_policies:
             try:
                 self.run_policies("encrypt",
@@ -3224,19 +3473,16 @@ class User(OTPmeObject):
                 msg = _("Error running policies: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
-        # Try to decode public key.
         try:
-            public_key = decode(self.public_key, "base64")
+            public_key = decode(self.encrypt_public_key, "base64")
         except Exception as e:
             return callback.error("Unable to decode public key.")
-        # Try to load public key.
         try:
-            key = RSAKey(key=public_key)
+            key = encryption.load_public_key(public_key)
         except Exception as e:
             msg = _("Error loading public key: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
-        # Try to encrypt data.
         try:
             cipher = encode(key.encrypt(cleartext=data), "base64")
         except Exception as e:
@@ -3256,11 +3502,11 @@ class User(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Decrypt given data with users private key. """
+        """ Decrypt given data with users encrypt private key. """
         if self.key_mode != "server":
             return callback.error("Key is not handled by server.")
-        if not self.private_key:
-            return callback.error("User does not have a private key.")
+        if not self.encrypt_private_key:
+            return callback.error("User does not have an encrypt private key.")
         if run_policies:
             try:
                 self.run_policies("decrypt",
@@ -3270,23 +3516,21 @@ class User(OTPmeObject):
                 msg = _("Error running policies: {e}")
                 msg = msg.format(e=e)
                 return callback.error(msg)
-        # Try to get private key (e.g. decrypt).
         try:
-            private_key = self.get_private_key(decrypt=True,
+            private_key = self.get_private_key(key_role="encrypt",
+                                            decrypt=True,
                                             aes_key=aes_key,
                                             _caller=_caller,
                                             callback=callback)
         except Exception as e:
             return callback.error(str(e))
 
-        # Try to load private key.
         try:
-            key = RSAKey(key=private_key)
+            key = encryption.load_private_key(private_key)
         except Exception as e:
             msg = _("Error loading private key: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
-        # Try to decrypt data.
         data = decode(data, "base64")
         try:
             decrypted_data = key.decrypt(ciphertext=data)
@@ -6334,6 +6578,14 @@ class User(OTPmeObject):
 
         if view_acl or edit_acl:
             lines.append(f"\tkey-mode:\t\t{self.key_mode}\n")
+
+        if view_acl or edit_acl:
+            if self.sign_public_key:
+                lines.append(f"\tsign-key:\t\t{self.sign_key_type}\n")
+
+        if view_acl or edit_acl:
+            if self.encrypt_public_key:
+                lines.append(f"\tencryption-key:\t\t{self.encrypt_key_type}\n")
 
         if view_acl or edit_acl:
             allow_disabled_login = "Disabled"

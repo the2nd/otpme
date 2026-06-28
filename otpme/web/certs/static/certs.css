@@ -1,0 +1,75 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 15px;
+  color: #333;
+  background: #f0f2f5;
+}
+body { display: flex; align-items: center; justify-content: center; padding: 24px; }
+.card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  padding: 36px 36px 28px;
+  width: 100%;
+  max-width: 520px;
+}
+h1 { font-size: 22px; font-weight: 600; color: #222; margin-bottom: 8px; }
+.lead { font-size: 14px; color: #555; line-height: 1.55; margin-bottom: 22px; }
+.cert-list { list-style: none; padding: 0; margin: 0 0 20px 0; }
+.cert-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border: 1px solid #e4e6ea;
+  border-radius: 10px;
+  background: #fafbfc;
+  margin-bottom: 10px;
+}
+.cert-list .name { font-weight: 600; color: #222; }
+.cert-list .desc { font-size: 12px; color: #666; margin-top: 2px; }
+.cert-list a {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: #4a7cff;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  transition: background .15s;
+}
+.cert-list a:hover { background: #3a66dd; }
+.next-step {
+  background: #eef5ff;
+  border: 1px solid #c5d8ff;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #1f3a8a;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+.next-step a {
+  color: #1f3a8a;
+  font-weight: 600;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.hint {
+  font-size: 12px;
+  color: #888;
+  border-top: 1px solid #eef0f3;
+  padding-top: 14px;
+  line-height: 1.55;
+}
+code {
+  font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+  font-size: 12px;
+  background: #f5f7fa;
+  padding: 1px 6px;
+  border-radius: 4px;
+}

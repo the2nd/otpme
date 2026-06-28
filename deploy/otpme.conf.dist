@@ -101,8 +101,9 @@ POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/13/bin/pg_ctl"
 #POSTGRES_TIMEZONE="Europe/Berlin"
 #POSTGRES_LOG_TIMEZONE="Europe/Berlin"
 
-# Language to use.
-LANGUAGE="en"
+# Language to use. Defaults to "env" which uses system localization.
+LANGUAGE="env"
+# Log language to use.
 LOG_LANGUAGE="en"
 
 # Audit log settings.

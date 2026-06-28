@@ -1458,30 +1458,30 @@ class OTPmeSyncP1(OTPmeClient1):
 
         # Update signers cache.
         if new_object.type == "user":
-            if new_object.public_key:
+            if new_object.sign_public_key:
                 try:
-                    public_key = sign_key_cache.get_cache(object_id)
+                    sign_public_key = sign_key_cache.get_cache(object_id)
                 except Exception as e:
                     log_msg = _("Unable to read signer cache: {object_id}: {e}", log=True)[1]
                     log_msg = log_msg.format(object_id=object_id, e=e)
                     self.logger.critical(log_msg)
-                    public_key = None
-                if new_object.public_key != public_key:
+                    sign_public_key = None
+                if new_object.sign_public_key != sign_public_key:
                     try:
-                        sign_key_cache.add_cache(object_id, new_object.public_key)
+                        sign_key_cache.add_cache(object_id, new_object.sign_public_key)
                     except Exception as e:
                         log_msg = _("Unable to add signer cache: {object_id}: {e}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id, e=e)
                         self.logger.critical(log_msg)
             else:
                 try:
-                    public_key = sign_key_cache.get_cache(object_id)
+                    sign_public_key = sign_key_cache.get_cache(object_id)
                 except Exception as e:
                     log_msg = _("Unable to read signer cache: {object_id}: {e}", log=True)[1]
                     log_msg = log_msg.format(object_id=object_id, e=e)
                     self.logger.critical(log_msg)
-                    public_key = None
-                if public_key:
+                    sign_public_key = None
+                if sign_public_key:
                     try:
                         sign_key_cache.del_cache(object_id)
                     except Exception as e:

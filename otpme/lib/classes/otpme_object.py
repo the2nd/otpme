@@ -7865,10 +7865,11 @@ class OTPmeObject(OTPmeBaseObject):
         sign_info = sig.get_sign_info()
         # Build sign request.
         sign_request = {
-                            'stdin_pass': stdin_pass,
-                            'key_mode'  : signer.key_mode,
-                            'sign_info' : sign_info,
-                            'sign_data' : sign_template,
+                            'stdin_pass'    : stdin_pass,
+                            'key_mode'      : signer.key_mode,
+                            'sign_key_type' : signer.sign_key_type,
+                            'sign_info'     : sign_info,
+                            'sign_data'     : sign_template,
                         }
         # Request user (key script) to sign the data.
         signature = callback.sign(sign_request)
@@ -7885,7 +7886,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Verify signature.
         try:
-            sig.verify(signer.public_key, sign_data, tags=sign_tags)
+            sig.verify(signer.sign_public_key, sign_data, tags=sign_tags)
         except VerificationFailed as e:
             msg, log_msg = _("Got invalid signature: {exception}", log=True)
             msg = msg.format(exception=e)
@@ -8100,6 +8101,7 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             signature = self.load_sign(user.uuid, sign_id)
         except Exception:
+            config.raise_exception()
             if sign_tags:
                 msg = _("No signature with given tags found: {tags}")
                 msg = msg.format(tags=','.join(sign_tags))
@@ -8229,7 +8231,7 @@ class OTPmeObject(OTPmeBaseObject):
                 # Verify if signature.
                 sign_data = self.get_sign_data()
                 try:
-                    _sig.verify(public_key=user.public_key,
+                    _sig.verify(public_key=user.sign_public_key,
                                 sign_data=sign_data,
                                 tags=check_tags)
                     verify_status = True

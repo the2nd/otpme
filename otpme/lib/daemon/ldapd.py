@@ -61,9 +61,35 @@ class LdapDaemon(OTPmeDaemon):
             ssl_cert = own_site.mgmt_cert
             ssl_key = own_site.mgmt_key
 
-            # Temp file paths.
-            self.cert_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-cert.pem")
-            self.key_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-key.pem")
+            # Materialise cert and key in a per-daemon subdir under
+            # run_dir that is owner-only (0o700). Previously these went
+            # to /tmp (config.tmp_dir), which is world-traversable; any
+            # local uid could read the TLS private key during the window
+            # between write and unlink. The 0o700 parent closes that
+            # window even if the file itself is briefly created with
+            # umask-defaults. The os.open(O_CREAT|O_EXCL, 0o600) below
+            # additionally pins the file mode atomically. An in-memory
+            # SSLContext.wrap_socket() would let us drop the on-disk
+            # path entirely, but twisted/ldaptor still wants paths.
+            ldapd_tmpdir = os.path.join(config.run_dir, "ldapd")
+            if not os.path.exists(ldapd_tmpdir):
+                filetools.create_dir(ldapd_tmpdir,
+                                    user=self.user,
+                                    group=self.group,
+                                    mode=0o700)
+            else:
+                # Defensive: a pre-fix install may have created this
+                # dir with looser perms.
+                filetools.set_fs_permissions(path=ldapd_tmpdir,
+                                            mode=0o700)
+                if self.user or self.group:
+                    filetools.set_fs_ownership(path=ldapd_tmpdir,
+                                            user=self.user,
+                                            group=self.group,
+                                            recursive=False)
+
+            self.cert_file = os.path.join(ldapd_tmpdir, f"{stuff.gen_secret(32)}-cert.pem")
+            self.key_file = os.path.join(ldapd_tmpdir, f"{stuff.gen_secret(32)}-key.pem")
 
             # Build dict with all temp files to create.
             tmp_files = {}
@@ -71,31 +97,24 @@ class LdapDaemon(OTPmeDaemon):
             tmp_files[self.key_file] = ssl_key
 
             # Create all needed temp files.
-            for tmp_file in tmp_files:
-                file_content = tmp_files[tmp_file]
-                # Try to create file.
+            for tmp_file, file_content in tmp_files.items():
+                # O_CREAT|O_EXCL refuses to follow a stale symlink or
+                # reuse an attacker-placed inode; mode 0o600 is set
+                # atomically by os.open, removing the umask-controlled
+                # window between open() and a follow-up chmod.
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                fd = os.open(tmp_file, flags, 0o600)
                 try:
-                    if os.path.exists(tmp_file):
-                        log_msg = _("Cert file '{file}' exists, removing.", log=True)[1]
-                        log_msg = log_msg.format(file=tmp_file)
-                        self.logger.warning(log_msg)
-                    # Create file.
-                    fd = open(tmp_file, "w")
-                    # Set permissions.
-                    filetools.set_fs_permissions(path=tmp_file,
-                                                mode=0o600,
-                                                recursive=False)
-                    if self.user or self.group:
-                        # Set ownership.
-                        filetools.set_fs_ownership(path=tmp_file,
-                                                user=self.user,
-                                                group=self.group,
-                                                recursive=False)
-                    # Write file content.
-                    fd.write(file_content)
-                    fd.close()
-                except Exception:
-                    raise
+                    if isinstance(file_content, str):
+                        file_content = file_content.encode("utf-8")
+                    os.write(fd, file_content)
+                finally:
+                    os.close(fd)
+                if self.user or self.group:
+                    filetools.set_fs_ownership(path=tmp_file,
+                                            user=self.user,
+                                            group=self.group,
+                                            recursive=False)
 
             for x in self.listen_sockets:
                 # Format: "address:port"; v6 addresses are bracketed: "[::]:389"

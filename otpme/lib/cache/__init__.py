@@ -231,10 +231,23 @@ def init():
     index_search_cache._cache_kwargs['caches'] = object_caches
     index_search_cache._cache_kwargs['cache_name_func'] = get_cache_name
 
-    # LDAP searcb cache used in ldaptor.
+    # LDAP search cache used in ldaptor. The key includes the bind's
+    # auth_token UUID and the OTPme-client (dc=<client> from the bind
+    # DN) so two distinct binds cannot share a cached result set --
+    # without that isolation, user A's privileged search would
+    # surface verbatim for user B's next equivalent query, leaking
+    # DN/uid/cn/displayName/entryUUID of objects B has no view-ACL
+    # on. Anonymous binds (auth_token=None) keep sharing among each
+    # other, which is fine because they have identical privileges.
     def get_uniq_method_name(cls, func_name, func_args, func_kwargs):
         """ Get uniq class name. """
-        method_id = (f"{cls.__module__}.{cls.__class__.__name__}().{func_name}()")
+        auth_token_uuid = None
+        auth_token = getattr(cls, "auth_token", None)
+        if auth_token is not None:
+            auth_token_uuid = getattr(auth_token, "uuid", None)
+        client = getattr(cls, "client", None)
+        method_id = (f"{cls.__module__}.{cls.__class__.__name__}().{func_name}()"
+                     f"|t={auth_token_uuid}|c={client}")
         return method_id
     ldap_search_cache.cache_key_func = get_uniq_method_name
     ldap_search_cache._cache_kwargs['copy_cache'] = True

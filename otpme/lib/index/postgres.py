@@ -558,6 +558,12 @@ def is_available(write=True):
         return False
     return True
 
+def exists():
+    """ Check if index exists. """
+    if not os.path.exists(INDEX_DIR):
+        return False
+    return True
+
 def get_db_engine():
     # Import here to speedup import time.
     from sqlalchemy import exc

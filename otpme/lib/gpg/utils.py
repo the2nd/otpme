@@ -96,8 +96,12 @@ def init_gpg(user_email, user_real_name, passphrase):
 
     gpg = gnupg.GPG(gnupghome=gpg_dir, verbose=False)
     gpg.encoding = 'utf-8'
+    # Master key must be at least as strong as the auth/encrypt subkeys
+    # it certifies -- a 1024-bit master key (~80 bit security, NIST
+    # sunset 2013) defeats the 4096-bit subkeys, because anyone who can
+    # factor the master can forge new auth subkeys at will.
     input_data = gpg.gen_key_input(key_type="RSA",
-                                key_length=1024,
+                                key_length=4096,
                                 name_real=user_real_name,
                                 name_email=user_email,
                                 passphrase=passphrase)

@@ -172,13 +172,16 @@ def gen_backup_rsa_key(message_id, key_name, key_len):
             }
     return request
 
-def gen_user_keys(message_id, username, key_len, stdin_pass=False):
+def gen_user_keys(message_id, username, sign_algo="rsa",
+    encrypt_algo="rsa", key_len=2048, stdin_pass=False):
     """ Sends request to client to generate users private/public keys. """
     request = {
             'message_id'    : message_id,
             'command'       : 'OTPME_GEN_USER_KEYS',
             'username'      : username,
             'key_len'       : key_len,
+            'sign_algo'     : sign_algo,
+            'encrypt_algo'  : encrypt_algo,
             'stdin_pass'    : stdin_pass,
             }
     return request

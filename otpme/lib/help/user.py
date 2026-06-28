@@ -90,7 +90,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-user key_mode {user} {key_mode}'),
                     'cmd'   :   '<|object|> <key_mode>',
                     '_help' :   {
-                                    'cmd'                   : _('Set user key key mode (client or server)'),
+                                    'cmd'                   : _('Set user key mode (client or server)'),
                                 },
                 },
 
@@ -98,19 +98,36 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-user get_key_mode {user}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Get user key key mode (client or server)'),
+                                    'cmd'                   : _('Get user key mode (client or server)'),
                                 },
                 },
 
+    'get_sign_key_type'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user get_sign_key_type {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get user sign key type'),
+                                },
+                },
+
+    'get_enc_key_type'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user get_enc_key_type {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get user encryption key type'),
+                                },
+                },
 
     'gen_keys'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user gen_keys [--server] [-b <bits>] [--pass-hash-type <hash_type>] [-n] {user}'),
-                    'cmd'   :   '-b :key_len: --server :key_mode=server: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user gen_keys [--server] [-b <bits>] [--sign-algo <algo>] [--encrypt-algo <algo>] [--pass-hash-type <hash_type>] [-n] {user}'),
+                    'cmd'   :   '-b :key_len: --server :key_mode=server: --sign-algo :sign_algo: --encrypt-algo :encrypt_algo: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                               : _('Generate user\'s RSA key pair'),
-                                    '-b <bits>'                         : _('Key length in bits (e.g. 2048)'),
-                                    '--server'                          : _('Generate key pair on server'),
-                                    '-n'                                : _('Do not encrypt server side private key'),
+                                    'cmd'                               : _('Generate user\'s sign + encrypt key pairs'),
+                                    '-b <bits>'                         : _('Key length in bits (e.g. 2048; only relevant for rsa)'),
+                                    '--server'                          : _('Generate key pairs on server'),
+                                    '-n'                                : _('Do not encrypt server side private keys'),
+                                    '--sign-algo <algo>'                : _('Algorithm for the signing key (rsa|ed25519, default rsa)'),
+                                    '--encrypt-algo <algo>'             : _('Algorithm for the encryption key (rsa|x25519, default rsa)'),
                                     '--pass-hash-type <pass_hash_type>' : _('Hash type used to derive encryption key from password.'),
                                     '--stdin-pass'                      : _('Read passphrase for RSA private key from stdin'),
                                 },
@@ -135,46 +152,80 @@ cmd_help = {
                                 },
                 },
 
-    'private_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user private_key {user}'),
+    'sign_private_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user sign_private_key {user} {private_key}'),
                     'cmd'   :   '<|object|> <private_key>',
                     '_help' :   {
-                                    'cmd'                   : _('Set user\'s RSA private key'),
+                                    'cmd'                   : _('Set user\'s sign private key'),
                                 },
                 },
 
+    'encrypt_private_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user encrypt_private_key {user} {private_key}'),
+                    'cmd'   :   '<|object|> <private_key>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set user\'s encrypt private key'),
+                                },
+                },
 
-    'public_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user public_key {user} {public_key}'),
+    'sign_public_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user sign_public_key {user} {public_key}'),
                     'cmd'   :   '<|object|> <public_key>',
                     '_help' :   {
-                                    'cmd'                   : _('Set user\'s RSA public key'),
+                                    'cmd'                   : _('Set user\'s sign public key'),
                                 },
                 },
 
+    'encrypt_public_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user encrypt_public_key {user} {public_key}'),
+                    'cmd'   :   '<|object|> <public_key>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set user\'s encrypt public key'),
+                                },
+                },
 
-    'import_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user import_key [--server] [-n] [--stdin-key] {user} [private_key_file]'),
+    'import_sign_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user import_sign_key [--server] [-n] [--stdin-key] {user} [private_key_file]'),
                     'cmd'   :   '--server :key_mode=server: -n :encrypt_key=False: --stdin-key :stdin_key=True: <|object|> [file:private_key]',
                     '_help' :   {
-                                    'cmd'                   : _('Import user\'s RSA key'),
+                                    'cmd'                   : _('Import user\'s sign RSA key'),
                                     '-n'                    : _('Don\'t encrypt private key'),
                                     '--server'              : _('Save key on server.'),
                                     '--stdin-key'           : _('Read RSA private key from stdin'),
                                 },
-
                 },
 
-    'dump_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user dump_key [-p] [-n] [--stdin-pass] {user}'),
+    'import_encrypt_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user import_encrypt_key [--server] [-n] [--stdin-key] {user} [private_key_file]'),
+                    'cmd'   :   '--server :key_mode=server: -n :encrypt_key=False: --stdin-key :stdin_key=True: <|object|> [file:private_key]',
+                    '_help' :   {
+                                    'cmd'                   : _('Import user\'s encrypt RSA key'),
+                                    '-n'                    : _('Don\'t encrypt private key'),
+                                    '--server'              : _('Save key on server.'),
+                                    '--stdin-key'           : _('Read RSA private key from stdin'),
+                                },
+                },
+
+    'dump_sign_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user dump_sign_key [-p] [-n] [--stdin-pass] {user}'),
                     'cmd'   :   '-p :private=True: -n :decrypt=True: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Dump user\'s RSA key to stdout'),
+                                    'cmd'                   : _('Dump user\'s sign key to stdout'),
                                     '-p'                    : _('Dump private key (or pointer)'),
                                     '-n'                    : _('Dump private key unencrypted (if possible)'),
                                     '--stdin-pass'          : _('Read passphrase for RSA private key from stdin'),
                                 },
+                },
 
+    'dump_encrypt_key'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user dump_encrypt_key [-p] [-n] [--stdin-pass] {user}'),
+                    'cmd'   :   '-p :private=True: -n :decrypt=True: --stdin-pass :stdin_pass=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump user\'s encrypt key to stdout'),
+                                    '-p'                    : _('Dump private key (or pointer)'),
+                                    '-n'                    : _('Dump private key unencrypted (if possible)'),
+                                    '--stdin-pass'          : _('Read passphrase for RSA private key from stdin'),
+                                },
                 },
 
     'gen_cert'    : {

@@ -3,6 +3,7 @@
 import os
 from cryptography import exceptions
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hpke
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import utils
@@ -25,9 +26,53 @@ from otpme.lib.exceptions import *
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
+# Map cryptography curve.name (lower-case) → HPKE KEM enum.
+# Extend when introducing a new ECDH-capable curve.
+HPKE_KEM_BY_CURVE = {
+    "secp256r1" : hpke.KEM.P256,
+    "secp384r1" : hpke.KEM.P384,
+    "secp521r1" : hpke.KEM.P521,
+}
+
+# Pair each curve with an HKDF hash of matching security level
+# (P-256→SHA-256, P-384→SHA-384, P-521→SHA-512) as recommended by
+# RFC 9180 §7.1. Override via the kdf= kwarg if a different binding
+# is required for interop.
+HPKE_KDF_BY_CURVE = {
+    "secp256r1" : hpke.KDF.HKDF_SHA256,
+    "secp384r1" : hpke.KDF.HKDF_SHA384,
+    "secp521r1" : hpke.KDF.HKDF_SHA512,
+}
+
+HPKE_AEAD_DEFAULT = hpke.AEAD.AES_256_GCM
+HPKE_INFO_DEFAULT = b"otpme-hpke-v1"
+
 def register():
+    # NIST curves are dual-use (ECDH + ECDSA), registered in both
+    # registries. Ed25519 / X25519 register themselves in their own
+    # modules (ed25519.py / x25519.py).
+    config.register_ecdh_curve("SECP256R1")
     config.register_ecdh_curve("SECP384R1")
-    #config.register_ecdh_hash_type("SHA256")
+    config.register_ecdh_curve("SECP521R1")
+    config.register_ec_signing_curve("SECP256R1")
+    config.register_ec_signing_curve("SECP384R1")
+    config.register_ec_signing_curve("SECP521R1")
+
+
+def _hpke_suite(curve_name, kdf=None, aead=None):
+    """ Build an HPKE Suite tied to the curve of the recipient key. """
+    curve_key = curve_name.lower()
+    try:
+        kem = HPKE_KEM_BY_CURVE[curve_key]
+    except KeyError:
+        msg = _("Unsupported HPKE curve: {curve}")
+        msg = msg.format(curve=curve_name)
+        raise OTPmeException(msg) from None
+    if kdf is None:
+        kdf = HPKE_KDF_BY_CURVE[curve_key]
+    if aead is None:
+        aead = HPKE_AEAD_DEFAULT
+    return hpke.Suite(kem, kdf, aead)
 
 class ECKey(AsymmetricKeyHandler):
     def __init__(self, **kwargs):
@@ -66,7 +111,26 @@ class ECKey(AsymmetricKeyHandler):
             shared_key = _encode(shared_key, "hex")
         return shared_key
 
-    def sign(self, message=None, digest=None, algorithm="SHA256"):
+    def encrypt(self, cleartext, info=HPKE_INFO_DEFAULT,
+        kdf=None, aead=None, encoding=None):
+        """ ECIES via HPKE Base mode (RFC 9180). """
+        if isinstance(cleartext, str):
+            cleartext = cleartext.encode()
+        suite = _hpke_suite(self.public_key.curve.name, kdf=kdf, aead=aead)
+        blob = suite.encrypt(cleartext, self.public_key, info)
+        if encoding is not None:
+            blob = _encode(blob, encoding)
+        return blob
+
+    def decrypt(self, blob, info=HPKE_INFO_DEFAULT,
+        kdf=None, aead=None, encoding=None):
+        """ ECIES decrypt counterpart for blobs produced by encrypt(). """
+        if encoding is not None:
+            blob = _decode(blob, encoding)
+        suite = _hpke_suite(self.private_key.curve.name, kdf=kdf, aead=aead)
+        return suite.decrypt(blob, self.private_key, info)
+
+    def sign(self, message=None, digest=None, algorithm="SHA256", encoding=None):
         """ Sign data with our private key. """
         if not message and not digest:
             raise OTPmeException("Need at least 'message' or 'digest'.")
@@ -85,9 +149,12 @@ class ECKey(AsymmetricKeyHandler):
         else:
             signature = self.private_key.sign(message,
                             ec.ECDSA(hash_algo_method()))
+        if encoding is not None:
+            signature = _encode(signature, encoding)
         return signature
 
-    def verify(self, signature, message=None, digest=None, algorithm="SHA256"):
+    def verify(self, signature, message=None, digest=None,
+        algorithm="SHA256", encoding=None):
         """ Verify signed data and clear-text with public key. """
         if not message and not digest:
             raise OTPmeException("Need at least 'message' or 'digest'.")
@@ -99,6 +166,8 @@ class ECKey(AsymmetricKeyHandler):
             raise OTPmeException(msg) from None
         if message:
             message = message.encode()
+        if encoding is not None:
+            signature = _decode(signature, encoding)
         if digest:
             digest = _decode(digest, "hex")
             pre_hashed = utils.Prehashed(hash_algo_method())

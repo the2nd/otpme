@@ -149,6 +149,37 @@ class OTPmeBackupP1(OTPmeFsServer1):
                                             action=action)
         setproctitle.setproctitle(new_proctitle)
 
+    def _resolve_repo_root(self, repository):
+        """ Validate the client-supplied repository id and resolve it to
+        an absolute path strictly under config.backup_dir.
+
+        The id is expected as "<type>/<site>/<name>" and resolves to
+        <backup_dir>/<site>/<type>/<name>. Returns the resolved
+        absolute path, or None if the id is malformed or escapes
+        backup_dir via ".." or symlinks. Without this check, "mount"
+        and "open_repository" would happily realpath() arbitrary
+        attacker-chosen paths and (with allow_new_backup_repos) drop a
+        .password file outside backup_dir. """
+        if not isinstance(repository, str) or "\x00" in repository:
+            return None
+        parts = repository.split("/")
+        if len(parts) != 3:
+            return None
+        if any(p in ("", ".", "..") for p in parts):
+            return None
+        repo_type, repo_site, repo_name = parts
+        try:
+            backup_dir_real = os.path.realpath(config.backup_dir)
+            candidate = os.path.realpath(os.path.join(backup_dir_real,
+                                                     repo_site,
+                                                     repo_type,
+                                                     repo_name))
+            if os.path.commonpath([backup_dir_real, candidate]) != backup_dir_real:
+                return None
+        except Exception:
+            return None
+        return candidate
+
     def read_keep_file(self, file):
         try:
             fd = open(file, "r")
@@ -276,25 +307,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = status_codes.PERMISSION_DENIED
                 message = _("Need password.")
                 return self.build_response(status, message)
-            try:
-                repo_type = repository.split("/")[0]
-                repo_site = repository.split("/")[1]
-                repo_name = repository.split("/")[2]
-            except Exception:
-                status = status_codes.UNKNOWN_OBJECT
-                message = _("Invalid repository id: {repository}")
-                message = message.format(repository=repository)
-                return self.build_response(status, message)
             self.repository = repository
-            root_dir = os.path.join(config.backup_dir, repo_site, repo_type, repo_name)
-            try:
-                self.backup_root = os.path.realpath(root_dir)
-            except Exception as e:
+            self.backup_root = self._resolve_repo_root(repository)
+            if self.backup_root is None:
                 status = status_codes.UNKNOWN_OBJECT
-                message, log_msg = _("Failed to open repository: {repository}", log=True)
-                message = message.format(repository=self.repository)
-                log_msg = log_msg.format(repository=self.repository)
-                log_msg = f"{log_msg}: {e}"
+                message, log_msg = _("Invalid repository id: {repository}", log=True)
+                message = message.format(repository=repository)
+                log_msg = log_msg.format(repository=repository)
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
             self.pass_file = os.path.join(self.backup_root, PASS_FILE)
@@ -411,31 +430,19 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = status_codes.UNKNOWN_OBJECT
                 message = _("Missing repository.")
                 return self.build_response(status, message)
-            try:
-                repo_type = repository.split("/")[0]
-                repo_site = repository.split("/")[1]
-                repo_name = repository.split("/")[2]
-            except Exception:
-                status = status_codes.UNKNOWN_OBJECT
-                message = _("Invalid repository id: {repository}")
-                message = message.format(repository=repository)
-                return self.build_response(status, message)
             self.repository = repository
-            root_dir = os.path.join(config.backup_dir, repo_site, repo_type, repo_name)
-            if not os.path.exists(root_dir):
+            self.root = self._resolve_repo_root(repository)
+            if self.root is None:
+                status = status_codes.UNKNOWN_OBJECT
+                message, log_msg = _("Invalid repository id: {repository}", log=True)
+                message = message.format(repository=repository)
+                log_msg = log_msg.format(repository=repository)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            if not os.path.exists(self.root):
                 status = status_codes.UNKNOWN_OBJECT
                 message = _("Unknown repository dir: {repository}: {root_dir}")
-                message = message.format(repository=self.repository, root_dir=root_dir)
-                return self.build_response(status, message)
-            try:
-                self.root = os.path.realpath(root_dir)
-            except Exception as e:
-                status = status_codes.UNKNOWN_OBJECT
-                message, log_msg = _("Failed to mount repository: {repository}", log=True)
-                message = message.format(repository=self.repository)
-                log_msg = log_msg.format(repository=self.repository)
-                log_msg = f"{log_msg}: {e}"
-                self.logger.warning(log_msg)
+                message = message.format(repository=self.repository, root_dir=self.root)
                 return self.build_response(status, message)
             self.backup_handler = BackupServer(self.root)
             self.backup_handler.load_pack_index()

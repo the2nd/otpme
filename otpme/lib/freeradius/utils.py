@@ -30,8 +30,15 @@ freeradius_pidfile = os.path.join(config.pidfile_dir, "freeradius.pid")
 LOCK_TYPE = "freeradius"
 locking.register_lock_type(LOCK_TYPE, module=__file__)
 
+# The clear-text password is handed to otpme-auth via the USER_PASSWORD
+# environment variable, NOT via "%{User-Password}" argv substitution.
+# FreeRADIUS 3.x's backtick-exec exports every request attribute as an
+# env var (uppercased, "-" -> "_"), so User-Password is reachable as
+# $USER_PASSWORD inside the fork without ever appearing on argv /
+# /proc/<pid>/cmdline. The --env-password flag must sit immediately
+# before <username> -- see bin/command.py for the resolution path.
 PASSWORD_CONFIG_CMD = '''
-                Auth-Type := `otpme-auth verify --socket --cache ''' + str(config.radius_cache_time) + ''' '%{User-Name}' '%{User-Password}' '%{NAS-Identifier}' '%{%{Client-IP-Address}:-%{Packet-Src-IPv6-Address}}'`
+                Auth-Type := `otpme-auth verify --socket --cache ''' + str(config.radius_cache_time) + ''' --env-password USER_PASSWORD '%{User-Name}' '%{NAS-Identifier}' '%{%{Client-IP-Address}:-%{Packet-Src-IPv6-Address}}'`
                 '''
 
 PASSWORD_CONFIG_MOD = '''

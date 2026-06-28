@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import pwd
 import ssl
 import time
+import struct
 import select
 import socket
 import psutil
@@ -543,13 +545,20 @@ class ListenSocket(object):
 
         # Build client identifier string.
         if self.protocol == "socket":
-            import struct
             SO_PEERCRED = 17
             creds = new_connection.getsockopt(socket.SOL_SOCKET,
                                                 SO_PEERCRED,
                                                 struct.calcsize('3i'))
             client_pid, client_uid, client_gid = struct.unpack('3i',creds)
-            client_user = stuff.get_pid_user(client_pid)
+            # Identity comes from the kernel-reported peer uid, not from a
+            # /proc lookup keyed on pid -- the pid path is racy under
+            # short-lived-child + pid-reuse, and downstream authz consumes
+            # client_user verbatim (otpme_server.py:161, agent1.py:106).
+            try:
+                client_user = pwd.getpwuid(client_uid).pw_name
+            except KeyError:
+                new_connection.close()
+                return None, None
             client_proc = stuff.get_pid_name(client_pid)
             if client_proc is None:
                 new_connection.close()

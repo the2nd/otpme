@@ -21,6 +21,8 @@ REGISTER_AFTER = []
 loaded_mods = {}
 modules = [
 	'otpme.lib.encryption.ec',
+	'otpme.lib.encryption.ed25519',
+	'otpme.lib.encryption.x25519',
 	'otpme.lib.encryption.aes_cfb',
 	'otpme.lib.encryption.hkdf',
 	'otpme.lib.encryption.argon2',
@@ -32,6 +34,96 @@ def register():
     """ Register modules. """
     from otpme.lib.register import _register_modules
     _register_modules(modules)
+
+
+def load_public_key(pem):
+    """ Parse a public-key PEM (str or bytes) and return the matching
+    OTPme wrapper (RSAKey / ECKey / Ed25519Key / X25519Key). Single
+    parse pass -- the cryptography key object is handed to the wrapper
+    directly via key_instance, no second load_pem_public_key call. """
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.asymmetric import ec as _ec
+    from cryptography.hazmat.primitives.asymmetric import ed25519 as _ed25519
+    from cryptography.hazmat.primitives.asymmetric import x25519 as _x25519
+    if isinstance(pem, str):
+        pem = pem.encode()
+    key_obj = load_pem_public_key(pem)
+    if isinstance(key_obj, rsa.RSAPublicKey):
+        from otpme.lib.encryption.rsa import RSAKey
+        return RSAKey(key_instance=key_obj)
+    if isinstance(key_obj, _ed25519.Ed25519PublicKey):
+        from otpme.lib.encryption.ed25519 import Ed25519Key
+        return Ed25519Key(key_instance=key_obj)
+    if isinstance(key_obj, _x25519.X25519PublicKey):
+        from otpme.lib.encryption.x25519 import X25519Key
+        return X25519Key(key_instance=key_obj)
+    if isinstance(key_obj, _ec.EllipticCurvePublicKey):
+        from otpme.lib.encryption.ec import ECKey
+        return ECKey(key_instance=key_obj)
+    msg = _("Unsupported public key type: {t}")
+    msg = msg.format(t=type(key_obj).__name__)
+    raise OTPmeException(msg)
+
+
+def gen_keypair(algo, **kwargs):
+    """ Create a fresh asymmetric key wrapper for the given algo.
+    Extra kwargs (e.g. bits=2048 for rsa) are forwarded to the
+    underlying gen_key(). """
+    if algo == "rsa":
+        from otpme.lib.encryption.rsa import RSAKey
+        return RSAKey(**kwargs)
+    if algo == "ed25519":
+        from otpme.lib.encryption.ed25519 import Ed25519Key
+        return Ed25519Key(**kwargs)
+    if algo == "x25519":
+        from otpme.lib.encryption.x25519 import X25519Key
+        return X25519Key(**kwargs)
+    if algo == "ec":
+        from otpme.lib.encryption.ec import ECKey
+        return ECKey(**kwargs)
+    msg = _("Unsupported keygen algo: {algo}")
+    msg = msg.format(algo=algo)
+    raise OTPmeException(msg)
+
+
+def load_private_key(pem, password=None, aes_key=None):
+    """ Parse a private-key PEM (str or bytes) and return the matching
+    OTPme wrapper. password is forwarded to cryptography's loader for
+    PEM-encrypted keys. aes_key triggers the OTPme AES keypack unwrap
+    (matches RSAKey(key=..., aes_key=...) semantics) before parsing. """
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.asymmetric import ec as _ec
+    from cryptography.hazmat.primitives.asymmetric import ed25519 as _ed25519
+    from cryptography.hazmat.primitives.asymmetric import x25519 as _x25519
+    if aes_key is not None:
+        # AES-wrapped keypack -- unwrap via the base handler (instance
+        # only needed for the decrypt_key method; no algo dispatch yet).
+        from otpme.lib.encryption.asymmetric_key_handler import AsymmetricKeyHandler
+        unwrapper = AsymmetricKeyHandler.__new__(AsymmetricKeyHandler)
+        unwrapper.pass_hash_type = "PBKDF2"
+        pem = unwrapper.decrypt_key(key_pack=pem, aes_key=aes_key)
+    if isinstance(pem, str):
+        pem = pem.encode()
+    if isinstance(password, str):
+        password = password.encode()
+    key_obj = load_pem_private_key(pem, password=password)
+    if isinstance(key_obj, rsa.RSAPrivateKey):
+        from otpme.lib.encryption.rsa import RSAKey
+        return RSAKey(key_instance=key_obj)
+    if isinstance(key_obj, _ed25519.Ed25519PrivateKey):
+        from otpme.lib.encryption.ed25519 import Ed25519Key
+        return Ed25519Key(key_instance=key_obj)
+    if isinstance(key_obj, _x25519.X25519PrivateKey):
+        from otpme.lib.encryption.x25519 import X25519Key
+        return X25519Key(key_instance=key_obj)
+    if isinstance(key_obj, _ec.EllipticCurvePrivateKey):
+        from otpme.lib.encryption.ec import ECKey
+        return ECKey(key_instance=key_obj)
+    msg = _("Unsupported private key type: {t}")
+    msg = msg.format(t=type(key_obj).__name__)
+    raise OTPmeException(msg)
 
 def get_module(enc_name):
     """ Get encryption module by type. """

@@ -21,11 +21,12 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-auth {command} {username} {{password|otp}|{challenge}{response}} [client] [ipaddr]"),
 
     'verify'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-auth verify [--socket] [--cache <seconds>] {username} {password|otp} [client] [ipaddr]'),
+                    '_cmd_usage_help' : _('Usage: otpme-auth verify [--socket] [--cache <seconds>] [--env-password <VARNAME>] {username} [{password|otp}] [client] [ipaddr]'),
                     'cmd'   :   '--socket :use_socket=True: --cache :cache_seconds: <username> <password> [client] [client_ip]',
                     '_help' :   {
-                                    'cmd'                   : _('Verify clear-text password|otp against valid tokens of user'),
-                                    '--cache <seconds>'     : _('Cache auth request for given seconds.'),
+                                    'cmd'                   : _('Verify clear-text password|otp against valid tokens of user. RECOMMENDED for production: use --env-password instead of the positional password to keep the cleartext out of argv / /proc/<pid>/cmdline.'),
+                                    '--cache <seconds>'     : _('Cache auth request for given seconds. SECURITY NOTE: during the cache lifetime, account-disable, token-revoke, password-change and lockout policies do NOT take effect for cached users -- the daemon is not consulted until the entry expires. Choose a TTL that matches your tolerated revocation delay.'),
+                                    '--env-password <VARNAME>' : _('Read the password from environment variable VARNAME instead of taking it positionally. Place the flag IMMEDIATELY before <username> (e.g. "otpme-auth verify --env-password User_Password alice nas1"). With FreeRADIUS rlm_exec this is the safe pattern -- each request attribute is exported as an env var, so %{User-Password} substitution into the program line (which leaks via /proc/<pid>/cmdline) can be avoided entirely.'),
                                     '--socket'              : _('Connect to authd socket.'),
                                 },
                 },
