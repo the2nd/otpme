@@ -41,7 +41,7 @@ from otpme.lib.smartcard.yubikey.piv import decrypt
 from otpme.lib.smartcard.yubikey.piv import sign
 from otpme.lib.smartcard.yubikey.piv import verify
 from otpme.lib.smartcard.yubikey.piv import list_keys
-from otpme.lib.smartcard.yubikey.piv import import_rsa_key
+from otpme.lib.smartcard.yubikey.piv import import_private_key
 from otpme.lib.smartcard.yubikey.piv import derive_password
 
 
@@ -261,7 +261,7 @@ def main():
             kwargs["mgmt_key"] = bytes.fromhex(_resolve_pin(args.mgmt_key))
         if _resolve_pin(args.pin):
             kwargs["pin"] = _resolve_pin(args.pin)
-        import_rsa_key(pem_data, **kwargs)
+        import_private_key(pem_data, **kwargs)
 
     else:
         parser.print_help()

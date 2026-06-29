@@ -8358,7 +8358,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
             result = "\n".join(result)
 
-        return callback.ok(result)
+        return callback.ok(result, return_value=True)
 
     def search_sign(
         self,

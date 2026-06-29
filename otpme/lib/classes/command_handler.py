@@ -840,6 +840,7 @@ class CommandHandler(object):
             or subcommand == "verify" \
             or subcommand == "encrypt" \
             or subcommand == "decrypt":
+                register_module("otpme.lib.classes")
                 self.logger = config.setup_logger(stderr_log=True,
                                         existing_logger=config.logger)
 
@@ -5015,7 +5016,7 @@ class CommandHandler(object):
             try:
                 filetools.create_dir(signers_dir,
                                     user=file_owner,
-                                    mode=0o770)
+                                    mode=0o775)
             except Exception as e:
                 msg = f"Failed to create signers dir: {signers_dir}: {e}"
                 raise OTPmeException(msg) from e
@@ -5026,7 +5027,7 @@ class CommandHandler(object):
             filetools.create_file(path=signers_file,
                                 content=file_content,
                                 user=file_owner,
-                                mode=0o700)
+                                mode=0o774)
         except Exception as e:
             msg = f"Failed to write signers file: {signers_file}: {e}"
             raise OTPmeException(msg) from e

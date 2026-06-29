@@ -293,7 +293,6 @@ class OTPmeMgmtP1(OTPmeClient1):
         command_args = {}
         command_args['subcommand'] = "get_sign"
         command_args['object_identifier'] = script_path
-        script_signatures = []
         if username:
             command_args['username'] = username
         if user_uuid:
@@ -305,6 +304,7 @@ class OTPmeMgmtP1(OTPmeClient1):
             msg = _("Unable to get script signatures: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
+        script_signatures = script_signatures[-1]
         return script_signatures
 
     def set_user_key(self, username, key, key_role, private=False, force=None):

@@ -17,6 +17,7 @@ from otpme.lib import cli
 from otpme.lib import json
 from otpme.lib import sotp
 from otpme.lib import config
+from otpme.lib import encryption
 from otpme.lib.help import command_map
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.smartcard.yubikey import piv
@@ -47,13 +48,19 @@ def _write_backup_file(path, sign_pem, encrypt_pem):
         stdlib_json.dump(data, fd, indent=2)
 
 
-def _load_rsakey_pem(pem):
-    """ Load an RSA PEM with optional password prompt on TypeError. """
+def _load_private_pem(pem):
+    """ Algo-agnostic PEM loader for deploy paths.
+
+    Tries cleartext first (server-restore PEMs are cleartext after the
+    fernet envelope is unwrapped), falls back to a password prompt for
+    PEMs encrypted via export_private_key(password=...) (local backup
+    file path). Dispatches to the right wrapper (RSAKey / Ed25519Key /
+    X25519Key) via the encryption factory. """
     try:
-        return RSAKey(key=pem)
+        return encryption.load_private_key(pem)
     except TypeError:
         pw = cli.read_pass(prompt='Key file password: ')
-        return RSAKey(key=pem, key_password=pw)
+        return encryption.load_private_key(pem, password=pw)
 
 from otpme.lib. exceptions import *
 
@@ -141,6 +148,24 @@ class YubikeypivClientHandler(object):
             add_user_key = self.local_command_args['add_user_key']
         except KeyError:
             add_user_key = False
+
+        # Pick algos for the two slots. Defaults stay rsa for back-compat;
+        # ed25519/x25519 need YubiKey firmware 5.7+ (the YubiKey will
+        # reject put_key with a UnsupportedAlgorithm error otherwise).
+        sign_algo = self.local_command_args.get('sign_algo', 'rsa')
+        encrypt_algo = self.local_command_args.get('encrypt_algo', 'rsa')
+        valid_sign = {"rsa", "ed25519"}
+        valid_encrypt = {"rsa", "x25519"}
+        if sign_algo not in valid_sign:
+            msg = _("Invalid --sign-algo: {algo} (expected one of {valid})")
+            msg = msg.format(algo=sign_algo,
+                             valid=", ".join(sorted(valid_sign)))
+            raise OTPmeException(msg)
+        if encrypt_algo not in valid_encrypt:
+            msg = _("Invalid --encrypt-algo: {algo} (expected one of {valid})")
+            msg = msg.format(algo=encrypt_algo,
+                             valid=", ".join(sorted(valid_encrypt)))
+            raise OTPmeException(msg)
 
         sign_public_key = None
         encrypt_public_key = None
@@ -262,8 +287,8 @@ class YubikeypivClientHandler(object):
                     msg = msg.format(err=err)
                     raise OTPmeException(msg) from err
                 try:
-                    sign_token_key = _load_rsakey_pem(sign_private_pem)
-                    encrypt_token_key = _load_rsakey_pem(encrypt_private_pem)
+                    sign_token_key = _load_private_pem(sign_private_pem)
+                    encrypt_token_key = _load_private_pem(encrypt_private_pem)
                 except Exception as e:
                     msg = _("Failed to load backup keys: {e}")
                     msg = msg.format(e=e)
@@ -271,19 +296,22 @@ class YubikeypivClientHandler(object):
             elif restore_file:
                 try:
                     sign_private_pem, encrypt_private_pem = _load_backup_file(restore_file)
-                    sign_token_key = _load_rsakey_pem(sign_private_pem)
-                    encrypt_token_key = _load_rsakey_pem(encrypt_private_pem)
+                    sign_token_key = _load_private_pem(sign_private_pem)
+                    encrypt_token_key = _load_private_pem(encrypt_private_pem)
                 except Exception as e:
-                    msg = _("Error loading RSA keys from {file}: {e}")
+                    msg = _("Error loading keys from {file}: {e}")
                     msg = msg.format(file=restore_file, e=e)
                     raise OTPmeException(msg) from e
             else:
-                # Gen two RSA keys: one for sign, one for encrypt.
+                # Gen the two key pairs via the algo-dispatching factory.
+                # key_len only meaningful for RSA; 25519 curves fixed-size.
                 try:
-                    sign_token_key = RSAKey(bits=key_len)
-                    encrypt_token_key = RSAKey(bits=key_len)
+                    sign_kwargs = {"bits": key_len} if sign_algo == "rsa" else {}
+                    enc_kwargs = {"bits": key_len} if encrypt_algo == "rsa" else {}
+                    sign_token_key = encryption.gen_keypair(sign_algo, **sign_kwargs)
+                    encrypt_token_key = encryption.gen_keypair(encrypt_algo, **enc_kwargs)
                 except Exception as e:
-                    msg = _("Error creating RSA keys: {e}")
+                    msg = _("Error creating token keys: {e}")
                     msg = msg.format(e=e)
                     raise OTPmeException(msg) from e
 
@@ -349,12 +377,22 @@ class YubikeypivClientHandler(object):
             piv.change_pin(old_pin=piv.DEFAULT_PIN, new_pin=token_password)
             piv.change_puk(old_puk=piv.DEFAULT_PUK, new_puk=token_password)
 
-            # Import sign key → 9A, encrypt key → 9D.
-            piv.import_rsa_key(
+            # Algos come from the actual loaded key objects -- that
+            # covers gen (where they match the CLI flags), restore-file
+            # and restore-from-server (where the file/server dictates
+            # what we actually have). CLI --sign-algo / --encrypt-algo
+            # are only consumed in the gen branch.
+            sign_key_type = piv.algo_for_public_key(sign_token_key.public_key)
+            encrypt_key_type = piv.algo_for_public_key(encrypt_token_key.public_key)
+
+            # Import sign key → 9A, encrypt key → 9D. import_private_key
+            # dispatches cert-signature hash per algo and skips the cert
+            # entirely for X25519 (X25519 can't self-sign).
+            piv.import_private_key(
                 private_key=sign_token_key.export_private_key(encoding='PEM'),
                 slot=SIGN_SLOT,
                 pin=token_password)
-            piv.import_rsa_key(
+            piv.import_private_key(
                 private_key=encrypt_token_key.export_private_key(encoding='PEM'),
                 slot=ENCRYPT_SLOT,
                 pin=token_password)
@@ -371,11 +409,6 @@ class YubikeypivClientHandler(object):
 
             sign_public_key = sign_token_key.export_public_key(encoding="PEM")
             encrypt_public_key = encrypt_token_key.export_public_key(encoding="PEM")
-            # New-deploy path generates RSA keys today (via RSAKey(bits=...)).
-            # When the script later grows --sign-algo/--encrypt-algo flags,
-            # derive these from the generated key class instead.
-            sign_key_type = "rsa"
-            encrypt_key_type = "rsa"
             # SSH always uses the sign key.
             ssh_public_key_type, \
             ssh_public_key = sign_token_key.ssh_public_key.decode().split()

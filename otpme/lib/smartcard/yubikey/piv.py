@@ -127,23 +127,41 @@ def get_piv(serial: int = None):
     piv_session = PivSession(conn)
     return piv_session, conn
 
-def import_rsa_key(
-    private_key: str,
+def import_private_key(
+    private_key,
     slot: str = "AUTHENTICATION",
     mgmt_key: bytes = DEFAULT_MGMT_KEY,
     pin: str = DEFAULT_PIN,
     serial: int = None,
 ):
+    """ Import a PEM-encoded private key (RSA / EC / Ed25519 / X25519)
+    into the given PIV slot. Self-signed cert is also written so OpenSC
+    can expose the slot via PKCS#11. X25519 keys can't self-sign, so
+    we skip the cert step (PKCS#11 visibility is irrelevant for
+    encrypt-only / KEM keys). """
     slot = slot_map[slot]
-    if isinstance(private_key, str):
-        private_key = private_key.encode()
-    private_key = load_pem_private_key(private_key, password=None)
+    if isinstance(private_key, (str, bytes)):
+        if isinstance(private_key, str):
+            private_key = private_key.encode()
+        private_key = load_pem_private_key(private_key, password=None)
     with _open_piv(serial) as conn:
         piv = PivSession(conn)
         piv.authenticate(mgmt_key)
         piv.put_key(slot, private_key, PIN_POLICY.ONCE, TOUCH_POLICY.NEVER)
-        # Write a self-signed certificate so OpenSC can expose the public key
-        # via PKCS#11 (required e.g. for SSH logins with ssh-keygen -D).
+        # X25519 has no sign primitive -- can't produce a self-signed cert.
+        if isinstance(private_key, _x25519.X25519PrivateKey):
+            print(f"Key imported to slot {slot.name} (no cert: X25519 is sign-incapable).")
+            return
+        # Pick the right hash for the cert signature:
+        #   Ed25519 → None (EdDSA does its own SHA-512 internally)
+        #   EC → SHA matching curve security level
+        #   RSA → SHA-256
+        if isinstance(private_key, _ed25519.Ed25519PrivateKey):
+            sig_hash = None
+        elif isinstance(private_key, _ec.EllipticCurvePrivateKey):
+            sig_hash = _ec_hash_for_curve(private_key.curve)
+        else:
+            sig_hash = hashes.SHA256()
         subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OTPme PIV")])
         now = datetime.datetime.utcnow()
         cert = (
@@ -154,10 +172,22 @@ def import_rsa_key(
             .serial_number(x509.random_serial_number())
             .not_valid_before(now)
             .not_valid_after(now + datetime.timedelta(days=365 * 10))
-            .sign(private_key, hashes.SHA256())
+            .sign(private_key, sig_hash)
         )
         piv.put_certificate(slot, cert)
     print(f"Key imported to slot {slot.name}.")
+
+
+def _ec_hash_for_curve(curve):
+    """ Curve-matched SHA size for EC cert signatures (P-256→SHA-256 etc.). """
+    size = curve.key_size
+    if size <= 256:
+        return hashes.SHA256()
+    if size <= 384:
+        return hashes.SHA384()
+    return hashes.SHA512()
+
+
 
 
 def reset(serial: int = None, confirm: bool = True):

@@ -1730,11 +1730,13 @@ def get_key_script(username):
             key_script_signs, \
             key_script = offline_token.get_script(script_id="key")
             key_mode = offline_token.key_mode
+            key_script_source = "offline_token"
         except Exception as e:
             msg, log_msg = _("Unable to get key script from offline tokens: {e}", log=True)
             msg = msg.format(e=e)
             log_msg = log_msg.format(e=e)
             logger.debug(log_msg)
+            raise OTPmeException(msg) from e
 
     if not key_script:
         command_handler = CommandHandler(interactive=False)
@@ -1744,10 +1746,12 @@ def get_key_script(username):
             key_script_uuid, \
             key_script_signs, \
             key_script = command_handler.get_user_key_script(username=username)
+            key_script_source = "server"
         except Exception as e:
-            log_msg = _("Error getting user key script from server: {e}", log=True)[1]
+            msg, log_msg = _("Error getting user key script from server: {e}", log=True)
             log_msg = log_msg.format(e=e)
             logger.debug(log_msg)
+            msg = msg.format(e=e)
             raise OTPmeException(msg) from e
         try:
             key_mode = command_handler.get_user_key_mode(username=username)
@@ -1767,7 +1771,7 @@ def get_key_script(username):
         raise OTPmeException(msg)
 
     return (key_script_path, key_script_opts, key_script_uuid,
-            key_script_signs, key_script, key_mode)
+            key_script_signs, key_script, key_mode, key_script_source)
 
 def verify_key_script(username, key_script=None,
     key_script_path=None, signatures=None):
@@ -1787,7 +1791,8 @@ def verify_key_script(username, key_script=None,
             key_script_uuid, \
             key_script_signs, \
             key_script, \
-            key_mode = get_key_script(username)
+            key_mode, \
+            source = get_key_script(username)
         except Exception as e:
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
@@ -1829,7 +1834,8 @@ def verify_key_script(username, key_script=None,
 def run_key_script(username, script_command, script_options=None,
     key_pass=None, key_pass_new=None, private_key=None, aes_pass=None,
     call=True, return_proc=False, key_script=None, key_script_options=None,
-    key_script_uuid=None, user=None, group=None, disable_ctrl_c=True):
+    key_script_uuid=None, verify_signatures=True, user=None,
+    group=None, disable_ctrl_c=True):
     """
     Run users key script with the given options and optionally verify
     script signatures.
@@ -1854,12 +1860,16 @@ def run_key_script(username, script_command, script_options=None,
             key_script_uuid, \
             key_script_signs, \
             key_script, \
-            key_mode = get_key_script(username)
+            key_mode, \
+            source = get_key_script(username)
         except Exception as e:
             config.raise_exception()
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
+        # Key script from offline tokens was verified by OTPmeClient().
+        if source == "offline_token":
+            verify_signatures = False
 
     if not key_script_path:
         msg = _("User does not have a key script configured.")
@@ -1928,7 +1938,7 @@ def run_key_script(username, script_command, script_options=None,
                         options=key_script_options,
                         return_proc=return_proc,
                         script_env=script_env,
-                        verify_signatures=True,
+                        verify_signatures=verify_signatures,
                         signatures=key_script_signs,
                         disable_ctrl_c=disable_ctrl_c,
                         user=user,
@@ -1941,7 +1951,7 @@ def encrypt_share_key(username, share_user, share_key, key_mode, disable_ctrl_c=
     if isinstance(share_key, str):
         share_key = share_key.encode()
     # Command for key script.
-    script_command = [ "rsa_encrypt" ]
+    script_command = [ "pkey_encrypt" ]
     # Add key mode.
     if key_mode == "server":
         script_command.append("--server-key")
@@ -1977,7 +1987,7 @@ def decrypt_share_key(username, encrypted_share_key,
     if isinstance(encrypted_share_key, str):
         encrypted_share_key = encrypted_share_key.encode()
     # Command for key script.
-    script_command = [ "rsa_decrypt" ]
+    script_command = [ "pkey_decrypt" ]
     # Add key mode.
     if key_mode == "server":
         script_command.append("--server-key")

@@ -108,7 +108,7 @@ def get_signers(signer_type, username=None):
     command_handler = CommandHandler(interactive=False)
 
     global_signers = command_handler.get_signers(signer_type=signer_type,
-                                                    private=False)
+                                                private=False)
     if username is None:
         return global_signers
 

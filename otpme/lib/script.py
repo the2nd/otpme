@@ -46,7 +46,6 @@ def get(script_path):
         signatures = s.signatures
         script_uuid = s.uuid
     else:
-
         from otpme.lib.classes.command_handler import CommandHandler
         command_handler = CommandHandler(interactive=False)
 

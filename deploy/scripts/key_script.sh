@@ -32,7 +32,7 @@ cleanup () {
 }
 trap "cleanup" EXIT
 
-#set -e
+set -e
 
 BASENAME="$(basename "$0" | cut -d '.' -f 1)"
 # Default encryption for data is AES.
@@ -286,10 +286,10 @@ get_opts () {
 }
 
 show_help () {
-	echo "Usage: $BASENAME [sign|verify|encrypt|decrypt|rsa_encrypt|rsa_decrypt] [-u username] [--help]"
+	echo "Usage: $BASENAME [sign|verify|encrypt|decrypt|pkey_encrypt|pkey_decrypt] [-u username] [--help]"
 	echo
 	echo "Commands:"
-	echo "	gen_keys					Generate users RSA key pair"
+	echo "	gen_keys					Generate users key pair"
 	echo "	gen_csr						Generate CSR"
 	echo "	change_key_pass				Change passphrase of users private key"
 	echo "	encrypt_key					Encrypt private key from stdin and write private key + public key to stdout"
@@ -298,8 +298,8 @@ show_help () {
 	echo "	verify <sig_file> <file>	Verify signature of <file>"
 	echo "	encrypt <file> <enc_file>	Encrypt <file> and write it to <enc_file>"
 	echo "	decrypt <enc_file> <file>	Decrypt <enc_file> and write it to <file>"
-	echo "	rsa_encrypt					Encrypt <stdin> and write it to <stdout>"
-	echo "	rsa_decrypt 				Decrypt <stdin> and write it to <stdout>"
+	echo "	pkey_encrypt				Encrypt <stdin> with recipient pubkey, write to <stdout>"
+	echo "	pkey_decrypt 				Decrypt <stdin> with private key, write to <stdout>"
 	echo
 	echo "Options:"
 	echo "	-u <username>				Encrypt AES key of encrypted file with RSA public key of <username>"
@@ -336,7 +336,7 @@ tty_message () {
 
 get_public_key () {
 	# Always returns the ENCRYPT public key -- get_public_key is called from
-	# the encrypt paths (rsa_encrypt, encrypt). For verify (sign pubkey)
+	# the encrypt paths (pkey_encrypt, encrypt). For verify (sign pubkey)
 	# use otpme-user dump_sign_key directly.
 	if [ "$1" = "" ] ; then
 		local USERNAME="$_OTPME_KEYSCRIPT_USER"
@@ -844,18 +844,19 @@ case "$COMMAND" in
 		fi
 	;;
 
-	rsa_encrypt)
+	pkey_encrypt)
 		if [ "$ENC_USERNAME" = "" ] ; then
 			PUBLIC_KEY="$(get_public_key)"
 		else
 			PUBLIC_KEY="$(get_public_key "$ENC_USERNAME")"
 		fi
+		ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$ENC_USERNAME")"
 		case "$ALGO" in
 			rsa)
 				openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0
 			;;
 			ed25519)
-				echo "rsa_encrypt: ed25519 is not an encryption algorithm" 1>&2
+				echo "pkey_encrypt: ed25519 is not an encryption algorithm" 1>&2
 				exit 1
 			;;
 			x25519)
@@ -865,7 +866,7 @@ case "$COMMAND" in
 		exit $?
 	;;
 
-	rsa_decrypt)
+	pkey_decrypt)
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
 			if [ "$USE_AGENT_PIV" = "true" ] ; then
 				USE_AGENT_OPT="--use-agent"
@@ -890,12 +891,13 @@ case "$COMMAND" in
 			cat - | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d
 		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key encrypt)"
+			ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER")"
 			case "$ALGO" in
 				rsa)
 					cat - | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
 				;;
 				ed25519)
-					echo "rsa_decrypt: ed25519 is not an encryption algorithm" 1>&2
+					echo "pkey_decrypt: ed25519 is not an encryption algorithm" 1>&2
 					exit 1
 				;;
 				x25519)

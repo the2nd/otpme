@@ -1389,8 +1389,10 @@ class OTPmeClient(OTPmeClientBase):
         from otpme.lib.classes.command_handler import CommandHandler
         # Get options.
         username = command_dict['username']
-        key_len = command_dict['key_len']
         stdin_pass = command_dict['stdin_pass']
+        sign_algo = command_dict['sign_algo']
+        encrypt_algo = command_dict['encrypt_algo']
+        key_len = command_dict['key_len']
 
         # When not in interactive mode we cannot call key script.
         if not self.interactive:
@@ -1406,6 +1408,8 @@ class OTPmeClient(OTPmeClientBase):
         try:
             response = command_handler.gen_user_keys(username,
                                                     password=password,
+                                                    encrypt_algo=encrypt_algo,
+                                                    sign_algo=sign_algo,
                                                     key_len=key_len)
         except Exception as e:
             config.raise_exception()
