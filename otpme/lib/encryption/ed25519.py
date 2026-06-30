@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2014 the2nd <the2nd@otpme.org>
+# NOTE: This module was written by claude code!
 import os
 import hashlib
 from cryptography import exceptions
@@ -94,6 +94,8 @@ class Ed25519Key(AsymmetricKeyHandler):
             data_signed = hashlib.sha256(message).digest()
         if encoding is not None:
             signature = _decode(signature, encoding)
+        if isinstance(signature, str):
+            signature = signature.encode()
         try:
             self.public_key.verify(signature, data_signed)
             return True

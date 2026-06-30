@@ -304,7 +304,8 @@ class OTPmeMgmtP1(OTPmeClient1):
             msg = _("Unable to get script signatures: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
-        script_signatures = script_signatures[-1]
+        if isinstance(script_signatures, list):
+            script_signatures = script_signatures[-1]
         return script_signatures
 
     def set_user_key(self, username, key, key_role, private=False, force=None):

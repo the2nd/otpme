@@ -114,45 +114,49 @@ class SSHAgent(object):
         if isinstance(agent_stderr, bytes):
             agent_stderr = agent_stderr.decode()
 
-        # Try to get agent variables from agent script.
-        ssh_agent_name, \
-        ssh_agent_pid, \
-        ssh_auth_sock, \
-        gpg_agent_info = stuff.get_agent_vars(agent_stdout)
+        if agent_returncode != 0:
+            agent_out = agent_stdout + agent_stderr
+            msg = _("SSH agent script returned error: {agent_out}")
+            msg = msg.format(agent_out=agent_out)
+            raise Exception(msg)
 
-        # Set env variables if we got them from the agent script.
-        if gpg_agent_info:
-            log_msg = _("GPG_AGENT_INFO: {info}", log=True)[1]
-            log_msg = log_msg.format(info=gpg_agent_info)
-            self.logger.debug(log_msg)
-            os.environ['GPG_AGENT_INFO'] = gpg_agent_info
-            self.gpg_agent_info = gpg_agent_info
+        if command == "start":
+            # Try to get agent variables from agent script.
+            ssh_agent_name, \
+            ssh_agent_pid, \
+            ssh_auth_sock, \
+            gpg_agent_info = stuff.get_agent_vars(agent_stdout)
 
-        if ssh_auth_sock:
-            log_msg = _("SSH_AUTH_SOCK: {sock}", log=True)[1]
-            log_msg = log_msg.format(sock=ssh_auth_sock)
-            self.logger.debug(log_msg)
-            os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
-            self.ssh_auth_sock = ssh_auth_sock
+            # Set env variables if we got them from the agent script.
+            if gpg_agent_info:
+                log_msg = _("GPG_AGENT_INFO: {info}", log=True)[1]
+                log_msg = log_msg.format(info=gpg_agent_info)
+                self.logger.debug(log_msg)
+                os.environ['GPG_AGENT_INFO'] = gpg_agent_info
+                self.gpg_agent_info = gpg_agent_info
 
-        if ssh_agent_pid:
-            log_msg = _("SSH_AGENT_PID: {pid}", log=True)[1]
-            log_msg = log_msg.format(pid=ssh_agent_pid)
-            self.logger.debug(log_msg)
-            os.environ['SSH_AGENT_PID'] = ssh_agent_pid
-            self.ssh_agent_pid = ssh_agent_pid
+            if ssh_auth_sock:
+                log_msg = _("SSH_AUTH_SOCK: {sock}", log=True)[1]
+                log_msg = log_msg.format(sock=ssh_auth_sock)
+                self.logger.debug(log_msg)
+                os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
+                self.ssh_auth_sock = ssh_auth_sock
 
-        if ssh_agent_name:
-            log_msg = _("SSH_AGENT_NAME: {name}", log=True)[1]
-            log_msg = log_msg.format(name=ssh_agent_name)
-            self.logger.debug(log_msg)
-            os.environ['SSH_AGENT_NAME'] = ssh_agent_name
-            self.ssh_agent_name = ssh_agent_name
+            if ssh_agent_pid:
+                log_msg = _("SSH_AGENT_PID: {pid}", log=True)[1]
+                log_msg = log_msg.format(pid=ssh_agent_pid)
+                self.logger.debug(log_msg)
+                os.environ['SSH_AGENT_PID'] = ssh_agent_pid
+                self.ssh_agent_pid = ssh_agent_pid
 
-        if agent_returncode == 0:
-            return True
+            if ssh_agent_name:
+                log_msg = _("SSH_AGENT_NAME: {name}", log=True)[1]
+                log_msg = log_msg.format(name=ssh_agent_name)
+                self.logger.debug(log_msg)
+                os.environ['SSH_AGENT_NAME'] = ssh_agent_name
+                self.ssh_agent_name = ssh_agent_name
 
-        return False
+        return True
 
     def start(self, verify_signs=None, additional_opts=None):
         """ Make sure SSH/GPG agent is running and needed variables are set """

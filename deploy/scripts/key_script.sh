@@ -666,7 +666,28 @@ decrypt_file () {
 					fi
 					PIN_OPT="--pin env:PIN"
 				fi
-				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT)"
+				# Fetch the user's encrypt key algo so we route to the
+				# right yk-piv subcommand: RSA-OAEP via --decrypt,
+				# X25519/HPKE via --hpke-decrypt.
+				if ! YKPIV_ENC_ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER")" ; then
+					echo "decrypt_file: failed to fetch encrypt key algo" 1>&2
+					return 1
+				fi
+				if [ -z "$YKPIV_ENC_ALGO" ] ; then
+					YKPIV_ENC_ALGO="rsa"
+				fi
+				case "$YKPIV_ENC_ALGO" in
+					rsa)
+						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT)"
+					;;
+					x25519)
+						AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT)"
+					;;
+					*)
+						echo "decrypt_file: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
+						return 1
+					;;
+				esac
 			elif [ "$KEY_MODE" = "server" ] ; then
 				if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
 					if ! AES_KEY="$(echo -n "$AES_KEY_ENCRYPTED" | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
@@ -884,7 +905,28 @@ case "$COMMAND" in
 				fi
 				PIN_OPT="--pin env:PIN"
 			fi
-			cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
+			# Fetch the user's encrypt key algo so we route to the
+			# right yk-piv subcommand: RSA-OAEP via --decrypt,
+			# X25519/HPKE via --hpke-decrypt.
+			if ! YKPIV_ENC_ALGO="$(otpme-user $OTPME_OPTS get_enc_key_type "$_OTPME_KEYSCRIPT_USER")" ; then
+				echo "pkey_decrypt: failed to fetch encrypt key algo" 1>&2
+				return 1
+			fi
+			if [ -z "$YKPIV_ENC_ALGO" ] ; then
+				YKPIV_ENC_ALGO="rsa"
+			fi
+			case "$YKPIV_ENC_ALGO" in
+				rsa)
+					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
+				;;
+				x25519)
+					cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --hpke-decrypt $PIN_OPT
+				;;
+				*)
+					echo "decrypt_file: unsupported yubikey-piv encrypt algo: $YKPIV_ENC_ALGO" 1>&2
+					return 1
+				;;
+			esac
 		elif [ "$KEY_MODE" = "server" ] ; then
 			#DATA="$(cat -)"
 			#otpme-user $OTPME_OPTS decrypt --data "$DATA" "$_OTPME_KEYSCRIPT_USER" | base64 -d

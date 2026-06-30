@@ -493,8 +493,14 @@ class PamHandler(object):
             log_msg = _("Adding key to ssh-agent...", log=True)[1]
             self.logger.debug(log_msg)
             os.environ['PIN'] = ssh_key_pass
-            self.ssh_agent.add_key()
-            os.environ.pop("PIN")
+            try:
+                self.ssh_agent.add_key()
+            except Exception as e:
+                msg = _("Failed to run ssh agent add key: {e}")
+                msg = msg.format(e=e)
+                self.logger.warning(msg)
+            finally:
+                os.environ.pop("PIN")
         agent_conn.close()
 
     def open_session(self):
@@ -627,6 +633,8 @@ class PamHandler(object):
                 try:
                     group_id = grp.getgrnam(group)[2]
                 except KeyError:
+                    continue
+                if group_id in current_groups:
                     continue
                 log_msg = _("Adding users dynamic group membership: {group_name}", log=True)[1]
                 log_msg = log_msg.format(group_name=group)

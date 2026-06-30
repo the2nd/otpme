@@ -428,6 +428,22 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
+    def piv_hpke_decrypt(self, data, slot="KEY_MANAGEMENT", info=None):
+        """ HPKE-decap an X25519 HPKE blob via PIV session in otpme-agent.
+        Data is the hex-encoded blob, response is the hex-encoded plaintext. """
+        command_args = {
+                        'data'      : data,
+                        'slot'      : slot,
+                    }
+        if info is not None:
+            command_args['info'] = info
+        status, status_code, response = self.send("piv_hpke_decrypt", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV HPKE-decrypt failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
+
     def piv_derive_password(self, challenge, slot="AUTHENTICATION", length=32):
         """ Derive password via PIV session in otpme-agent. """
         command_args = {

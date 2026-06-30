@@ -15,6 +15,7 @@ from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib import encryption
 from otpme.lib.audit import audit_log
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
@@ -23,6 +24,7 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.encryption.ed25519 import Ed25519Key
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -709,14 +711,20 @@ class YubikeypivToken(Token):
         signature = smartcard_data['signature']
         if not self.sign_public_key:
             return
-        key = RSAKey(key=self.sign_public_key)
+        key = encryption.load_public_key(self.sign_public_key)
+        verify_args = {
+                        'signature' : signature,
+                        'message'   : challenge,
+                    }
+        if isinstance(key, RSAKey):
+            verify_args['padding'] = "PSS"
+            verify_args['algorithm'] = "SHA256"
+            verify_args['encoding'] = "hex"
+        if isinstance(key, Ed25519Key):
+            verify_args['encoding'] = "hex"
         try:
-            verify_status = key.verify(signature=signature,
-                                        message=challenge,
-                                        padding='PSS',
-                                        algorithm="SHA256",
-                                        encoding="hex")
-        except Exception:
+            verify_status = key.verify(**verify_args)
+        except Exception as e:
             verify_status = False
         if not verify_status:
             return False

@@ -2,6 +2,7 @@
 # NOTE: This module was written by claude code!
 import os
 import sys
+import hashlib
 import datetime
 import getpass
 
@@ -272,43 +273,81 @@ def decrypt(
     return piv_session.decrypt(slot, cipher_text, pad)
 
 
+def ecdh(
+    peer_public_key,
+    slot: str = "KEY_MANAGEMENT",
+    pin: str = None,
+    serial: int = None,
+    piv_session: PivSession = None,
+) -> bytes:
+    """ Compute ECDH shared secret using the slot's private key.
+
+    peer_public_key may be a PEM/DER byte string, raw 32-byte X25519
+    public-key bytes, or an X25519PublicKey / EllipticCurvePublicKey
+    object. Returns the raw shared-secret bytes (32 for X25519,
+    curve-coordinate length for NIST EC). Caller is responsible for
+    feeding the result through a KDF (HKDF, HPKE labels) before use. """
+    slot_obj = slot_map[slot]
+    # Normalise peer to a cryptography key object.
+    if isinstance(peer_public_key, (bytes, bytearray)):
+        if len(peer_public_key) == 32:
+            peer_public_key = _x25519.X25519PublicKey.from_public_bytes(
+                bytes(peer_public_key)
+            )
+        else:
+            peer_public_key = load_pem_public_key(bytes(peer_public_key))
+    elif isinstance(peer_public_key, str):
+        peer_public_key = load_pem_public_key(peer_public_key.encode())
+    if not piv_session:
+        if pin is None:
+            pin = getpass.getpass("PIN: ")
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+        piv_session.verify_pin(pin)
+    return piv_session.calculate_secret(slot_obj, peer_public_key)
+
+
 def sign(
-    data: str,
+    data,
     slot: str = "AUTHENTICATION",
     pin: str = None,
     padding: str = "pss",
     serial: int = None,
     piv_session: PivSession = None,
 ):
-    slot = slot_map[slot]
-    if padding == "pss":
-        pad = asym_padding.PSS(
-            mgf=asym_padding.MGF1(hashes.SHA256()),
-            salt_length=asym_padding.PSS.MAX_LENGTH,
-        )
-    else:
-        pad = asym_padding.PKCS1v15()
+    """ Sign data with the slot's private key, algo-aware:
+
+      - RSA      : PSS or PKCS#1 v1.5 over SHA-256
+      - ECDSA    : signature over curve-matched SHA digest
+      - Ed25519  : data is SHA-256'd first, then EdDSA-signs the
+                   32-byte hash. Mirrors Ed25519Key.sign() so a
+                   signature produced here verifies via Ed25519Key.verify
+                   on the server side and vice versa.
+
+    Returns raw signature bytes. """
+    slot_obj = slot_map[slot]
+    if isinstance(data, str):
+        data = data.encode()
 
     if not piv_session:
         conn = _open_piv(serial)
         piv_session = PivSession(conn)
         piv_session.verify_pin(pin)
 
-    meta = piv_session.get_slot_metadata(slot)
-    return piv_session.sign(slot, meta.key_type, data, hashes.SHA256(), pad)
+    meta = piv_session.get_slot_metadata(slot_obj)
+    pub = meta.public_key
 
+    if isinstance(pub, _ed25519.Ed25519PublicKey):
+        # SHA-256 first to match the convention in Ed25519Key.sign().
+        # EdDSA does its own SHA-512 internally over what we pass.
+        data = hashlib.sha256(data).digest()
+        return piv_session.sign(slot_obj, meta.key_type, data, None, None)
 
-def verify(
-    data: bytes,
-    signature: bytes,
-    public_key=None,
-    slot: SLOT = SLOT.SIGNATURE,
-    padding: str = "pss",
-    serial: int = None,
-):
-    if public_key is None:
-        public_key = get_public_key(slot, serial)
+    if isinstance(pub, _ec.EllipticCurvePublicKey):
+        sig_hash = _ec_hash_for_curve(pub.curve)
+        return piv_session.sign(slot_obj, meta.key_type, data, sig_hash, None)
 
+    # RSA path
     if padding == "pss":
         pad = asym_padding.PSS(
             mgf=asym_padding.MGF1(hashes.SHA256()),
@@ -316,8 +355,49 @@ def verify(
         )
     else:
         pad = asym_padding.PKCS1v15()
+    return piv_session.sign(slot_obj, meta.key_type, data, hashes.SHA256(), pad)
+
+
+def verify(
+    data,
+    signature: bytes,
+    public_key=None,
+    slot=None,
+    padding: str = "pss",
+    serial: int = None,
+):
+    """ Verify a signature against the slot's public key. Mirrors sign():
+      - Ed25519: SHA-256 the data first, then EdDSA-verify
+      - ECDSA: curve-matched SHA
+      - RSA: PSS/PKCS#1 over SHA-256
+    """
+    if public_key is None:
+        if slot is None:
+            slot = SLOT.SIGNATURE
+        if isinstance(slot, str):
+            public_key = get_public_key(slot, serial=serial)
+        else:
+            public_key = get_public_key(slot.name, serial=serial)
+    if isinstance(data, str):
+        data = data.encode()
 
     try:
+        if isinstance(public_key, _ed25519.Ed25519PublicKey):
+            data = hashlib.sha256(data).digest()
+            public_key.verify(signature, data)
+            return True
+        if isinstance(public_key, _ec.EllipticCurvePublicKey):
+            sig_hash = _ec_hash_for_curve(public_key.curve)
+            public_key.verify(signature, data, _ec.ECDSA(sig_hash))
+            return True
+        # RSA
+        if padding == "pss":
+            pad = asym_padding.PSS(
+                mgf=asym_padding.MGF1(hashes.SHA256()),
+                salt_length=asym_padding.PSS.MAX_LENGTH,
+            )
+        else:
+            pad = asym_padding.PKCS1v15()
         public_key.verify(signature, data, pad, hashes.SHA256())
         return True
     except InvalidSignature:

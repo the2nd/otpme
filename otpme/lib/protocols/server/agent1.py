@@ -265,6 +265,7 @@ class OTPmeAgentP1(object):
                             "piv_check",
                             "piv_sign",
                             "piv_decrypt",
+                            "piv_hpke_decrypt",
                             "piv_derive_password",
                             "piv_get_public_key",
                             "set_login_token",
@@ -300,6 +301,7 @@ class OTPmeAgentP1(object):
                         "piv_check",
                         "piv_sign",
                         "piv_decrypt",
+                        "piv_hpke_decrypt",
                         "piv_derive_password",
                         "piv_get_public_key",
                         "set_login_token",
@@ -1390,6 +1392,21 @@ class OTPmeAgentP1(object):
                         }
             try:
                 status, message = self.send_command(command="piv_decrypt",
+                                                request=piv_request)
+            except Exception as e:
+                message = str(e)
+                status = False
+
+        elif command == "piv_hpke_decrypt":
+            piv_request = {
+                        'data'      : command_args.get('data'),
+                        'slot'      : command_args.get('slot', 'KEY_MANAGEMENT'),
+                        'info'      : command_args.get('info'),
+                        'daemon'    : 'agent',
+                        'login_pid' : self.login_pid,
+                        }
+            try:
+                status, message = self.send_command(command="piv_hpke_decrypt",
                                                 request=piv_request)
             except Exception as e:
                 message = str(e)

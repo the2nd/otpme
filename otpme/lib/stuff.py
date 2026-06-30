@@ -1720,7 +1720,7 @@ def get_key_script(username):
     # Get logger
     logger = config.logger
 
-    if not config.fetch_scripts:
+    if not config.use_api and not config.fetch_scripts and not config.use_mgmtd_socket:
         try:
             offline_token = OfflineToken()
             offline_token.set_user(user=username)

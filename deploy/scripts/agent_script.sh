@@ -10,6 +10,8 @@ if [ "$SSH_AGENT_NAME" = "" ] ; then
 	export SSH_AGENT_NAME="ssh-agent"
 fi
 
+set -e
+
 # Get command line options
 get_opts () {
         # Get options

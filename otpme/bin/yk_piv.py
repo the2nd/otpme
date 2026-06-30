@@ -106,7 +106,11 @@ def main():
                         help="Current PUK. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
     parser.add_argument("--new-puk", default=None,
                         help="New PUK. Accepts pass:<val> / file:<path> / fd:<n> / env:<var> selectors -- recommended in production.")
-    parser.add_argument("--decrypt", action="store_true", help="Decrypt stdin to stdout")
+    parser.add_argument("--decrypt", action="store_true", help="RSA-decrypt stdin to stdout (slot 9D by default)")
+    parser.add_argument("--hpke-decrypt", action="store_true",
+                        help="HPKE-decap stdin (X25519+HKDF-SHA256+AES-256-GCM) using slot 9D ECDH, write plaintext to stdout. --info must match the encrypt-side label.")
+    parser.add_argument("--info", default=None,
+                        help="HPKE info string (default: otpme-hpke-x25519-v1)")
     parser.add_argument("--sign", action="store_true", help="Sign stdin, write signature to stdout")
     parser.add_argument("--verify", action="store_true", help="Verify stdin against --signature")
     parser.add_argument("--signature", default=None, help="Signature file (for --verify)")
@@ -194,6 +198,53 @@ def main():
                 pin=_resolve_pin(args.pin),
                 padding=args.padding or "oaep",
                 serial=args.serial,
+            )
+        sys.stdout.buffer.write(plain_text)
+
+    elif args.hpke_decrypt:
+        # HPKE-decap via the slot's X25519 ECDH primitive. yubikit's
+        # calculate_secret returns the raw 32-byte shared secret; our
+        # decap helper does the RFC 9180 key schedule + AEAD.
+        slot = args.slot or ENCRYPT_SLOT_DEFAULT
+        blob = sys.stdin.buffer.read()
+        if args.use_agent:
+            # Agent owns the PIV session (cached PIN). Hand it the blob
+            # hex-encoded; the agent runs the ECDH + decap and returns
+            # the plaintext hex-encoded.
+            agent = _get_agent()
+            info_str = args.info  # already a str, or None → agent default
+            plain_text_hex = agent.piv_hpke_decrypt(
+                data=blob.hex(),
+                slot=slot,
+                info=info_str,
+            )
+            plain_text = bytes.fromhex(plain_text_hex)
+        else:
+            from otpme.lib.smartcard.yubikey.piv import (
+                get_public_key as _piv_get_pub, ecdh as _piv_ecdh,
+            )
+            from otpme.lib.encryption.x25519 import (
+                hpke_decap_x25519_aes256gcm, HPKE_INFO_DEFAULT,
+            )
+            from cryptography.hazmat.primitives.serialization import (
+                Encoding, PublicFormat,
+            )
+            info = args.info.encode() if args.info else HPKE_INFO_DEFAULT
+            pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+            # Recipient pubkey for the KEM context. Read from the same slot
+            # we'll do the ECDH on (otherwise the kem_context wouldn't bind).
+            recipient_pub = _piv_get_pub(slot=slot, serial=args.serial)
+            recipient_pub_bytes = recipient_pub.public_bytes(
+                Encoding.Raw, PublicFormat.Raw,
+            )
+            def _ecdh(enc_bytes):
+                return _piv_ecdh(peer_public_key=enc_bytes,
+                                 slot=slot, pin=pin, serial=args.serial)
+            plain_text = hpke_decap_x25519_aes256gcm(
+                blob=blob,
+                recipient_public_bytes=recipient_pub_bytes,
+                ecdh_func=_ecdh,
+                info=info,
             )
         sys.stdout.buffer.write(plain_text)
 

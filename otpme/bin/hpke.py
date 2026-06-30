@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# NOTE: This module was written by claude code!
 """Standalone HPKE encrypt/decrypt CLI.
 
 Thin wrapper around cryptography.hpke for use from shell scripts

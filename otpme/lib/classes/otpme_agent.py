@@ -52,26 +52,36 @@ get_piv = None
 slot_map = None
 piv_sign = None
 piv_decrypt = None
+piv_ecdh = None
 piv_get_public_key = None
 piv_derive_password = None
+hpke_decap_x25519 = None
+hpke_info_default = None
 
 def _load_piv():
-    global get_piv, slot_map, piv_sign, piv_decrypt
+    global get_piv, slot_map, piv_sign, piv_decrypt, piv_ecdh
     global piv_get_public_key, piv_derive_password
+    global hpke_decap_x25519, hpke_info_default
     if get_piv is not None:
         return
     from otpme.lib.smartcard.yubikey.piv import get_piv as _gp
     from otpme.lib.smartcard.yubikey.piv import slot_map as _sm
     from otpme.lib.smartcard.yubikey.piv import sign as _ps
     from otpme.lib.smartcard.yubikey.piv import decrypt as _pd
+    from otpme.lib.smartcard.yubikey.piv import ecdh as _pe
     from otpme.lib.smartcard.yubikey.piv import get_public_key as _pgpk
     from otpme.lib.smartcard.yubikey.piv import derive_password as _pdp
+    from otpme.lib.encryption.x25519 import hpke_decap_x25519_aes256gcm as _hd
+    from otpme.lib.encryption.x25519 import HPKE_INFO_DEFAULT as _hi
     get_piv = _gp
     slot_map = _sm
     piv_sign = _ps
     piv_decrypt = _pd
+    piv_ecdh = _pe
     piv_get_public_key = _pgpk
     piv_derive_password = _pdp
+    hpke_decap_x25519 = _hd
+    hpke_info_default = _hi
 
 def mount_share(username, share_id, share_site, share_name,
     share_nodes, encrypted, session_id, logger):
@@ -1970,6 +1980,55 @@ class OTPmeAgent(UnixDaemon):
                         except Exception as e:
                             raise
                             message = _("PIV decrypt failed: {e}")
+                            message = message.format(e=e)
+                            status_code = status_codes.ERR
+
+                elif command == "piv_hpke_decrypt":
+                    if not self.piv_session:
+                        message = _("No PIV session. Run piv_login first.")
+                        status_code = status_codes.ERR
+                    else:
+                        _load_piv()
+                        try:
+                            blob = bytes.fromhex(request['data'])
+                            slot = request.get('slot', 'KEY_MANAGEMENT')
+                            info = request.get('info')
+                            if info is None:
+                                info_bytes = hpke_info_default
+                            elif isinstance(info, str):
+                                info_bytes = info.encode()
+                            else:
+                                info_bytes = info
+                            # Recipient pubkey for the KEM context comes
+                            # from the same slot we'll ECDH on.
+                            from cryptography.hazmat.primitives.serialization \
+                                import Encoding, PublicFormat
+                            recipient_pub = piv_get_public_key(
+                                slot=slot, piv_session=self.piv_session)
+                            recipient_pub_bytes = recipient_pub.public_bytes(
+                                Encoding.Raw, PublicFormat.Raw)
+                            def _agent_ecdh(enc_bytes):
+                                return piv_ecdh(
+                                    peer_public_key=enc_bytes,
+                                    slot=slot,
+                                    piv_session=self.piv_session,
+                                )
+                            try:
+                                result = hpke_decap_x25519(
+                                    blob=blob,
+                                    recipient_public_bytes=recipient_pub_bytes,
+                                    ecdh_func=_agent_ecdh,
+                                    info=info_bytes,
+                                )
+                            except Exception as e:
+                                message = _("HPKE-decap failed: {e}")
+                                message = message.format(e=e)
+                                status_code = status_codes.ERR
+                            else:
+                                message = result.hex()
+                                status_code = status_codes.OK
+                        except Exception as e:
+                            message = _("PIV HPKE-decrypt failed: {e}")
                             message = message.format(e=e)
                             status_code = status_codes.ERR
 
