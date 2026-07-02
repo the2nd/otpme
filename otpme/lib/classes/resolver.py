@@ -31,6 +31,7 @@ from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
+from otpme.lib.classes.otpme_object import name_len_setter
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -468,6 +469,11 @@ REGISTER_AFTER = ["otpme.lib.classes.unit"]
 
 def register():
     register_oid()
+    config.register_config_parameter(name="max_resolver_name_len",
+                                    ctype=int,
+                                    default_value=64,
+                                    setter=name_len_setter,
+                                    object_types=['site', 'unit'])
     register_hooks()
     register_backend()
     register_object_unit()

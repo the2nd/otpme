@@ -42,6 +42,7 @@ from otpme.lib.daemon.clusterd import cluster_radius_reload
 from otpme.lib.compression.base import get_uncompressed_size
 from otpme.lib.policy.idrange.idrange  import BASE_POLICY_NAME
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
+from otpme.lib.classes.otpme_object import name_len_setter
 from otpme.lib.classes.otpme_object import \
     get_acls as _get_acls
 from otpme.lib.classes.otpme_object import \
@@ -937,6 +938,11 @@ TEMPLATES_UNIT = "templates"
 def register():
     register_dn()
     register_oid()
+    config.register_config_parameter(name="max_site_name_len",
+                                    ctype=int,
+                                    default_value=32,
+                                    setter=name_len_setter,
+                                    object_types=['site', 'unit'])
     register_hooks()
     register_config()
     register_backend()
@@ -1328,14 +1334,6 @@ def register_config():
                     'host',
                     'node',
                     ]
-    config.register_config_parameter(name="static_pass_timeout",
-                                    ctype=int,
-                                    default_value=15,
-                                    object_types=object_types)
-    config.register_config_parameter(name="static_pass_unused_timeout",
-                                    ctype=int,
-                                    default_value=5,
-                                    object_types=object_types)
     # Auth JWT validity (default 1m).
     def auth_jwt_valid_setter(auth_jwt_valid, **kwargs):
         from otpme.lib.humanize import units
@@ -1923,6 +1921,29 @@ def register_config():
     config.register_config_parameter(name="backupd_max_conn",
                                     ctype=int,
                                     default_value=256,
+                                    object_types=['site', 'unit', 'node', 'host'])
+    # Hard cap on a single request's size AFTER decompression (zip-bomb
+    # guard). Accepts human sizes (e.g. "256M", "1G"); stored as bytes.
+    # Each daemon reads this from its own host object at startup
+    # (inherited from unit/site) into config.max_decompressed_size, which
+    # the decompress path enforces.
+    def max_decompressed_size_setter(value, **kwargs):
+        from otpme.lib.humanize import units
+        value = units.size2int(value)
+        if value < 1:
+            msg = _("max_decompressed_size must be positive")
+            raise ValueError(msg)
+        return value
+    def max_decompressed_size_getter(value, **kwargs):
+        from otpme.lib.humanize import units
+        if value is not None:
+            value = units.int2size(value)
+        return value
+    config.register_config_parameter(name="max_decompressed_size",
+                                    ctype=int,
+                                    default_value=268435456,
+                                    setter=max_decompressed_size_setter,
+                                    getter=max_decompressed_size_getter,
                                     object_types=['site', 'unit', 'node', 'host'])
     # Allow otpme-tool who from hosts.
     config.register_config_parameter(name="allow_who_from_hosts",

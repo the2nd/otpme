@@ -52,6 +52,7 @@ from otpme.lib.classes.data_objects.used_sotp import UsedSOTP
 from otpme.lib.classes.data_objects.failed_pass import FailedPass
 from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
+from otpme.lib.classes.otpme_object import name_len_setter
 
 from otpme.lib.classes.otpme_object import \
     get_acls as _get_acls
@@ -1072,6 +1073,11 @@ def local_admin_user_setter(self, new_status):
 def register():
     register_dn()
     register_oid()
+    config.register_config_parameter(name="max_user_name_len",
+                                    ctype=int,
+                                    default_value=32,
+                                    setter=name_len_setter,
+                                    object_types=['site', 'unit'])
     register_hooks()
     register_backend()
     register_template()

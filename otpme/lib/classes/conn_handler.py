@@ -34,6 +34,11 @@ class ConnHandler(object):
         self.proto_handler = None
         self.protocols = protocols
         self.proto_neg_finished = False
+        # Per-daemon cap on a single incoming request frame. Pre-auth
+        # daemons (authd etc.) are tight; bulk daemons stay generous.
+        # Falls back to the global socket buffer for unlisted daemons.
+        self.max_request_size = config.daemon_max_request_size.get(
+                                name, config.socket_receive_buffer)
         # Arguments we will pass on to protocol handler
         self.handler_args = handler_args
         if logger:
@@ -47,9 +52,10 @@ class ConnHandler(object):
         while True:
             # Count packets for this connection
             self.pkg_count += 1
-            # Receive data from peer.
+            # Receive data from peer (per-daemon size cap).
             try:
-                data = self.connection.recv(timeout=None)
+                data = self.connection.recv(timeout=None,
+                                    recv_buffer=self.max_request_size)
                 #data = self.connection.recv()
             except ConnectionTimeout:
                 continue

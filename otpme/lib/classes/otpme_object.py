@@ -347,6 +347,21 @@ def register_backend():
     config.register_index_attribute('auto_disable')
     config.register_index_attribute('origin')
 
+def name_len_setter(value, **kwargs):
+    """ Shared setter for the per-object-type max_<type>_name_len config
+    parameters. Each object class passes this as setter= when it
+    registers its own parameter; it coerces the CLI string to a
+    positive int. """
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        msg = _("max name length must be an integer")
+        raise ValueError(msg) from None
+    if value < 1:
+        msg = _("max name length must be positive")
+        raise ValueError(msg)
+    return value
+
 def register_config_parameters():
     """ Register config parameters. """
     # Object types our config parameters are valid for.
@@ -2378,6 +2393,28 @@ class OTPmeObject(OTPmeBaseObject):
                 break
 
         return value
+
+    def _check_max_name_len(self, name, callback=default_callback):
+        """ Enforce the configurable max_<type>_name_len policy for this
+        object type. Returns a callback.error result if the name exceeds
+        the limit, else None. Object types that did not register a
+        max_<type>_name_len parameter are skipped. Called at add/rename
+        time only -- never on load -- so tightening the limit later does
+        not break loading of existing objects. """
+        param_name = f"max_{self.type}_name_len"
+        try:
+            para_data = config.get_config_parameter(param_name)
+        except NotRegistered:
+            return None
+        # Resolved value (site/unit inheritance) or the registered default.
+        max_len = self.get_config_parameter(param_name)
+        if not max_len:
+            max_len = para_data['default']
+        if max_len and len(name) > max_len:
+            msg = _("Name too long: {name} ({length} > {max_len})")
+            msg = msg.format(name=name, length=len(name), max_len=max_len)
+            return callback.error(msg)
+        return None
 
     def _get_base_config(self):
         """ Get base object config """
@@ -8709,6 +8746,12 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Should be called from child class to add default extensions etc. """
+        # Enforce the configurable per-object-type max name length (add
+        # only, never on load, so tightening the limit later cannot break
+        # loading of existing objects).
+        name_len_error = self._check_max_name_len(self.name, callback=callback)
+        if name_len_error is not None:
+            return name_len_error
         # The resolver this object was added by.
         if extensions is None:
             extensions = []
@@ -8968,6 +9011,11 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("New name matches current name: {new_name}")
             msg = msg.format(new_name=new_oid.name)
             return callback.error(msg)
+
+        # Enforce the configurable per-object-type max name length.
+        name_len_error = self._check_max_name_len(new_oid.name, callback=callback)
+        if name_len_error is not None:
+            return name_len_error
 
         if backend.object_exists(object_id=new_oid):
             msg = _("Cannot rename. {object_type} '{new_name}' exists.")

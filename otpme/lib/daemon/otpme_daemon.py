@@ -91,6 +91,26 @@ class OTPmeDaemon(object):
             return max_conn
         return _max_conn
 
+    def load_max_decompressed_size(self):
+        """ Override the in-memory decompression cap from the host/site
+        config parameter, if set. Best-effort: on any failure the built-in
+        config.max_decompressed_size default stays in effect. This runs
+        before connection workers are forked so they inherit the value. """
+        try:
+            own_host = backend.get_object(uuid=config.uuid)
+            if not own_host:
+                return
+            value = own_host.get_config_parameter("max_decompressed_size")
+            if not value:
+                return
+            from otpme.lib.humanize import units
+            config.max_decompressed_size = units.size2int(value)
+        except Exception as e:
+            log_msg = _("Failed to load max_decompressed_size from config: "
+                        "{error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+
     def _send_local_daemon_msg(self, command, data=None, timeout=1):
         """ Send command to daemon itself. """
         try:
@@ -461,6 +481,9 @@ class OTPmeDaemon(object):
             log_msg = _("Failed to preload modules: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
+        # Load the decompression cap from site/host config (best-effort)
+        # before connection workers fork, so they inherit the value.
+        self.load_max_decompressed_size()
         # Run child class method.
         try:
             self._run(**kwargs)

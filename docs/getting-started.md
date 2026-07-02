@@ -758,10 +758,10 @@ works.
 When a new share is added, OTPme runs a configurable *add script*
 (`otpme-site show_config <sitename> default_share_add_script`). The script
 receives `$share_name`, `$share_root`, `$force_group`, `$force_create_mode`
-and `$force_directory_mode` as environment variables and runs as the OTPme
-system user (`otpme:otpme`), so `sudo(1)` may be needed for privileged
-operations. Storing the actual script under `/otpme-mounts` makes it
-available on all nodes.
+and `$force_directory_mode` as environment variables and runs as the
+configured `ROOT_SCRIPT_USER`/`ROOT_SCRIPT_GROUP` (see `otpme.conf`), so
+`sudo(1)` may be needed for privileged operations. Storing the actual
+script under `/otpme-mounts` makes it available on all nodes.
 
 ```bash
 # Edit the share add script (opens with $EDITOR).

@@ -199,9 +199,40 @@ class OTPmeConfig(object):
         # Socket send buffer.
         self.register_config_var("socket_send_buffer", int, 104857600,
                             config_file_parameter="SOCKET_SEND_BUFFER")
-        # Socket receive buffer.
+        # Socket receive buffer. Global fallback cap on a single incoming
+        # message frame (compressed size) when no per-daemon limit applies.
         self.register_config_var("socket_receive_buffer", int, 104857600,
                             config_file_parameter="SOCKET_RECEIVE_BUFFER")
+        # In-memory holder for the max size a request may reach AFTER
+        # decompression (zip-bomb guard). This is what the decompress hot
+        # path reads -- always present, in every process. Built-in default
+        # 256 MB; each daemon overrides it at startup from the site config
+        # parameter "max_decompressed_size" (registered in site.py).
+        self.register_config_var("max_decompressed_size", int, 268435456)
+        # Per-daemon cap on a single incoming request frame (compressed
+        # size). Pre-auth-reachable daemons (authd, controld, idled) are
+        # tightened hard; authenticated bulk-transfer daemons (backupd,
+        # syncd, fsd, clusterd, mgmtd) stay generous. Daemons not listed
+        # fall back to socket_receive_buffer.
+        self.register_config_var("daemon_max_request_size", dict, {
+                            # Pre-auth / control paths -- always small.
+                            "authd"     : 1048576,      # 1 MB
+                            "controld"  : 1048576,      # 1 MB
+                            "idled"     : 1048576,      # 1 MB
+                            "joind"     : 16777216,     # 16 MB (certs/keys)
+                            "hostd"     : 16777216,     # 16 MB
+                            "ldapd"     : 16777216,     # 16 MB
+                            "ssod"      : 16777216,     # 16 MB (SAML/JWT)
+                            "agent"     : 16777216,     # 16 MB
+                            "scriptd"   : 33554432,     # 32 MB
+                            "httpd"     : 33554432,     # 32 MB
+                            # Authenticated bulk transfer -- keep generous.
+                            "mgmtd"     : 104857600,    # 100 MB (restore/import)
+                            "backupd"   : 104857600,    # 100 MB
+                            "syncd"     : 104857600,    # 100 MB
+                            "fsd"       : 104857600,    # 100 MB
+                            "clusterd"  : 104857600,    # 100 MB
+                            })
         # Instance cache update interval.
         self.register_config_var("cache_update_interval", int, 0)
         # Realm infos.

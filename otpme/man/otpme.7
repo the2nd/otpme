@@ -287,17 +287,6 @@ Object types: site, unit, user, token
 Hash algorithm used for session passwords.
 .br
 Object types: site, unit, user, token
-.SS Session
-.TP
-.B static_pass_timeout \fR(int, default: 15)
-Timeout in minutes for static password sessions.
-.br
-Object types: site, unit, host, node
-.TP
-.B static_pass_unused_timeout \fR(int, default: 5)
-Timeout in minutes for unused static password sessions.
-.br
-Object types: site, unit, host, node
 .SS User Scripts
 .TP
 .B default_key_script \fR(str)
@@ -458,9 +447,20 @@ Suffix appended to the device token name when the SSO portal registers a token u
 Object types: role
 .TP
 .B sso_allow_passkeys \fR(bool, default: true)
-Whether passkeys (FIDO2 resident credentials) are accepted as a login method on this site. Set to false to refuse passkey authentication entirely; the SSO portal login mask is unchanged.
+Whether passkeys (FIDO2 resident credentials) are accepted as a login method on this site. Set to false to refuse passkey authentication entirely; the SSO portal login mask is unchanged. Foreign\-site users only resolve via this cascade if the local site lists the home site under
+.BR sso_allow_passkeys_trusts ;
+otherwise the local site's setting is used as a fallback.
 .br
 Object types: site, unit, user, token
+.TP
+.B sso_allow_passkeys_trusts \fR(list)
+Comma\-separated list of remote sites whose user\-scoped
+.B sso_allow_passkeys
+cascade this site trusts when a foreign user opens the SSO portal here. Sites not in the list fall back to the local site's
+.BR sso_allow_passkeys .
+Own\-site users are always trusted.
+.br
+Object types: site
 .TP
 .B sso_allow_fido2_deploy \fR(bool, default: true)
 Whether end users may register a new FIDO2 token through the SSO portal Settings page. Set to false to restrict FIDO2 deployment to administrator workflows.
@@ -669,6 +669,75 @@ Maximum concurrent client connections accepted by
 Also applies on hosts because a host can act as a backup target that accepts incoming backup writes.
 .br
 Object types: site, unit, node, host
+.SS Request Limits
+.TP
+.B max_decompressed_size \fR(size, default: 256M)
+Hard cap on the size of a single request \fIafter\fR decompression. Guards against zip\-bomb style payloads that inflate small compressed messages into memory\-exhausting blobs. Each daemon reads this from its own host object at startup (inherited from unit/site) and enforces it on the decompress path. Accepts human sizes (e.g. \fB256M\fR, \fB1G\fR).
+.br
+Object types: site, unit, node, host
+.SS Name Length Limits
+Per\-object\-type upper bound on the length of new object names, checked at add/rename time. Existing objects are not affected. The most specific match wins (unit overrides site). Tighten these to keep LDAP DNs, file paths, and CLI output manageable; loosen them only when you know the downstream consumers can cope. All parameters are ints and apply to
+.BR site ", " unit .
+.TP
+.B max_realm_name_len \fR(int, default: 64)
+Cap for realm names.
+.TP
+.B max_site_name_len \fR(int, default: 32)
+Cap for site names.
+.TP
+.B max_unit_name_len \fR(int, default: 64)
+Cap for unit names.
+.TP
+.B max_user_name_len \fR(int, default: 32)
+Cap for user names.
+.TP
+.B max_token_name_len \fR(int, default: 128)
+Cap for token names.
+.TP
+.B max_group_name_len \fR(int, default: 32)
+Cap for group names.
+.TP
+.B max_role_name_len \fR(int, default: 64)
+Cap for role names.
+.TP
+.B max_accessgroup_name_len \fR(int, default: 64)
+Cap for access group names.
+.TP
+.B max_host_name_len \fR(int, default: 64)
+Cap for host names.
+.TP
+.B max_node_name_len \fR(int, default: 64)
+Cap for node names.
+.TP
+.B max_client_name_len \fR(int, default: 64)
+Cap for client names.
+.TP
+.B max_ca_name_len \fR(int, default: 64)
+Cap for CA names.
+.TP
+.B max_policy_name_len \fR(int, default: 64)
+Cap for policy names.
+.TP
+.B max_resolver_name_len \fR(int, default: 64)
+Cap for resolver names.
+.TP
+.B max_scope_name_len \fR(int, default: 128)
+Cap for scope names.
+.TP
+.B max_script_name_len \fR(int, default: 64)
+Cap for script names.
+.TP
+.B max_share_name_len \fR(int, default: 64)
+Cap for share names.
+.TP
+.B max_pool_name_len \fR(int, default: 64)
+Cap for pool names.
+.TP
+.B max_dictionary_name_len \fR(int, default: 64)
+Cap for dictionary names.
+.TP
+.B max_device_name_len \fR(int, default: 64)
+Cap for device names.
 .SS Backup
 .TP
 .B backup_enabled \fR(bool)

@@ -144,10 +144,13 @@ def decode(string, encoding=None, encryption=None,
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
 
-    # Decompress data.
+    # Decompress data. Hard-cap the output at config.max_decompressed_size
+    # to guard against zip-bomb amplification (the socket frame is only
+    # capped on the *compressed* size).
     if compress:
         try:
-            json_string = stuff.decompress(json_string, "zlib")
+            json_string = stuff.decompress(json_string, "zlib",
+                                    max_size=config.max_decompressed_size)
         except Exception as e:
             msg = _("Error while decompressing: {e}")
             msg = msg.format(e=e)

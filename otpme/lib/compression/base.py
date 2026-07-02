@@ -114,9 +114,58 @@ def compress(data, compression, level=None):
 
     return compressed_data
 
-def decompress(data, compression, return_str=True):
-    """ Decompress given data. """
-    if compression == "gzip":
+def _exceeds(max_size):
+    msg = _("Decompressed data exceeds limit ({max_size} bytes)")
+    msg = msg.format(max_size=max_size)
+    return OTPmeException(msg)
+
+def _decompress_bounded(data, compression, max_size):
+    """ Decompress with a hard cap on output size. Raises OTPmeException
+    if the data would expand beyond max_size bytes (zip-bomb guard).
+    We ask each decompressor for max_size + 1 bytes: if it returns more
+    than max_size, or reports that more output is still pending, the
+    input is a bomb (or malformed) and we reject it. """
+    if compression == "zlib":
+        d = zlib.decompressobj()
+        out = d.decompress(data, max_size + 1)
+        # unconsumed_tail non-empty => output cap was hit, more pending.
+        if len(out) > max_size or d.unconsumed_tail:
+            raise _exceeds(max_size)
+        out += d.flush()
+    elif compression == "gzip":
+        # wbits 16 + MAX_WBITS selects gzip framing.
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        out = d.decompress(data, max_size + 1)
+        if len(out) > max_size or d.unconsumed_tail:
+            raise _exceeds(max_size)
+        out += d.flush()
+    elif compression == "bzip":
+        d = bz2.BZ2Decompressor()
+        out = d.decompress(data, max_size + 1)
+        # not eof after consuming all input => more output pending.
+        if len(out) > max_size or not d.eof:
+            raise _exceeds(max_size)
+    elif compression == "lz4":
+        d = lz4.frame.LZ4FrameDecompressor()
+        out = d.decompress(data, max_size + 1)
+        if len(out) > max_size or not d.eof:
+            raise _exceeds(max_size)
+    else:
+        msg = _("Unknown compression: {}")
+        msg = msg.format(compression)
+        raise OTPmeException(msg)
+    if len(out) > max_size:
+        raise _exceeds(max_size)
+    return out
+
+def decompress(data, compression, return_str=True, max_size=None):
+    """ Decompress given data. If max_size is given, the output is hard-
+    capped at that many bytes and OTPmeException is raised if the data
+    would expand beyond it (zip-bomb guard). max_size=None keeps the
+    unbounded path for trusted/internal callers (file/backup ops). """
+    if max_size is not None:
+        decompressed_data = _decompress_bounded(data, compression, max_size)
+    elif compression == "gzip":
         decompressed_data = gzip.decompress(data)
     elif compression == "lz4":
         decompressed_data = lz4.frame.decompress(data)

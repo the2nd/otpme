@@ -26,6 +26,7 @@ from otpme.lib.cache import assigned_device_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
+from otpme.lib.classes.otpme_object import name_len_setter
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -774,6 +775,11 @@ REGISTER_AFTER = [
 
 def register():
     register_oid()
+    config.register_config_parameter(name="max_accessgroup_name_len",
+                                    ctype=int,
+                                    default_value=64,
+                                    setter=name_len_setter,
+                                    object_types=['site', 'unit'])
     register_hooks()
     register_backend()
     register_object_unit()

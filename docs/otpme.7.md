@@ -480,16 +480,6 @@ Object types: site, unit, user, token
 Hash algorithm used for session passwords.  
 Object types: site, unit, user, token
 
-## Session
-
-**static_pass_timeout (int, default: 15)**  
-Timeout in minutes for static password sessions.  
-Object types: site, unit, host, node
-
-**static_pass_unused_timeout (int, default: 5)**  
-Timeout in minutes for unused static password sessions.  
-Object types: site, unit, host, node
-
 ## User Scripts
 
 **default_key_script (str)**  
@@ -658,8 +648,18 @@ Object types: role
 **sso_allow_passkeys (bool, default: true)**  
 Whether passkeys (FIDO2 resident credentials) are accepted as a login
 method on this site. Set to false to refuse passkey authentication
-entirely; the SSO portal login mask is unchanged.  
+entirely; the SSO portal login mask is unchanged. Foreign-site users
+only resolve via this cascade if the local site lists the home site
+under **sso_allow_passkeys_trusts**; otherwise the local site's setting
+is used as a fallback.  
 Object types: site, unit, user, token
+
+**sso_allow_passkeys_trusts (list)**  
+Comma-separated list of remote sites whose user-scoped
+**sso_allow_passkeys** cascade this site trusts when a foreign user
+opens the SSO portal here. Sites not in the list fall back to the local
+site's **sso_allow_passkeys**. Own-site users are always trusted.  
+Object types: site
 
 **sso_allow_fido2_deploy (bool, default: true)**  
 Whether end users may register a new FIDO2 token through the SSO portal
@@ -902,6 +902,85 @@ Maximum concurrent client connections accepted by **backupd**. Also
 applies on hosts because a host can act as a backup target that accepts
 incoming backup writes.  
 Object types: site, unit, node, host
+
+## Request Limits
+
+**max_decompressed_size (size, default: 256M)**  
+Hard cap on the size of a single request *after* decompression. Guards
+against zip-bomb style payloads that inflate small compressed messages
+into memory-exhausting blobs. Each daemon reads this from its own host
+object at startup (inherited from unit/site) and enforces it on the
+decompress path. Accepts human sizes (e.g. **256M**, **1G**).  
+Object types: site, unit, node, host
+
+## Name Length Limits
+
+Per-object-type upper bound on the length of new object names, checked
+at add/rename time. Existing objects are not affected. The most specific
+match wins (unit overrides site). Tighten these to keep LDAP DNs, file
+paths, and CLI output manageable; loosen them only when you know the
+downstream consumers can cope. All parameters are ints and apply to
+**site**, **unit**.
+
+**max_realm_name_len (int, default: 64)**  
+Cap for realm names.
+
+**max_site_name_len (int, default: 32)**  
+Cap for site names.
+
+**max_unit_name_len (int, default: 64)**  
+Cap for unit names.
+
+**max_user_name_len (int, default: 32)**  
+Cap for user names.
+
+**max_token_name_len (int, default: 128)**  
+Cap for token names.
+
+**max_group_name_len (int, default: 32)**  
+Cap for group names.
+
+**max_role_name_len (int, default: 64)**  
+Cap for role names.
+
+**max_accessgroup_name_len (int, default: 64)**  
+Cap for access group names.
+
+**max_host_name_len (int, default: 64)**  
+Cap for host names.
+
+**max_node_name_len (int, default: 64)**  
+Cap for node names.
+
+**max_client_name_len (int, default: 64)**  
+Cap for client names.
+
+**max_ca_name_len (int, default: 64)**  
+Cap for CA names.
+
+**max_policy_name_len (int, default: 64)**  
+Cap for policy names.
+
+**max_resolver_name_len (int, default: 64)**  
+Cap for resolver names.
+
+**max_scope_name_len (int, default: 128)**  
+Cap for scope names.
+
+**max_script_name_len (int, default: 64)**  
+Cap for script names.
+
+**max_share_name_len (int, default: 64)**  
+Cap for share names.
+
+**max_pool_name_len (int, default: 64)**  
+Cap for pool names.
+
+**max_dictionary_name_len (int, default: 64)**  
+Cap for dictionary names.
+
+**max_device_name_len (int, default: 64)**  
+Cap for device names.
 
 ## Backup
 

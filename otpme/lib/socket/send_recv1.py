@@ -30,7 +30,7 @@ def sendall(socket_handler, data):
         msg = msg.format(error=e)
         raise OTPmeException(msg) from e
 
-def recv(socket_handler, **kwargs):
+def recv(socket_handler, recv_buffer=None, **kwargs):
     """ Function to handle data receiving through socket connection. """
     # Get header with data length from peer.
     header = socket_handler.raw_recv(4)
@@ -38,8 +38,13 @@ def recv(socket_handler, **kwargs):
         return b""
     # Get data length.
     data_len = struct.unpack(">I", header)[0]
-    # Reject oversized messages to prevent memory exhaustion.
-    max_len = config.socket_receive_buffer
+    # Reject oversized messages to prevent memory exhaustion. The caller
+    # (server-side ConnHandler) passes a per-daemon cap via recv_buffer;
+    # clients / callers without one fall back to the global buffer size.
+    if recv_buffer:
+        max_len = recv_buffer
+    else:
+        max_len = config.socket_receive_buffer
     if data_len > max_len:
         msg = _("Message size {data_len} exceeds maximum {max_len}")
         msg = msg.format(data_len=data_len, max_len=max_len)

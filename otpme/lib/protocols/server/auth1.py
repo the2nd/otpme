@@ -78,6 +78,22 @@ def _deserialize_fido2_state(data):
     return state
 
 
+def _sso_allow_passkeys_for_user(user):
+    """ Home-side resolution of the ``sso_allow_passkeys`` cascade
+    (user → unit → site) for the WebAuthn login path. Passkey login
+    is allowed only when the cascade resolves to an explicit True;
+    an unset cascade blocks. The registered default is intentionally
+    NOT consulted -- if nobody set the flag, no passkey login.
+    Applied to drop passkey tokens from the assertion allow-list at
+    ``fido2_auth_begin`` so the browser can't sign with a passkey and
+    the whole attempt falls through the generic "Login failed" path.
+    Fido2 (u2f-style) tokens are unaffected. """
+    try:
+        return bool(user.get_config_parameter("sso_allow_passkeys"))
+    except Exception:
+        return False
+
+
 # Per-process cache for the decoy HMAC seed -- derived from the site's
 # private key once, so we don't pay export_private_key() on every
 # fido2_auth_begin. Reset to None on fork; the child re-derives lazily.
@@ -571,7 +587,15 @@ class OTPmeAuthP1(OTPmeServer1):
                                         uuid=sso_ag_uuid)
             user_tokens = user.get_tokens(access_group=sso_ag,
                                         return_type="instance")
+            # Drop passkey tokens from the assertion allow-list when
+            # the ``sso_allow_passkeys`` cascade doesn't resolve to
+            # True. Browser then has nothing to sign with (for
+            # passkey), so the whole login attempt fails at the
+            # signature stage indistinguishable from an unknown user.
+            passkeys_allowed = _sso_allow_passkeys_for_user(user)
             for token in user_tokens:
+                if token.token_type == "passkey" and not passkeys_allowed:
+                    continue
                 if token.token_type in ("fido2", "passkey") and token.credential_data:
                     cred_data = decode(token.credential_data, "hex")
                     acd = AttestedCredentialData(cred_data)
@@ -882,6 +906,13 @@ class OTPmeAuthP1(OTPmeServer1):
                     }
         auth_token = None
         user_tokens = user.get_tokens(return_type="instance")
+        # Mirror the fido2_auth_begin gate: on the cross-site verify
+        # path (originator redirected here) an assertion signed with a
+        # passkey must not be accepted when the user's cascade doesn't
+        # resolve to True. Resolve once, outside the loop.
+        fido2_passkeys_allowed = None
+        if command == "token_verify_fido2":
+            fido2_passkeys_allowed = _sso_allow_passkeys_for_user(user)
         for x_token in user_tokens:
             if command == "token_verify":
                 if x_token.pass_type != "static":
@@ -892,6 +923,8 @@ class OTPmeAuthP1(OTPmeServer1):
                     continue
             if command == "token_verify_fido2":
                 if x_token.token_type not in ("fido2", "passkey"):
+                    continue
+                if x_token.token_type == "passkey" and not fido2_passkeys_allowed:
                     continue
             try:
                 verify_status = x_token.verify(**token_verify_parms)

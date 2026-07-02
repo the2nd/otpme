@@ -132,7 +132,11 @@ def handle_script_request(request):
 
     if user == "root":
         user = config.root_script_user
+    if user == config.user:
+        user = config.root_script_user
     if group == "root":
+        group = config.root_script_group
+    if group == config.group:
         group = config.root_script_group
     try:
         groups.remove("root")

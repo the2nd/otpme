@@ -553,8 +553,11 @@ class OTPmeFS(fuse.Operations):
     def destroy(self, path: str) -> None:
         if config.debug_enabled:
             self.logger.debug(f"destroy method called for path: {path}")
+        # Close fsd connection.
         if self.fsd_conn:
             self.fsd_conn.close()
+        # Close other connections.
+        connections.close_connections()
         if config.debug_enabled:
             self.logger.debug(f"destroy completed for path: {path}")
 

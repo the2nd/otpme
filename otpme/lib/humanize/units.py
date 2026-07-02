@@ -85,6 +85,48 @@ def int2size(value):
     result = humanize.naturalsize(value, gnu=True)
     return result
 
+# Binary size suffixes (base-1024), matching humanize.naturalsize(gnu=True)
+# output like "256M" / "1.0G".
+size_unit_mapping = {
+        'B'     : 1,
+        'K'     : 1024,
+        'M'     : 1024 ** 2,
+        'G'     : 1024 ** 3,
+        'T'     : 1024 ** 4,
+        'P'     : 1024 ** 5,
+        }
+
+def size2int(value):
+    """ Convert a human size string (e.g. "256M", "1G", "512K", "100")
+    to an integer number of bytes. Bare numbers are treated as bytes.
+    Suffixes are base-1024 (K/M/G/T/P), case-insensitive, optional 'B'. """
+    if isinstance(value, int):
+        return value
+    if value is None:
+        return None
+    s = str(value).strip()
+    if s == "":
+        msg = _("Empty size value")
+        raise OTPmeException(msg)
+    # Bare integer → bytes.
+    if s.isdigit():
+        return int(s)
+    # Strip an optional trailing 'B'/'b' (e.g. "256MB").
+    if s[-1] in ("B", "b") and len(s) > 1 and not s[-2].isdigit():
+        s = s[:-1]
+    suffix = s[-1].upper()
+    if suffix not in size_unit_mapping:
+        msg = _("Invalid size: {value} (expected e.g. 256M, 1G, 512K)")
+        msg = msg.format(value=value)
+        raise OTPmeException(msg)
+    try:
+        number = float(s[:-1])
+    except ValueError:
+        msg = _("Invalid size: {value}")
+        msg = msg.format(value=value)
+        raise OTPmeException(msg) from None
+    return int(number * size_unit_mapping[suffix])
+
 def string2unixtime(date_string, start_time):
     """ Get unix time from string. """
     hour = None
