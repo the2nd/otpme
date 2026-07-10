@@ -1207,6 +1207,18 @@ def register_config():
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
+    def backup_report_mode_setter(mode, callback=JobCallback, **kwargs):
+        valid_backup_report_modes = ['all', 'error', 'success']
+        if mode not in valid_backup_report_modes:
+            msg = _("Invalid backup report mode: {mode}: Must be {modes}")
+            msg = msg.format(mode=mode, modes=valid_backup_report_modes)
+            raise TypeError(msg)
+        return mode
+    config.register_config_parameter(name="backup_report_mode",
+                                    ctype=str,
+                                    default_value="all",
+                                    setter=backup_report_mode_setter,
+                                    object_types=object_types)
     config.register_config_parameter(name="backup_report_smtp_server",
                                     ctype=str,
                                     default_value="127.0.0.1",
@@ -2163,7 +2175,7 @@ class Site(OTPmeObject):
                             "FIDO2_CA_CERTS",
                             "ou",
                             "CONFIG_PARAMS:sso_temp_pass_role",
-                            "CONFIG_PARAMS:allow_temp_paswords",
+                            "CONFIG_PARAMS:allow_temp_passwords",
                             ],
                         },
                     }

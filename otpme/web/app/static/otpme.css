@@ -236,6 +236,16 @@ a:hover { text-decoration: underline; }
   box-shadow: 0 4px 16px rgba(0,0,0,.1);
   transform: translateY(-2px);
 }
+.app-tile.is-maintenance {
+  opacity: .6;
+  cursor: default;
+  background: #fafbfc;
+}
+.app-tile.is-maintenance:hover {
+  box-shadow: none;
+  transform: none;
+}
+.app-tile.is-maintenance img { filter: grayscale(100%); }
 .app-tile img {
   width: 64px;
   height: 64px;

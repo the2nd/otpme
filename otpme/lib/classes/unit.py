@@ -738,7 +738,7 @@ class Unit(OTPmeObject):
                             "OBJECT_CLASSES",
                             "ou",
                             "CONFIG_PARAMS:sso_temp_pass_role",
-                            "CONFIG_PARAMS:allow_temp_paswords",
+                            "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
                     }

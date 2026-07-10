@@ -72,8 +72,21 @@
                     }
 
                     const openButton = document.createElement('button');
-                    openButton.textContent = i18n.labelOpen || 'Open';
                     openButton.classList.add('btn', 'btn-primary', 'btn-small');
+                    if (item.maintenance_mode) {
+                        // Backend flagged the app's access group as
+                        // disabled -- render the tile in a visibly
+                        // inert state instead of dropping it, so the
+                        // user knows the app exists and is offline
+                        // for maintenance rather than silently gone.
+                        tile.classList.add('is-maintenance');
+                        openButton.textContent = i18n.labelMaintenance || 'Maintenance';
+                        openButton.disabled = true;
+                        tile.appendChild(openButton);
+                        tileContainer.appendChild(tile);
+                        return;
+                    }
+                    openButton.textContent = i18n.labelOpen || 'Open';
                     openButton.addEventListener('click', () => {
                         // OIDC RPs handle SSO themselves -- the browser
                         // just needs to land on the RP, which then

@@ -1625,7 +1625,7 @@ class User(OTPmeObject):
                             "givenName",
                             "sn",
                             "CONFIG_PARAMS:sso_temp_pass_role",
-                            "CONFIG_PARAMS:allow_temp_paswords",
+                            "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
                     }
@@ -5095,6 +5095,9 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Enable user disabled login. """
+        if self.allow_disabled_login:
+            msg = _("Disabled login already enabled for this user.")
+            return callback.error(msg)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5123,6 +5126,10 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Disable user disabled login. """
+        if not self.allow_disabled_login:
+            msg = _("Disabled login already disabled for this user.")
+            return callback.error(msg)
+
         if run_policies:
             try:
                 self.run_policies("modify",

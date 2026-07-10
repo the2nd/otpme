@@ -9811,7 +9811,7 @@ class OTPmeObject(OTPmeBaseObject):
                 output_line = str(line + "\n")
             output += str(output_line)
 
-        return callback.ok(output)
+        return callback.ok(output, return_value=True)
 
 @match_class_typing
 class OTPmeClientObject(OTPmeObject):

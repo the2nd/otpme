@@ -829,7 +829,7 @@ def register_config_parameters():
                         'user',
                         'token',
                     ]
-    config.register_config_parameter(name="allow_temp_paswords",
+    config.register_config_parameter(name="allow_temp_passwords",
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
@@ -1202,7 +1202,7 @@ class Token(OTPmeObject):
                             "DESTINATION_TOKEN",
                             "DYNAMIC_GROUPS",
                             "CONFIG_PARAMS:sso_temp_pass_role",
-                            "CONFIG_PARAMS:allow_temp_paswords",
+                            "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
                     }
@@ -3280,7 +3280,7 @@ class Token(OTPmeObject):
         ):
         """ Set token temp password. """
         if not remove:
-            temp_passwords_allowed = self.get_config_parameter('allow_temp_paswords')
+            temp_passwords_allowed = self.get_config_parameter('allow_temp_passwords')
             if not temp_passwords_allowed:
                 msg = _("Temporary password not allowed.")
                 return callback.error(msg)

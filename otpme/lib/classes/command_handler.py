@@ -356,18 +356,13 @@ class CommandHandler(object):
                 if not isinstance(response, str):
                     response = pprint.pformat(response)
                 response_split = response.split("\n")
-                max_line = 0
-                line_splits = 0
+                response_len = len(response_split)
                 for line in response_split:
                     line_len = len(line)
-                    if line_len > columns:
-                        line_splits += 1
-                    if line_len < max_line:
+                    if line_len <= columns:
                         continue
-                    max_line = line_len
-                response_len = len(response_split)
-                if max_line > columns:
-                    response_len += line_splits
+                    line_lines = line_len / columns
+                    response_len += line_lines
                 if response_len > lines:
                     pydoc.pager(response)
                     return

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-wrapper">
+  <div class="deploy-card">
+    <h1>{{ gettext("Maintenance") }}</h1>
+    {% if client_name %}
+    <p class="deploy-desc">
+      {{ gettext("The application <strong>%(client)s</strong> is currently unavailable due to scheduled maintenance.", client=client_name)|safe }}
+    </p>
+    {% else %}
+    <p class="deploy-desc">
+      {{ gettext("The requested application is currently unavailable due to scheduled maintenance.") }}
+    </p>
+    {% endif %}
+    <p class="deploy-desc">
+      {{ gettext("Please try again later.") }}
+    </p>
+  </div>
+</div>
+{% endblock %}

@@ -290,7 +290,7 @@ class DefaultrolesPolicy(Policy):
         result = backend.search(attribute="name",
                                 value=role_name,
                                 object_type="role",
-                                return_type="uuid",
+                                return_type="instance",
                                 realm=config.realm,
                                 site=config.site)
         if not result:
@@ -298,10 +298,15 @@ class DefaultrolesPolicy(Policy):
             msg = msg.format(role_name=role_name)
             return callback.error(msg)
 
-        role_uuid = result[0]
+        role = result[0]
 
-        if role_uuid in self.default_roles:
+        if role.uuid in self.default_roles:
             msg = _("Role already added to this policy.")
+            return callback.error(msg)
+
+        if not role.verify_acl("add:token"):
+            msg = _("Permission denied: {role}")
+            msg = msg.format(role=role.name)
             return callback.error(msg)
 
         if run_policies:
@@ -315,7 +320,7 @@ class DefaultrolesPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        self.default_roles.append(role_uuid)
+        self.default_roles.append(role.uuid)
         return self._cache(callback=callback)
 
     @check_acls(['remove:default_role'])

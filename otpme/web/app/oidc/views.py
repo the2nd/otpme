@@ -1235,6 +1235,22 @@ def authorize():
             logger.debug(log_msg)
 
     if not a_status:
+        # Access group flagged as being under maintenance: render a
+        # human-readable page instead of redirecting the user back to
+        # the RP with a generic "server_error", which many clients
+        # display as an unhelpful stack trace or infinite spinner.
+        # HTTP 503 is the standards-mandated status for planned or
+        # unplanned downtime; a small Retry-After hint asks
+        # well-behaved clients not to hammer the endpoint.
+        if (isinstance(auth_response, dict)
+                and auth_response.get('group_maintenance')):
+            resp = make_response(render_template(
+                    'oidc_maintenance.html',
+                    client_name=client_id or ''),
+                503)
+            resp.headers['Retry-After'] = '300'
+            resp.headers['Cache-Control'] = 'no-store'
+            return resp
         target = _build_redirect_with_params(redirect_uri, {
             'error':             'server_error',
             'error_description': 'authentication failed',

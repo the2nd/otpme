@@ -317,7 +317,7 @@ class DefaultgroupsPolicy(Policy):
         result = backend.search(attribute="name",
                                 value=group_name,
                                 object_type="group",
-                                return_type="uuid",
+                                return_type="instance",
                                 realm=config.realm,
                                 site=config.site)
         if not result:
@@ -325,10 +325,15 @@ class DefaultgroupsPolicy(Policy):
             msg = msg.format(group_name=group_name)
             return callback.error(msg)
 
-        group_uuid = result[0]
+        group = result[0]
 
-        if group_uuid == self.default_group:
+        if group.uuid == self.default_group:
             msg = _("Group already set as default group.")
+            return callback.error(msg)
+
+        if not group.verify_acl("add:default_group_user"):
+            msg = _("Permission denied: {group}")
+            msg = msg.format(group=group.name)
             return callback.error(msg)
 
         if run_policies:
@@ -342,7 +347,7 @@ class DefaultgroupsPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        self.default_group = group_uuid
+        self.default_group = group.uuid
         return self._cache(callback=callback)
 
     @check_acls(['add:default_group'])
@@ -356,7 +361,7 @@ class DefaultgroupsPolicy(Policy):
         result = backend.search(attribute="name",
                                 value=group_name,
                                 object_type="group",
-                                return_type="uuid",
+                                return_type="instance",
                                 realm=config.realm,
                                 site=config.site)
         if not result:
@@ -364,10 +369,15 @@ class DefaultgroupsPolicy(Policy):
             msg = msg.format(group_name=group_name)
             return callback.error(msg)
 
-        group_uuid = result[0]
+        group = result[0]
 
-        if group_uuid in self.default_groups:
+        if group.uuid in self.default_groups:
             msg = _("Group already added to this policy.")
+            return callback.error(msg)
+
+        if not group.verify_acl("add:token"):
+            msg = _("Permission denied: {group}")
+            msg = msg.format(group=group.name)
             return callback.error(msg)
 
         if run_policies:
@@ -381,7 +391,7 @@ class DefaultgroupsPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        self.default_groups.append(group_uuid)
+        self.default_groups.append(group.uuid)
         return self._cache(callback=callback)
 
     @check_acls(['remove:default_group'])

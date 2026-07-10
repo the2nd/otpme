@@ -135,6 +135,14 @@ class BackupDaemon(OTPmeDaemon):
         backup_report_enabled = backup_object.get_config_parameter("backup_report_enabled")
         if not backup_report_enabled:
             return
+        backup_report_mode = backup_object.get_config_parameter("backup_report_mode")
+        if backup_report_mode:
+            if backup_report_mode == "success":
+                if status is not True:
+                    return
+            if backup_report_mode == "error":
+                if status is not False:
+                    return
         server = backup_object.get_config_parameter("backup_report_smtp_server")
         if not server:
             log_msg = _("Cannot send backup report: backup_report_smtp_server not configured.", log=True)[1]

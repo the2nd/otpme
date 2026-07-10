@@ -217,7 +217,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'args'              : ['owner_type', 'owner_name', 'acl'],
+                    'oargs'             : ['recursive_acls', 'apply_default_acls', 'object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },

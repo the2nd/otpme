@@ -18,6 +18,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_pass
+from otpme.lib.humanize import units
 from otpme.lib.encryption.ec import ECKey
 from otpme.lib.encoding.base import decode
 from otpme.lib.classes.session import Session
@@ -2820,7 +2821,7 @@ class AuthHandler(object):
                 log_msg = _("Verifying temp password tokens...", log=True)[1]
                 self.logger.debug(log_msg)
                 for token in self.temp_pass_tokens:
-                    temp_passwords_allowed = token.get_config_parameter('allow_temp_paswords')
+                    temp_passwords_allowed = token.get_config_parameter('allow_temp_passwords')
                     if not temp_passwords_allowed:
                         continue
                     self.verify_user_token(token=token, temp=True)
@@ -2958,6 +2959,15 @@ class AuthHandler(object):
                     reason = "SESSION_RENEG"
                 if self.session_refresh:
                     reason = "SESSION_REFRESH"
+                my_site = backend.get_object(object_type="site",
+                                            uuid=config.site_uuid)
+                jwt_valid = my_site.get_config_parameter("auth_jwt_valid")
+                try:
+                    jwt_valid = units.time2int(jwt_valid, time_unit="s")
+                except Exception as err:
+                    msg = _("Invalid auth JWT validity.")
+                    raise ValueError(msg) from err
+                now = time.time()
                 accessgroup = f"{config.site}/{self.access_group}"
                 jwt_data = {
                         'realm'             : config.realm,
@@ -2965,9 +2975,10 @@ class AuthHandler(object):
                         'reason'            : reason,
                         'message'           : self.auth_message,
                         'challenge'         : self.jwt_challenge,
-                        'login_time'        : time.time(),
+                        'login_time'        : now,
                         'login_token'       : self.auth_token.uuid,
                         'accessgroup'       : accessgroup,
+                        'exp'               : now + jwt_valid,
                         }
                 self.jwt = jwt.encode(payload=jwt_data,
                                     key=self.site_key,
@@ -3295,6 +3306,10 @@ class AuthHandler(object):
             auth_response['message'] = self.auth_message
         else:
             auth_response['message'] = "AUTH_FAILED"
+
+        if self.auth_message == "AUTH_GROUP_DISABLED":
+            auth_response['group_maintenance'] = True
+
         # Finally return.
         return auth_response
 

@@ -1208,7 +1208,18 @@ class OTPmeAuthP1(OTPmeServer1):
         auth_status = auth_response['status']
         if not auth_status:
             status = False
-            message = _("Authentication failed.")
+            group_maintenance = auth_response.get('group_maintenance', False)
+            if group_maintenance:
+                # Propagate the maintenance signal as a structured
+                # response so the caller (e.g. /oidc/authorize) can
+                # render a maintenance page instead of bouncing the
+                # user back to the RP with a generic auth error.
+                message = {
+                    'message': _("Application in maintenance mode."),
+                    'group_maintenance': True,
+                }
+            else:
+                message = _("Authentication failed.")
             return self.build_response(status, message)
         # We will not send auth token instance to peer.
         try:

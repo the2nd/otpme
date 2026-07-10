@@ -530,7 +530,7 @@ Object types: site, unit, user
 If enabled, users are allowed to delete their default token.  
 Object types: site, unit, user
 
-**allow_temp_paswords (bool, default: false)**  
+**allow_temp_passwords (bool, default: false)**  
 If enabled, temporary passwords can be set on tokens.  
 Object types: site, unit, user, token
 
@@ -1017,6 +1017,11 @@ Object types: site, unit, node, share
 Enable e-mail reports about completed backup runs (success and failure).
 When disabled, none of the other **backup_report\_\*** parameters take
 effect.  
+Object types: site, unit, node, share
+
+**backup_report_mode (str, default: all)**  
+Which backup runs to report on. Valid values: *all* (report every run),
+*success* (only successful runs), *error* (only failed runs).  
 Object types: site, unit, node, share
 
 **backup_report_smtp_server (str, default: 127.0.0.1)**  

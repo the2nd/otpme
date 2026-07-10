@@ -83,6 +83,8 @@ def get_apps(token):
                             return_type="instance")
     if not result:
         return app_data
+    owner = backend.get_object(uuid=token.owner_uuid)
+    allow_disabled_login = owner.allow_disabled_login
     token_ags = token.get_access_groups(return_type="uuid")
     for client in result:
         if not client.enabled:
@@ -92,12 +94,19 @@ def get_apps(token):
         if not client.access_group_uuid:
             continue
         client_ag = backend.get_object(uuid=client.access_group_uuid)
+        if not client_ag:
+            continue
         if client_ag.uuid not in token_ags:
             continue
+        maintenance_mode = False
+        if not client_ag.enabled:
+            if not allow_disabled_login:
+                maintenance_mode = True
         client_data = {
-                    'app_ag'    : client_ag.name,
-                    'app_name'  : client.sso_name,
-                    'login_url' : client.login_url,
+                    'app_ag'            : client_ag.name,
+                    'app_name'          : client.sso_name,
+                    'login_url'         : client.login_url,
+                    'maintenance_mode'  : maintenance_mode,
                 }
         if client.sso_enabled:
             client_data['helper_url'] = client.helper_url
@@ -1313,7 +1322,7 @@ class OTPmeSsoP1(OTPmeServer1):
         ``available`` depends on the role resolution (which honours the
         local site's ``sso_temp_pass_role_trusts`` -- user-cascade for
         trusted users, local-site config for untrusted foreign users).
-        ``enabled`` reads ``allow_temp_paswords`` on the user object
+        ``enabled`` reads ``allow_temp_passwords`` on the user object
         non-recursively and must always run on the user's home site --
         for foreign users we redirect to home (carrying the originator's
         resolved ``_temp_pass_role_uuid`` so home knows the toggle is
@@ -1341,7 +1350,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                'listed in sso_temp_pass_role_trusts.',
                     'status': False})
             try:
-                enabled = bool(user.get_config_parameter("allow_temp_paswords",
+                enabled = bool(user.get_config_parameter("allow_temp_passwords",
                                                          recursive=False))
             except Exception:
                 enabled = False
@@ -1350,7 +1359,7 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             # Originator side, foreign user. Trust check decides where the
             # role is evaluated; redirect so the authoritative
-            # ``allow_temp_paswords`` read happens on the user's home site.
+            # ``allow_temp_passwords`` read happens on the user's home site.
             role = self._resolve_temp_pass_role(user)
             if role is None:
                 return self.build_response(True, {
@@ -1367,7 +1376,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(True, {
                     'available': False, 'enabled': False, 'status': True})
         try:
-            enabled = bool(user.get_config_parameter("allow_temp_paswords",
+            enabled = bool(user.get_config_parameter("allow_temp_passwords",
                                                      recursive=False))
         except Exception:
             enabled = False
@@ -1375,7 +1384,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 'available': True, 'enabled': enabled, 'status': True})
 
     def set_admin_access_state(self, username, sso_jwt, command_args):
-        """ Self-service: flip ``allow_temp_paswords`` on the user and
+        """ Self-service: flip ``allow_temp_passwords`` on the user and
         grant / revoke the ``set_temp_password`` ACL (recursive, so it
         cascades to every one of the user's tokens) for the role
         configured under ``sso_temp_pass_role``.
@@ -1436,7 +1445,7 @@ class OTPmeSsoP1(OTPmeServer1):
         acl = f"role:{role.uuid}:set_temp_password"
         try:
             if enabled:
-                user.set_config_param("allow_temp_paswords", True,
+                user.set_config_param("allow_temp_passwords", True,
                                       verify_acls=False,
                                       run_policies=False,
                                       callback=callback)
@@ -1448,7 +1457,8 @@ class OTPmeSsoP1(OTPmeServer1):
                              callback=callback)
             else:
                 try:
-                    user.set_config_param("allow_temp_paswords", delete=True,
+                    user.set_config_param("allow_temp_passwords",
+                                          delete=True,
                                           verify_acls=False,
                                           run_policies=False,
                                           callback=callback)

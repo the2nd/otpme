@@ -345,7 +345,7 @@ If enabled, users are allowed to delete their default token.
 .br
 Object types: site, unit, user
 .TP
-.B allow_temp_paswords \fR(bool, default: false)
+.B allow_temp_passwords \fR(bool, default: false)
 If enabled, temporary passwords can be set on tokens.
 .br
 Object types: site, unit, user, token
@@ -779,6 +779,17 @@ Object types: site, unit, node, share
 Enable e\-mail reports about completed backup runs (success and failure). When disabled, none of the other
 .B backup_report_*
 parameters take effect.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_report_mode \fR(str, default: all)
+Which backup runs to report on. Valid values:
+.IR all
+(report every run),
+.IR success
+(only successful runs),
+.IR error
+(only failed runs).
 .br
 Object types: site, unit, node, share
 .TP
