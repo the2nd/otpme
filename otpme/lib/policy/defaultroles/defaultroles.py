@@ -241,6 +241,18 @@ class DefaultrolesPolicy(Policy):
         """ Test the policy. """
         return callback.ok()
 
+    def check_permissions(self, callback=default_callback):
+        for role_uuid in self.default_roles:
+            role = backend.get_object(uuid=role_uuid)
+            if not role:
+                continue
+            if role.verify_acl("add:token"):
+                continue
+            msg = _("Permission denied: {role}")
+            msg = msg.format(role=role.name)
+            return callback.error(msg)
+        return True
+
     def handle_hook(self, hook_name=None, child_object=None,
         verify_acls=True, callback=default_callback, **kwargs):
         """ Handle policy hooks. """

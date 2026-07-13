@@ -7330,7 +7330,7 @@ class CommandHandler(object):
             msg = _("Node vote check failed: {node_name}: {e}")
             msg = msg.format(node_name=node_name, e=e)
             raise OTPmeException(msg) from e
-        if node_vote == 0:
+        if not node_vote or node_vote.get('vote', 0) == 0:
             msg = _("Node not ready.")
             raise OTPmeException(msg)
 

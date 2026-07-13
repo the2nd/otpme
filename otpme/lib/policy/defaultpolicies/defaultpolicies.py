@@ -253,6 +253,21 @@ class DefaultpoliciesPolicy(Policy):
         """ Test the policy. """
         return callback.ok()
 
+    def check_permissions(self, callback=default_callback):
+        for object_type in self.default_policies:
+            for policy_uuid in self.default_policies[object_type]:
+                if policy_uuid == self.uuid:
+                    continue
+                policy = backend.get_object(uuid=policy_uuid)
+                if not policy:
+                    continue
+                if policy.check_permissions(callback=callback):
+                    continue
+                msg = _("Permission denied: {policy}")
+                msg = msg.format(policy=policy.name)
+                return callback.error(msg)
+        return True
+
     def handle_hook(self, callback=default_callback, **kwargs):
         """ Handle policy hooks. """
         msg = _("This policy is handled by OTPmeObject().add().")
@@ -304,7 +319,7 @@ class DefaultpoliciesPolicy(Policy):
             msg = msg.format(object_type, policy)
             return callback.error(msg)
 
-        if not object_type in self.default_policies:
+        if object_type not in self.default_policies:
             self.default_policies[object_type] = []
 
         self.default_policies[object_type].append(policy.uuid)

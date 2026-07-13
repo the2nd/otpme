@@ -760,20 +760,65 @@ class BackupServer:
 
     def _tree_entry_path(self, rel_path: str, snap_name: str) -> str:
         """Return the full path for a non-directory entry in tree/."""
+        self._safe_rel_path(rel_path)
         dirname = os.path.dirname(rel_path)
         basename = os.path.basename(rel_path)
         tree_name = f"{basename}-{snap_name}"
         if len(tree_name.encode("utf-8")) > 255:
             tree_name = self._gen_hash_name(basename, snap_name)
         if dirname:
-            return os.path.join(str(self.tree_dir), dirname, tree_name)
-        return os.path.join(str(self.tree_dir), tree_name)
+            candidate = os.path.join(str(self.tree_dir), dirname, tree_name)
+        else:
+            candidate = os.path.join(str(self.tree_dir), tree_name)
+        # Guarantee the composed path stays inside tree_dir even if a
+        # legitimate rel_path lands in a directory whose symlink chain
+        # would escape the repo.
+        self._ensure_in_tree(candidate)
+        return candidate
 
     def _meta_entry_path(self, snap_name: str, rel_path: str) -> str:
         """Return bucketed path for a meta/ entry: meta/XX/<hash>."""
         path_hash = self._path_hash(rel_path)
         meta_dir = str(self.snap_meta_dir(snap_name))
         return os.path.join(meta_dir, path_hash[:2], path_hash)
+
+    def _safe_rel_path(self, rel_path: str) -> str:
+        """Reject client-supplied rel_paths that would escape tree_dir.
+
+        os.path.join() silently discards its left operand when the right
+        operand is absolute, and it does not normalise ".." segments, so
+        every write/chown/chmod site that trusted rel_path was a
+        traversal primitive. Callers must run this before computing any
+        filesystem path from rel_path.
+        """
+        if not isinstance(rel_path, str):
+            raise OTPmeException(
+                f"Invalid rel_path type: {type(rel_path).__name__}")
+        if "\x00" in rel_path:
+            raise OTPmeException("rel_path contains NUL byte")
+        if os.path.isabs(rel_path):
+            raise OTPmeException(
+                f"Refusing absolute rel_path: {rel_path!r}")
+        parts = rel_path.replace("\\", "/").split("/")
+        if any(p == ".." for p in parts):
+            raise OTPmeException(
+                f"Refusing rel_path with '..' segment: {rel_path!r}")
+        return rel_path
+
+    def _ensure_in_tree(self, abs_path: str) -> str:
+        """Reject paths that resolve outside self.tree_dir.
+
+        Second line of defence for callers that compose an absolute path
+        from rel_path plus a per-snapshot suffix/basename: even if
+        rel_path passed _safe_rel_path, symlinks within the repo could
+        still land the final path outside. Returns the canonical path.
+        """
+        tree_dir_real = os.path.realpath(str(self.tree_dir))
+        resolved = os.path.realpath(abs_path)
+        if os.path.commonpath([tree_dir_real, resolved]) != tree_dir_real:
+            raise OTPmeException(
+                f"Path escapes tree_dir: {abs_path!r}")
+        return resolved
 
     @staticmethod
     def _write_gz(path: str, text: str) -> None:
@@ -1301,11 +1346,13 @@ class BackupServer:
         defer the call until all files are written (deepest-first) so
         that tree/ directory mtimes are not clobbered.
         """
+        self._safe_rel_path(rel_path)
         entry_type = meta["type"]
 
         if self.mode != "pack":
             if entry_type == "dir":
                 tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+                self._ensure_in_tree(tree_dir_path)
                 os.makedirs(tree_dir_path, exist_ok=True)
                 meta_path = self._meta_entry_path(snap_name, rel_path)
                 os.makedirs(os.path.dirname(meta_path), exist_ok=True)
@@ -1314,6 +1361,7 @@ class BackupServer:
 
             elif entry_type == "symlink":
                 tree_path = self._tree_entry_path(rel_path, snap_name)
+                self._ensure_in_tree(tree_path)
                 os.makedirs(os.path.dirname(tree_path), exist_ok=True)
                 self._write_gz(tree_path, f"{rel_path}\nSYMLINK\n{meta['symlink_target']}\n")
                 self.file_count += 1
@@ -1321,6 +1369,7 @@ class BackupServer:
 
             elif entry_type == "hardlink":
                 tree_path = self._tree_entry_path(rel_path, snap_name)
+                self._ensure_in_tree(tree_path)
                 os.makedirs(os.path.dirname(tree_path), exist_ok=True)
                 self._write_gz(tree_path, f"{rel_path}\nHARDLINK\n{meta['link_target']}\n")
                 self.file_count += 1
@@ -1328,6 +1377,7 @@ class BackupServer:
 
             elif entry_type in ("blockdev", "chardev"):
                 tree_path = self._tree_entry_path(rel_path, snap_name)
+                self._ensure_in_tree(tree_path)
                 os.makedirs(os.path.dirname(tree_path), exist_ok=True)
                 self._write_gz(tree_path, f"{rel_path}\n{entry_type.upper()}\n{meta['devmajor']} {meta['devminor']}\n")
                 self.file_count += 1
@@ -1335,6 +1385,7 @@ class BackupServer:
 
             elif entry_type in ("fifo", "socket"):
                 tree_path = self._tree_entry_path(rel_path, snap_name)
+                self._ensure_in_tree(tree_path)
                 os.makedirs(os.path.dirname(tree_path), exist_ok=True)
                 self._write_gz(tree_path, f"{rel_path}\n{entry_type.upper()}\n")
                 self.file_count += 1
@@ -1342,6 +1393,7 @@ class BackupServer:
 
             elif entry_type == "file":
                 tree_path = self._tree_entry_path(rel_path, snap_name)
+                self._ensure_in_tree(tree_path)
                 os.makedirs(os.path.dirname(tree_path), exist_ok=True)
                 content = f"{rel_path}\n{meta['size']} {meta['mtime']!r}\n"
                 chunk_hashes = meta.get("chunk_hashes", [])
@@ -1377,12 +1429,22 @@ class BackupServer:
         """
         if self.mode == "pack":
             return
+        self._safe_rel_path(rel_path)
         if meta.get("type") == "dir":
             meta_path = self._meta_entry_path(snap_name, rel_path)
             tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+            self._ensure_in_tree(tree_dir_path)
             targets = [meta_path, tree_dir_path]
         else:
-            targets = [self._tree_entry_path(rel_path, snap_name)]
+            tree_path = self._tree_entry_path(rel_path, snap_name)
+            self._ensure_in_tree(tree_path)
+            targets = [tree_path]
+
+        # Never honour setuid/setgid/sticky bits from the client — backupd
+        # runs as root, and letting the client set S_ISUID on a restored
+        # file would give an unprivileged mounter an arbitrary root-owned
+        # setuid binary. Strip 07000 unconditionally.
+        safe_mode = stat.S_IMODE(meta["mode"]) & 0o0777
 
         for target in targets:
             try:
@@ -1391,7 +1453,7 @@ class BackupServer:
                 logger.debug("chown %s: %s", target, exc)
 
             try:
-                os.chmod(target, stat.S_IMODE(meta["mode"]))
+                os.chmod(target, safe_mode)
             except (PermissionError, OSError) as exc:
                 logger.debug("chmod %s: %s", target, exc)
             if meta.get("acl"):
@@ -1491,6 +1553,7 @@ class BackupServer:
         meta:       dict to build index entry from (used when metadata changed).
         If neither is given, a minimal fallback entry is written.
         """
+        self._safe_rel_path(rel_path)
         if self.mode == "pack":
             # Pack mode: no hardlinks, only write index entry
             self.file_count += 1
@@ -1518,6 +1581,7 @@ class BackupServer:
         if is_dir:
             # Ensure tree/ directory exists (shared across snapshots)
             tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+            self._ensure_in_tree(tree_dir_path)
             os.makedirs(tree_dir_path, exist_ok=True)
             # Hardlink meta/ entry (dirs, bucketed)
             src_meta = self._meta_entry_path(from_snap, rel_path)
@@ -1530,6 +1594,8 @@ class BackupServer:
             # Hardlink tree/ entry: old snap → new snap
             src_tree = self._tree_entry_path(rel_path, from_snap)
             dst_tree = self._tree_entry_path(rel_path, to_snap)
+            self._ensure_in_tree(src_tree)
+            self._ensure_in_tree(dst_tree)
             if not os.path.lexists(src_tree):
                 return False
             os.makedirs(os.path.dirname(dst_tree), exist_ok=True)
@@ -1572,8 +1638,10 @@ class BackupServer:
                 linked += 1
         else:
             for rel_path, is_dir in entries:
+                self._safe_rel_path(rel_path)
                 if is_dir:
                     tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+                    self._ensure_in_tree(tree_dir_path)
                     os.makedirs(tree_dir_path, exist_ok=True)
                     src_meta = self._meta_entry_path(from_snap, rel_path)
                     dst_meta = self._meta_entry_path(to_snap, rel_path)
@@ -1584,6 +1652,8 @@ class BackupServer:
                 else:
                     src_tree = self._tree_entry_path(rel_path, from_snap)
                     dst_tree = self._tree_entry_path(rel_path, to_snap)
+                    self._ensure_in_tree(src_tree)
+                    self._ensure_in_tree(dst_tree)
                     if not os.path.lexists(src_tree):
                         continue
                     os.makedirs(os.path.dirname(dst_tree), exist_ok=True)

@@ -1342,7 +1342,12 @@ class Share(OTPmeObject):
         root_dir = self.get_config_parameter('share_root')
         root_dir = os.path.join(root_dir, self.name)
         # Run share add script.
-        self.run_share_script(self.add_script, root_dir)
+        try:
+            self.run_share_script(self.add_script, root_dir)
+        except Exception as e:
+            msg = _("Failed to run share add script: {add_script}: {e}")
+            msg = msg.format(add_script=self.add_script, e=e)
+            return callback.error(msg)
         # Check if root dir exists.
         if not self.set_root_dir(root_dir, callback=callback):
             return callback.error()

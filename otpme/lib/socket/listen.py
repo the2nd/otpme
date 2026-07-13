@@ -830,14 +830,12 @@ class ListenSocket(object):
             log_msg = log_msg.format(name=child_name, pid=child_pid)
             self.logger.debug(log_msg)
             try:
-                stuff.kill_pid(child_pid, signal=15)
+                stuff.kill_pid(child_pid, signal=15,
+                                timeout=5, kill_timeout=2)
             except Exception as e:
                 log_msg = _("Failed to send SIGTERM to connection: {name}: {error}", log=True)[1]
                 log_msg = log_msg.format(name=child_name, error=e)
                 self.logger.warning(log_msg)
-            # Wait for connection process to finish.
-            while stuff.check_pid(child_pid):
-                time.sleep(0.01)
 
     def close(self):
         """ Close all connections and stop listening on socket. """

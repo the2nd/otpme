@@ -225,6 +225,8 @@ class OTPmeSigner(object):
                                 'auth_script',
                                 'login_script',
                                 'agent_script',
+                                'backup_script',
+                                'share_script',
                                 ]
 
     def __init__(self, uuid=None, object_uuid=None,

@@ -6402,7 +6402,7 @@ class User(OTPmeObject):
                 backend.delete_object(used_oid, cluster=True)
             except Exception as e:
                 log_msg = _("Error removing used SOTP '{used_object}' from backend: {e}", log=True)[1]
-                log_msg = log_msg.format(used_object=used_object, e=e)
+                log_msg = log_msg.format(used_object=used_oid, e=e)
                 logger.critical(log_msg)
 
         # Make sure to remove user from signers cache.

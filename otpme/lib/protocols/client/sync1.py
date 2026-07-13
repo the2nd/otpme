@@ -191,6 +191,9 @@ class OTPmeSyncP1(OTPmeClient1):
             log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
             self.logger.error(log_msg)
             time.sleep(1)
+        msg = _("Failed to send sync list checksum after {max_tries} tries: {realm}/{site}")
+        msg = msg.format(max_tries=max_tries, realm=realm, site=site)
+        raise OTPmeException(msg)
 
     def get_remote_sync_list(self, realm, site, sync_params):
         """ Try to get remote sync list. """
@@ -226,6 +229,9 @@ class OTPmeSyncP1(OTPmeClient1):
             log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
             self.logger.error(log_msg)
             time.sleep(1)
+        msg = _("Failed to receive sync list after {max_tries} tries: {realm}/{site}")
+        msg = msg.format(max_tries=max_tries, realm=realm, site=site)
+        raise OTPmeException(msg)
 
     def get_last_used_timestamps(self, sync_params):
         """ Try to get last used timestamps from remote. """

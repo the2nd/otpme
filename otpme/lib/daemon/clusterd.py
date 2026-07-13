@@ -311,7 +311,7 @@ def calc_node_vote():
                                 value=node_name,
                                 return_type="instance")
         if not result:
-            return 0
+            return {'revision': 1, 'vote': 0}
         node = result[0]
         node_vote = node.get_node_vote()
     else:
@@ -470,7 +470,7 @@ class ClusterEntry(object):
             nodes.append(node_name)
         file_glob = f"{self.actions_file}*"
         actions_files = sorted(glob.glob(file_glob))
-        actions_file_re = re.compile('^{self.actions_file}.[0-9]*$')
+        actions_file_re = re.compile(f'^{self.actions_file}.[0-9]*$')
         done_nodes = list(nodes)
         processed_nodes = []
         for x_file in actions_files:
@@ -1319,10 +1319,12 @@ class ClusterDaemon(OTPmeDaemon):
         node = backend.get_object(uuid=node_uuid)
         if node.enabled:
             return
-        node.enable(force=True, verify_acls=False, no_audit_log=True)
         node.acquire_lock(lock_caller="clusterd")
-        node._write(cluster=False)
-        node.release_lock(lock_caller="clusterd")
+        try:
+            node.enable(force=True, verify_acls=False, no_audit_log=True)
+            node._write(cluster=False)
+        finally:
+            node.release_lock(lock_caller="clusterd")
         cache.clear()
 
     def disable_node(self):
@@ -1330,10 +1332,12 @@ class ClusterDaemon(OTPmeDaemon):
         node = backend.get_object(uuid=node_uuid)
         if not node.enabled:
             return
-        node.disable(force=True, verify_acls=False, no_audit_log=True)
         node.acquire_lock(lock_caller="clusterd")
-        node._write(cluster=False)
-        node.release_lock(lock_caller="clusterd")
+        try:
+            node.disable(force=True, verify_acls=False, no_audit_log=True)
+            node._write(cluster=False)
+        finally:
+            node.release_lock(lock_caller="clusterd")
         cache.clear()
 
     @property
@@ -1657,7 +1661,7 @@ class ClusterDaemon(OTPmeDaemon):
                     log_msg = log_msg.format(node=node_name, error=e)
                     self.logger.warning(log_msg)
                     x_node_vote = None
-                if x_node_vote is None or x_node_vote == 0:
+                if not x_node_vote or x_node_vote.get('vote', 0) == 0:
                     try:
                         node_votes.pop(node_name)
                     except KeyError:
@@ -1817,7 +1821,7 @@ class ClusterDaemon(OTPmeDaemon):
                 log_msg = log_msg.format(node=node_name, error=e)
                 self.logger.warning(log_msg)
                 continue
-            if x_node_vote == 0:
+            if not x_node_vote or x_node_vote.get('vote', 0) == 0:
                 continue
 
             current_votes += 1
@@ -1960,6 +1964,16 @@ class ClusterDaemon(OTPmeDaemon):
                 continue
             if not proc.is_alive():
                 self.close_node_write_connection(node_name)
+                try:
+                    multiprocessing.node_connections.pop(node_name)
+                except KeyError:
+                    pass
+            try:
+                proc = self.node_sessions_connections[node_name]
+            except Exception:
+                continue
+            if not proc.is_alive():
+                self.close_node_sessions_connection(node_name)
                 try:
                     multiprocessing.node_connections.pop(node_name)
                 except KeyError:
@@ -2125,7 +2139,15 @@ class ClusterDaemon(OTPmeDaemon):
                 log_msg = _("Failed to get master failover status: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
+                current_try += 1
+                if current_try >= max_tries:
+                    log_msg = _("Failed to get master failover status after {tries} tries.", log=True)[1]
+                    log_msg = log_msg.format(tries=max_tries)
+                    self.logger.warning(log_msg)
+                    return
+                time.sleep(1)
                 continue
+            current_try = 0
             if not master_failover_status:
                 break
             time.sleep(1)
@@ -2700,6 +2722,18 @@ class ClusterDaemon(OTPmeDaemon):
                     log_msg = _("Failed to load new object: {object_id}: {error}", log=True)[1]
                     log_msg = log_msg.format(object_id=object_id, error=e)
                     self.logger.critical(log_msg)
+                    continue
+
+                if new_object is None:
+                    log_msg = _("Cluster in-journal references missing object: {object_id}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id)
+                    self.logger.warning(log_msg)
+                    try:
+                        os.remove(journal_file)
+                    except Exception as e:
+                        log_msg = _("Failed to delete cluster in-journal file: {file}: {error}", log=True)[1]
+                        log_msg = log_msg.format(file=journal_file, error=e)
+                        self.logger.critical(log_msg)
                     continue
 
                 if not new_object.public_key:

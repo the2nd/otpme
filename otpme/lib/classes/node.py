@@ -970,7 +970,7 @@ class Node(OTPmeHost):
             log_msg = _("Unknown vote script: {vote_script}", log=True)[1]
             log_msg = log_msg.format(vote_script=self.vote_script)
             logger.warning(log_msg)
-            return 1
+            return {'revision': revision_vote, 'vote': 1}
 
         vote_script = result[0]
 
@@ -990,13 +990,13 @@ class Node(OTPmeHost):
             log_msg = _("Error running node vote script: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             logger.warning(log_msg)
-            return 1
+            return {'revision': revision_vote, 'vote': 1}
 
         exit_code = vote_script_result[0]
         if exit_code == 0:
             return node_vote
 
-        return 0
+        return {'revision': revision_vote, 'vote': 0}
 
     @check_acls(['edit:vote_script'])
     @object_lock()

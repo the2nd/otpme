@@ -117,12 +117,12 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
     # Return proc if requested.
     if return_proc:
         return proc
-    # Wait for process to finish.
-    proc.wait()
+    # Wait for process to finish while draining stdout/stderr PIPEs
+    # concurrently — a plain proc.wait() deadlocks once a child writes
+    # more than ~64 KiB to a PIPE with nobody reading.
+    command_stdout, command_stderr = proc.communicate()
     if not return_proc_data:
         return
-    # Get command stdout and stderr.
-    command_stdout, command_stderr = proc.communicate()
     # Get command exit code.
     command_returncode = proc.returncode
     # Get PID of command.

@@ -558,27 +558,27 @@ def add_sync_map(
     sync_map_id = (f"site:{peer_realm}/{peer_site}")
     # Acquire sync map lock.
     sync_map_lock = get_sync_map_lock(sync_map_id)
-
-    # Get site/node entry from sync map.
     try:
-        map_entry = multiprocessing.sync_map[sync_map_id]
-        map_entry = map_entry.copy()
-    except Exception:
-        map_entry = {}
+        # Get site/node entry from sync map.
+        try:
+            map_entry = multiprocessing.sync_map[sync_map_id]
+            map_entry = map_entry.copy()
+        except Exception:
+            map_entry = {}
 
-    if realm not in map_entry:
-        map_entry[realm] = {}
+        if realm not in map_entry:
+            map_entry[realm] = {}
 
-    # Update map entry.
-    map_entry[realm][site] = {
-                                'time'          : time.time(),
-                                'checksum'      : checksum,
-                                'object_types'  : object_types,
-                            }
-    # Update sync map entry.
-    multiprocessing.sync_map[sync_map_id] = map_entry
-    # Release sync lock.
-    sync_map_lock.release_lock()
+        # Update map entry.
+        map_entry[realm][site] = {
+                                    'time'          : time.time(),
+                                    'checksum'      : checksum,
+                                    'object_types'  : object_types,
+                                }
+        # Update sync map entry.
+        multiprocessing.sync_map[sync_map_id] = map_entry
+    finally:
+        sync_map_lock.release_lock()
 
 @match_typing
 def get_sync_map(
@@ -592,23 +592,22 @@ def get_sync_map(
     sync_map_id = (f"site:{peer_realm}/{peer_site}")
     # Acquire sync lock.
     sync_map_lock = get_sync_map_lock(sync_map_id, timeout=timeout)
-
-    # Remove outdated sync maps from cache.
-    clear_outdated_sync_maps()
-
-    # Get site/node entry from sync map.
     try:
-        map_entry = multiprocessing.sync_map[sync_map_id].copy()
-    except Exception:
-        map_entry = {}
-    # Get sync list checksum.
-    try:
-        sync_list_checksum = map_entry[realm][site]['checksum']
-    except Exception:
-        sync_list_checksum = None
+        # Remove outdated sync maps from cache.
+        clear_outdated_sync_maps()
 
-    # Release sync lock.
-    sync_map_lock.release_lock()
+        # Get site/node entry from sync map.
+        try:
+            map_entry = multiprocessing.sync_map[sync_map_id].copy()
+        except Exception:
+            map_entry = {}
+        # Get sync list checksum.
+        try:
+            sync_list_checksum = map_entry[realm][site]['checksum']
+        except Exception:
+            sync_list_checksum = None
+    finally:
+        sync_map_lock.release_lock()
 
     return sync_list_checksum
 
@@ -649,17 +648,19 @@ def clear_outdated_sync_maps():
     """ Remove outdated sync maps from cache. """
     lock_id = "clear_outdated_sync_maps"
     lock = locking.acquire_lock(lock_type=SYNC_MAP_LOCK_TYPE, lock_id=lock_id)
-    processed = []
-    for x in list(multiprocessing.sync_map_cache_clear_queue):
-        multiprocessing.sync_map_cache_clear_queue.remove(x)
-        if x in processed:
-            continue
-        x_realm = x[0]
-        x_site = x[1]
-        x_object_types = x[2]
-        clear_sync_map(realm=x_realm, site=x_site, object_types=x_object_types)
-        processed.append(x)
-    lock.release_lock()
+    try:
+        processed = []
+        for x in list(multiprocessing.sync_map_cache_clear_queue):
+            multiprocessing.sync_map_cache_clear_queue.remove(x)
+            if x in processed:
+                continue
+            x_realm = x[0]
+            x_site = x[1]
+            x_object_types = x[2]
+            clear_sync_map(realm=x_realm, site=x_site, object_types=x_object_types)
+            processed.append(x)
+    finally:
+        lock.release_lock()
 
 @match_typing
 def clear_sync_map(realm: str, site: str, object_types: Union[List,None]=None):

@@ -715,9 +715,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                     raise ldapsyntax.MatchNotImplemented(msg)
                 if isinstance(filterObject.value, pureldap.LDAPFilter_substrings):
                     cache_key += self.gen_cache_key(filterObject.value)
-                else:
+                elif isinstance(filterObject.value, pureldap.LDAPFilter_equalityMatch):
                     cache_key += "+not="
                     cache_key += f'!{filterObject.value.assertionValue.value.decode()}'
+                else:
+                    msg = _("Invalid search filter: unsupported inner filter type in NOT: {t}")
+                    msg = msg.format(t=type(filterObject.value).__name__)
+                    raise ldapsyntax.MatchNotImplemented(msg)
 
         cache_key += f"{sizeLimit}"
         cache_key += f"{timeLimit}"
@@ -869,9 +873,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 greater_than, \
                 less_than = self.decode_ldap_filter(filterObject.value)
                 value = f"!{value}"
-            else:
+            elif isinstance(filterObject.value, pureldap.LDAPFilter_equalityMatch):
                 attribute = filterObject.value.attributeDesc.value.decode()
                 value = f'!{filterObject.value.assertionValue.value.decode()}'
+            else:
+                msg = _("Invalid search filter: unsupported inner filter type in NOT: {t}")
+                msg = msg.format(t=type(filterObject.value).__name__)
+                raise ldapsyntax.MatchNotImplemented(msg)
         else:
             msg = "Invalid ldap filter: {filterObject}"
             msg = msg.format(filterObject=type(filterObject))

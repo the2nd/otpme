@@ -1429,6 +1429,16 @@ def register_config():
                                     setter=sso_rate_limit_setter,
                                     default_value="10/minute",
                                     object_types=['site'])
+    # Per-username cap on the authenticated /settings/* and credential-
+    # change endpoints (change_password, change_pin, ...). Post-auth
+    # guardrail against a valid-session client hammering the settings
+    # backend (buggy loop, malicious tab). Default is comfortable for
+    # interactive UI use; admins can raise/lower it per site.
+    config.register_config_parameter(name="sso_rate_limit_settings",
+                                    ctype=str,
+                                    setter=sso_rate_limit_setter,
+                                    default_value="60/minute",
+                                    object_types=['site'])
     # Hosts accessgroup.
     def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
         result = backend.search(object_type='accessgroup',
@@ -2145,6 +2155,7 @@ class Site(OTPmeObject):
                                 "CONFIG_PARAMS:reverse_proxy_ips",
                                 "CONFIG_PARAMS:sso_rate_limit_login",
                                 "CONFIG_PARAMS:sso_rate_limit_login_user",
+                                "CONFIG_PARAMS:sso_rate_limit_settings",
                                 "CONFIG_PARAMS:backupd_max_conn",
                                 ],
                         },

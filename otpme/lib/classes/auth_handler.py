@@ -1324,7 +1324,10 @@ class AuthHandler(object):
             # password hash is returned instead of the OTP.
             mschap_status = verify_status
             # Get status from return value.
-            verify_status = mschap_status[0]
+            if isinstance(mschap_status, tuple):
+                verify_status = mschap_status[0]
+            else:
+                verify_status = mschap_status
 
         if verify_status is None:
             # If we got "None" as status token verification was not successful

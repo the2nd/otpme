@@ -15,6 +15,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import jwt
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -383,11 +384,53 @@ class OTPmeFsP1(OTPmeFsServer1):
                     status = status_codes.BACKUP_CONNECTION_BROKEN
                     response = {'try_other_node':True, 'message':'Backupd connection failed.'}
                     return self.build_response(status, response)
+                # Sign a short-lived mount JWT with our local site's
+                # private key so backupd can prove the request came
+                # from a legitimate OTPme daemon and no other client
+                # can substitute username/groups/repository. The repo
+                # password travels inside the signed payload so it is
+                # tamper-proof end-to-end.
+                backup_repo_password = restore_share.get_config_parameter("backup_repo_password")
+                if not backup_repo_password:
+                    status = status_codes.UNKNOWN_OBJECT
+                    message, log_msg = _("Unable to find backup repo password for share: {share}", log=True)
+                    message = message.format(share=self.share)
+                    log_msg = log_msg.format(share=self.share)
+                    self.logger.warning(log_msg)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
+                mount_site = backend.get_object(object_type="site",
+                                                uuid=config.site_uuid)
+                if not mount_site or not mount_site._key:
+                    status = status_codes.PERMISSION_DENIED
+                    message, log_msg = _("Site JWT signing key missing: {site}", log=True)
+                    message = message.format(site=config.site)
+                    log_msg = log_msg.format(site=config.site)
+                    self.logger.warning(log_msg)
+                    response = {'try_other_node':False, 'message':message}
+                    return self.build_response(status, response)
+                now = time.time()
+                mount_jwt_payload = {
+                            'realm'         : config.realm,
+                            'site'          : config.site,
+                            'reason'        : 'BACKUP_MOUNT',
+                            'repository'    : repo_id,
+                            'username'      : self.username,
+                            'default_group' : default_group,
+                            'groups'        : groups,
+                            'password'      : backup_repo_password,
+                            'iat'           : now,
+                            'exp'           : now + 60,
+                        }
+                mount_jwt = jwt.encode(payload=mount_jwt_payload,
+                                       key=mount_site._key,
+                                       algorithm='RS256')
                 try:
                     self.backupd_conn.mount(repo_id,
                                             username=self.username,
                                             default_group=default_group,
-                                            groups=groups)
+                                            groups=groups,
+                                            mount_jwt=mount_jwt)
                 except Exception as e:
                     status = status_codes.BACKUP_CONNECTION_BROKEN
                     message, log_msg = _("Failed to mount restore share: {share_name}: {e}", log=True)

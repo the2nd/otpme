@@ -3375,11 +3375,11 @@ class Token(OTPmeObject):
         if not self.support_dot1x:
             log_msg = _("Token does not support dot1x: {token}", log=True)[1]
             logger.info(log_msg)
-            return None, False, False
+            return None
         if not self.dot1x_secret:
             log_msg = _("Token does not have a dot1x secret: {token}", log=True)[1]
             logger.info(log_msg)
-            return None, False, False
+            return None
         try:
             sotp_verify_status = sotp.verify(password_hash=self.dot1x_secret,
                                             password=password)

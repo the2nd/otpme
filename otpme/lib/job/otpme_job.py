@@ -290,7 +290,7 @@ class OTPmeJob(object):
         else:
             log_msg = _("Job failed: {job_name}: {error}", log=True)[1]
             log_msg = log_msg.format(job_name=self.name, error=job_error)
-            self.logger.debug(log_msg)
+            self.logger.warning(log_msg)
 
         # Print job timings.
         if config.print_timing_results and config.daemon_mode:

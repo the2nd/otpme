@@ -244,6 +244,8 @@ def end_transaction(write=True):
                 log_msg = _("Failed to save transaction: {id}: {error}", log=True)[1]
                 log_msg = log_msg.format(id=_transaction.id, error=e)
                 logger.critical(log_msg)
+                remove_transaction()
+                _transaction.remove()
                 config.raise_exception()
                 return False
         # Commit transaction. For running transactions we dont need to modify
@@ -254,6 +256,8 @@ def end_transaction(write=True):
             log_msg = _("Failed to end transaction: {id}: {error}", log=True)[1]
             log_msg = log_msg.format(id=_transaction.id, error=e)
             logger.critical(log_msg, exc_info=True)
+            remove_transaction()
+            _transaction.remove()
             config.raise_exception()
             return False
         # Remove transaction after successful commit.
@@ -417,7 +421,17 @@ def transaction(func):
         if start_transaction:
             begin_transaction(callback=callback)
         # Run function.
-        result = func(*args, **kwargs)
+        try:
+            result = func(*args, **kwargs)
+        except Exception:
+            if start_transaction:
+                try:
+                    abort_transaction()
+                except Exception as abort_err:
+                    log_msg = _("abort_transaction failed after wrapped exception: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=abort_err)
+                    logger.critical(log_msg)
+            raise
         if start_transaction:
             if result is False:
                 abort_transaction()
@@ -903,7 +917,7 @@ class BaseTransaction(object):
 
             journal_entry = json.loads(file_content)
 
-            self.cluster_journal.append(self.journal_counter)
+            self.cluster_journal.append(self.cluster_journal_counter)
             self.cluster_journal_entries[str(self.cluster_journal_counter)] = journal_entry
             self.cluster_journal_counter += 1
 
@@ -1204,18 +1218,23 @@ class FileTransaction(BaseTransaction):
     def commit(self, **kwargs):
         """ Commit write and commit journal. """
         config.active_transactions.append(self)
-        if not self.no_disk_writes:
-            if self.status != "written":
-                self._write()
         try:
-            result = self._commit(**kwargs)
-        except Exception as e:
-            msg = _("Failed to commit transaction: {log_name}: {error}")
-            msg = msg.format(log_name=self.log_name, error=e)
-            config.raise_exception()
-            raise OTPmeException(msg) from e
-        config.active_transactions.remove(self)
-        return result
+            if not self.no_disk_writes:
+                if self.status != "written":
+                    self._write()
+            try:
+                result = self._commit(**kwargs)
+            except Exception as e:
+                msg = _("Failed to commit transaction: {log_name}: {error}")
+                msg = msg.format(log_name=self.log_name, error=e)
+                config.raise_exception()
+                raise OTPmeException(msg) from e
+            return result
+        finally:
+            try:
+                config.active_transactions.remove(self)
+            except ValueError:
+                pass
 
     def _commit(self):
         """ Commit journal. """
@@ -1731,63 +1750,68 @@ class ObjectTransaction(BaseTransaction):
         """ Commit write and commit journal. """
         from otpme.lib.backend import outdate_object
         config.active_transactions.append(self)
-        if write:
-            if self.status != "written":
-                self._write()
-
-        if config.debug_level(DEBUG_SLOT) > 3:
-            log_msg = _("Commiting transaction: {log_name}", log=True)[1]
-            log_msg = log_msg.format(log_name=self.log_name)
-            logger.debug(log_msg)
-
-        # Start commit.
         try:
-            added_objects, \
-            deleted_objects = self._commit(no_index_writes=no_index_writes)
-        except Exception:
-            # Rollback DB transaction on error.
-            self.session.rollback()
-            raise
-        else:
-            # Commit DB transaction two times because of nested transaction.
-            # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#nested-transaction
-            self.session.commit()
-            self.session.commit()
+            if write:
+                if self.status != "written":
+                    self._write()
+
+            if config.debug_level(DEBUG_SLOT) > 3:
+                log_msg = _("Commiting transaction: {log_name}", log=True)[1]
+                log_msg = log_msg.format(log_name=self.log_name)
+                logger.debug(log_msg)
+
+            # Start commit.
+            try:
+                added_objects, \
+                deleted_objects = self._commit(no_index_writes=no_index_writes)
+            except Exception:
+                # Rollback DB transaction on error.
+                self.session.rollback()
+                raise
+            else:
+                # Commit DB transaction two times because of nested transaction.
+                # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#nested-transaction
+                self.session.commit()
+                self.session.commit()
+            finally:
+                # Close DB session.
+                self.session.close()
+
+            # Reset modified flag.
+            for o in self.reset_modified_objects:
+                o.reset_modified()
+                cache.add_instance(o)
+            # Release object locks.
+            for o in self.locked_objects:
+                o.release_lock(lock_caller=self.lock_caller)
+
+            # Outdate objects in caches.
+            for x in deleted_objects:
+                cache_type = None
+                if self._replay:
+                    cache_type = "all"
+                outdate_object(x, cache_type=cache_type)
+            for x in added_objects:
+                cache_type = None
+                if self._replay:
+                    cache_type = "all"
+                outdate_object(x, cache_type=cache_type)
+
+            # Handle cluster actions after local objects written.
+            self.handle_cluster_journal()
+
+            # Remove status file to indicate finished transaction.
+            self._remove_file(self.status_file)
+
+            if config.debug_level(DEBUG_SLOT) > 3:
+                log_msg = _("Transaction commited successful: {log_name}", log=True)[1]
+                log_msg = log_msg.format(log_name=self.log_name)
+                logger.debug(log_msg)
         finally:
-            # Close DB session.
-            self.session.close()
-
-        # Reset modified flag.
-        for o in self.reset_modified_objects:
-            o.reset_modified()
-            cache.add_instance(o)
-        # Release object locks.
-        for o in self.locked_objects:
-            o.release_lock(lock_caller=self.lock_caller)
-
-        # Outdate objects in caches.
-        for x in deleted_objects:
-            cache_type = None
-            if self._replay:
-                cache_type = "all"
-            outdate_object(x, cache_type=cache_type)
-        for x in added_objects:
-            cache_type = None
-            if self._replay:
-                cache_type = "all"
-            outdate_object(x, cache_type=cache_type)
-
-        # Handle cluster actions after local objects written.
-        self.handle_cluster_journal()
-
-        # Remove status file to indicate finished transaction.
-        self._remove_file(self.status_file)
-
-        config.active_transactions.remove(self)
-        if config.debug_level(DEBUG_SLOT) > 3:
-            log_msg = _("Transaction commited successful: {log_name}", log=True)[1]
-            log_msg = log_msg.format(log_name=self.log_name)
-            logger.debug(log_msg)
+            try:
+                config.active_transactions.remove(self)
+            except ValueError:
+                pass
 
     def _commit(self, no_index_writes=True):
         """ Commit transaction. """

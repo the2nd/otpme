@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import json
+import time
+import threading
 
 from urllib.parse import urlparse, urljoin
 
@@ -25,6 +27,7 @@ from flask_babel import gettext
 
 from otpme.web.app import lm
 from otpme.web.app import app
+from otpme.web.app import csrf
 from otpme.web.app import limiter
 from otpme.web.app.forms import LoginForm
 
@@ -239,8 +242,38 @@ def index():
             return redirect(url_for('deploy', _external=True, _scheme='https'))
     return render_template("index.html", title=gettext('SSO Portal'))
 
+# Rate-limit helpers for the authenticated /settings/* and credential-
+# change endpoints. Defined above the first route that uses them
+# because `@limiter.limit(...)` decorator arguments are evaluated at
+# module import time -- the callable itself only runs per request.
+# _site_rate_limit lives further down but is only called at request
+# time, so its later definition is fine (name resolution deferred).
+def _rate_limit_settings():
+    return _site_rate_limit("sso_rate_limit_settings") or "60/minute"
+
+
+def _settings_user_key():
+    """ Rate-limit key for authenticated /settings/* and credential-
+    change endpoints. Keyed on the authenticated username so a
+    single user hammering the settings backend from many browser
+    tabs / a runaway poll loop can't burn a shared IP bucket.
+    Falls back to remote IP if somehow called outside an active
+    login session (defense in depth; every settings route is
+    @login_required). """
+    try:
+        if getattr(current_user, 'is_authenticated', False):
+            name = getattr(current_user, 'name', None)
+            if name:
+                return f"settings-user:{name}"
+    except Exception:
+        pass
+    from otpme.web.app import _ratelimit_key
+    return _ratelimit_key()
+
+
 @app.route('/settings')
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def settings():
     login_token_pass_type = flask_session.get('login_token_pass_type')
     login_token_type = flask_session.get('login_token_type')
@@ -358,6 +391,7 @@ def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False)
 
 @app.route('/settings/device_tokens', methods=['GET'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def list_device_tokens():
     try:
         response, error = _send_ssod_command(command="list_device_tokens",
@@ -379,6 +413,7 @@ def list_device_tokens():
 
 @app.route('/settings/device_tokens', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def add_device_token():
     data = request.json or {}
     device_name = data.get('device_name', '').strip()
@@ -403,6 +438,7 @@ def add_device_token():
 
 @app.route('/settings/device_tokens/delete', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def del_device_token():
     data = request.json or {}
     token_name = data.get('name', '').strip()
@@ -418,6 +454,7 @@ def del_device_token():
 
 @app.route('/settings/passkeys', methods=['GET'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def list_passkeys():
     try:
         response, error = _send_ssod_command(
@@ -435,6 +472,7 @@ def list_passkeys():
 
 @app.route('/settings/passkeys/register/begin', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def passkey_register_begin():
     """ Start passkey enrollment.
 
@@ -466,6 +504,7 @@ def passkey_register_begin():
 
 @app.route('/settings/passkeys/register/complete', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def passkey_register_complete():
     passkey_state_id = flask_session.pop('passkey_state_id', None)
     if not passkey_state_id:
@@ -493,6 +532,7 @@ def passkey_register_complete():
 
 @app.route('/settings/passkeys/delete', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def del_passkey():
     data = request.json or {}
     token_name = (data.get('name') or '').strip()
@@ -509,6 +549,7 @@ def del_passkey():
 
 @app.route('/settings/admin_access', methods=['GET'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def get_admin_access_state():
     """ Return whether the admin-access toggle should be shown
     (``available``) and its current state (``enabled``). """
@@ -530,6 +571,7 @@ def get_admin_access_state():
 
 @app.route('/settings/admin_access', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def set_admin_access_state():
     data = request.json or {}
     if 'enabled' not in data:
@@ -549,6 +591,7 @@ def set_admin_access_state():
 
 @app.route('/settings/oidc_consents', methods=['GET'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def list_oidc_consents():
     try:
         response, error = _send_ssod_command(
@@ -567,6 +610,7 @@ def list_oidc_consents():
 
 @app.route('/settings/oidc_consents/revoke', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def revoke_oidc_consent():
     data = request.json or {}
     client_uuid = (data.get('client_uuid') or '').strip()
@@ -591,6 +635,7 @@ def revoke_oidc_consent():
 
 @app.route('/settings/redeploy')
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def settings_redeploy():
     """ Trigger re-deploy of the login token via the normal deploy flow. """
     flask_session['sso_deploy'] = True
@@ -599,6 +644,7 @@ def settings_redeploy():
 
 @app.route('/change_password', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def change_password():
     data = request.json
     if not data:
@@ -649,6 +695,7 @@ def change_password():
 
 @app.route('/change_pin', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def change_pin():
     data = request.json
     if not data:
@@ -698,6 +745,7 @@ def change_pin():
 
 @app.route('/settings/language', methods=['POST'])
 @login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
 def change_language():
     """ Persist the user's language preference. Accepts the literal
     "default" to clear the pref (revert to Accept-Language). """
@@ -1144,6 +1192,10 @@ def _do_sso_logout(response, skip_backchannel_client=None,
     # /login follows Accept-Language again instead of sticking to the
     # previous user's profile language.
     flask_session.pop('user_language', None)
+    # Drop the per-user /get_apps cache so a re-login (possibly with a
+    # different token / different access-group membership) doesn't
+    # briefly see the previous session's app tiles.
+    _apps_cache_invalidate(username)
     if username:
         try:
             authd_conn = get_authd_conn(username, slp)
@@ -1214,20 +1266,108 @@ def reauth():
                            reauth=True,
                            reauth_username=username)
 
+def _logout_origin_ok():
+    # Logout is CSRF-exempt (see csrf.exempt(logout) below) so a stale
+    # CSRF token on a long-open tab doesn't lock the user out. Cross-
+    # origin CSRF defence for this endpoint is the Origin/Referer check
+    # instead: browsers set one of them on every POST and neither can
+    # be spoofed from an attacker's page (OWASP CSRF prevention cheat
+    # sheet, "Verifying Origin With Standard Headers"). A missing
+    # Origin/Referer is rejected -- same-origin form posts always carry
+    # at least one.
+    expected_host = request.host
+    origin = request.headers.get('Origin')
+    if origin:
+        try:
+            return urlparse(origin).netloc == expected_host
+        except Exception:
+            return False
+    referer = request.headers.get('Referer')
+    if referer:
+        try:
+            return urlparse(referer).netloc == expected_host
+        except Exception:
+            return False
+    return False
+
 @app.route('/logout', methods=['POST'])
 def logout():
     # POST-only: a GET /logout (e.g. via <img src> on a third-party
     # site) would log the user out without their consent. The navbar
-    # template renders Logout as a small POST form with a CSRF token.
+    # template renders Logout as a POST form; the endpoint is CSRF-
+    # exempt because Flask-WTF's synchronizer token expires after
+    # WTF_CSRF_TIME_LIMIT (default 1h) and a user who leaves the tab
+    # open past that gets "The CSRF token has expired" when they click
+    # Logout. We defend against cross-origin logout-CSRF via the
+    # Origin/Referer header check in _logout_origin_ok() instead.
+    if not _logout_origin_ok():
+        return "Bad request", 400
     next_url = _safe_next_url(request.form.get('next'))
     if not g.user:
         return redirect(url_for('login', next=next_url, _external=True, _scheme='https'))
     resp = make_response(redirect(url_for('login', next=next_url, _external=True, _scheme='https')))
     return _do_sso_logout(resp)
 
+csrf.exempt(logout)
+
+# Short-lived per-worker cache for the /get_apps result. The portal
+# hits this endpoint on every reload of the SSO landing page; without
+# a cache each hit fans out to ssod (+ backend reads for every SSO-
+# enabled client on the site). A 30s TTL is short enough that a
+# freshly toggled access-group maintenance flag or a newly added
+# client shows up quickly, and long enough to absorb quick reloads.
+#
+# Scope: per gunicorn worker process. Deliberately not shared across
+# workers -- a Redis / multiprocessing.shared cache would be overkill
+# for a 30s TTL on a low-cardinality endpoint, and the worst case
+# (N workers -> N misses per user per TTL window) is fine.
+_APPS_CACHE = {}
+_APPS_CACHE_LOCK = threading.Lock()
+_APPS_CACHE_TTL = 30  # seconds
+_APPS_CACHE_MAX = 1024  # prune threshold
+
+def _apps_cache_get(username):
+    """ Return cached app_data for ``username`` or ``None`` when
+    no entry exists or the entry has expired. """
+    with _APPS_CACHE_LOCK:
+        entry = _APPS_CACHE.get(username)
+        if not entry:
+            return None
+        expires_at, data = entry
+        if expires_at < time.monotonic():
+            _APPS_CACHE.pop(username, None)
+            return None
+        return data
+
+def _apps_cache_set(username, data):
+    """ Store ``data`` under ``username`` with the module's TTL.
+    Opportunistically prunes expired entries when the dict grows
+    past ``_APPS_CACHE_MAX`` so idle workers don't accumulate
+    unbounded state for logged-out users. """
+    with _APPS_CACHE_LOCK:
+        _APPS_CACHE[username] = (time.monotonic() + _APPS_CACHE_TTL, data)
+        if len(_APPS_CACHE) > _APPS_CACHE_MAX:
+            now = time.monotonic()
+            for k, (exp, _) in list(_APPS_CACHE.items()):
+                if exp < now:
+                    _APPS_CACHE.pop(k, None)
+
+def _apps_cache_invalidate(username):
+    """ Drop ``username``'s cached entry. Called on logout so the
+    next login sees fresh data instead of the previous session's
+    tail-end cache. """
+    if not username:
+        return
+    with _APPS_CACHE_LOCK:
+        _APPS_CACHE.pop(username, None)
+
 @app.route('/get_apps')
 @login_required
 def get_apps():
+    username = g.user.name
+    cached = _apps_cache_get(username)
+    if cached is not None:
+        return jsonify(cached)
     response, error = _send_ssod_command(command="get_apps",
                         default_error=gettext("Failed to get app list."))
     if error:
@@ -1235,6 +1375,7 @@ def get_apps():
     app_data = []
     if isinstance(response, dict):
         app_data = response.get('app_data', [])
+    _apps_cache_set(username, app_data)
     return jsonify(app_data)
 
 @app.route('/get_sotp', methods=['POST'])

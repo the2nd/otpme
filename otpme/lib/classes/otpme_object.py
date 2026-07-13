@@ -1711,21 +1711,18 @@ class OTPmeBaseObject(OTPmeLockObject):
         if not full_index_update:
             if self.index_journal:
                 index_journal = copy.deepcopy(self.index_journal)
-        self.index_journal = []
 
         # Process ACL journal.
         acl_journal = []
         if not full_acl_update:
             if self.acl_journal:
                 acl_journal = copy.deepcopy(self.acl_journal)
-        self.acl_journal = []
 
         # Process LDIF journal.
         ldif_journal = []
         if not full_ldif_update:
             if self.ldif_journal:
                 ldif_journal = copy.deepcopy(self.ldif_journal)
-        self.ldif_journal = []
 
         # Update object config from variables.
         self.update_object_config()
@@ -1734,10 +1731,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.object_config['LIST_ATTRIBUTES'] = self.list_attributes
         self.object_config['DICT_ATTRIBUTES'] = self.dict_attributes
         self.object_config['INCREMENTAL_UPDATES'] = list(self.incremental_updates)
-
-        if self.incremental_updates:
-            # Clear incremental journal.
-            self.incremental_updates.clear()
 
         # No need to write unmodified object.
         if not self.object_config.modified:
@@ -1786,6 +1779,15 @@ class OTPmeBaseObject(OTPmeLockObject):
                 return callback.error(msg, raise_exception=False)
             else:
                 return callback.error(msg)
+
+        # Clear journals only after a successful write so that a
+        # transient write failure does not permanently discard the
+        # deltas peer nodes still need to apply on retry.
+        self.index_journal = []
+        self.acl_journal = []
+        self.ldif_journal = []
+        if self.incremental_updates:
+            self.incremental_updates.clear()
 
         return callback.ok()
 
@@ -2882,11 +2884,16 @@ class OTPmeObject(OTPmeBaseObject):
                                     callback=callback)
 
         # Call base class write method.
-        super()._write(update_last_modified=False,
+        write_result = super()._write(update_last_modified=False,
                                         update_last_modified_by=False,
                                         no_transaction=no_transaction,
                                         callback=callback,
                                         **kwargs)
+        # Propagate a failed backend write instead of silently
+        # clearing self._modified / dropping the object from the
+        # modified-cache — otherwise cache.flush() will not retry.
+        if write_result is False:
+            return write_result
 
         # Update auth user if needed. There is also some code to update the
         # auth user in OTPmeMgmtP1().
@@ -4674,6 +4681,7 @@ class OTPmeObject(OTPmeBaseObject):
     def add_policy(
         self,
         policy_name: str,
+        check_permissions: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -4709,6 +4717,11 @@ class OTPmeObject(OTPmeBaseObject):
             if len(policies) > 0:
                 msg = _("Policy of this type already exists: {policy_type}")
                 msg = msg.format(policy_type=policy.policy_type)
+                return callback.error(msg)
+
+        if check_permissions:
+            if not policy.check_permissions(callback=callback):
+                msg = _("Policy assignment failed.")
                 return callback.error(msg)
 
         # Get policy options.
@@ -8586,6 +8599,7 @@ class OTPmeObject(OTPmeBaseObject):
                     continue
                 self.add_policy(x_policy.name,
                                 verify_acls=False,
+                                check_permissions=False,
                                 callback=callback)
         return self._cache(callback=callback)
 

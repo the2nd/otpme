@@ -254,6 +254,26 @@ class DefaultgroupsPolicy(Policy):
         """ Test the policy. """
         return callback.ok()
 
+    def check_permissions(self, callback=default_callback):
+        if self.default_group:
+            group = backend.get_object(uuid=self.default_group)
+            if group:
+                if not group.verify_acl("add:default_group_user"):
+                    msg = _("Permission denied: {group}")
+                    msg = msg.format(group=group.name)
+                    return callback.error(msg)
+
+        for group_uuid in self.default_groups:
+            group = backend.get_object(uuid=group_uuid)
+            if not group:
+                continue
+            if group.verify_acl("add:token"):
+                continue
+            msg = _("Permission denied: {group}")
+            msg = msg.format(group=group.name)
+            return callback.error(msg)
+        return True
+
     def handle_hook(self, hook_name=None, child_object=None,
         callback=default_callback, **kwargs):
         """ Handle policy hooks. """

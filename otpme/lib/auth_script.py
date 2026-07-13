@@ -77,8 +77,7 @@ def run(script_uuid, options, auth_type, auth_user, auth_token, auth_group=None,
                 nt_key = script_stdout.replace("\n", "").split(" ")[1]
                 return True, nt_key
             else:
-                # Return false if we got no NT key from auth script.
-                return False, False
+                return False
         else:
             return False
     else:

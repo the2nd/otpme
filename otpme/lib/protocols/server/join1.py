@@ -481,9 +481,11 @@ class OTPmeJoinP1(OTPmeServer1):
                 try:
                     site._write(callback=callback)
                 except Exception as e:
-                    log_msg = _("Failed to write site: {error}", log=True)[1]
+                    message, log_msg = _("Failed to write site: {error}", log=True)
+                    message = message.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg)
+                    return self.build_response(False, message)
 
             # Make sure we clean site from cache to prevent issues when joining
             # node from other site because checksums are not updated for objects
@@ -518,9 +520,11 @@ class OTPmeJoinP1(OTPmeServer1):
                 try:
                     site_ca._write(callback=callback)
                 except Exception as e:
-                    log_msg = _("Failed to write site CA: {error}", log=True)[1]
+                    message, log_msg = _("Failed to write site CA: {error}", log=True)
+                    message = message.format(error=e)
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg)
+                    return self.build_response(False, message)
                 # Make sure we clean CA from cache to prevent issues when joining
                 # node from other site because checksums are not updated for objects
                 # from other sites.

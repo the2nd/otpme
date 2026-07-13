@@ -225,9 +225,26 @@ class OTPmeSsoP1(OTPmeServer1):
         site_jwt_key = user_site._cert_public_key
         # Decode JWT.
         jwt_data = jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')
-        # Set auth token.
+        # A JWT that decodes with this site's key still only proves it
+        # was issued to some token *on* this site — not to the token of
+        # the user named in the request. Bind the JWT to both:
+        #   * the reason (SSO_AUTH), so a REALM_AUTH/REALM_LOGIN JWT for
+        #     the same user cannot be substituted here
+        #   * the token owner, so Alice's SSO JWT cannot drive endpoints
+        #     that expect to act on Bob (see deploy_verify etc.)
+        if jwt_data.get('reason') != 'SSO_AUTH':
+            msg = "AUTH_WRONG_JWT_REASON"
+            raise OTPmeException(msg)
         auth_token_uuid = jwt_data['login_token']
-        config.auth_token = backend.get_object(uuid=auth_token_uuid)
+        auth_token = backend.get_object(uuid=auth_token_uuid)
+        if not auth_token:
+            msg = "AUTH_UNKOWN_TOKEN"
+            raise OTPmeException(msg)
+        if auth_token.owner_uuid != user.uuid:
+            msg = "AUTH_JWT_USER_MISMATCH"
+            raise OTPmeException(msg)
+        # Set auth token.
+        config.auth_token = auth_token
         return user
 
     def get_apps(self, username, sso_jwt, command_args):
@@ -255,7 +272,7 @@ class OTPmeSsoP1(OTPmeServer1):
                        user=username,
                        reason='access_group missing',
                        ip=client_ip)
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         session_uuid = command_args.get('session_uuid')
         if not session_uuid:
             emit_audit("SSO", "sotp_failed",
@@ -264,7 +281,7 @@ class OTPmeSsoP1(OTPmeServer1):
                        ag=access_group,
                        reason='session_uuid missing',
                        ip=client_ip)
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         # Verify SSO jwt.
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
@@ -348,7 +365,7 @@ class OTPmeSsoP1(OTPmeServer1):
             token_type = command_args['token_type']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # Verify SSO jwt.
         try:
@@ -493,13 +510,13 @@ class OTPmeSsoP1(OTPmeServer1):
             token_data = command_args['token_data']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             login_token_name = command_args['login_token_name']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # Verify SSO jwt.
         try:
@@ -511,6 +528,15 @@ class OTPmeSsoP1(OTPmeServer1):
             status = False
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(status, auth_response)
+        # Bind the deploy target to the token that authenticated this
+        # SSO session. Without this, a session-holder for Bob could
+        # aim the sso-deploy token move at any of Bob's other tokens
+        # (e.g. a hardware key) and silently replace it with a secret
+        # they know from the just-completed deploy_begin flow.
+        if config.auth_token is None \
+        or login_token_name != config.auth_token.name:
+            response = {'message':'LOGIN_TOKEN_MISMATCH', 'status':False}
+            return self.build_response(False, response)
         # Check for command redirection.
         if user.site != config.site:
             return self.ssod_redirect_command(command="deploy_verify",
@@ -569,13 +595,13 @@ class OTPmeSsoP1(OTPmeServer1):
             rp_id = command_args['rp_id']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             is_deploy = command_args['is_deploy']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # Verify SSO jwt.
         try:
@@ -650,19 +676,19 @@ class OTPmeSsoP1(OTPmeServer1):
             rp_id = command_args['rp_id']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             fido2_state_id = command_args['fido2_state_id']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             registration_data = command_args['registration_data']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # Verify SSO jwt.
         try:
@@ -914,7 +940,7 @@ class OTPmeSsoP1(OTPmeServer1):
             rp_id = command_args['rp_id']
             device_name = command_args['device_name']
         except Exception:
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         if not device_name or not str(device_name).strip():
             return self.build_response(False, {'message':'Device name required.', 'status':False})
         device_name = str(device_name).strip()
@@ -1025,7 +1051,7 @@ class OTPmeSsoP1(OTPmeServer1):
             passkey_state_id = command_args['passkey_state_id']
             registration_data = command_args['registration_data']
         except Exception:
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1190,7 +1216,7 @@ class OTPmeSsoP1(OTPmeServer1):
         try:
             token_name = command_args['token_name']
         except Exception:
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1397,7 +1423,7 @@ class OTPmeSsoP1(OTPmeServer1):
         try:
             enabled = bool(command_args['enabled'])
         except Exception:
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1504,7 +1530,7 @@ class OTPmeSsoP1(OTPmeServer1):
             language = command_args['language']
         except Exception:
             return self.build_response(False,
-                    {'message': 'AUTHD_INCOMPLETE_COMMAND', 'status': False})
+                    {'message': 'SSOD_INCOMPLETE_COMMAND', 'status': False})
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1547,13 +1573,13 @@ class OTPmeSsoP1(OTPmeServer1):
             current_password = command_args['current_password']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             new_password = command_args['new_password']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # Verify SSO jwt.
         try:
@@ -1623,13 +1649,13 @@ class OTPmeSsoP1(OTPmeServer1):
             current_pin = command_args['current_pin']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             new_pin = command_args['new_pin']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # Verify SSO jwt.
         try:
@@ -1848,25 +1874,110 @@ class OTPmeSsoP1(OTPmeServer1):
             return v
         return ""
 
+    def _fetch_home_language(self, user, command_args):
+        """ Cross-site fetch of ``user.language`` from the user's home
+        site. Used by ``_resolve_language`` when the request is served
+        for a foreign user: the local User replica may lag behind the
+        home site (a language change persisted on the home site
+        replicates asynchronously), so the local replica's
+        ``user.language`` cannot be trusted for the render decision.
+
+        Returns the language code or ``None`` when the home site has
+        no explicit language pref for this user, or when the cross-
+        site call fails (caller then falls back to accept-language). """
+        try:
+            ssod_conn = connections.get("ssod",
+                                        realm=config.realm,
+                                        site=user.site,
+                                        auto_preauth=True,
+                                        auto_auth=False)
+        except Exception as e:
+            log_msg = _("Home-site language fetch: connect failed: {e}",
+                        log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return None
+        forward_args = dict(command_args or {})
+        # session_uuid belongs to the originating site's session store;
+        # the home ssod would fail to look it up. Mirrors the strip in
+        # ``ssod_redirect_command``.
+        forward_args.pop('session_uuid', None)
+        try:
+            status, _sc, response, _bin = ssod_conn.send(
+                                command="resolve_user_language",
+                                command_args=forward_args)
+        except Exception as e:
+            log_msg = _("Home-site language fetch failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return None
+        finally:
+            try:
+                ssod_conn.close()
+            except Exception:
+                pass
+        if not status or not isinstance(response, dict):
+            return None
+        return response.get('language') or None
+
+    def resolve_user_language(self, username, sso_jwt, command_args):
+        """ Return the authoritative UI language of ``username`` from
+        this site's User backend. Used cross-site by
+        ``_fetch_home_language`` so foreign-user renders don't rely
+        on a possibly-stale local replica. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message': 'JWT_INVALID', 'status': False})
+        # Should not happen -- the caller only fires this cross-site
+        # when the user is foreign and lands here on their home. But
+        # if the caller misroutes, re-forward to the actual home
+        # rather than lying about the language.
+        if user.site != config.site:
+            return self.ssod_redirect_command(
+                                command="resolve_user_language",
+                                user=user,
+                                command_args=command_args)
+        language = None
+        if getattr(user, 'language_set', False) and user.language:
+            language = user.language
+        return self.build_response(True, {
+            'status': True,
+            'language': language,
+        })
+
     def _resolve_language(self, user, command_args):
         """ Determine which language to render localized object fields in.
         Priority: an explicit `language` from the caller (CLI flag or
         API arg) wins, then the user's persisted language preference
-        when the user actually set one (language_set=True), then a
-        soft `accept_language` hint sent by the web layer, else "en".
+        (fetched from the user's home site when foreign, read locally
+        when local), then a soft `accept_language` hint sent by the
+        web layer, else "en".
 
-        A user.language that is only the default ('en' with
+        The home-site fetch matters for foreign users because the
+        local User replica lags after a language change (persistence
+        happens on the home site; replication is asynchronous). A
+        user.language that is only the default ('en' with
         language_set=False) is intentionally ignored so the browser's
         Accept-Language still steers the render. """
         args = command_args or {}
         explicit = args.get('language')
         if explicit:
             return explicit
-        try:
-            if getattr(user, 'language_set', False) and user.language:
-                return user.language
-        except Exception:
-            pass
+        if user.site != config.site:
+            home_lang = self._fetch_home_language(user, command_args)
+            if home_lang:
+                return home_lang
+        else:
+            try:
+                if getattr(user, 'language_set', False) and user.language:
+                    return user.language
+            except Exception:
+                pass
         hint = args.get('accept_language')
         if hint:
             return hint
@@ -1973,6 +2084,9 @@ class OTPmeSsoP1(OTPmeServer1):
                 log_msg = _("Failed to persist OIDC consent revocation for user '{user}': {err}", log=True)[1]
                 log_msg = log_msg.format(user=user.name, err=e)
                 self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'PERSIST_FAILED', 'status': False,
+                })
         # Kill live OIDC sessions for this (user, client) tuple. The
         # session.delete() override fires backchannel logout if the
         # client is configured for it.
@@ -2172,7 +2286,7 @@ class OTPmeSsoP1(OTPmeServer1):
             device_name = command_args['device_name']
             role_uuid = command_args['role_uuid']
         except KeyError:
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -2267,7 +2381,7 @@ class OTPmeSsoP1(OTPmeServer1):
         try:
             token_name = command_args['token_name']
         except KeyError:
-            return self.build_response(False, _("AUTHD_INCOMPLETE_COMMAND"))
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -2332,7 +2446,7 @@ class OTPmeSsoP1(OTPmeServer1):
             device_name = command_args['device_name']
             role_uuid = command_args['role_uuid']
         except Exception:
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(False, message)
         if not device_name or not str(device_name).strip():
             response = {'message':'Device name required.', 'status':False}
@@ -2493,7 +2607,7 @@ class OTPmeSsoP1(OTPmeServer1):
         try:
             token_name = command_args['token_name']
         except Exception:
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(False, message)
         # Verify SSO jwt.
         try:
@@ -4134,7 +4248,7 @@ class OTPmeSsoP1(OTPmeServer1):
 
         session_uuid = command_args.get('session_uuid')
         if not session_uuid:
-            return self.build_response(False, 'AUTHD_INCOMPLETE_COMMAND')
+            return self.build_response(False, 'SSOD_INCOMPLETE_COMMAND')
         session = backend.get_object(uuid=session_uuid)
         if not session:
             return self.build_response(False, {
@@ -4877,6 +4991,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "change_password",
                             "change_pin",
                             "change_language",
+                            "resolve_user_language",
                             "fido2_register_begin",
                             "fido2_register_complete",
                             "list_passkeys",
@@ -4960,7 +5075,7 @@ class OTPmeSsoP1(OTPmeServer1):
             username = command_args['username']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
 
         # Set proctitle to contain username.
@@ -4970,7 +5085,7 @@ class OTPmeSsoP1(OTPmeServer1):
             sso_jwt = command_args['sso_jwt']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
 
         # session_uuid is only meaningful when the request originates
@@ -5034,6 +5149,11 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command change_language.", log=True)[1]
             self.logger.info(log_msg)
             return self.change_language(username, sso_jwt, command_args)
+
+        if command == "resolve_user_language":
+            log_msg = _("Processing command resolve_user_language.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.resolve_user_language(username, sso_jwt, command_args)
 
         if command == "list_device_tokens":
             log_msg = _("Processing command list_device_tokens.", log=True)[1]

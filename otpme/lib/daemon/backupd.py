@@ -240,7 +240,7 @@ class BackupDaemon(OTPmeDaemon):
                 end_time = backup_time.split("-")[1]
             except Exception:
                 log_msg = _("Invalid backup time: {backup_time}", log=True)[1]
-                log_msg = msg.format(backup_time=backup_time)
+                log_msg = log_msg.format(backup_time=backup_time)
                 self.logger.warning(log_msg)
                 continue
             now = datetime.now().time()
@@ -260,7 +260,7 @@ class BackupDaemon(OTPmeDaemon):
                     backup_interval = units.time2int(backup_interval, time_unit="s")
                 except Exception:
                     log_msg = _("Invalid backup interval: {backup_interval}", log=True)[1]
-                    log_msg = msg.format(backup_interval=backup_interval)
+                    log_msg = log_msg.format(backup_interval=backup_interval)
                     self.logger.warning(log_msg)
                     continue
                 if backup_age < backup_interval:
@@ -296,20 +296,25 @@ class BackupDaemon(OTPmeDaemon):
                     'backup_object' : backup_object,
                     'backup_hook'   : hook,
                 }
-        script_returncode, \
-        script_stdout, \
-        script_stderr, \
-        script_pid = script.run(script_type="backup_script",
-                                script_path=script_path,
-                                variables=variables,
-                                verify_signatures=False,
-                                user="root",
-                                group="root",
-                                call=False)
-        if script_returncode != 0:
-            script_output = script_stdout + script_stderr
-            log_msg = _("Failed to run backup script: {script_path}: {script_output}", log=True)[1]
-            log_msg = log_msg.format(script_path=script_path, script_output=script_output)
+        try:
+            script_returncode, \
+            script_stdout, \
+            script_stderr, \
+            script_pid = script.run(script_type="backup_script",
+                                    script_path=script_path,
+                                    variables=variables,
+                                    verify_signatures=True,
+                                    user="root",
+                                    group="root",
+                                    call=False)
+            if script_returncode != 0:
+                script_output = script_stdout + script_stderr
+                log_msg = _("Failed to run backup script: {script_path}: {script_output}", log=True)[1]
+                log_msg = log_msg.format(script_path=script_path, script_output=script_output)
+                self.logger.warning(log_msg)
+        except Exception as e:
+            log_msg = _("Failed to run backup script: {script_path}: {e}", log=True)[1]
+            log_msg = log_msg.format(script_path=script_path, e=e)
             self.logger.warning(log_msg)
 
     def start_backup(self, o):

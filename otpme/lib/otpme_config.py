@@ -1335,7 +1335,13 @@ class OTPmeConfig(object):
         if self.object_caches:
             for cache in self.object_caches:
                 object_type = cache.split(":")[0]
-                cache_size = cache.split(":")[1]
+                cache_size_str = cache.split(":")[1]
+                try:
+                    cache_size = int(cache_size_str)
+                except (TypeError, ValueError) as e:
+                    msg = _("Invalid OBJECT_CACHES entry '{entry}': {error}")
+                    msg = msg.format(entry=cache, error=e)
+                    raise OTPmeException(msg) from e
                 self.cache_objects[object_type] = cache_size
 
         for x in self.default_listen_ports:

@@ -244,21 +244,28 @@ def run(script_type, script_path, realm=None, site=None, options=None,
         script_command += options
 
     # Start script.
-    if call:
-        return_val = system_command.run(command=script_command,
-                                        env=script_env,
-                                        user=user,
-                                        group=group,
-                                        groups=groups,
-                                        **kwargs)
-    else:
-        return_val = system_command.run(command=script_command,
-                                        return_proc=return_proc,
-                                        env=script_env,
-                                        user=user,
-                                        group=group,
-                                        groups=groups,
-                                        **kwargs)
+    try:
+        if call:
+            return_val = system_command.run(command=script_command,
+                                            env=script_env,
+                                            user=user,
+                                            group=group,
+                                            groups=groups,
+                                            **kwargs)
+        else:
+            return_val = system_command.run(command=script_command,
+                                            return_proc=return_proc,
+                                            env=script_env,
+                                            user=user,
+                                            group=group,
+                                            groups=groups,
+                                            **kwargs)
+    except Exception:
+        try:
+            os.remove(script_file)
+        except OSError:
+            pass
+        raise
     if return_proc:
         def _remove_file():
             # Wait for process to finish.

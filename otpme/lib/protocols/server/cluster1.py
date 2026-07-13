@@ -241,10 +241,12 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             node = backend.get_object(uuid=config.uuid)
             if node.enabled:
-                node.disable(force=True, verify_acls=False, no_audit_log=True)
                 node.acquire_lock(lock_caller="clusterd")
-                node._write(cluster=False)
-                node.release_lock(lock_caller="clusterd")
+                try:
+                    node.disable(force=True, verify_acls=False, no_audit_log=True)
+                    node._write(cluster=False)
+                finally:
+                    node.release_lock(lock_caller="clusterd")
                 message = "Node disabled"
             else:
                 message = "Node already disabled"

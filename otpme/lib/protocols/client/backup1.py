@@ -72,12 +72,13 @@ class OTPmeBackupP1(OTPmeFsClient1):
                                         compress_request=False)
         return status, response_code, response, binary_data
 
-    def mount(self, repo_id, username, default_group, groups):
+    def mount(self, repo_id, username, default_group, groups, mount_jwt):
         command_args = {
                         'repository'    : repo_id,
                         'username'      : username,
                         'default_group' : default_group,
                         'groups'        : groups,
+                        'mount_jwt'     : mount_jwt,
                     }
         try:
             status, \

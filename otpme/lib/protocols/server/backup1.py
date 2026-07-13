@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import re
+import time
 import gzip
 import stat
 import errno
@@ -18,7 +19,9 @@ try:
 except Exception:
     pass
 
+from otpme.lib import jwt
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
@@ -198,6 +201,87 @@ class OTPmeBackupP1(OTPmeFsServer1):
             self.logger.warning(log_msg)
             return None
         return keep
+
+    def _verify_mount_jwt(self, mount_jwt, repository, username,
+                          default_group, groups):
+        """ Verify a mount JWT signed by the caller's site.
+
+        The caller (fsd) signs a short-lived JWT with its local site's
+        private key; we resolve the site via the JWT payload and verify
+        the signature against site._cert_public_key, then match every
+        claim against the current mount request. Returns the decoded
+        payload dict on success, None otherwise. """
+        try:
+            unverified = jwt.decode(mount_jwt,
+                                    secret="",
+                                    algorithm='RS256',
+                                    options={'verify_signature': False})
+        except Exception as e:
+            log_msg = _("Mount JWT decode failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return None
+        realm = unverified.get('realm')
+        site_name = unverified.get('site')
+        if not realm or not site_name:
+            log_msg = _("Mount JWT missing realm/site claim.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        result = backend.search(object_type="site",
+                                attribute="name",
+                                value=site_name,
+                                realm=realm)
+        if not result:
+            log_msg = _("Mount JWT for unknown site: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site_name)
+            self.logger.warning(log_msg)
+            return None
+        site = backend.get_object(uuid=result[0])
+        if not site or not site._cert_public_key:
+            log_msg = _("Mount JWT site public key missing: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site_name)
+            self.logger.warning(log_msg)
+            return None
+        try:
+            data = jwt.decode(mount_jwt,
+                              key=site._cert_public_key,
+                              algorithm='RS256')
+        except Exception as e:
+            log_msg = _("Mount JWT signature verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return None
+        if data.get('reason') != 'BACKUP_MOUNT':
+            log_msg = _("Mount JWT wrong reason: {reason}", log=True)[1]
+            log_msg = log_msg.format(reason=data.get('reason'))
+            self.logger.warning(log_msg)
+            return None
+        exp = data.get('exp')
+        if not isinstance(exp, (int, float)) or exp < time.time():
+            log_msg = _("Mount JWT expired.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        if data.get('repository') != repository:
+            log_msg = _("Mount JWT repository mismatch.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        if data.get('username') != username:
+            log_msg = _("Mount JWT username mismatch.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        if data.get('default_group') != default_group:
+            log_msg = _("Mount JWT default_group mismatch.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        if list(data.get('groups') or []) != list(groups or []):
+            log_msg = _("Mount JWT groups mismatch.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        if not data.get('password'):
+            log_msg = _("Mount JWT missing password claim.", log=True)[1]
+            self.logger.warning(log_msg)
+            return None
+        return data
 
     def verify_client_pass(self):
         if not self.client_password:
@@ -430,6 +514,28 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = status_codes.UNKNOWN_OBJECT
                 message = _("Missing repository.")
                 return self.build_response(status, message)
+            # backupd runs with dont_drop_privileges=True, so any client
+            # allowed here effectively runs as root during file ops
+            # (drop_privileges is a no-op when the process is already
+            # root and the client picks its own username). Require a
+            # short-lived mount JWT signed by the caller's site so only
+            # trusted OTPme daemons (fsd) can reach this handler.
+            try:
+                mount_jwt = command_args['mount_jwt']
+            except KeyError:
+                status = status_codes.PERMISSION_DENIED
+                message = _("Missing mount JWT.")
+                return self.build_response(status, message)
+            jwt_data = self._verify_mount_jwt(mount_jwt,
+                                              repository=repository,
+                                              username=self.username,
+                                              default_group=self.default_group,
+                                              groups=self.groups)
+            if not jwt_data:
+                status = status_codes.PERMISSION_DENIED
+                message = _("Invalid mount JWT.")
+                return self.build_response(status, message)
+            self.client_password = jwt_data['password']
             self.repository = repository
             self.root = self._resolve_repo_root(repository)
             if self.root is None:
@@ -443,6 +549,19 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = status_codes.UNKNOWN_OBJECT
                 message = _("Unknown repository dir: {repository}: {root_dir}")
                 message = message.format(repository=self.repository, root_dir=self.root)
+                return self.build_response(status, message)
+            # Verify the per-repo password (carried inside the mount JWT)
+            # against the persisted .password file before binding the
+            # backup_handler so every follow-up file handler operates
+            # on an authenticated mount.
+            self.pass_file = os.path.join(self.root, PASS_FILE)
+            try:
+                self.verify_client_pass()
+            except Exception:
+                self.root = None
+                self.pass_file = None
+                status = status_codes.PERMISSION_DENIED
+                message = _("Permission denied.")
                 return self.build_response(status, message)
             self.backup_handler = BackupServer(self.root)
             self.backup_handler.load_pack_index()
@@ -1031,7 +1150,30 @@ class OTPmeBackupP1(OTPmeFsServer1):
     @fix_snapshot_path()
     def read_restore_file(self, path):
         restore_file = f"{self.root}/{path}"
+        # Enforce the repo boundary before touching the filesystem —
+        # fix_snapshot_path lets any /tree/... path pass through
+        # unchanged, so ".." traversal from the client is otherwise
+        # only limited by backupd's process credentials (root).
+        try:
+            root_real = os.path.realpath(self.root)
+            resolved_check = os.path.realpath(restore_file)
+            if os.path.commonpath([root_real, resolved_check]) != root_real:
+                raise ValueError("outside repo")
+        except (ValueError, OSError) as e:
+            log_msg = _("Rejected restore path outside repo: {path}: {e}", log=True)[1]
+            log_msg = log_msg.format(path=path, e=e)
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg) from e
         resolved = self._resolve_link(restore_file)[0]
+        try:
+            resolved_real = os.path.realpath(resolved)
+            if os.path.commonpath([root_real, resolved_real]) != root_real:
+                raise ValueError("link outside repo")
+        except (ValueError, OSError) as e:
+            log_msg = _("Rejected restore path via link outside repo: {path}: {e}", log=True)[1]
+            log_msg = log_msg.format(path=path, e=e)
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg) from e
         try:
             fd = open(resolved, "rb")
         except Exception as e:

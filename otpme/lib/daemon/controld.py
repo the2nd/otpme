@@ -1300,12 +1300,13 @@ class ControlDaemon(UnixDaemon):
             log_msg = log_msg.format(daemon=daemon_name, error=e)
             self.logger.critical(log_msg)
 
-        # Max wait for child daemon reload.
-        max_wait = 15
-        count_wait = 0
+        # Max wait for child daemon reload — a wall-clock deadline
+        # (the previous count_wait counter was never incremented, so
+        # the escalation to restart never fired).
+        deadline = time.monotonic() + 15
         # Wait until we get 'reload_done' response from child daemon.
         while True:
-            if count_wait == max_wait:
+            if time.monotonic() >= deadline:
                 log_msg = _("Child daemon '{daemon}' does not respond to reload command. Restarting...", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name)
                 self.logger.info(log_msg)

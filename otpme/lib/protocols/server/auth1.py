@@ -358,14 +358,14 @@ class OTPmeAuthP1(OTPmeServer1):
             jwt_reason = command_args['jwt_reason']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "AUTHD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
 
         try:
             jwt_challenge = command_args['jwt_challenge']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "AUTHD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
 
         try:
@@ -408,8 +408,7 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = _("Redirect connection failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
-            return self.build_response(False, auth_response)
+            return False, {'message':'REDIRECT_CONN_FAILED', 'status':False}
         try:
             status, \
             status_code, \
@@ -421,8 +420,7 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = log_msg.format(command=command)
             log_msg = f"{log_msg}: {e}"
             self.logger.warning(log_msg)
-            auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
-            return self.build_response(False, auth_response)
+            return False, {'message':'REDIRECT_CONN_FAILED', 'status':False}
         finally:
             authd_conn.close()
         return status, response
@@ -531,7 +529,7 @@ class OTPmeAuthP1(OTPmeServer1):
             rp_id = command_args['rp_id']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "AUTHD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             sso_ag_uuid = command_args['sso_ag_uuid']
@@ -650,19 +648,19 @@ class OTPmeAuthP1(OTPmeServer1):
             rp_id = command_args['rp_id']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "AUTHD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             fido2_state_id = command_args['fido2_state_id']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "AUTHD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         try:
             auth_response = command_args['auth_response']
         except Exception:
             status = False
-            message = _("AUTHD_INCOMPLETE_COMMAND")
+            message = "AUTHD_INCOMPLETE_COMMAND"
             return self.build_response(status, message)
         # matched_token_name is no longer accepted from the web layer:
         # the credential->token_name map is held server-side (in the
@@ -934,7 +932,13 @@ class OTPmeAuthP1(OTPmeServer1):
                 self.logger.critical(log_msg)
                 continue
 
-            if verify_status is not True:
+            # MSCHAP tokens return a (status, nt_key, nt_hash) tuple; all
+            # other verify() dispatchers return a scalar. Unwrap the tuple
+            # before the status check so mschap auth is not always rejected.
+            if command == "token_verify_mschap":
+                if not isinstance(verify_status, tuple) or verify_status[0] is not True:
+                    continue
+            elif verify_status is not True:
                 continue
 
             auth_token = x_token
@@ -964,7 +968,11 @@ class OTPmeAuthP1(OTPmeServer1):
                         self.logger.critical(log_msg)
                         continue
 
-                if verify_status is not True:
+                # Same tuple-vs-scalar shape as the primary verify loop.
+                if command == "token_verify_mschap":
+                    if not isinstance(verify_status, tuple) or verify_status[0] is not True:
+                        continue
+                elif verify_status is not True:
                     continue
 
                 auth_token = x_token

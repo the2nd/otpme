@@ -158,12 +158,27 @@ class UnixDaemon(object):
         """
         Restart the daemon
         """
-        self.stop(quiet=True)
-        while True:
-            time.sleep(0.001)
-            daemon_status = self.status(quiet=True)[0]
-            if not daemon_status:
-                break
+        if self.status(quiet=True)[0]:
+            # Trust status() as the source of truth for "still running";
+            # stop() also returns False on the benign "not running"
+            # case, which would otherwise mask a successful shutdown.
+            self.stop(quiet=True)
+            deadline = time.monotonic() + 10
+            while self.status(quiet=True)[0]:
+                if time.monotonic() >= deadline:
+                    # SIGTERM did not do it — escalate to SIGKILL and
+                    # give the daemon a shorter window to exit before
+                    # giving up entirely.
+                    self.stop(quiet=True, kill=True)
+                    kill_deadline = time.monotonic() + 5
+                    while self.status(quiet=True)[0]:
+                        if time.monotonic() >= kill_deadline:
+                            msg = _("Refusing to restart: daemon still running after stop+kill.")
+                            sys.stderr.write(msg+"\n")
+                            return False
+                        time.sleep(0.05)
+                    break
+                time.sleep(0.05)
         self.start()
 
     def remove_pidfile(self):
@@ -189,6 +204,28 @@ class UnixDaemon(object):
         msg = msg.format(pidfile=self.pidfile)
         sys.stdout.write(msg+"\n")
 
+    def _pid_matches_daemon(self, pid):
+        """ Verify the PID actually belongs to this daemon and not to
+        some unrelated process that reused the PID after a crash. """
+        try:
+            with open(f"/proc/{pid}/comm", "r") as fh:
+                comm = fh.read().strip()
+        except OSError:
+            return False
+        # /proc/<pid>/comm is truncated to TASK_COMM_LEN-1 = 15 bytes
+        # by the kernel. Two shapes are legitimate:
+        #   * exact match after truncation (plain daemon, no subcommand)
+        #   * "<proc_name> <subcommand>" that setproctitle stamped when
+        #     the daemon was launched via a CLI (e.g. "otpme-agent
+        #     start" -> comm is "otpme-agent sta"). The space guard
+        #     prevents false-matching sibling names like
+        #     "otpme-agent-foo".
+        if comm == self.proc_name[:15]:
+            return True
+        if len(self.proc_name) < 15:
+            return comm.startswith(self.proc_name + " ")
+        return False
+
     def status(self, quiet=False):
         """
         Check for daemon status
@@ -203,7 +240,7 @@ class UnixDaemon(object):
 
         running = False
         if pid:
-            if stuff.check_pid(pid):
+            if stuff.check_pid(pid) and self._pid_matches_daemon(pid):
                 running = True
 
         if running:
