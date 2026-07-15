@@ -55,10 +55,11 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--restore <restore_share>] [--restore-token <token>] share}'),
-                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --restore :restore_share: --restore-token :restore_token: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--home-share] [--restore <restore_share>] [--restore-token <token>] share}'),
+                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --home-share :home_share=True: --restore :restore_share: --restore-token :restore_token: <|object|>',
                     '_help' :   {
                                     'cmd'                           : _('Add new share.'),
+                                    '--home-share'                  : _('Add home share.'),
                                     '--force-group <group>'         : _('Force group.'),
                                     '--force-create-mode <mode>'    : _('Force create mode.'),
                                     '--force-directory-mode <mode>' : _('Force directory mode.'),
@@ -76,6 +77,14 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete share.'),
+                                },
+                },
+
+    'get_config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share get_config {share} {parameter}'),
+                    'cmd'   :   '<|object|> <parameter>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get config parameter.'),
                                 },
                 },
 

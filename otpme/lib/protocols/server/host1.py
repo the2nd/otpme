@@ -173,6 +173,7 @@ class OTPmeHostP1(OTPmeServer1):
                             "object_exists",
                             "get_sync_status",
                             "get_daemon_socket",
+                            "check_share_access",
                             "acquire_lock",
                             "release_lock",
                             "reload_radius",
@@ -816,6 +817,72 @@ class OTPmeHostP1(OTPmeServer1):
             except UnknownObject as e:
                 message = e
                 status = False
+
+        elif command == "check_share_access":
+            try:
+                host_uuid = command_args['host_uuid']
+            except Exception:
+                message = {'message':"INCOMPLETE_COMMAND"}
+                status = False
+                return self.build_response(status, message, encrypt=False)
+            try:
+                share_uuid = command_args['share_uuid']
+            except Exception:
+                message = {'message':"INCOMPLETE_COMMAND"}
+                status = False
+                return self.build_response(status, message, encrypt=False)
+            try:
+                token_uuid = command_args['token_uuid']
+            except Exception:
+                message = {'message':"INCOMPLETE_COMMAND"}
+                status = False
+                return self.build_response(status, message, encrypt=False)
+            # Load share
+            share = backend.get_object(uuid=share_uuid)
+            if not share:
+                status = False
+                message = {'message':"Unknown share."}
+                return self.build_response(status, message, encrypt=False)
+            # Block access on disabled share.
+            if not share.enabled:
+                status = True
+                message = {'message':"Share disabled."}
+                return self.build_response(status, message, encrypt=False)
+            # Check token assignment.
+            if not share.is_assigned_token(token_uuid=token_uuid):
+                status = True
+                message = {'message':"Share access denied."}
+                return self.build_response(status, message, encrypt=False)
+            # Check host limitations.
+            if share.limit_by_hosts:
+                if not share.is_assigned_host(host_uuid=host_uuid,
+                                                    include_groups=True,
+                                                    include_roles=True):
+                    status = True
+                    message = {'message':"Share host access denied."}
+                    return self.build_response(status, message, encrypt=False)
+            # Nothing more to do for restore shares.
+            if share.restore_share:
+                status = False
+                message = {'message':"Share access allowed."}
+                return self.build_response(status, message, encrypt=False)
+            # Get share settings.
+            if share.directory_mode == "0o000":
+                directory_mode = None
+            else:
+                directory_mode = int(share.directory_mode, 0)
+            if share.create_mode == "0o000":
+                create_mode = None
+            else:
+                create_mode = int(share.create_mode, 0)
+            status = False
+            message = {
+                        'read_only'         : share.read_only,
+                        'directory_mode'    : directory_mode,
+                        'create_mode'       : create_mode,
+                        'message'           : "Share access allowed.",
+                    }
+            return self.build_response(status, message, encrypt=False)
 
         # NOTE: Currently not in use. Was intended to be used with otpme-agent but
         #       we now use ~/.otpme/locks as lock dir. May be used in the future for

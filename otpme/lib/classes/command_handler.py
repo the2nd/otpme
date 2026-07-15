@@ -86,7 +86,7 @@ class CommandHandler(object):
             return attr
         except AttributeError:
             pass
-        def handler_function(*args,**kwargs):
+        def handler_function(*args, **kwargs):
             mgmt_client = self.get_mgmt_client()
             try:
                 method = getattr(mgmt_client, name)
@@ -262,7 +262,9 @@ class CommandHandler(object):
                                     subcommand=subcommand,
                                     command_args=command_args,
                                     object_list=object_list,
-                                    client_type=client_type)
+                                    client_type=client_type,
+                                    realm=realm,
+                                    site=site)
         elif daemon == "authd":
             # Get connection to authd.
             if realm is None:
@@ -381,26 +383,28 @@ class CommandHandler(object):
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True
-        conn_kwargs = {}
-        conn_kwargs['use_agent'] = True
-        conn_kwargs['auto_auth'] = False
-        conn_kwargs['auto_preauth'] = False
-        if config.use_socket:
-            conn_kwargs['use_agent'] = False
-            conn_kwargs['use_ssl'] = False
-            conn_kwargs['local_socket'] = True
-            conn_kwargs['handle_host_auth'] = False
-            conn_kwargs['handle_user_auth'] = False
-            conn_kwargs['encrypt_session'] = False
-            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
-
-        mgmtd_conn = connections.get(daemon="mgmtd",
-                                    realm=config.realm,
-                                    site=user_site,
-                                    **conn_kwargs)
-        # Get key mode of users private key (server or client).
-        key_mode = mgmtd_conn.get_user_key_mode(username)
+        key_mode = self.get_key_mode(username, site=user_site)
         return key_mode
+        #conn_kwargs = {}
+        #conn_kwargs['use_agent'] = True
+        #conn_kwargs['auto_auth'] = False
+        #conn_kwargs['auto_preauth'] = False
+        #if config.use_socket:
+        #    conn_kwargs['use_agent'] = False
+        #    conn_kwargs['use_ssl'] = False
+        #    conn_kwargs['local_socket'] = True
+        #    conn_kwargs['handle_host_auth'] = False
+        #    conn_kwargs['handle_user_auth'] = False
+        #    conn_kwargs['encrypt_session'] = False
+        #    conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        #mgmtd_conn = connections.get(daemon="mgmtd",
+        #                            realm=config.realm,
+        #                            site=user_site,
+        #                            **conn_kwargs)
+        ## Get key mode of users private key (server or client).
+        #key_mode = mgmtd_conn.get_key_mode(username)
+        #return key_mode
 
     def get_user_sign_key_type(self, username):
         # Make sure we have our realm set.
@@ -414,26 +418,28 @@ class CommandHandler(object):
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True
-        conn_kwargs = {}
-        conn_kwargs['use_agent'] = True
-        conn_kwargs['auto_auth'] = False
-        conn_kwargs['auto_preauth'] = False
-        if config.use_socket:
-            conn_kwargs['use_agent'] = False
-            conn_kwargs['use_ssl'] = False
-            conn_kwargs['local_socket'] = True
-            conn_kwargs['handle_host_auth'] = False
-            conn_kwargs['handle_user_auth'] = False
-            conn_kwargs['encrypt_session'] = False
-            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
-
-        mgmtd_conn = connections.get(daemon="mgmtd",
-                                    realm=config.realm,
-                                    site=user_site,
-                                    **conn_kwargs)
-        # Get key mode of users private key (server or client).
-        sign_key_type = mgmtd_conn.get_user_sign_key_type(username)
+        sign_key_type = self.get_sign_key_type(username, site=user_site)
         return sign_key_type
+        #conn_kwargs = {}
+        #conn_kwargs['use_agent'] = True
+        #conn_kwargs['auto_auth'] = False
+        #conn_kwargs['auto_preauth'] = False
+        #if config.use_socket:
+        #    conn_kwargs['use_agent'] = False
+        #    conn_kwargs['use_ssl'] = False
+        #    conn_kwargs['local_socket'] = True
+        #    conn_kwargs['handle_host_auth'] = False
+        #    conn_kwargs['handle_user_auth'] = False
+        #    conn_kwargs['encrypt_session'] = False
+        #    conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        #mgmtd_conn = connections.get(daemon="mgmtd",
+        #                            realm=config.realm,
+        #                            site=user_site,
+        #                            **conn_kwargs)
+        ## Get key mode of users private key (server or client).
+        #sign_key_type = mgmtd_conn.get_sign_key_type(username)
+        #return sign_key_type
 
     def get_user_enc_key_type(self, username):
         # Make sure we have our realm set.
@@ -447,26 +453,28 @@ class CommandHandler(object):
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True
-        conn_kwargs = {}
-        conn_kwargs['use_agent'] = True
-        conn_kwargs['auto_auth'] = False
-        conn_kwargs['auto_preauth'] = False
-        if config.use_socket:
-            conn_kwargs['use_agent'] = False
-            conn_kwargs['use_ssl'] = False
-            conn_kwargs['local_socket'] = True
-            conn_kwargs['handle_host_auth'] = False
-            conn_kwargs['handle_user_auth'] = False
-            conn_kwargs['encrypt_session'] = False
-            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
-
-        mgmtd_conn = connections.get(daemon="mgmtd",
-                                    realm=config.realm,
-                                    site=user_site,
-                                    **conn_kwargs)
-        # Get key mode of users private key (server or client).
-        enc_key_type = mgmtd_conn.get_user_enc_key_type(username)
+        enc_key_type = self.get_enc_key_type(username, site=user_site)
         return enc_key_type
+        #conn_kwargs = {}
+        #conn_kwargs['use_agent'] = True
+        #conn_kwargs['auto_auth'] = False
+        #conn_kwargs['auto_preauth'] = False
+        #if config.use_socket:
+        #    conn_kwargs['use_agent'] = False
+        #    conn_kwargs['use_ssl'] = False
+        #    conn_kwargs['local_socket'] = True
+        #    conn_kwargs['handle_host_auth'] = False
+        #    conn_kwargs['handle_user_auth'] = False
+        #    conn_kwargs['encrypt_session'] = False
+        #    conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        #mgmtd_conn = connections.get(daemon="mgmtd",
+        #                            realm=config.realm,
+        #                            site=user_site,
+        #                            **conn_kwargs)
+        ## Get key mode of users private key (server or client).
+        #enc_key_type = mgmtd_conn.get_enc_key_type(username)
+        #return enc_key_type
 
     def get_user_key_script_path(self, username, **kwargs):
         # Make sure we have our realm set.
@@ -480,26 +488,30 @@ class CommandHandler(object):
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True
-        conn_kwargs = {}
-        conn_kwargs['use_agent'] = True
-        conn_kwargs['auto_auth'] = False
-        conn_kwargs['auto_preauth'] = False
-        if config.use_socket:
-            conn_kwargs['use_agent'] = False
-            conn_kwargs['use_ssl'] = False
-            conn_kwargs['local_socket'] = True
-            conn_kwargs['handle_host_auth'] = False
-            conn_kwargs['handle_user_auth'] = False
-            conn_kwargs['encrypt_session'] = False
-            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
-
-        mgmtd_conn = connections.get(daemon="mgmtd",
-                                    realm=config.realm,
-                                    site=user_site,
-                                    **conn_kwargs)
         script_path, \
-        script_opts = mgmtd_conn.get_user_key_script_path(username=username, **kwargs)
+        script_opts = self.get_key_script_path(username=username,
+                                            site=user_site, **kwargs)
         return script_path, script_opts
+        #conn_kwargs = {}
+        #conn_kwargs['use_agent'] = True
+        #conn_kwargs['auto_auth'] = False
+        #conn_kwargs['auto_preauth'] = False
+        #if config.use_socket:
+        #    conn_kwargs['use_agent'] = False
+        #    conn_kwargs['use_ssl'] = False
+        #    conn_kwargs['local_socket'] = True
+        #    conn_kwargs['handle_host_auth'] = False
+        #    conn_kwargs['handle_user_auth'] = False
+        #    conn_kwargs['encrypt_session'] = False
+        #    conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        #mgmtd_conn = connections.get(daemon="mgmtd",
+        #                            realm=config.realm,
+        #                            site=user_site,
+        #                            **conn_kwargs)
+        #script_path, \
+        #script_opts = mgmtd_conn.get_key_script_path(username=username, **kwargs)
+        #return script_path, script_opts
 
     def get_script_sign(self, script_path, username=None, realm=None, site=None, **kwargs):
         # Make sure we have our realm set.
@@ -519,25 +531,28 @@ class CommandHandler(object):
                 if not login_status:
                     if site == config.site:
                         config.use_socket = True
-        conn_kwargs = {}
-        conn_kwargs['use_agent'] = True
-        conn_kwargs['auto_auth'] = False
-        conn_kwargs['auto_preauth'] = False
-        if config.use_socket:
-            conn_kwargs['use_agent'] = False
-            conn_kwargs['use_ssl'] = False
-            conn_kwargs['local_socket'] = True
-            conn_kwargs['handle_host_auth'] = False
-            conn_kwargs['handle_user_auth'] = False
-            conn_kwargs['encrypt_session'] = False
-            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
-
-        mgmtd_conn = connections.get(daemon="mgmtd",
-                                    realm=realm,
-                                    site=site,
-                                    **conn_kwargs)
-        script_signs = mgmtd_conn.get_script_sign(script_path=script_path, **kwargs)
+        script_signs = self.get_script_signatures(script_path=script_path,
+                                                    site=site, **kwargs)
         return script_signs
+        #conn_kwargs = {}
+        #conn_kwargs['use_agent'] = True
+        #conn_kwargs['auto_auth'] = False
+        #conn_kwargs['auto_preauth'] = False
+        #if config.use_socket:
+        #    conn_kwargs['use_agent'] = False
+        #    conn_kwargs['use_ssl'] = False
+        #    conn_kwargs['local_socket'] = True
+        #    conn_kwargs['handle_host_auth'] = False
+        #    conn_kwargs['handle_user_auth'] = False
+        #    conn_kwargs['encrypt_session'] = False
+        #    conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        #mgmtd_conn = connections.get(daemon="mgmtd",
+        #                            realm=realm,
+        #                            site=site,
+        #                            **conn_kwargs)
+        #script_signs = mgmtd_conn.get_script_signatures(script_path=script_path, **kwargs)
+        #return script_signs
 
     def handle_command(self, command, command_line, client_type="CLIENT"):
         """ Handle given command. """
@@ -867,6 +882,9 @@ class CommandHandler(object):
                                                  "dump_encrypt_key"):
             return self.handle_user_dump_key_command(command, subcommand)
 
+        if command == "user" and subcommand == "get_enc_key_type":
+            return self.handle_enc_key_type_command(command, subcommand)
+
         # Resync login token if none is given.
         if command == "token" and subcommand == "resync":
             return self.handle_token_resync_command()
@@ -877,7 +895,7 @@ class CommandHandler(object):
         # When changing password of users RSA key we may need to read
         # old and new password from stdin.
         if command == "user" and subcommand == "key_pass":
-            return self.handle_user_key_pass_command()
+            return self.handle_user_key_pass_command(command, subcommand)
 
         # When editing a script we need to dump it to a local file first.
         if subcommand == "info":
@@ -2022,6 +2040,9 @@ class CommandHandler(object):
 
         if subcommand == "get_tty":
             return self.get_tty()
+
+        if subcommand == "get_display":
+            return self.get_display()
 
         if subcommand == "reneg":
             return self.handle_reneg_command()
@@ -4341,10 +4362,43 @@ class CommandHandler(object):
         if not username:
             raise OTPmeException(_("Not logged in."))
 
-        # Get SOTP from agent
+        # Get TTY from agent
         tty = agent_conn.get_tty()
 
         return tty
+
+    def get_display(self):
+        """ Get DISPLAY from agent. """
+        from otpme.lib import connections
+
+        # Create otpme-agent instance
+        from otpme.lib.classes.otpme_agent import OTPmeAgent
+        otpme_agent = OTPmeAgent()
+
+        agent_conn = None
+
+        # Check if otpme-agent is running
+        agent_status, pid = otpme_agent.status(quiet=True)
+        if not agent_status:
+            msg = "No running otpme-agent found..."
+            raise OTPmeException(msg)
+
+        # Try to get agent connection
+        try:
+            agent_conn = connections.get("agent")
+        except Exception as e:
+            msg = _("Error getting agent connection: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
+
+        username = self.whoami()
+        if not username:
+            raise OTPmeException(_("Not logged in."))
+
+        # Get DISPLAY from agent
+        display = agent_conn.get_display()
+
+        return display
 
     def get_sotp(self, command, subcommand):
         """ Get SOTP from agent. """
@@ -6235,10 +6289,9 @@ class CommandHandler(object):
         # Nothing more to do for edit command
         return ""
 
-    def handle_user_key_pass_command(self):
+    def handle_user_key_pass_command(self, command, subcommand):
         """ Handle user key pass command. """
         # Init otpme.
-        #init_otpme()
         self.init()
         # Will hold current and new passwords.
         password = None
@@ -6247,6 +6300,35 @@ class CommandHandler(object):
         login_user = config.login_user
         if not login_user:
             login_user = config.system_user()
+
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            return self.get_help(msg)
+
+        # Parse command line.
+        local_command_args = {}
+        command_line = list(self.command_line)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            local_command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=local_command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+
+        if login_user != object_identifier:
+            msg = _("Please login as user: {user}")
+            msg = msg.format(user=object_identifier)
+            raise OTPmeException(msg)
 
         # Get key mode of users private key (server or client).
         try:
@@ -6276,6 +6358,10 @@ class CommandHandler(object):
                 self.command_args['new_password'] = new_password
 
         if key_mode == "client":
+            # Get user site.
+            hostd_conn = connections.get("hostd")
+            user_site = hostd_conn.get_user_site(login_user)
+
             script_command = [ "change_key_pass" ]
             script_options = []
 
@@ -6310,17 +6396,30 @@ class CommandHandler(object):
                 msg = _("Got no private key from key script.")
                 raise OTPmeException(msg)
 
-            user_private_key = script_stdout
+            # Get keys from stdout.
+            user_sign_priv_key, user_encrypt_priv_key = script_stdout.split("\0")
 
-            # TODO: client-mode change_key_pass currently only handles the
-            # sign slot. Loop over both roles once the script's
-            # change_key_pass command rewraps both keys in one shot.
             try:
                 self.set_user_key(username=login_user,
-                                key=user_private_key,
+                                key=user_sign_priv_key,
                                 key_role="sign",
                                 private=True,
-                                force=True)
+                                force=True,
+                                realm=config.realm,
+                                site=user_site)
+            except Exception as e:
+                msg = _("Error sending private key to server: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+
+            try:
+                self.set_user_key(username=login_user,
+                                key=user_encrypt_priv_key,
+                                key_role="encrypt",
+                                private=True,
+                                force=True,
+                                realm=config.realm,
+                                site=user_site)
             except Exception as e:
                 msg = _("Error sending private key to server: {e}")
                 msg = msg.format(e=e)
@@ -6333,7 +6432,6 @@ class CommandHandler(object):
         key_role = "encrypt" if subcommand == "import_encrypt_key" else "sign"
         # Init otpme.
         #self.init()
-        # Get login user.
 
         # Get command syntax.
         try:
@@ -6846,15 +6944,79 @@ class CommandHandler(object):
         self.send_command(daemon="hostd", command="sync_token_data")
         return
 
+    def handle_enc_key_type_command(self, command, subcommand):
+        """ Handle user enc key type command. """
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            return self.get_help(msg)
+
+        # Parse command line.
+        local_command_args = {}
+        command_line = list(self.command_line)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            local_command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=local_command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+
+        login_user = object_identifier
+
+        if subcommand == "get_enc_key_type":
+            return self.get_user_enc_key_type(login_user)
+        elif subcommand == "get_sign_key_type":
+            return self.get_user_sign_key_type(login_user)
+        else:
+            msg = _("Unknown command: {command}")
+            msg = msg.format(command=subcommand)
+            raise OTPmeException(msg)
+
     def handle_user_dump_key_command(self, command, subcommand):
         """ Handle user dump key command. """
         # Init otpme.
         #init_otpme()
         self.init()
-        # Get login user.
-        login_user = config.login_user
-        if not login_user:
-            login_user = config.system_user()
+
+        ## Get login user.
+        #login_user = config.login_user
+        #if not login_user:
+        #    login_user = config.system_user()
+
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            return self.get_help(msg)
+
+        # Parse command line.
+        local_command_args = {}
+        command_line = list(self.command_line)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            local_command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=local_command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+
+        login_user = object_identifier
 
         # Get key mode of users private key (server or client).
         try:
@@ -6881,36 +7043,18 @@ class CommandHandler(object):
             except Exception:
                 pass
 
+        # Get user site.
+        hostd_conn = connections.get("hostd")
+        user_site = hostd_conn.get_user_site(login_user)
+
         if key_mode == "server":
             # Get private key.
-            user_key = self.send_command(daemon="mgmtd", client_type="RAPI")
+            user_key = self.send_command(daemon="mgmtd",
+                                        site=user_site,
+                                        client_type="RAPI")
             self.newline = True
 
         if key_mode == "client":
-            # Get command syntax.
-            try:
-                command_syntax = self.get_command_syntax(command, subcommand)
-            except Exception:
-                msg = _("Unknown command: {subcommand}")
-                msg = msg.format(subcommand=subcommand)
-                return self.get_help(msg)
-
-            # Parse command line.
-            local_command_args = {}
-            command_line = list(self.command_line)
-            try:
-                object_cmd, \
-                object_required, \
-                object_identifier, \
-                local_command_args = cli.get_opts(command_syntax=command_syntax,
-                                                command_line=command_line,
-                                                command_args=local_command_args)
-            except Exception as e:
-                if str(e) == "help":
-                    return self.get_help()
-                elif str(e) != "":
-                    return self.get_help(str(e))
-
             # When dumping an key that is located on the client side we need to call
             # users key script.
             try:
@@ -6939,7 +7083,13 @@ class CommandHandler(object):
                 user_key = script_stdout
             else:
                 # Get private or public key.
-                user_key = self.send_command(daemon="mgmtd", client_type="RAPI")
+                try:
+                    user_key = self.send_command(daemon="mgmtd",
+                                                site=user_site,
+                                                client_type="RAPI")
+                except Exception as e:
+                    error_message(f"Failed to get user key: {e}")
+                    raise
                 self.newline = True
 
         return user_key

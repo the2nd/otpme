@@ -755,20 +755,21 @@ class AuthHandler(object):
             return
 
         # Try to get client by IP address.
-        if not self.client:
-            if not self.client_ip:
-                self.auth_failed = True
-                self.auth_message = "AUTH_CLIENT_IP_MISSING"
-                return
-            client_result = backend.search(object_type="client",
-                                        attribute="address",
-                                        value=self.client_ip,
-                                        realm=config.realm,
-                                        site=config.site,
-                                        return_type="instance")
-            if client_result:
-                self.auth_client = client_result[0]
-                self.client = self.auth_client.name
+        if not self.auth_client:
+            if not self.client:
+                if not self.client_ip:
+                    self.auth_failed = True
+                    self.auth_message = "AUTH_CLIENT_IP_MISSING"
+                    return
+                client_result = backend.search(object_type="client",
+                                            attribute="address",
+                                            value=self.client_ip,
+                                            realm=config.realm,
+                                            site=config.site,
+                                            return_type="instance")
+                if client_result:
+                    self.auth_client = client_result[0]
+                    self.client = self.auth_client.name
 
         if not self.client:
             self.auth_failed = True
@@ -821,12 +822,13 @@ class AuthHandler(object):
         if self.auth_failed:
             return
         # Create accessgroup instance.
-        self.auth_group = backend.get_object(object_type="accessgroup",
-                                            realm=config.realm,
-                                            site=config.site,
-                                            name=self.access_group,
-                                            run_policies=True,
-                                            _no_func_cache=True)
+        if not self.auth_group:
+            self.auth_group = backend.get_object(object_type="accessgroup",
+                                                realm=config.realm,
+                                                site=config.site,
+                                                name=self.access_group,
+                                                run_policies=True,
+                                                _no_func_cache=True)
         # Check if group exists.
         if not self.auth_group:
             log_msg = _("Access group '{access_group}' does not exist.", log=True)[1]
@@ -2220,7 +2222,7 @@ class AuthHandler(object):
         allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
         jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
-        oidc_context=False, oidc_scope="",
+        auth_group=None, auth_client=None, oidc_context=False, oidc_scope="",
         oidc_nonce=None, oidc_redirect_uri=None,
         oidc_code_challenge=None, oidc_code_challenge_method=None,
         oidc_skip_backchannel_client=None,
@@ -2384,7 +2386,7 @@ class AuthHandler(object):
         # Will hold auth message. default is failed.
         self.auth_message = "AUTH_FAILED"
         # Will hold the access_group (instance) for this request.
-        self.auth_group = None
+        self.auth_group = auth_group
         # Will hold the session (instance) for this request.
         self.auth_session = None
         # Will hold the session UUID assigned to a new session.
@@ -2399,7 +2401,7 @@ class AuthHandler(object):
         # normal tokens this will be set to auth_token.
         self.verify_token = None
         # Will hold the client (instance) of this request.
-        self.auth_client = None
+        self.auth_client = auth_client
         # Will hold the peer host/node (instance) of this request.
         self.auth_host = None
         # Will hold all allowed token types for this request.

@@ -29,18 +29,36 @@ def enc_path():
     def wrapper(f):
         @wraps(f)
         def wrapped(self, path, *args, **kwargs):
+
+            if path == "/":
+                return f(self, path, *args, **kwargs)
+
+            snapshot = None
             path_comp = path.split("/")
-            if len(path_comp) > 2:
-                path_comp.pop(0)
-                snapshot = path_comp.pop(0)
-                if len(path_comp) > 99:
-                    path = "/" + "/".join(path_comp)
-                else:
+            if len(path_comp) >= 1:
+                snapshot = path_comp[1]
+
+            if len(path_comp) == 2:
+                if self.backup_home_dir:
+                    backup_home_dir = self.backup_client.encrypt_rel_path(self.backup_home_dir)
+                    path_comp.append(backup_home_dir)
                     path = "/".join(path_comp)
+            elif len(path_comp) > 2:
+                path_comp.pop(0)
+                path_comp.pop(0)
+                if self.backup_home_dir:
+                    path_comp.insert(0, self.backup_home_dir)
+                # FIXME: whats the reason for this?
+                #if len(path_comp) > 99:
+                #    path = "/" + "/".join(path_comp)
+                #else:
+                #    path = "/".join(path_comp)
+                path = "/".join(path_comp)
                 path = self.backup_client.encrypt_rel_path(path)
                 path = path.split("/")
                 path.insert(0, snapshot)
                 path = "/" + "/".join(path)
+
             return f(self, path, *args, **kwargs)
         return wrapped
     return wrapper
@@ -864,6 +882,8 @@ class OTPmeBackupP1(OTPmeFsClient1):
                 x_path = "/".join(x_path)
                 x_path = self.backup_client.decrypt_rel_path(x_path)
                 x_path = x_path.split("/")
+                if self.backup_home_dir:
+                   x_path.remove(self.backup_home_dir)
                 x_path.insert(0, snapshot)
                 x_path = "/" + "/".join(x_path)
                 response['getattr'][x_path] = x_data
@@ -877,6 +897,8 @@ class OTPmeBackupP1(OTPmeFsClient1):
                 x_path = "/".join(x_path)
                 x_path = self.backup_client.decrypt_rel_path(x_path)
                 x_path = x_path.split("/")
+                if self.backup_home_dir:
+                   x_path.remove(self.backup_home_dir)
                 x_path.insert(0, snapshot)
                 x_path = "/" + "/".join(x_path)
                 response['getxattr'][x_path] = x_data
@@ -1172,7 +1194,11 @@ class OTPmeBackupP1(OTPmeFsClient1):
         return status_code, binary_data
 
     def read_cryptfs_settings(self):
-        conf_file_name = self.backup_client.encrypt_rel_path(CONF_FILE)
+        if self.backup_home_dir:
+            conf_file = os.path.join(self.backup_home_dir, CONF_FILE)
+        else:
+            conf_file = CONF_FILE
+        conf_file_name = self.backup_client.encrypt_rel_path(conf_file)
         command_args = {'conf_file_name':conf_file_name}
         try:
             status, \

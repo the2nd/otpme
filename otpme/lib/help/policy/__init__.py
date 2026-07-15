@@ -80,6 +80,14 @@ cmd_help = {
                                 },
                 },
 
+    'get_config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy get_config {policy} {parameter}'),
+                    'cmd'   :   '<|object|> <parameter>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy config -d -a {policy} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',

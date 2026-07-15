@@ -130,8 +130,6 @@ write_value_acls = {
                                 "config",
                                 "group",
                                 "key_mode",
-                                "sign_private_key",
-                                "encrypt_private_key",
                                 "private_key_pass",
                                 "sign_public_key",
                                 "encrypt_public_key",
@@ -175,6 +173,16 @@ commands = {
                     },
                 'exists'    : {
                     'method'            : 'add',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_config_parameter',
+                    'args'              : ['parameter'],
+                    'dargs'             : {'verify_acls':True},
                     'job_type'          : 'process',
                     },
                 },
@@ -2640,7 +2648,6 @@ class User(OTPmeObject):
             setattr(self, attr, {'key_blob': private_key})
         return self._cache(callback=callback)
 
-    @check_acls(['edit:sign_private_key'])
     @object_lock(full_lock=True)
     @audit_log()
     def change_sign_private_key(
@@ -2653,11 +2660,13 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
+        if config.auth_user.uuid != self.uuid:
+            msg = _("Permission denied.")
+            return callback.error(msg)
         """ Set users sign private key (used for signing data). """
         return self._change_private_key("sign", private_key, force,
                                         run_policies, callback, _caller)
 
-    @check_acls(['edit:encrypt_private_key'])
     @object_lock(full_lock=True)
     @audit_log()
     def change_encrypt_private_key(
@@ -2671,6 +2680,9 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Set users encrypt private key (used for decrypting secrets). """
+        if config.auth_user.uuid != self.uuid:
+            msg = _("Permission denied.")
+            return callback.error(msg)
         return self._change_private_key("encrypt", private_key, force,
                                         run_policies, callback, _caller)
 

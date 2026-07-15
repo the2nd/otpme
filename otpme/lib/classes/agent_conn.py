@@ -199,6 +199,25 @@ class AgentConn(object):
         tty = response
         return tty
 
+    def set_display(self, display):
+        """ Set DISPLAY to otpme-agent. """
+        command_args = {'display':display}
+        status, status_code, response = self.send("set_display", command_args=command_args)
+        if status_code != status_codes.OK:
+            msg = _("Error setting DISPLAY to agent: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+
+    def get_display(self):
+        """ Get DISPLAY from otpme-agent. """
+        status, status_code, response = self.send("get_display")
+        if status_code != status_codes.OK:
+            msg = _("Error getting DISPLAY from agent: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        display = response
+        return display
+
     def get_sessions(self):
         """ Get otpme-agent sessions."""
         status, status_code, response = self.send("get_sessions")

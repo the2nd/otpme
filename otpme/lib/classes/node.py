@@ -102,6 +102,16 @@ commands = {
                     },
                 },
             },
+    'get_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_config_parameter',
+                    'args'              : ['parameter'],
+                    'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'touch'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

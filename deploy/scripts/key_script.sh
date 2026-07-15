@@ -34,6 +34,8 @@ trap "cleanup" EXIT
 
 set -e
 
+OTPME_OPTS="-dee"
+
 BASENAME="$(basename "$0" | cut -d '.' -f 1)"
 # Default encryption for data is AES.
 ENC_TYPE="AES"
@@ -457,6 +459,7 @@ aes_encrypt () {
 			NEW_PASS2="$(read_pass_from_tty "Confirm password: ")"
 			if [ "$NEW_PASS1" != "$NEW_PASS2" ] ; then
 				tty_message "Passwords do not match."
+				sleep 3
 				continue
 			fi
 			AES_PASS="$NEW_PASS1"
@@ -498,6 +501,7 @@ aes_decrypt () {
 }
 
 encrypt_key () {
+	tty_message "Encrypting private key..."
 	if [ "$GPG_KEY_ENCRYPTION" ] ; then
 		gpg_encrypt | base64 -w 0
 		return "${PIPESTATUS[0]}"
@@ -511,6 +515,7 @@ encrypt_key () {
 }
 
 decrypt_key () {
+	tty_message "Decrypting private key..."
 	if [ "$GPG_KEY_ENCRYPTION" ] ; then
 		gpg_decrypt
 	else
@@ -858,11 +863,15 @@ case "$COMMAND" in
 		# TODO: change_key_pass should loop over sign+encrypt; deferred.
 		PRIVATE_KEY="$(get_private_key sign)"
 		_OTPME_KEYSCRIPT_KEY_PASS="$_OTPME_KEYSCRIPT_KEY_PASS_NEW"
-		if PRIVATE_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
-			echo "$PRIVATE_KEY_ENC"
-		else
+		if ! PRIVATE_SIGN_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
 			exit 1
 		fi
+		PRIVATE_KEY="$(get_private_key encrypt)"
+		_OTPME_KEYSCRIPT_KEY_PASS="$_OTPME_KEYSCRIPT_KEY_PASS_NEW"
+		if ! PRIVATE_ENCRYPT_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
+			exit 1
+		fi
+		echo -en "$PRIVATE_SIGN_KEY_ENC\0$PRIVATE_ENCRYPT_KEY_ENC"
 	;;
 
 	pkey_encrypt)

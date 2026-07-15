@@ -19,6 +19,7 @@ from otpme.lib import jwt
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.fuse import init_cryptfs
@@ -68,11 +69,15 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.allow_sotp_reuse = True
         # Will hold share name.
         self.share = None
-        self._share = None
+        self.share_uuid = None
         # Will hold share root.
         self.root = None
         # Share mounted.
         self.mounted = False
+        # Share is home share.
+        self.home_share = False
+        # Home share encryption data.
+        self.home_share_enc_data = None
         # Share is readonly.
         self.read_only = False
         # Share is encrypted.
@@ -134,59 +139,48 @@ class OTPmeFsP1(OTPmeFsServer1):
             # No share set yet.
             if not self.share:
                 continue
-            result = backend.search(object_type="share",
-                                    attribute="uuid",
-                                    value=self._share.uuid,
-                                    return_attributes=['last_modified'])
+
             try:
-                last_modified = result[0]
+                hostd_conn = connections.get("hostd")
             except Exception:
                 continue
-            # Nothing to do if share is unchanged.
-            if self._share.last_modified == last_modified:
+            try:
+                status, \
+                response = hostd_conn.check_share_access(share_uuid=self.share_uuid,
+                                                        host_uuid=self.peer.uuid,
+                                                        token_uuid=config.auth_token.uuid)
+            except Exception as e:
+                log_msg = _("Share access check failed: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 continue
-            # Reload share.
-            result = backend.search(object_type="share",
-                                    attribute="name",
-                                    value=self.share,
-                                    realm=config.realm,
-                                    site=config.site,
-                                    return_type="instance")
-            if not result:
-                continue
-            self._share = result[0]
-            # Block access on disabled share.
-            if not self._share.enabled:
-                self.block_access = True
-                continue
-            # Unblock share if its enabled.
-            self.block_access = False
-            # Check token assignment.
-            if not self._share.is_assigned_token(token_uuid=config.auth_token.uuid):
-                self.block_access = True
-                continue
-            # Check host limitations.
-            if self._share.limit_by_hosts:
-                if not self._share.is_assigned_host(host_uuid=self.peer.uuid,
-                                                    include_groups=True,
-                                                    include_roles=True):
-                    self.block_access = True
-                    continue
-            # Nothing more to do for restore shares.
-            if self._share.restore_share:
-                continue
-            # Set share settings.
-            self.read_only = self._share.read_only
-            if self._share.directory_mode == "0o000":
-                self.directory_mode = None
-            else:
-                self.directory_mode = int(self._share.directory_mode, 0)
-            if self._share.create_mode == "0o000":
-                self.create_mode = None
-            else:
-                self.create_mode = int(self._share.create_mode, 0)
 
-    def get_backupd_conn(self, host, backup_key=None):
+            if status:
+                self.block_access = True
+                log_msg = _("Share access denied: {response}", log=True)[1]
+                log_msg = log_msg.format(response=response)
+                self.logger.warning(log_msg)
+                continue
+
+            # Nothing more to do for restore shares.
+            if self.restore_share:
+                continue
+
+            # Get share settings.
+            try:
+                self.directory_mode = response['directory_mode']
+            except KeyError:
+                pass
+            try:
+                self.create_mode = response['create_mode']
+            except KeyError:
+                pass
+            try:
+                self.read_only = response['read_only']
+            except KeyError:
+                pass
+
+    def get_backupd_conn(self, host, home_dir=None, backup_key=None):
         try:
             backupd_conn = connections.get("backupd",
                                         node=host,
@@ -196,6 +190,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                                         encrypt_session=False,
                                         verify_preauth=False,
                                         backup_key=backup_key,
+                                        backup_home_dir=home_dir,
                                         interactive=False)
         except Exception as e:
             msg, log_msg = _("Failed to get backup connection: {host_name}: {e}", log=True)
@@ -270,6 +265,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
             try:
+                self.home_share_enc_data = command_args['enc_home_data']
+            except KeyError:
+                pass
+            try:
                 self.share = command_args['share']
             except KeyError:
                 status = status_codes.UNKNOWN_OBJECT
@@ -292,7 +291,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
             share = result[0]
-            self._share = share
+            self.share_uuid = share.uuid
             if not share.enabled:
                 status = status_codes.PERMISSION_DENIED
                 message, log_msg = _("Share disabled: {share}", log=True)
@@ -301,6 +300,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.logger.warning(log_msg)
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
+            self.home_share = share.home_share
             self.encrypted = share.encrypted
             if share.restore_share:
                 self.restore_share = True
@@ -353,11 +353,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                     response = {'try_other_node':False, 'message':message}
                     return self.build_response(status, response)
                 self.aes_key = bytes.fromhex(backup_key)
+
             # Get user groups.
             default_group = stuff.get_users_default_group(self.username)
             groups = stuff.get_users_groups(self.username)
-            # Our handle_share_setttings threads requires backend access.
-            groups.append(config.group)
             if self.restore_share:
                 if share.force_group_uuid is not None:
                     group = backend.get_object(uuid=share.force_group_uuid)
@@ -377,9 +376,14 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
+                user_uuid = None
+                if self.home_share:
+                    user_uuid = config.auth_user.uuid
                 repo_id = f"share/{restore_share.site}/{restore_share.name}"
                 try:
-                    self.backupd_conn = self.get_backupd_conn(host, backup_key=backup_key)
+                    self.backupd_conn = self.get_backupd_conn(host=host,
+                                                            home_dir=user_uuid,
+                                                            backup_key=backup_key)
                 except Exception:
                     status = status_codes.BACKUP_CONNECTION_BROKEN
                     response = {'try_other_node':True, 'message':'Backupd connection failed.'}
@@ -491,6 +495,9 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':True, 'message':message}
                         return self.build_response(status, response)
             else:
+                root_dir = share.root_dir
+                if self.home_share:
+                    root_dir = os.path.join(root_dir, config.auth_user.uuid)
                 if not os.path.exists(share.root_dir):
                     status = status_codes.UNKNOWN_OBJECT
                     message, log_msg = _("Unknown share root dir: {share}: {root_dir}", log=True)
@@ -519,8 +526,32 @@ class OTPmeFsP1(OTPmeFsServer1):
                     self.logger.warning(log_msg)
                     response = {'try_other_node':False, 'message':message}
                     return self.build_response(status, response)
+                if self.home_share:
+                    if self.encrypted:
+                        if not self.home_share_enc_data:
+                            try:
+                                fs_data = read_cryptfs_settings(path=root_dir)
+                            except NotInitialized:
+                                status = True
+                                key_mode = config.auth_user.key_mode
+                                response = {'command':'home_dir_enc', 'key_mode':key_mode, 'key_len':32}
+                                return self.build_response(status, response)
+                    if not os.path.exists(root_dir):
+                        try:
+                            filetools.create_dir(path=root_dir,
+                                                user=config.auth_user.name,
+                                                group=True,
+                                                mode=0o700)
+                        except Exception as e:
+                            status = status_codes.ERR
+                            message, log_msg = _("Failed to create home share dir: {e}", log=True)
+                            message = message.format(e=e)
+                            log_msg = log_msg.format(e=e)
+                            self.logger.warning(log_msg)
+                            response = {'try_other_node':False, 'message':message}
+                            return self.build_response(status, response)
                 try:
-                    self.root = share.root_dir
+                    self.root = root_dir
                 except Exception as e:
                     status = status_codes.UNKNOWN_OBJECT
                     message, log_msg = _("Failed to mount share: {share}", log=True)
@@ -562,7 +593,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
-                # Get read-only attribute.
+                # Get share settings.
                 self.read_only = share.read_only
                 if share.directory_mode != "0o000":
                     self.directory_mode = int(share.directory_mode, 0)
@@ -570,22 +601,50 @@ class OTPmeFsP1(OTPmeFsServer1):
                     self.create_mode = int(share.create_mode, 0)
                 if self.encrypted:
                     self.block_size = share.block_size
-                    hash_params = share.master_password_hash_params.copy()
-                    try:
-                        init_cryptfs(path=self.root,
-                                    block_size=self.block_size,
-                                    hash_params=hash_params)
-                    except AlreadyInitialized:
-                        pass
-                    except Exception as e:
-                        status = status_codes.UNKNOWN_OBJECT
-                        message, log_msg = _("Failed to initialize cryptfs: {share_name}", log=True)
-                        message = message.format(share_name=share.name)
-                        log_msg = log_msg.format(share_name=share.name)
-                        log_msg = f"{log_msg}: {e}"
-                        self.logger.warning(log_msg)
-                        response = {'try_other_node':False, 'message':message}
-                        return self.build_response(status, response)
+                    do_cryptfs_init = False
+                    if self.home_share:
+                        if self.home_share_enc_data:
+                            try:
+                                new_share_key = self.home_share_enc_data['share_key']
+                            except KeyError:
+                                status = False
+                                message, log_msg = _("Request missses share key.", log=True)
+                                self.logger.warning(log_msg)
+                                response = {'try_other_node':False, 'message':message}
+                                return self.build_response(status, response)
+                            try:
+                                hash_params = self.home_share_enc_data['hash_params']
+                            except KeyError:
+                                status = False
+                                message, log_msg = _("Request missses hash parameters.", log=True)
+                                self.logger.warning(log_msg)
+                                response = {'try_other_node':False, 'message':message}
+                                return self.build_response(status, response)
+                            share.add_share_key(username=config.auth_user.name,
+                                                share_key=new_share_key,
+                                                callback=default_callback,
+                                                verify_acls=False)
+                            default_callback.write_modified_objects()
+                            do_cryptfs_init = True
+                    else:
+                        do_cryptfs_init = True
+                        hash_params = share.master_password_hash_params.copy()
+                    if do_cryptfs_init:
+                        try:
+                            init_cryptfs(path=self.root,
+                                        block_size=self.block_size,
+                                        hash_params=hash_params)
+                        except AlreadyInitialized:
+                            pass
+                        except Exception as e:
+                            status = status_codes.UNKNOWN_OBJECT
+                            message, log_msg = _("Failed to initialize cryptfs: {share_name}", log=True)
+                            message = message.format(share_name=share.name)
+                            log_msg = log_msg.format(share_name=share.name)
+                            log_msg = f"{log_msg}: {e}"
+                            self.logger.warning(log_msg)
+                            response = {'try_other_node':False, 'message':message}
+                            return self.build_response(status, response)
                     try:
                         fs_data = read_cryptfs_settings(path=self.root)
                     except NotInitialized:
@@ -935,7 +994,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing offset.")
                 return self.build_response(status, message)
-            status, binary_data = self.restore_read(path, size, offset)
+            try:
+                status, binary_data = self.restore_read(path, size, offset)
+            except Exception as e:
+                status = status_codes.BACKUP_CONNECTION_BROKEN
+                message, log_msg = _("Failed to run restore_read command: {e}", log=True)
+                message = message.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':True, 'message':message}
+                return self.build_response(status, response)
             message = _("File data.")
             return self.build_response(status, message, binary_data=binary_data)
 

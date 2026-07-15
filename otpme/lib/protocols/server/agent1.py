@@ -95,6 +95,7 @@ class OTPmeAgentP1(object):
         self.srp = None
         self.slp = None
         self.tty = None
+        self.display = None
 
     def init(self):
         """ Init protocol handler (e.g. load client infos). """
@@ -280,6 +281,8 @@ class OTPmeAgentP1(object):
                             "get_srp",
                             "get_slp",
                             "get_tty",
+                            "set_display",
+                            "get_display",
                             "reneg",
                             "ping",
                             #"debug_session",
@@ -313,6 +316,8 @@ class OTPmeAgentP1(object):
                         "get_srp",
                         "get_slp",
                         "get_tty",
+                        "set_display",
+                        "get_display",
                         "reneg",
                         ]
 
@@ -444,6 +449,10 @@ class OTPmeAgentP1(object):
             except Exception:
                 pass
             try:
+                self.display = self.session['display']
+            except Exception:
+                pass
+            try:
                 self.rsp = self.session['server_sessions'][self.realm][self.site]['rsp']
             except Exception:
                 pass
@@ -486,6 +495,11 @@ class OTPmeAgentP1(object):
                 except Exception:
                     self.tty = None
 
+                try:
+                    self.display = command_args['display']
+                except Exception:
+                    self.display = None
+
                 if self.login_user:
                     log_msg = _("Adding session for user '{user}' (PID: {pid}).", log=True)[1]
                     log_msg = log_msg.format(user=self.login_user, pid=self.login_pid)
@@ -510,6 +524,7 @@ class OTPmeAgentP1(object):
                         self.session['system_user'] = self.client_user
                         self.session['login_user'] = self.login_user
                         self.session['session_id'] = self.session_id
+                        self.session['display'] = self.display
                         self.session['tty'] = self.tty
                         self.login_sessions[self.login_pid] = self.session
                     finally:
@@ -674,6 +689,25 @@ class OTPmeAgentP1(object):
                 status = True
             else:
                 message = "no TTY set"
+                status = False
+
+        elif command == "set_display":
+            try:
+                display = command_args['display']
+            except Exception:
+                display = None
+            self.display = display
+            self.session['display'] = self.display
+            self.login_sessions[self.login_pid] = self.session
+            message = "DISPLAY set"
+            status = True
+
+        elif command == "get_display":
+            if self.display:
+                message = self.display
+                status = True
+            else:
+                message = "no DISPLAY set"
                 status = False
 
         elif command == "quit":
@@ -1191,6 +1225,7 @@ class OTPmeAgentP1(object):
             self.srp = None
             self.slp = None
             self.tty = None
+            self.display = None
 
 
         elif not self.rsp:

@@ -236,3 +236,17 @@ class OTPmeHostP1(OTPmeClient1):
         self.connection.send("sync_objects")
         self.connection.send("sync_token_data")
         self.connection.send("sync_ssh_authorized_keys")
+
+    def check_share_access(self, share_uuid, host_uuid, token_uuid):
+        """ Send command to hostd. """
+        command = "check_share_access"
+        command_args = {}
+        command_args['share_uuid'] = share_uuid
+        command_args['host_uuid'] = host_uuid
+        command_args['token_uuid'] = token_uuid
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args)
+        return status, response
+

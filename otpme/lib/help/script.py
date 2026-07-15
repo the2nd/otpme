@@ -147,6 +147,14 @@ cmd_help = {
                 },
 
 
+    'get_config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-script get_config {script} {parameter}'),
+                    'cmd'   :   '<|object|> <parameter>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+
     'touch'    : {
                     '_cmd_usage_help' : _('Usage: otpme-script touch {script}'),
                     'cmd'   :   '<|object|>',

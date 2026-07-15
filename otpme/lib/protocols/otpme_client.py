@@ -1614,7 +1614,7 @@ class OTPmeClient(OTPmeClientBase):
 
         return response
 
-    def gen_share_key(self, command_dict):
+    def gen_share_key(self, command_dict, password=None):
         """ Handle share key re-encryption via users key script. """
         register_module("otpme.lib.encryption")
         key_len = command_dict['key_len']
@@ -1626,13 +1626,14 @@ class OTPmeClient(OTPmeClientBase):
             raise OTPmeException(msg)
 
         # Gen AES key from password.
-        while True:
-            password1 = self.get_password(prompt="Password:")
-            password2 = self.get_password(prompt="Reenter password:")
-            if password1 == password2:
-                password = password1
-                break
-            print("Sorry, passwords do not match.")
+        if not password:
+            while True:
+                password1 = self.get_password(prompt="Password:")
+                password2 = self.get_password(prompt="Reenter password:")
+                if password1 == password2:
+                    password = password1
+                    break
+                print("Sorry, passwords do not match.")
 
         hash_args = {
                         'hash_type': 'Argon2_i',
@@ -2239,7 +2240,8 @@ class OTPmeClient1(OTPmeClientBase):
         verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
         request_token=None, check_login_status=True, allow_untrusted=False,
         do_preauth=True, check_connected_site=True, verify_preauth=None,
-        follow_redirect=True, login_redirect=False, backup_key=None, **kwargs):
+        follow_redirect=True, login_redirect=False, backup_key=None,
+        backup_home_dir=None, **kwargs):
         # Init parent class.
         if offline_iterations_by_score is None:
             offline_iterations_by_score = {}
@@ -2287,6 +2289,8 @@ class OTPmeClient1(OTPmeClientBase):
         self.aes_pass = aes_pass
         # Backup AES key.
         self.backup_key = backup_key
+        # Backup home dir.
+        self.backup_home_dir = backup_home_dir
         # Inidicates that we allow sending of authentication data (passwords etc.)
         # to untrusted sites.
         self.allow_untrusted = allow_untrusted

@@ -66,6 +66,14 @@ cmd_help = {
                                 },
                 },
 
+    'get_config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-pool get_config {pool} {parameter}'),
+                    'cmd'   :   '<|object|> <parameter>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get config parameter.'),
+                                },
+                },
+
     'touch'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pool touch {pool}'),
                     'cmd'   :   '<|object|>',

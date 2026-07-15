@@ -911,6 +911,42 @@ class OTPmeAuthP1(OTPmeServer1):
         fido2_passkeys_allowed = None
         if command == "token_verify_fido2":
             fido2_passkeys_allowed = _sso_allow_passkeys_for_user(user)
+        # Get accessgroup if given.
+        if jwt_access_group:
+            try:
+                ag_site = jwt_access_group.split("/")[0]
+                ag_name = jwt_access_group.split("/")[1]
+            except IndexError:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=jwt_access_group,
+                           user=user.name,
+                           method='verify_token',
+                           reason='invalid_access_group_name',
+                           ag=jwt_access_group)
+                status = status_codes.ERR
+                message = _("Invalid accessgroup name: {access_group}")
+                message = message.format(access_group=jwt_access_group)
+                return self.build_response(status, message)
+            result = backend.search(object_type="accessgroup",
+                                    attribute="name",
+                                    value=ag_name,
+                                    realm=config.realm,
+                                    site=ag_site,
+                                    return_type="instance")
+            if not result:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=jwt_access_group,
+                           user=user.name,
+                           method='verify_token',
+                           reason='unknown_access_group',
+                           ag=jwt_access_group)
+                status = status_codes.ERR
+                message = _("Invalid accessgroup name: {access_group}")
+                message = message.format(access_group=jwt_access_group)
+                return self.build_response(status, message)
+            jwt_ag = result[0]
         for x_token in user_tokens:
             if command == "token_verify":
                 if x_token.pass_type != "static":
@@ -923,6 +959,9 @@ class OTPmeAuthP1(OTPmeServer1):
                 if x_token.token_type not in ("fido2", "passkey"):
                     continue
                 if x_token.token_type == "passkey" and not fido2_passkeys_allowed:
+                    continue
+            if jwt_access_group:
+                if not jwt_ag.is_assigned_token(x_token.uuid):
                     continue
             try:
                 verify_status = x_token.verify(**token_verify_parms)
@@ -1090,11 +1129,57 @@ class OTPmeAuthP1(OTPmeServer1):
                         'jwt_challenge'     : redirect_challenge,
                         'jwt_access_group'  : access_group,
                     }
+        auth_ag = None
+        auth_client = None
         if client == config.sso_client_name:
             sso_ag = f"{config.site}/{config.sso_access_group}"
             verify_args['sso_login'] = True
             verify_args['sso_ag'] = sso_ag
             verify_args['sso_challenge'] = sso_challenge
+            verify_args['jwt_access_group'] = sso_ag
+        else:
+            if client:
+                auth_client = backend.get_object(object_type="client",
+                                                realm=config.realm,
+                                                site=config.site,
+                                                name=client,
+                                                run_policies=True,
+                                                _no_func_cache=True)
+            elif client_ip:
+                result = backend.search(object_type="client",
+                                        attribute="address",
+                                        value=client_ip,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="instance")
+                if result:
+                    auth_client = result[0]
+                    client = auth_client.name
+
+            if not auth_client:
+                message, log_msg = _("Unable to determine client: {client}: {client_ip}", log=True)
+                log_msg = log_msg.format(client=client, client_ip=client_ip)
+                self.logger.critical(log_msg)
+                message = message.format(client=client, client_ip=client_ip)
+                status = status_codes.ERR
+                return self.build_response(status, message)
+
+            if auth_client.access_group:
+                auth_ag = backend.get_object(object_type="accessgroup",
+                                            realm=config.realm,
+                                            site=config.site,
+                                            name=auth_client.access_group,
+                                            run_policies=True,
+                                            _no_func_cache=True)
+            if not auth_ag:
+                message, log_msg = _("Unable to get accessgroup from client: {client}: {acccess_group}", log=True)
+                log_msg = log_msg.format(client=auth_client.name, acccess_group=auth_client.acccess_group)
+                self.logger.critical(log_msg)
+                message = message.format(client=client, client_ip=client_ip)
+                status = status_codes.ERR
+                return self.build_response(status, message)
+            # Set JWT accessgroup.
+            verify_args['jwt_access_group'] = f"{auth_ag.site}/{auth_ag.name}"
 
         # Send verify request.
         if auth_type == "mschap":
@@ -1144,6 +1229,8 @@ class OTPmeAuthP1(OTPmeServer1):
                                     peer=self.peer,
                                     client=client,
                                     client_ip=client_ip,
+                                    auth_client=auth_client,
+                                    auth_group=auth_ag,
                                     realm_login=False,
                                     realm_logout=False,
                                     jwt_auth=True,

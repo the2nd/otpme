@@ -142,12 +142,22 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'home_share', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'home_share', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_config_parameter',
+                    'args'              : ['parameter'],
+                    'dargs'             : {'verify_acls':True},
                     'job_type'          : 'process',
                     },
                 },
@@ -1016,6 +1026,7 @@ class Share(OTPmeObject):
         self.type = "share"
         # Share root dir
         self.root_dir = None
+        self.home_share = False
         self.encrypted = False
         self.block_size = 4096
 
@@ -1087,6 +1098,11 @@ class Share(OTPmeObject):
                         'ROOT_DIR'                  : {
                                                         'var_name'  : 'root_dir',
                                                         'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'HOME_SHARE'                : {
+                                                        'var_name'  : 'home_share',
+                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
                         'ENCRYPTED'                 : {
@@ -1226,12 +1242,21 @@ class Share(OTPmeObject):
 
         return object_config
 
+    @property
+    def share_root(self):
+        share_root = config.share_root
+        if not share_root:
+            share_root = self.get_config_parameter('share_root')
+        share_root = os.path.realpath(share_root)
+        return share_root
+
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
     def add(
         self,
+        home_share: bool=False,
         force_group: str=None,
         force_create_mode: str=None,
         force_directory_mode: str=None,
@@ -1295,6 +1320,7 @@ class Share(OTPmeObject):
                     msg = msg.format(token=restore_token)
                     return callback.error(msg)
             self.restore_share = share.uuid
+            self.home_share = share.home_share
             self.encrypted = share.encrypted
             if share.force_group_uuid:
                 self.force_group(group_uuid=share.force_group_uuid,
@@ -1339,8 +1365,7 @@ class Share(OTPmeObject):
                                     verify_acls=False,
                                     callback=callback)
         # Get root dir.
-        root_dir = self.get_config_parameter('share_root')
-        root_dir = os.path.join(root_dir, self.name)
+        root_dir = os.path.join(self.share_root, self.name)
         # Run share add script.
         try:
             self.run_share_script(self.add_script, root_dir)
@@ -1351,6 +1376,7 @@ class Share(OTPmeObject):
         # Check if root dir exists.
         if not self.set_root_dir(root_dir, callback=callback):
             return callback.error()
+        self.home_share = home_share
         self.encrypted = encrypted
         self.add_index('encrypted', self.encrypted)
         if self.encrypted:
@@ -1360,7 +1386,7 @@ class Share(OTPmeObject):
         add_result = super().add(verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
-        if self.encrypted and add_result and not no_key_gen:
+        if self.encrypted and add_result and not no_key_gen and not self.home_share:
             msg = _("Generating AES key for encrypted share...")
             callback.send(msg)
             if not config.auth_user:
@@ -1423,6 +1449,12 @@ class Share(OTPmeObject):
         if self.root_dir == root_dir:
             msg = _("Root dir already set to: {root_dir}")
             msg = msg.format(root_dir=self.root_dir)
+            return callback.error(msg)
+        # Make sure root dir is in share root.
+        common_path = os.path.commonpath([self.share_root, root_dir])
+        if common_path != self.share_root:
+            msg = _("Root dir not in share root: {share_root}: {root_dir}")
+            msg = msg.format(share_root=self.share_root, root_dir=root_dir)
             return callback.error(msg)
         if not os.path.exists(root_dir):
             msg = _("No such file or directory: {root_dir}")
@@ -1772,7 +1804,7 @@ class Share(OTPmeObject):
                     msg = msg.format(group_name=group.name)
                     return callback.error(msg)
 
-        if self.encrypted:
+        if self.encrypted and not self.home_share:
             if self.restore_share:
                 result = backend.search(object_type="share",
                                         attribute="uuid",
@@ -1907,18 +1939,33 @@ class Share(OTPmeObject):
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
 
-        if self.encrypted:
-            token_user = token_path.split("/")[0]
-            self.del_share_key(username=token_user,
-                                callback=callback,
-                                verify_acls=False)
-
         # Remove token by parent class.
         result = super().remove_token(token_path=token_path,
                                     callback=callback, **kwargs)
 
         if not result:
             return result
+
+        if self.encrypted:
+            token_user = token_path.split("/")[0]
+            token_user = backend.get_object(object_type="user",
+                                            name=token_user,
+                                            realm=config.realm)
+            user_tokens = token_user.get_tokens()
+            other_token_assigned = False
+            for x_uuid in user_tokens:
+                if x_uuid not in self.tokens:
+                    continue
+                other_token_assigned = backend.get_object(uuid=x_uuid)
+                break
+            if other_token_assigned:
+                msg = _("Not removing share key because of other assigned token: {token}")
+                msg = msg.format(token=other_token_assigned)
+                callback.send(msg)
+            else:
+                self.del_share_key(username=token_user.name,
+                                    callback=callback,
+                                    verify_acls=False)
 
         username = token_path.split("/")[0]
         if username == ADMIN_USER:

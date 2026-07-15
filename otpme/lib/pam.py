@@ -527,6 +527,8 @@ class PamHandler(object):
                                     content=self.display,
                                     user=self.username,
                                     mode=0o600)
+            agent_conn = self.get_agent_connection()
+            agent_conn.set_display(self.display)
         else:
             try:
                 os.remove(self.display_file)
@@ -1637,7 +1639,8 @@ class PamHandler(object):
                                             user=self.username,
                                             group=True,
                                             recursive=True)
-                    # FIXME: set permissions to 0o700?
+                    # Set permissions to 0o700.
+                    filetools.set_fs_permissions(path=home_dir, mode=0o700)
                 else:
                     filetools.create_dir(path=home_dir,
                                         user=self.username,

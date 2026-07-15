@@ -38,9 +38,11 @@ class OTPmeMgmtClient(object):
             return attr
         except AttributeError:
             pass
-        def handler_function(*args, **kwargs):
-            realm = config.connect_realm
-            site = config.connect_site
+        def handler_function(*args, realm=None, site=None, **kwargs):
+            if realm is None:
+                realm = config.connect_realm
+            if site is None:
+                site = config.connect_site
             # Get daemon connection.
             daemon_conn = self.get_daemon_connection(realm=realm,
                                                     site=site)
@@ -211,8 +213,10 @@ class OTPmeMgmtClient(object):
                 for _id in objects[realm][site]:
                     command_args['object_identifier'] = _id
                     # Send command to MGMT daemon.
-                    status, response = daemon_conn.send_command(command=command,
-                                            command_args=command_args, **kwargs)
+                    status, \
+                    response = daemon_conn.send_command(command=command,
+                                                        command_args=command_args,
+                                                        **kwargs)
                     if status is False:
                         return status, response
         return status, response

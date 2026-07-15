@@ -130,6 +130,10 @@ SYSLOG_USE_CLIENT_CERT="False"
 SYSLOG_CERT="/etc/otpme/ssl/syslog-cert.pem"
 SYSLOG_KEY="/etc/otpme/ssl/syslog-key.pem"
 
+# Root directory for shares.
+# Setting this will override any "share_root" config parameter.
+#SHARE_ROOT="/otpme-mounts"
+
 # Run root scripts as this user.
 ROOT_SCRIPT_USER="nobody"
 ROOT_SCRIPT_GROUP="nogroup"

@@ -473,6 +473,9 @@ class OTPmeConfig(object):
                             config_file_parameter="ROOT_SCRIPT_USER")
         self.register_config_var("root_script_group", str, "nogroup",
                             config_file_parameter="ROOT_SCRIPT_GROUP")
+        # Share root.
+        self.register_config_var("share_root", str, None,
+                            config_file_parameter="SHARE_ROOT")
 
         # Policy ignore stuff.
         self.register_config_var("ignore_policy_types", list, [])

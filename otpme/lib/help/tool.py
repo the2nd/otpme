@@ -492,6 +492,13 @@ cmd_help = {
                                 },
                 },
 
+    'get_display'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool get_display'),
+                    '_help' :   {
+                                    'cmd'                   : _('Get DISPLAY for logged in user'),
+                                },
+                },
+
     'get_sotp'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool get_sotp --site {site}'),
                     'cmd'   :   '--site :site:',

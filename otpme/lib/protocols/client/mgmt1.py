@@ -166,7 +166,7 @@ class OTPmeMgmtP1(OTPmeClient1):
     #        raise OTPmeException(msg) from e
     #    return user_key
 
-    def get_user_sign_key_type(self, username):
+    def get_sign_key_type(self, username):
         """ Get sign key type for the given user. """
         log_msg = _("Requesting users sign key type...", log=True)[1]
         self.logger.debug(log_msg)
@@ -185,7 +185,7 @@ class OTPmeMgmtP1(OTPmeClient1):
             sing_key_type = None
         return sing_key_type
 
-    def get_user_enc_key_type(self, username):
+    def get_enc_key_type(self, username):
         """ Get encryption key type for the given user. """
         log_msg = _("Requesting users encryption key type...", log=True)[1]
         self.logger.debug(log_msg)
@@ -204,7 +204,7 @@ class OTPmeMgmtP1(OTPmeClient1):
             enc_key_type = None
         return enc_key_type
 
-    def get_user_key_mode(self, username):
+    def get_key_mode(self, username):
         """ Get key mode (client or server) for the given user. """
         log_msg = _("Requesting users key mode...", log=True)[1]
         self.logger.debug(log_msg)
@@ -223,7 +223,7 @@ class OTPmeMgmtP1(OTPmeClient1):
             key_mode = None
         return key_mode
 
-    def get_user_key_script_path(self, username):
+    def get_key_script_path(self, username):
         """ Get users key script path and options. """
         log_msg = _("Selecting user key script...", log=True)[1]
         self.logger.debug(log_msg)
@@ -284,7 +284,7 @@ class OTPmeMgmtP1(OTPmeClient1):
             raise OTPmeException(msg) from e
         return script
 
-    def get_script_sign(self, script_path, username=None, user_uuid=None):
+    def get_script_signatures(self, script_path, username=None, user_uuid=None):
         """ Get script signature(s). """
         log_msg = _("Requesting script signatures: {script_path}", log=True)[1]
         log_msg = log_msg.format(script_path=script_path)

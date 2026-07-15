@@ -83,6 +83,7 @@ global_write_acls = [
                     "enable",
                     "disable",
                     "import",
+                    "touch",
                 ]
 
 global_read_value_acls = {
@@ -1660,6 +1661,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         return callback.ok()
 
     @object_lock()
+    @check_acls(acls=['touch'])
     def touch(self, callback: JobCallback=default_callback, **kwargs):
         return self._write(update_last_modified_by=False,
                             use_index_journal=False,
@@ -2354,10 +2356,38 @@ class OTPmeObject(OTPmeBaseObject):
     #    return valid_config_params
 
     @config_cache.cache_method()
-    def get_config_parameter(self, parameter: str, recursive: bool=True):
+    def get_config_parameter(
+        self,
+        parameter: str,
+        recursive: bool=True,
+        verify_acls: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get config parameter. """
         # Try to get config parameter.
-        para_data = config.get_config_parameter(parameter)
+        try:
+            para_data = config.get_config_parameter(parameter)
+        except Exception as e:
+            if _caller == "API":
+                raise
+            return callback.error(str(e))
+        # Check if parameter is valid for this object type.
+        if _caller == "CLIENT":
+            try:
+                object_types = para_data['object_types']
+            except Exception:
+                object_types = []
+            if self.type not in object_types:
+                msg = _("Config parameter not valid for object type: {parameter}: {object_type}")
+                msg = msg.format(parameter=parameter, object_type=self.type)
+                return callback.error(msg)
+        # Verify ACLs. Used on get_config command.
+        if verify_acls:
+            if not self.verify_acl(f'view:config:{parameter}'):
+                msg = "Permission denied."
+                return callback.error(msg)
         # Try to get getter.
         try:
             para_getter = para_data['getter']
@@ -2394,7 +2424,12 @@ class OTPmeObject(OTPmeBaseObject):
             if not parent_object:
                 break
 
-        return value
+        if _caller == "API":
+            return value
+
+        callback.send(value)
+
+        return callback.ok()
 
     def _check_max_name_len(self, name, callback=default_callback):
         """ Enforce the configurable max_<type>_name_len policy for this

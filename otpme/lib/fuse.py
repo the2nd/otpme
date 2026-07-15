@@ -27,6 +27,7 @@ from otpme.lib.protocols import status_codes
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
 from otpme.lib.fscoding import encode_method_call
+from otpme.lib.pinentry.pynentry import get_new_password
 
 from otpme.lib.exceptions import *
 
@@ -191,6 +192,31 @@ class OTPmeFS(fuse.Operations):
             raise OTPmeException(msg) from e
         return fsd_conn
 
+    def mount_share(self, mount_args):
+        mount_status, \
+        mount_response_code, \
+        mount_response, \
+        mount_binary_data = self.fsd_conn.send(command="mount",
+                                        command_args=mount_args,
+                                        handle_response=False,
+                                        encrypt_request=False,
+                                        encode_request=False,
+                                        compress_request=False)
+        if mount_status:
+            return True, mount_response_code, mount_response, None
+        try:
+            mount_message = mount_response['message']
+            try_other_node = mount_response['try_other_node']
+        except Exception:
+            try_other_node = False
+            mount_message = mount_response
+        log_msg = _("Failed to mount share: {share}: {mount_message}", log=True)[1]
+        log_msg = log_msg.format(share=self.share, mount_message=mount_message)
+        self.logger.warning(log_msg)
+        if not try_other_node:
+            return False, mount_response_code, mount_response, mount_message
+        return None, mount_response_code, mount_response, mount_message
+
     def send(self, command, command_args, binary_data=None):
         while True:
             if not self.fsd_conn:
@@ -248,24 +274,10 @@ class OTPmeFS(fuse.Operations):
                     mount_status, \
                     mount_response_code, \
                     mount_response, \
-                    mount_binary_data = self.fsd_conn.send(command="mount",
-                                                    command_args=mount_args,
-                                                    handle_response=False,
-                                                    encrypt_request=False,
-                                                    encode_request=False,
-                                                    compress_request=False)
+                    mount_message = self.mount_share(mount_args)
                     if not mount_status:
-                        try:
-                            mount_message = mount_response['message']
-                            try_other_node = mount_response['try_other_node']
-                        except Exception:
-                            try_other_node = False
-                            mount_message = mount_response
-                        log_msg = _("Failed to mount share: {share}: {mount_message}", log=True)[1]
-                        log_msg = log_msg.format(share=self.share, mount_message=mount_message)
-                        self.logger.warning(log_msg)
                         done = False
-                        if not try_other_node:
+                        if mount_status is False:
                             done = True
                         if len(tried_nodes) == len(nodes):
                             done = True
@@ -286,6 +298,53 @@ class OTPmeFS(fuse.Operations):
                                     raise OSError(errno.EINVAL, mount_message)
                         time.sleep(1)
                         continue
+                    try:
+                        remote_command = mount_response['command']
+                    except KeyError:
+                        remote_command = None
+                    if remote_command == "home_dir_enc":
+                        description = _("Enter new password for encrypting you home share. Use a secure password and save it in a safe place.")
+                        agent_conn = connections.get(daemon="agent")
+                        try:
+                            try:
+                                tty = agent_conn.get_tty()
+                            except Exception:
+                                tty = None
+                            try:
+                                display = agent_conn.get_display()
+                            except Exception:
+                                display = None
+                        finally:
+                            agent_conn.close()
+                        if not tty and not display:
+                            msg, log_msg = _("Failed to get password: No tty and no  DISPLAY", log=True)
+                            self.logger.warning(log_msg)
+                            self.fsd_conn.close()
+                            self.fsd_conn = None
+                            raise OSError(errno.EINVAL, msg)
+                        try:
+                            password = get_new_password(description=description, tty=tty, display=display)
+                        except Exception as e:
+                            password = None
+                            log_msg = _("Failed to get password via pinentry: {e}", log=True)[1]
+                            log_msg = log_msg.format(e=e)
+                            self.logger.warning(log_msg)
+                        if not password:
+                            msg = _("Failed to get password.")
+                            self.fsd_conn.close()
+                            self.fsd_conn = None
+                            raise OSError(errno.EINVAL, msg)
+                        self.fsd_conn.interactive = True
+                        share_key_response = self.fsd_conn.gen_share_key(mount_response,
+                                                                        password=password)
+                        self.fsd_conn.interactive = False
+                        mount_args['enc_home_data'] = share_key_response
+                        mount_status, \
+                        mount_response_code, \
+                        mount_response, \
+                        mount_message = self.mount_share(mount_args)
+                        if not mount_status:
+                            continue
                     try:
                         self.restore_share = mount_response['restore_share']
                     except KeyError:
@@ -488,6 +547,24 @@ class OTPmeFS(fuse.Operations):
                 raise OSError(errno.ENODATA, _("No such attribute"))
         no_such_data_cache[path] = time.time()
 
+    def invalidate_caches(self, *paths):
+        """ Drop cached metadata after the given paths were modified. """
+        global getattr_cache
+        global getxattr_cache
+        global no_such_file_cache
+        global no_such_data_cache
+        for path in paths:
+            if not path:
+                continue
+            # readdir() fills getattr/getxattr cache with a snapshot of the
+            # whole directory. Without dropping the entry here a file that is
+            # modified after that readdir would be served from the stale
+            # snapshot until the cache times out.
+            getattr_cache.pop(path, None)
+            getxattr_cache.pop(path, None)
+            no_such_file_cache.pop(path, None)
+            no_such_data_cache.pop(path, None)
+
     @fuse.overrides(fuse.Operations)
     def chmod(self, path: str, mode: int) -> int:
         if config.debug_enabled:
@@ -500,6 +577,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_chmod", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"chmod failed for path: {path}")
@@ -521,6 +599,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_chown", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"chown failed for path: {path}")
@@ -541,6 +620,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_create", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"create failed for path: {path}")
@@ -645,6 +725,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_mkdir", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"mkdir failed for path: {path}")
@@ -704,6 +785,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_release", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"release failed for path: {path}")
@@ -789,6 +871,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_rename", command_args=command_args)
+        self.invalidate_caches(old, new)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"rename failed for old: {old}, new: {new}")
@@ -807,6 +890,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_rmdir", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"rmdir failed for path: {path}")
@@ -827,6 +911,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_link", command_args=command_args)
+        self.invalidate_caches(target, source)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"link failed for target: {target}, source: {source}")
@@ -847,6 +932,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_symlink", command_args=command_args)
+        self.invalidate_caches(target, source)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"symlink failed for target: {target}, source: {source}")
@@ -867,6 +953,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_truncate", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"truncate failed for path: {path}")
@@ -885,6 +972,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_unlink", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"unlink failed for path: {path}")
@@ -918,6 +1006,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_utimens", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"utimens failed for path: {path}")
@@ -936,6 +1025,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_write", command_args=command_args, binary_data=data)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"write failed for path: {path}")
@@ -1057,6 +1147,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_setxattr", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"setxattr failed for path: {path}")
@@ -1089,6 +1180,7 @@ class OTPmeFS(fuse.Operations):
         response_code, \
         response, \
         binary_data = self.send(command="fsop_removexattr", command_args=command_args)
+        self.invalidate_caches(path)
         if status is not True:
             raise fuse.FuseOSError(response_code)
         return response
