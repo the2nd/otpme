@@ -76,8 +76,12 @@ def fix_snapshot_path():
                             if stat.S_ISDIR(mode):
                                 is_dir = True
                         if not is_dir:
+                            # Check for longname.
                             x = f"{path}-{self.snapshot}"
-                            if len(x) <= 255:
+                            basename = os.path.basename(x)
+                            tree_name = f"{basename}-{self.snapshot}"
+                            path_len = len(tree_name)
+                            if path_len <= 255:
                                 path = x
                             else:
                                 basename = os.path.basename(path)
@@ -1310,9 +1314,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
             if not x_path.endswith(self.snapshot):
                 continue
             if longname:
+                # load_longname() returns the entries complete rel path. We
+                # replace the last component only, so we need the basename.
+                # Using the rel path here would add all parent directories a
+                # second time.
                 longname = self.load_longname(longname)
                 x_path = x_path.split("/")
-                x_path[-1] = longname
+                x_path[-1] = os.path.basename(longname)
             else:
                 x_path = x_path.split("/")
             x_path.pop(1)
@@ -1322,9 +1330,19 @@ class OTPmeBackupP1(OTPmeFsServer1):
             result['getattr'][x_path] = x_data
         for x_path in dict(result['getxattr']):
             x_data = result['getxattr'].pop(x_path)
+            if x_path.endswith(".longname"):
+                longname = x_path
+                x_path = re.sub('(.*).longname$', r'\1', x_path)
+            else:
+                longname = False
             if not x_path.endswith(self.snapshot):
                 continue
-            x_path = x_path.split("/")
+            if longname:
+                longname = self.load_longname(longname)
+                x_path = x_path.split("/")
+                x_path[-1] = os.path.basename(longname)
+            else:
+                x_path = x_path.split("/")
             x_path.pop(1)
             x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
