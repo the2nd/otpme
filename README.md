@@ -1,3 +1,89 @@
+# OTPme
+
+OTPme is a distributed, multi-site authentication and authorization system
+that combines identity management, PKI, single sign-on, RADIUS, LDAP, PAM
+and file shares under a single directory tree.
+
+Its central design principle: every user carries **many independent tokens**
+instead of one shared password. A user might unlock their workstation with a
+FIDO2 hardware key, mount OTPme file shares with the same key, connect to
+WLAN with a per-device password over RADIUS, and use a dedicated
+application-scoped token for CalDAV/CardDAV/IMAP from a smartphone — all
+managed under one identity. Lose a laptop, delete that laptop's token; no
+other device is affected and no password anywhere needs rotating.
+
+## What OTPme offers
+
+- **Token types** — passwords (Argon2/PBKDF2/HKDF), HOTP/TOTP, FIDO2/U2F,
+  WebAuthn passkeys, YubiKey HMAC challenge-response, YubiKey in PIV mode,
+  mOTP, SSH keys, short-lived SSO temp-passwords, script-driven tokens for
+  custom auth backends, and *link tokens* that delegate to another user's
+  token.
+- **Access control by client + access group** — every service (RADIUS NAS,
+  LDAP consumer, SSO relying party, …) is an OTPme *client* bound to
+  an *access group*; only tokens or roles in that group can authenticate.
+  Access groups carry per-service session lifetime and parallel-session
+  caps, and can be nested into child access groups. The SSO access group
+  is an exception — its rights do not cascade to children, so each
+  service listed in the SSO portal can be permissioned individually.
+- **Object-level ACLs** — orthogonal to access groups: fine-grained
+  view/modify/delete/enable/disable permissions on individual objects,
+  inheritable down the unit tree, assignable to a user/token or a role.
+- **Realms, sites, units** — a distributed topology with intra-site cluster
+  replication (`clusterd`) and cross-site synchronisation (`syncd`/`hostd`),
+  optional cross-site *trust cascades* for federated login.
+- **Built-in PKI** — realm CA, per-site CAs, and node/host certs for
+  daemon-to-daemon TLS; no external CA required.
+- **Web SSO portal with OIDC provider** — front-end can be deployed into a
+  DMZ (`ssohost` install) with no backend secrets on the box.
+- **RADIUS** via FreeRADIUS (rlm_python module or `otpme-auth` as
+  ntlm_auth drop-in) — WLAN, VPN, anything RADIUS-capable, including
+  MSCHAP / MS-CHAPv2 (PEAP, EAP-MSCHAPv2) for Windows-flavoured
+  supplicants.
+- **LDAP frontend** (`ldapd`) — external services bind through a familiar
+  LDAP interface; the `dc=<client>` component selects which access group
+  the bind is scoped to.
+- **PAM module** for system login, with `nsscache` integration for POSIX
+  user/group lookups.
+- **Offline authentication** — during an online login, hosts cache the
+  token and session data encrypted with an Argon2i-derived key from the
+  user's password / PIN / smartcard response. When the server is
+  unreachable, hosts authenticate against the local cache with OTP replay
+  protection; used OTPs and counters resync back to the server on
+  reconnect. Expiry is bounded by both login-age and inactivity.
+- **File shares** — FUSE-mounted OTPme shares served by `fsd`, with
+  optional transparent per-share encryption (share key wrapped per user).
+  Shares can be pinned to a *node pool* to control placement and locality.
+- **Encrypted backups** to a dedicated backup host, with e-mail reporting.
+- **Roles, groups, resolvers** — role-in-role composition, groups usable
+  as sync groups, and resolvers that import users from external sources.
+- **Policies** — a pluggable rule engine: `password` (quality / dictionary
+  strength), `authonaction` (step-up reauth on sensitive actions),
+  `logintimes` (cron-style login windows), `autodisable`
+  (time-boxed accounts / tokens), `forcetoken` (restrict which token types
+  and methods a service accepts), `idrange` (sequential or random UID/GID
+  allocation), and `objecttemplates` / `default{groups,roles,units,policies}`
+  for zero-touch defaults on freshly created objects.
+- **Server-side scripts** (`scriptd`) — auth, share and backup scripts as
+  an extension point for custom backends.
+- **Client-side agent** (`otpme-agent`) — holds session state and, when
+  configured, keeps an unlocked YubiKey PIV handler so subsequent
+  sign / verify / encrypt / decrypt operations (e.g. mounting an
+  encrypted share) don't prompt for the PIV PIN again.
+- **Trash & restore** — soft-deletion with inspectable dumps before
+  restore.
+- **Audit log** — dedicated audit trail of who changed which object,
+  independent of daemon logs.
+- **Per-object config inheritance** — most parameters cascade
+  site → unit → node/host → user → token, with most-specific match wins.
+
+Full architecture, daemon layout and config-parameter reference are in the
+[otpme.7](https://otpme.readthedocs.io/en/latest/otpme.7/) manpage.
+A hands-on walkthrough is in the
+[Getting Started guide](https://otpme.readthedocs.io/en/latest/getting-started/).
+
+---
+
 # Installation instructions
 
 > **Warning:** OTPme is alpha software. Do not use it in production. Expect breaking changes, incomplete features and bugs.

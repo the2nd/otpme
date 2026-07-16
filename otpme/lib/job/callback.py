@@ -489,7 +489,6 @@ class JobCallback(object):
                                    key=jwt_key,
                                    algorithm='RS256')
         except Exception as e:
-            print("PPPPPPPPPPPPPPPPPPPPPPPPPPPP", jwt)
             config.raise_exception()
             msg = _("JWT decoding failed.")
             raise OTPmeException(msg) from e
