@@ -22,6 +22,7 @@ from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.classes.unit import Unit
 from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
@@ -97,6 +98,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -702,6 +737,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_sync_units(
         self,
         run_policies: bool=True,
@@ -731,6 +767,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_sync_units(
         self,
         run_policies: bool=True,
@@ -760,6 +797,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_deletions(
         self,
         run_policies: bool=True,
@@ -789,6 +827,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_deletions(
         self,
         run_policies: bool=True,
@@ -818,6 +857,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_key_attribute(
         self,
         object_type: str,
@@ -878,6 +918,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['run'])
     @audit_log()
+    @object_changelog()
     def run(
         self,
         object_types: Union[List,None]=None,
@@ -1819,6 +1860,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['sync_interval'])
     @audit_log()
+    @object_changelog()
     def set_sync_interval(
         self,
         sync_interval: str,
@@ -1884,6 +1926,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['delete:objects'])
     @audit_log()
+    @object_changelog()
     def delete_objects(
         self,
         object_types: List=None,
@@ -1973,6 +2016,7 @@ class Resolver(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def delete(
         self,
         delete_objects: bool=False,

@@ -17,6 +17,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -114,6 +115,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -1230,6 +1265,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_sync_by_login_token(
         self,
         run_policies: bool=True,
@@ -1257,6 +1293,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_sync_by_login_token(
         self,
         run_policies: bool=True,
@@ -1284,6 +1321,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_sync_group(
         self,
         group_name: str,
@@ -1328,6 +1366,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_sync_group(
         self,
         group_name: str,
@@ -1372,6 +1411,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_sync_groups(
         self,
         run_policies: bool=True,
@@ -1399,6 +1439,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_sync_groups(
         self,
         run_policies: bool=True,

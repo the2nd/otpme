@@ -14,6 +14,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.classes.user import User
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -492,6 +493,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_user_acl(self, acl, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add user ACL. """
@@ -527,6 +529,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def del_user_acl(self, acl, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Del token ACL. """
@@ -550,6 +553,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_token_acl(self, acl, **kwargs):
         """ Add token ACL. """
         return self._add_token_acl(acl, acl_type="token", **kwargs)
@@ -558,6 +562,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def del_token_acl(self, acl, **kwargs):
         """ Del token ACL. """
         return self._del_token_acl(acl, acl_type="token", **kwargs)
@@ -566,6 +571,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_creator_acl(self, acl, **kwargs):
         """ Add token creator ACL. """
         return self._add_token_acl(acl, acl_type="creator", **kwargs)
@@ -574,6 +580,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def del_creator_acl(self, acl, **kwargs):
         """ Del token creator ACL. """
         return self._del_token_acl(acl, acl_type="creator", **kwargs)

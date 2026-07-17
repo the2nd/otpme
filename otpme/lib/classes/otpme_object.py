@@ -36,6 +36,7 @@ from otpme.lib import otpme_acl
 from otpme.lib import encryption
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.extensions import utils
@@ -111,6 +112,7 @@ global_read_value_acls = {
                                 "resolver",
                                 "resolver_key",
                                 "resolver_checksum",
+                                "changelog",
                                 ],
             }
 
@@ -147,6 +149,10 @@ global_write_value_acls = {
                                 "config",
                                 "attribute",
                                 "info",
+                                "changelog",
+                                ],
+                    "clear"     : [
+                                "changelog",
                                 ],
 }
 
@@ -408,6 +414,25 @@ def register_config_parameters():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Whether commands on an object are recorded in its changelog. Valid for all
+    # tree object types (incl. site/unit/token) and resolved with inheritance
+    # (object -> unit -> site). A site's 'force_changelog' (below) overrides
+    # these per-object settings.
+    # NOTE: we pass config.tree_object_types by reference. It is (possibly) still
+    # empty here (this module registers before the classes register their types),
+    # but register_object_type() appends to that same list in place, so it is
+    # complete by the time object_types is read at runtime. Do NOT build a new
+    # list (e.g. '+ [...]'), that would freeze an incomplete copy.
+    config.register_config_parameter(name="changelog",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=config.tree_object_types)
+    # Site only: force changelog recording for all objects of the site,
+    # ignoring the per-object 'changelog' parameters.
+    config.register_config_parameter(name="force_changelog",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site'])
 
 def get_ldif(ldif, attributes=None, verify_acl_func=None,
     fake_dc=None, auth_token=None, text=False, **kwargs):
@@ -2045,6 +2070,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "LAST_MODIFIED_BY_CACHE",
                             "TEMPLATE",
                             "ORIGIN",
+                            "CHANGELOG",
                             ],
                         },
 
@@ -2081,6 +2107,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "LAST_MODIFIED_BY_CACHE",
                             "TEMPLATE",
                             "ORIGIN",
+                            "CHANGELOG",
                             ],
                         },
                     }
@@ -2360,6 +2387,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         parameter: str,
         recursive: bool=True,
+        check_token: bool=True,
         verify_acls: bool=False,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2395,7 +2423,7 @@ class OTPmeObject(OTPmeBaseObject):
             para_getter = None
         # If we have an authenticated user we have to check users token first
         # because user/token settings are preferred over object settings.
-        if config.auth_token:
+        if check_token and config.auth_token:
             try:
                 value = config.auth_token.config_params[parameter]
                 if para_getter:
@@ -2688,6 +2716,11 @@ class OTPmeObject(OTPmeBaseObject):
                                             'type'          : int,
                                             'required'      : True,
                                         },
+            'CHANGELOG'                 : {
+                                            'var_name'      : 'changelog',
+                                            'type'          : dict,
+                                            'required'      : False,
+                                        },
             }
         return base_config
 
@@ -2871,6 +2904,179 @@ class OTPmeObject(OTPmeBaseObject):
         if self.full_write_lock:
             self.acquire_cached_lock(callback=callback)
         return callback.ok()
+
+    def set_changelog(self, text):
+        """ Set the immutable 'detail' text of the running command's changelog
+        entry.
+
+        Called from within a command method (typically at the branch that
+        decides the actual outcome, e.g. share.remove_token with/without
+        --keep-share-key) to enrich the changelog entry. The text is stored in
+        the immutable 'detail' part of the entry and is NOT editable later. The
+        editable part is the user's --changelog comment.
+        """
+        from otpme.lib import changelog
+        changelog.set_pending_detail(text)
+
+    def add_changelog_entry(
+        self,
+        action=None,
+        detail=None,
+        comment=None,
+        callback: JobCallback=default_callback,
+        ):
+        """ Append an entry to the object changelog.
+
+        Normally called by the object_changelog decorator. The entry is
+        persisted within the running transaction, so a changelog change bumps
+        the object checksum and triggers a resync.
+
+            action  : immutable auto generated default text.
+            detail  : immutable text set by the method via set_changelog().
+            comment : editable text from the user's --changelog option.
+        """
+        if not action and not detail and not comment:
+            return
+        if callback is None:
+            callback = default_callback
+        if config.auth_token:
+            changed_by = config.auth_token.rel_path
+        else:
+            changed_by = "API"
+        entry = {
+                'time'      : time.time(),
+                'by'        : changed_by,
+                'action'    : action,
+                }
+        if detail:
+            entry['detail'] = detail
+        if comment:
+            entry['comment'] = comment
+        # Use a unique, order preserving id as key (the changelog is a dict, as
+        # incremental_objects cannot track dicts nested in a list).
+        entry_id = time.time_ns()
+        while str(entry_id) in self.changelog:
+            entry_id += 1
+        self.changelog[str(entry_id)] = entry
+        # Persist within the running transaction (triggers resync).
+        self._cache(callback=callback)
+
+    def changelog_enabled(self):
+        """ Whether commands on this object are recorded in the changelog.
+
+        A site's 'force_changelog' parameter (resolved via the inheritance chain
+        up to the site) forces recording on and overrides everything; otherwise
+        the 'changelog' parameter is resolved the same way, defaulting to True.
+        check_token=False: this is a target-object decision, so it must not
+        depend on the acting auth token's config params.
+        """
+        if self.get_config_parameter("force_changelog", check_token=False):
+            return True
+        value = self.get_config_parameter("changelog", check_token=False)
+        if value is None:
+            return True
+        return bool(value)
+
+    @check_acls(['view:changelog'])
+    def show_changelog(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Show the object changelog. """
+        output = []
+        for i, entry_id in enumerate(self.changelog):
+            entry = self.changelog[entry_id]
+            ts = entry.get('time', None)
+            try:
+                when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+            except Exception:
+                when = str(ts)
+            line = "%s: %s: %s: %s" % (i, when,
+                                    entry.get('by', ""),
+                                    entry.get('action', "") or "")
+            detail = entry.get('detail', None)
+            if detail:
+                line = "%s (%s)" % (line, detail)
+            comment = entry.get('comment', None)
+            if comment:
+                line = "%s [%s]" % (line, comment)
+            output.append(line)
+        return callback.ok("\n".join(output))
+
+    def _resolve_changelog_entry(self, entry_id):
+        """ Map a display index to a changelog entry key (or None). """
+        try:
+            idx = int(entry_id)
+        except Exception:
+            return None
+        keys = list(self.changelog)
+        if idx < 0 or idx >= len(keys):
+            return None
+        return keys[idx]
+
+    @check_acls(['edit:changelog'])
+    @object_lock()
+    @backend.transaction
+    def edit_changelog(
+        self,
+        entry_id,
+        comment,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Set/change the editable comment of a changelog entry.
+
+        Only the 'comment' part (originally set via --changelog) can be edited.
+        The auto generated 'action' and the method 'detail' are immutable.
+        """
+        entry_key = self._resolve_changelog_entry(entry_id)
+        if entry_key is None:
+            msg = _("Unknown changelog entry: {entry_id}")
+            msg = msg.format(entry_id=entry_id)
+            return callback.error(msg)
+        # Update the nested field in place (tracked incrementally via dict_path).
+        self.changelog[entry_key]['comment'] = comment
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:changelog'])
+    @object_lock()
+    @backend.transaction
+    def del_changelog(
+        self,
+        entry_id,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove the editable comment of a changelog entry. """
+        entry_key = self._resolve_changelog_entry(entry_id)
+        if entry_key is None:
+            msg = _("Unknown changelog entry: {entry_id}")
+            msg = msg.format(entry_id=entry_id)
+            return callback.error(msg)
+        entry = self.changelog[entry_key]
+        if entry.get('comment', None) is None:
+            msg = _("Changelog entry has no comment.")
+            return callback.error(msg)
+        del self.changelog[entry_key]['comment']
+        return self._cache(callback=callback)
+
+    @check_acls(['clear:changelog'])
+    @object_lock()
+    @backend.transaction
+    def clear_changelog(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Delete the complete changelog of the object. """
+        if not self.changelog:
+            msg = _("Changelog is already empty.")
+            return callback.error(msg)
+        # Assigning an empty dict records an incremental delete for every entry
+        # (dict prop setter), so the cleared changelog syncs correctly.
+        self.changelog = {}
+        return self._cache(callback=callback)
 
     @object_lock()
     def _write(
@@ -3068,6 +3274,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:extension'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_extension(
         self,
         extension: str,
@@ -3137,6 +3344,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:extension'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_extension(
         self,
         extension: str,
@@ -3575,6 +3783,7 @@ class OTPmeObject(OTPmeBaseObject):
     @cli.check_rapi_opts()
     @check_acls(['add:role'])
     @audit_log()
+    @object_changelog()
     def add_role(
         self,
         role_name: str=None,
@@ -3663,6 +3872,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['remove:role'])
     @audit_log()
+    @object_changelog()
     def remove_role(
         self,
         role_name: str,
@@ -3741,6 +3951,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['add:token'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_token(
         self,
         token_path: str,
@@ -4031,6 +4242,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['remove:token'])
     @audit_log()
+    @object_changelog()
     def remove_token(
         self,
         token_path: str,
@@ -4140,6 +4352,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_host(
         self,
         host_name: str=None,
@@ -4191,6 +4404,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_host(
         self,
         host_name: str,
@@ -4296,6 +4510,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_device(
         self,
         device_name: str=None,
@@ -4347,6 +4562,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_device(
         self,
         device_name: str,
@@ -4632,6 +4848,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['add:dynamic_groups'])
     @audit_log()
+    @object_changelog()
     def add_dynamic_group(
         self,
         group_name: str,
@@ -4673,6 +4890,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['remove:dynamic_groups'])
     @audit_log()
+    @object_changelog()
     def remove_dynamic_group(
         self,
         group_name: str,
@@ -4713,6 +4931,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:policy'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_policy(
         self,
         policy_name: str,
@@ -4832,6 +5051,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:policy'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_policy(
         self,
         policy_name: str,
@@ -5656,6 +5876,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:attribute'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_attribute(
         self,
         attribute: str,
@@ -5729,6 +5950,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:attribute'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def modify_attribute(
         self,
         attribute: str,
@@ -5800,6 +6022,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['delete:attribute'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_attribute(
         self,
         attribute: str,
@@ -5901,6 +6124,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:object_class'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_object_class(
         self,
         object_class: str,
@@ -5956,6 +6180,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['delete:object_class'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_object_class(
         self,
         object_class: bool=False,
@@ -6143,6 +6368,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_special_user()
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable(
         self,
         force: bool=False,
@@ -6197,6 +6423,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['disable:object'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable(
         self,
         force: bool=False,
@@ -7254,6 +7481,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_auto_disable(
         self,
         auto_disable: Union[str, int],
@@ -7304,6 +7532,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:secret'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_secret(
         self,
         secret: str=None,
@@ -7475,6 +7704,7 @@ class OTPmeObject(OTPmeBaseObject):
     # locks longer than needed and slows down other jobs while moving.
     #@backend.transaction
     @audit_log()
+    @object_changelog()
     def move(
         self,
         new_unit: str,
@@ -8009,6 +8239,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:signature'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_sign(
         self,
         signature: object,
@@ -8105,6 +8336,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['delete:signature'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_sign(
         self,
         username: Union[str,None]=None,
@@ -8493,6 +8725,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:description'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def change_description(
         self,
         description: str=None,
@@ -8533,6 +8766,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:info'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def change_info(
         self,
         info: str=None,
@@ -9036,6 +9270,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def _rename(
         self,
         new_oid: oid.OTPmeOid,
@@ -9219,6 +9454,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphan_acls(
         self,
         force: bool=False,
@@ -9267,6 +9503,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphan_policies(
         self,
         force: bool=False,
@@ -9316,6 +9553,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphan_signatures(
         self,
         force: bool=False,
@@ -9383,6 +9621,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @audit_log()
+    @object_changelog()
     def set_config_param(
         self,
         parameter: str,
@@ -9903,6 +10142,7 @@ class OTPmeClientObject(OTPmeObject):
     @check_acls(['limit_logins'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def limit_logins(
         self,
         run_policies: bool=True,
@@ -9930,6 +10170,7 @@ class OTPmeClientObject(OTPmeObject):
     @check_acls(['unlimit_logins'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def unlimit_logins(
         self,
         run_policies: bool=True,

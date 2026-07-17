@@ -31,6 +31,7 @@ from otpme.lib import encryption
 from otpme.lib.encryption import aes
 from otpme.lib import sign_key_cache
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib import multiprocessing
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -133,6 +134,8 @@ write_value_acls = {
                                 "private_key_pass",
                                 "sign_public_key",
                                 "encrypt_public_key",
+                                "sign_private_key",
+                                "encrypt_private_key",
                                 "key_script",
                                 "auth_script",
                                 "agent_script",
@@ -183,6 +186,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -2307,6 +2344,7 @@ class User(OTPmeObject):
         return callback.ok()
 
     @audit_log()
+    @object_changelog()
     def move(self,
         *args,
         _caller: str="API",
@@ -2356,6 +2394,7 @@ class User(OTPmeObject):
     @check_acls(['add:photo'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_photo(
         self,
         image_data: str,
@@ -2404,6 +2443,7 @@ class User(OTPmeObject):
     @check_acls(['del:photo'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_photo(
         self,
         run_policies: bool=True,
@@ -2564,6 +2604,7 @@ class User(OTPmeObject):
     @object_lock()
     @check_acls(['edit:group'])
     @audit_log()
+    @object_changelog()
     def change_group(
         self,
         new_group: str,
@@ -2650,6 +2691,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_sign_private_key(
         self,
         private_key: str,
@@ -2669,6 +2711,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_encrypt_private_key(
         self,
         private_key: str,
@@ -2716,30 +2759,43 @@ class User(OTPmeObject):
             setattr(self, attr, public_key)
         return self._cache(callback=callback)
 
-    @check_acls(['edit:sign_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_sign_public_key(
         self,
         public_key: str,
         force: bool=False,
         verbose_level: int=0,
+        verify_acls: bool=True,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Set users signing public key. """
+        check_acl = True
+        if not verify_acls:
+            check_acl = False
+        if config.auth_token:
+            if config.auth_token.uuid == self.uuid:
+                check_acl = False
+        if check_acl:
+            acl = "edit:sign_public_key"
+            if not self.verify_acl(acl):
+                msg = _("Permission denied.")
+                return callback.error(msg)
         return self._change_public_key("sign", public_key, force,
                                         run_policies, callback, _caller)
 
-    @check_acls(['edit:encrypt_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_encrypt_public_key(
         self,
         public_key: str,
         force: bool=False,
+        verify_acls: bool=True,
         verbose_level: int=0,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -2747,6 +2803,17 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Set users encryption public key. """
+        check_acl = True
+        if not verify_acls:
+            check_acl = False
+        if config.auth_token:
+            if config.auth_token.uuid == self.uuid:
+                check_acl = False
+        if check_acl:
+            acl = "edit:encrypt_public_key"
+            if not self.verify_acl(acl):
+                msg = _("Permission denied.")
+                return callback.error(msg)
         return self._change_public_key("encrypt", public_key, force,
                                         run_policies, callback, _caller)
 
@@ -2876,12 +2943,26 @@ class User(OTPmeObject):
         private: bool=False,
         decrypt: bool=False,
         aes_key: Union[str,None]=None,
+        verify_acls: bool=True,
         force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Return user sign key as string. """
+        check_acl = True
+        if not verify_acls:
+            check_acl = False
+        if config.auth_token:
+            if config.auth_token.uuid == self.uuid:
+                check_acl = False
+        if check_acl:
+            acl = "view:sign_public_key"
+            if private:
+                acl = "view:sign_private_key"
+            if not self.verify_acl(acl):
+                msg = _("Permission denied.")
+                return callback.error(msg)
         return self._get_key_dispatch("sign", private, decrypt, aes_key,
                                         callback, _caller)
 
@@ -2891,11 +2972,25 @@ class User(OTPmeObject):
         decrypt: bool=False,
         aes_key: Union[str,None]=None,
         force: bool=False,
+        verify_acls: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Return user encrypt key as string. """
+        check_acl = True
+        if not verify_acls:
+            check_acl = False
+        if config.auth_token:
+            if config.auth_token.uuid == self.uuid:
+                check_acl = False
+        if check_acl:
+            acl = "view:encrypt_public_key"
+            if private:
+                acl = "view:encrypt_private_key"
+            if not self.verify_acl(acl):
+                msg = _("Permission denied.")
+                return callback.error(msg)
         return self._get_key_dispatch("encrypt", private, decrypt, aes_key,
                                         callback, _caller)
 
@@ -2904,6 +2999,7 @@ class User(OTPmeObject):
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def gen_keys(
         self,
         key_mode: str="client",
@@ -3095,6 +3191,7 @@ class User(OTPmeObject):
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def del_keys(
         self,
         force: bool=False,
@@ -3211,6 +3308,7 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     @audit_log()
+    @object_changelog()
     def import_sign_key(
         self,
         private_key: str,
@@ -3219,6 +3317,7 @@ class User(OTPmeObject):
         aes_key_enc: Union[str,None]=None,
         pass_hash_type: str="PBKDF2",
         force: bool=False,
+        verify_acls: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -3226,6 +3325,16 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Import users sign private/public key pair. """
+        check_acl = True
+        if not verify_acls:
+            check_acl = False
+        if config.auth_token:
+            if config.auth_token.uuid == self.uuid:
+                check_acl = False
+        if check_acl:
+            if not self.verify_acl("edit:sign_private_key"):
+                msg = _("Permission denied.")
+                return callback.error(msg)
         return self._import_key("sign", private_key, encrypt_key, aes_key,
                                 aes_key_enc, pass_hash_type, force,
                                 run_policies, callback, _caller)
@@ -3234,6 +3343,7 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     @audit_log()
+    @object_changelog()
     def import_encrypt_key(
         self,
         private_key: str,
@@ -3249,6 +3359,16 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Import users encrypt private/public key pair. """
+        check_acl = True
+        if not verify_acls:
+            check_acl = False
+        if config.auth_token:
+            if config.auth_token.uuid == self.uuid:
+                check_acl = False
+        if check_acl:
+            if not self.verify_acl("edit:encrypt_private_key"):
+                msg = _("Permission denied.")
+                return callback.error(msg)
         return self._import_key("encrypt", private_key, encrypt_key, aes_key,
                                 aes_key_enc, pass_hash_type, force,
                                 run_policies, callback, _caller)
@@ -3302,6 +3422,7 @@ class User(OTPmeObject):
     @check_acls(['edit:private_key_pass'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_key_pass(
         self,
         run_policies: bool=True,
@@ -3367,6 +3488,7 @@ class User(OTPmeObject):
     @check_acls(['sign'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def sign_data(
         self,
         data: Union[str,None]=None,
@@ -4449,6 +4571,7 @@ class User(OTPmeObject):
     @check_acls(['unblock'])
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def unblock(
         self,
         access_group: Union[str,None]=None,
@@ -4506,6 +4629,7 @@ class User(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['deploy_data'])
+    @object_changelog()
     def deploy_token(
         self,
         token_name: str,
@@ -4686,6 +4810,7 @@ class User(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['password'])
+    @object_changelog()
     def add_token(
         self,
         token_name: Union[str,None]=None,
@@ -5043,6 +5168,7 @@ class User(OTPmeObject):
     @check_acls(['enable:auto_mount'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_auto_mount(
         self,
         run_policies: bool=True,
@@ -5071,6 +5197,7 @@ class User(OTPmeObject):
     @check_acls(['disable:auto_mount'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_auto_mount(
         self,
         run_policies: bool=True,
@@ -5099,6 +5226,7 @@ class User(OTPmeObject):
     @check_acls(['enable:disabled_login'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_disabled_login(
         self,
         run_policies: bool=True,
@@ -5130,6 +5258,7 @@ class User(OTPmeObject):
     @check_acls(['disable:disabled_login'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_disabled_login(
         self,
         run_policies: bool=True,
@@ -5162,6 +5291,7 @@ class User(OTPmeObject):
     @check_acls(['enable:autosign'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_autosign(
         self,
         run_policies: bool=True,
@@ -5190,6 +5320,7 @@ class User(OTPmeObject):
     @check_acls(['disable:autosign'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_autosign(
         self,
         run_policies: bool=True,
@@ -5218,6 +5349,7 @@ class User(OTPmeObject):
     @check_acls(['enable:auth_script'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_auth_script(
         self,
         run_policies: bool=True,
@@ -5263,6 +5395,7 @@ class User(OTPmeObject):
     @check_acls(['disable:auth_script'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_auth_script(
         self,
         run_policies: bool=True,
@@ -5297,6 +5430,7 @@ class User(OTPmeObject):
     @check_acls(['enable:login_script'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_login_script(
         self,
         run_policies: bool=True,
@@ -5340,6 +5474,7 @@ class User(OTPmeObject):
     @check_acls(['disable:login_script'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_login_script(
         self,
         run_policies: bool=True,
@@ -5374,6 +5509,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_key_script(
         self,
         key_script: Union[str,None]=None,
@@ -5408,6 +5544,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_agent_script(
         self,
         agent_script: Union[str,None]=None,
@@ -5442,6 +5579,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_login_script(
         self,
         login_script: Union[str,None]=None,
@@ -5476,6 +5614,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_auth_script(
         self,
         auth_script: Union[str,None]=None,
@@ -5633,6 +5772,7 @@ class User(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def rename(
         self,
         new_name: str,
@@ -5690,6 +5830,7 @@ class User(OTPmeObject):
     @one_time_policy_run
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['password'])
+    @object_changelog()
     def add(
         self,
         group: Union[str,None]=None,
@@ -6317,6 +6458,7 @@ class User(OTPmeObject):
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def delete(
         self,
         force: bool=False,
@@ -6429,6 +6571,7 @@ class User(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,

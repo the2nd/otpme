@@ -316,6 +316,56 @@ def _stash_user_language(language):
     else:
         flask_session.pop('user_language', None)
 
+def _stash_admin_access_state(state):
+    """ Cache the user's admin-access flag in the Flask session so a
+    context processor can surface a "Admin access enabled" badge on
+    every page without re-hitting ssod. Accepts either the raw dict
+    returned by the get/set_admin_access_state SSOD response
+    (``{'available': bool, 'enabled': bool, ...}``) or a plain bool
+    (from a toggle). Cleared with ``None``. """
+    if state is None:
+        flask_session.pop('admin_access_enabled', None)
+        return
+    if isinstance(state, dict):
+        enabled = bool(state.get('enabled'))
+    else:
+        enabled = bool(state)
+    flask_session['admin_access_enabled'] = enabled
+
+def _refresh_admin_access_state_post_login(username, sso_jwt, session_uuid):
+    """ Fetch admin-access state directly against ssod without going
+    through ``_send_ssod_command`` -- the login handler has just called
+    ``login_user()`` but ``g.user`` and the request cookies aren't
+    updated yet, so we pass the freshly-issued JWT / session_uuid in
+    explicitly. Best-effort: ssod hiccups don't fail the login. """
+    try:
+        client_ip = check_forwarded_for()[0]
+        command_args = {
+                        'username'      : username,
+                        'sso_jwt'       : sso_jwt,
+                        'client'        : config.sso_client_name,
+                        'client_ip'     : client_ip,
+                        'session_uuid'  : session_uuid,
+                    }
+        accept_language = _browser_preferred_language()
+        if accept_language:
+            command_args['accept_language'] = accept_language
+        ssod_conn = get_ssod_conn(username, mgmt=False)
+        try:
+            status, _status_code, response, _binary = ssod_conn.send(
+                    command="get_admin_access_state",
+                    command_args=command_args)
+        finally:
+            try:
+                ssod_conn.close()
+            except Exception:
+                pass
+        if not status:
+            return
+        _stash_admin_access_state(response)
+    except Exception as e:
+        logger.debug(f"admin-access post-login refresh failed: {e}")
+
 def _browser_preferred_language():
     """ Pull the highest-quality language tag from the request's
     Accept-Language header and reduce it to a short code (e.g. "de-CH"
@@ -567,6 +617,7 @@ def get_admin_access_state():
     if isinstance(response, dict):
         available = bool(response.get('available'))
         enabled = bool(response.get('enabled'))
+    _stash_admin_access_state(enabled)
     return jsonify({"available": available, "enabled": enabled})
 
 @app.route('/settings/admin_access', methods=['POST'])
@@ -584,9 +635,11 @@ def set_admin_access_state():
             mgmt=True)
     if error:
         return error
+    new_enabled = bool(response.get('enabled')) if isinstance(response, dict) else enabled
+    _stash_admin_access_state(new_enabled)
     return jsonify({
                 "status"    : "ok",
-                "enabled"   : bool(response.get('enabled')) if isinstance(response, dict) else enabled,
+                "enabled"   : new_enabled,
             })
 
 @app.route('/settings/oidc_consents', methods=['GET'])
@@ -1165,6 +1218,7 @@ def login():
     resp.set_cookie('otpme_sso_session', session_uuid,
                     httponly=True, secure=True, samesite='Lax')
     login_user(web_user)
+    _refresh_admin_access_state_post_login(username, sso_jwt, session_uuid)
     return resp
 
 def _do_sso_logout(response, skip_backchannel_client=None,
@@ -1192,6 +1246,10 @@ def _do_sso_logout(response, skip_backchannel_client=None,
     # /login follows Accept-Language again instead of sticking to the
     # previous user's profile language.
     flask_session.pop('user_language', None)
+    # Drop the cached admin-access flag so it doesn't survive into the
+    # next login (a different user, or the same user after an external
+    # toggle).
+    flask_session.pop('admin_access_enabled', None)
     # Drop the per-user /get_apps cache so a re-login (possibly with a
     # different token / different access-group membership) doesn't
     # briefly see the previous session's app tiles.
@@ -1699,4 +1757,5 @@ def fido2_auth_complete():
     resp.set_cookie('otpme_sso_session', session_uuid,
                     httponly=True, secure=True, samesite='Lax')
     login_user(web_user)
+    _refresh_admin_access_state_post_login(username, sso_jwt, session_uuid)
     return resp

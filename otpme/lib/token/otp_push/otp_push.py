@@ -18,6 +18,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -450,6 +451,7 @@ class OtppushToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_push_script(
         self,
         push_script: Union[str,None]=None,
@@ -477,6 +479,7 @@ class OtppushToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_push_token(
         self,
         push_token: Union[str,None]=None,
@@ -527,6 +530,7 @@ class OtppushToken(Token):
     @check_acls(['edit:phone_number'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_phone_number(
         self,
         phone_number: Union[str,None]=None,

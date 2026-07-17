@@ -79,6 +79,34 @@ cmd_help = {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
+    'changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca changelog {ca}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show object changelog.'),
+                                },
+                },
+    'edit_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca edit_changelog {ca} {entry_id} {comment}'),
+                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    '_help' :   {
+                                    'cmd'                   : _('Edit changelog entry comment.'),
+                                },
+                },
+    'del_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca del_changelog {ca} {entry_id}'),
+                    'cmd'   :   '<|object|> <entry_id>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove changelog entry comment.'),
+                                },
+                },
+    'clear_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca clear_changelog {ca}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Clear object changelog.'),
+                                },
+                },
 
     'touch'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca touch {ca}'),

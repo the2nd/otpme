@@ -29,6 +29,9 @@
       <a href="{{ url_for('index', _external=True, _scheme='https') }}">{{ gettext("Home") }}</a>
       {% if g.user.is_authenticated %}
         <span class="spacer"></span>
+        {% if admin_access_enabled %}
+        <span class="navbar-admin-badge" title="{{ gettext('Temporary passwords for admin access are currently enabled on your account.') }}">{{ gettext("Admin access enabled") }}</span>
+        {% endif %}
         <span class="navbar-user" title="{{ gettext('Logged in user') }}">{{ g.user.name }}</span>
         <a href="{{ url_for('settings', _external=True, _scheme='https') }}">{{ gettext("Settings") }}</a>
         <form method="POST" action="{{ url_for('logout', _external=True, _scheme='https') }}" class="navbar-logout-form">

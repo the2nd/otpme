@@ -47,6 +47,8 @@ class OTPmeMgmtP1(OTPmeClient1):
             args['verbose_level'] = config.verbose_level
         if 'force' not in args:
             args['force'] = config.force
+        if 'changelog' not in args:
+            args['changelog'] = config.changelog
         if 'language' not in args:
             args['language'] = config.language
         args['job_timeout'] = config.job_timeout

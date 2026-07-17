@@ -64,8 +64,11 @@ other device is affected and no password anywhere needs rotating.
   and methods a service accepts), `idrange` (sequential or random UID/GID
   allocation), and `objecttemplates` / `default{groups,roles,units,policies}`
   for zero-touch defaults on freshly created objects.
-- **Server-side scripts** (`scriptd`) — auth, share and backup scripts as
-  an extension point for custom backends.
+- **Server-side scripts** (`scriptd`) — hooks executed during specific
+  events: `auth` scripts run inside the authentication flow, `share`
+  scripts fire when a share is created or mounted (e.g. to set up
+  directories or permissions), and `backup` scripts run as pre/post
+  hooks around backup jobs.
 - **Client-side agent** (`otpme-agent`) — holds session state and, when
   configured, keeps an unlocked YubiKey PIV handler so subsequent
   sign / verify / encrypt / decrypt operations (e.g. mounting an

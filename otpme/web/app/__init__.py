@@ -98,6 +98,24 @@ babel = Babel(app, locale_selector=_select_locale)
 def _inject_get_locale():
     return {'get_locale': lambda: str(get_locale() or app.config['BABEL_DEFAULT_LOCALE'])}
 
+# Expose the cached admin-access flag to every template so the header
+# badge in base.html can be rendered without every view having to pass
+# it in explicitly. The value is stashed / cleared in views.py
+# (login, /settings/admin_access GET+POST, logout). Only surface it
+# while the user is currently authenticated -- the flask_session
+# cookie can survive briefly past logout in edge cases and we don't
+# want a stale flag to leak into the anonymous /login header.
+@app.context_processor
+def _inject_admin_access_state():
+    try:
+        from flask_login import current_user
+        if not getattr(current_user, 'is_authenticated', False):
+            return {'admin_access_enabled': False}
+        return {'admin_access_enabled':
+                bool(flask_session.get('admin_access_enabled'))}
+    except Exception:
+        return {'admin_access_enabled': False}
+
 lm = LoginManager()
 lm.init_app(app)
 # Plain GET navigation to a @login_required route (e.g. /settings)

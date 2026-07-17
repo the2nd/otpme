@@ -17,6 +17,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -507,6 +508,7 @@ class AuthonactionPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_reauth_timeout(self, reauth_timeout=0, run_policies=True,
         _caller="API", callback=default_callback, **kwargs):
         """ Change reauth timeout for this policy. """
@@ -542,6 +544,7 @@ class AuthonactionPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_reauth_expiry(self, reauth_expiry=0, run_policies=True,
         _caller="API", callback=default_callback, **kwargs):
         """ Change reauth expiry for this policy. """
@@ -577,6 +580,7 @@ class AuthonactionPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_hook(self, object_type, hook_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add hook. """
@@ -623,6 +627,7 @@ class AuthonactionPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_hook(self, object_type, hook_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Remove hook. """
@@ -664,6 +669,7 @@ class AuthonactionPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_whitelist(self, token_path=None, role_path=None,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
@@ -730,6 +736,7 @@ class AuthonactionPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_whitelist(self, token_path=None, role_path=None,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):

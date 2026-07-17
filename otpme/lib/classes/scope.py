@@ -17,6 +17,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -100,6 +101,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -860,6 +895,7 @@ class Scope(OTPmeObject):
     @check_acls(['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
@@ -988,6 +1024,7 @@ class Scope(OTPmeObject):
     @object_lock(full_lock=True)
     @check_acls(['rename:object'])
     @audit_log()
+    @object_changelog()
     def rename(
         self,
         new_name: str,
@@ -1086,6 +1123,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_client(
         self,
         client_name: str=None,
@@ -1151,6 +1189,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_client(
         self,
         client_name: str,
@@ -1193,6 +1232,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @check_acls(['edit:scope_id'])
     @audit_log()
+    @object_changelog()
     def change_scope_id(
         self,
         scope_id: str,
@@ -1208,6 +1248,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @check_acls(['enable:auto_member'])
     @audit_log()
+    @object_changelog()
     def enable_auto_member(
         self,
         run_policies: bool=True,
@@ -1238,6 +1279,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @check_acls(['disable:auto_member'])
     @audit_log()
+    @object_changelog()
     def disable_auto_member(
         self,
         run_policies: bool=True,
@@ -1278,6 +1320,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_group(
         self,
         group_name: str=None,
@@ -1331,6 +1374,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_group(
         self,
         group_name: str,

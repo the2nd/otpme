@@ -17,6 +17,7 @@ from otpme.lib import backend
 from otpme.lib.spsc import SPSC
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.spsc import check_number
 from otpme.lib.spsc import check_special
 from otpme.lib.spsc import check_uppercase
@@ -587,6 +588,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_password_min_len(self, password_min_len, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change min password length. """
@@ -612,6 +614,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_pin_min_len(self, pin_min_len, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change min PIN length. """
@@ -637,6 +640,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_strength_checker(self, strength_checker, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change strength checker. """
@@ -663,6 +667,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_strength_checker_opts(self, options, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change strength checker options. """
@@ -734,6 +739,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_require_number(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for number in password. """
@@ -763,6 +769,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_require_number(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for number in password. """
@@ -792,6 +799,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_require_upper(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for uppercase character in password. """
@@ -821,6 +829,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_require_upper(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for uppercase character in password. """
@@ -850,6 +859,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_require_lower(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for lowercase character in password. """
@@ -879,6 +889,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_require_lower(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for lowercase character in password. """
@@ -908,6 +919,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_require_special(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for special character in password. """
@@ -937,6 +949,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_require_special(self, force=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable check for special character in password. """
@@ -966,6 +979,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_strength_checker(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable strength checker. """
@@ -994,6 +1008,7 @@ class PasswordPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_strength_checker(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Disable strength checker. """

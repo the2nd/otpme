@@ -19,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -534,6 +535,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_card_type(
         self,
         card_type: Union[str,None]=None,
@@ -571,6 +573,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_key_type(
         self,
         key_type: str="rsa",
@@ -607,6 +610,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_ssh_public_key(
         self,
         ssh_public_key: Union[str,None]=None,
@@ -824,6 +828,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_2f_token(
         self,
         second_factor_token: str,
@@ -870,6 +875,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_2f_token(
         self,
         force: bool=False,
@@ -916,6 +922,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_2f_token(
         self,
         force: bool=False,
@@ -950,6 +957,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['private_key', 'password'])
+    @object_changelog()
     def deploy(
         self,
         public_key: Union[str,None]=None,
@@ -998,6 +1006,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_key_password(
         self,
         force: bool=False,

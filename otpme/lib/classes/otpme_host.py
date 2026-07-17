@@ -21,6 +21,7 @@ from otpme.lib import backend
 from otpme.lib.pki import utils
 from otpme.lib.classes.ca import Ca
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -528,6 +529,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_jotp(
         self,
         run_policies: bool=True,
@@ -560,6 +562,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_jotp(
         self,
         run_policies: bool=True,
@@ -587,6 +590,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_lotp(
         self,
         run_policies: bool=True,
@@ -619,6 +623,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_lotp(
         self,
         run_policies: bool=True,
@@ -646,6 +651,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_jotp_rejoin(
         self,
         run_policies: bool=True,
@@ -678,6 +684,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_jotp_rejoin(
         self,
         run_policies: bool=True,
@@ -706,6 +713,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_public_key(
         self,
         public_key: Union[str,None]=None,
@@ -746,6 +754,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def revoke_cert(
         self,
         run_policies: bool=True,
@@ -803,6 +812,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def renew_cert(
         self,
         cert_req: str,
@@ -999,6 +1009,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def join_realm(self,
         finish: bool=False,
         cert: Union[str,None]=None,
@@ -1097,6 +1108,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def leave_realm(
         self,
         keep_cert: bool=False,
@@ -1309,6 +1321,7 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,

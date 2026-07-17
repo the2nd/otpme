@@ -19,6 +19,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.idle import notify
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.realm import ADMIN_USER
@@ -166,6 +167,40 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -477,7 +512,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'oargs'             : ['keep_share_key', 'share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1037,8 +1072,6 @@ class Share(OTPmeObject):
         self.create_mode = "0o000"
         self.directory_mode = "0o000"
         self.force_group_uuid = None
-        self.master_password_tokens = []
-        self.master_password_hash_params = {}
 
         self.limit_by_hosts = False
         self.restore_share = None
@@ -1254,6 +1287,7 @@ class Share(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
+    @object_changelog()
     def add(
         self,
         home_share: bool=False,
@@ -1419,6 +1453,7 @@ class Share(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def rename(
         self,
         new_name: str,
@@ -1438,6 +1473,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:root_dir'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def set_root_dir(
         self,
         root_dir,
@@ -1467,6 +1503,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:force_group'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def force_group(
         self,
         group_name: str=None,
@@ -1507,6 +1544,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:force_create_mode'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def force_create_mode(
         self,
         create_mode,
@@ -1529,6 +1567,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:force_directory_mode'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def force_directory_mode(
         self,
         create_mode,
@@ -1551,6 +1590,7 @@ class Share(OTPmeObject):
     @check_acls(['enable:read_only'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_ro(
         self,
         force: bool=False,
@@ -1593,6 +1633,7 @@ class Share(OTPmeObject):
     @check_acls(['enable:read_only'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_ro(
         self,
         force: bool=False,
@@ -1669,6 +1710,7 @@ class Share(OTPmeObject):
     @check_acls(['add:master_password_token'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_master_password_token(
         self,
         token_path: str,
@@ -1709,6 +1751,7 @@ class Share(OTPmeObject):
     @check_acls(['remove:master_password_token'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_master_password_token(
         self,
         token_path: str,
@@ -1749,6 +1792,7 @@ class Share(OTPmeObject):
 
     @object_lock()
     @audit_log(ignore_args=['share_key'])
+    @object_changelog()
     def add_token(
         self,
         token_path: str,
@@ -1825,16 +1869,16 @@ class Share(OTPmeObject):
             else:
                 existing_key = self.get_share_key(username=user.name)
                 if not existing_key and not share_key:
-                    msg = _("Sending request to re-encrypt share key for user: {user_name}")
-                    msg = msg.format(user_name=user.name)
-                    callback.send(msg)
-                    auth_user = backend.get_object(uuid=config.auth_user.uuid)
-                    key_mode = auth_user.key_mode
+                    auth_user = config.auth_user
                     auth_user_share_key = self.get_share_key(username=auth_user.name)
                     if not auth_user_share_key:
                         msg = _("You dont have a share key for share: {share_name}")
                         msg = msg.format(share_name=self.name)
                         return callback.error(msg)
+                    msg = _("Sending request to re-encrypt share key for user: {user_name}")
+                    msg = msg.format(user_name=user.name)
+                    callback.send(msg)
+                    key_mode = auth_user.key_mode
                     share_key = callback.reencrypt_share_key(share_user=user.name,
                                                             share_key=auth_user_share_key,
                                                             key_mode=key_mode)
@@ -1908,9 +1952,11 @@ class Share(OTPmeObject):
     @check_acls(['remove:token'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_token(
         self,
         token_path: str,
+        keep_share_key: bool=None,
         persist_mount: bool=None,
         share_notifications: bool=None,
         _caller: str="API",
@@ -1962,10 +2008,24 @@ class Share(OTPmeObject):
                 msg = _("Not removing share key because of other assigned token: {token}")
                 msg = msg.format(token=other_token_assigned)
                 callback.send(msg)
+                self.set_changelog("kept share key (other token still assigned)")
             else:
-                self.del_share_key(username=token_user.name,
-                                    callback=callback,
-                                    verify_acls=False)
+                if keep_share_key is None:
+                    if self.home_share:
+                        keep_share_key = True
+                        msg = _("Not removing share key of home share.")
+                        callback.send(msg)
+                    else:
+                        keep_share_key = False
+                if not keep_share_key:
+                    self.del_share_key(username=token_user.name,
+                                        callback=callback,
+                                        verify_acls=False)
+                    self.set_changelog("removed share key")
+                elif self.home_share:
+                    self.set_changelog("kept share key (home share)")
+                else:
+                    self.set_changelog("kept share key")
 
         username = token_path.split("/")[0]
         if username == ADMIN_USER:
@@ -2025,6 +2085,7 @@ class Share(OTPmeObject):
     @object_lock()
     @audit_log()
     @check_acls(['add:role'])
+    @object_changelog()
     def add_role(
         self,
         role_name: str=None,
@@ -2134,6 +2195,7 @@ class Share(OTPmeObject):
     @object_lock()
     @audit_log()
     @check_acls(['remove:role'])
+    @object_changelog()
     def remove_role(
         self,
         role_name: str=None,
@@ -2241,6 +2303,7 @@ class Share(OTPmeObject):
     @check_acls(['add:share_key'])
     @object_lock()
     @audit_log(ignore_args=['share_key'])
+    @object_changelog()
     def add_share_key(
         self,
         username: str,
@@ -2330,6 +2393,7 @@ class Share(OTPmeObject):
     @check_acls(['delete:share_key'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_share_key(
         self,
         username: str,
@@ -2373,6 +2437,7 @@ class Share(OTPmeObject):
     @check_acls(['add:ppol'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_pool(
         self,
         pool_name: str,
@@ -2431,6 +2496,7 @@ class Share(OTPmeObject):
     @check_acls(['remove:ppol'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_pool(
         self,
         pool_name: str,
@@ -2485,6 +2551,7 @@ class Share(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_group(
         self,
         group_name: str=None,
@@ -2621,6 +2688,7 @@ class Share(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def remove_group(
         self,
         group_name: str,
@@ -2969,6 +3037,7 @@ class Share(OTPmeObject):
     @check_acls(['limit_hosts'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def limit_hosts(
         self,
         persist_mount: bool=None,
@@ -3009,6 +3078,7 @@ class Share(OTPmeObject):
     @check_acls(['unlimit_hosts'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def unlimit_hosts(
         self,
         persist_mount: bool=None,
@@ -3211,6 +3281,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:add_script'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_add_script(
         self,
         add_script: Union[str,None]=None,
@@ -3244,6 +3315,7 @@ class Share(OTPmeObject):
     @check_acls(['enable:mount_script'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_mount_script(
         self,
         run_policies: bool=True,
@@ -3289,6 +3361,7 @@ class Share(OTPmeObject):
     @check_acls(['disable:mount_script'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_mount_script(
         self,
         run_policies: bool=True,
@@ -3323,6 +3396,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:mount_script'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_mount_script(
         self,
         mount_script: Union[str,None]=None,

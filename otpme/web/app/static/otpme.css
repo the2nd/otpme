@@ -72,6 +72,22 @@ a:hover { text-decoration: underline; }
 .navbar-user::before {
   content: "\1F464  ";
 }
+/* Visible warning that the user has admin-access (temp-password) mode
+ * enabled on their account. Rendered on every page while enabled so
+ * the user (and anyone shoulder-surfing) can see that elevated auth
+ * is currently active. */
+.navbar-admin-badge {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7a3d00;
+  padding: 6px 12px;
+  background: #fff3cd;
+  border: 1px solid #ffe08a;
+  border-radius: 6px;
+}
+.navbar-admin-badge::before {
+  content: "\26A0\FE0F  ";
+}
 /* Logout is rendered as a POST form (CSRF-safe) but should look and
  * sit in the navbar exactly like the other nav links. */
 .navbar-logout-form { margin: 0; display: inline; }
@@ -659,6 +675,7 @@ a:hover { text-decoration: underline; }
   .navbar .spacer { flex-basis: 100%; height: 0; }
   .navbar a { padding: 6px 10px; }
   .navbar-user { padding: 4px 10px; font-size: 13px; }
+  .navbar-admin-badge { padding: 4px 10px; font-size: 12px; }
 }
 
 @media (max-width: 480px) {

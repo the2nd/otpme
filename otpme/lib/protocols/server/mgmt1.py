@@ -269,6 +269,12 @@ class OTPmeMgmtP1(OTPmeServer1):
         except KeyError:
             config.no_backend_writes = False
 
+        # Custom changelog text (--changelog). Consumed by the object_changelog
+        # decorator, not passed to the command method itself. Fall back to any
+        # value already set on config (e.g. API mode where the command does not
+        # round-trip through the client protocol).
+        config.changelog = command_args.pop("changelog", config.changelog)
+
         # Get global method args.
         for a in global_args:
             try:

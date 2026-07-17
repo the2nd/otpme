@@ -85,6 +85,7 @@ register_global_opt("-t <timeout>", "Connect timeout in seconds")
 register_global_opt("-tt <timeout>", "Connection timeout in seconds")
 register_global_opt("-c <config_file>", "Use alternative config file")
 register_global_opt("-f", "Do not ask any user questions")
+register_global_opt("--changelog <text>", "Add custom text to the object changelog.")
 register_global_opt("-u <username>", "User used for authentication (e.g. realm join)")
 register_global_opt("--no-dns", "Do not resolve OTPme site address via DNS")
 register_global_opt("--use-dns", "Resolve OTPme site address via DNS")
@@ -542,6 +543,10 @@ def get_main_opts(clear_cache=False, mod_name=None):
             main_opts['read_stdin_pass'] = True
         elif sys.argv[0] == "-f":
             main_opts['force'] = True
+            sys.argv.pop(0)
+        elif sys.argv[0] == "--changelog":
+            sys.argv.pop(0)
+            main_opts['changelog'] = str(sys.argv[0])
             sys.argv.pop(0)
         elif sys.argv[0] == "-l":
             main_opts['file_logging'] = True

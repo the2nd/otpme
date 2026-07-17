@@ -18,6 +18,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.idle import notify
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -109,6 +110,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -1957,6 +1992,7 @@ class Role(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def rename(
         self,
         new_name: str,
@@ -1980,6 +2016,7 @@ class Role(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
+    @object_changelog()
     def add(
         self,
         groups: Union[list,None]=None,
@@ -2060,6 +2097,7 @@ class Role(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def delete(
         self,
         force: bool=False,
@@ -2135,6 +2173,7 @@ class Role(OTPmeObject):
     @check_acls(['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,

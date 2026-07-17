@@ -16,6 +16,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -264,6 +265,7 @@ class DefaultunitsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def set_default_unit(self, object_type, unit_path=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set default unit. """

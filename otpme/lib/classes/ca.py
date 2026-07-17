@@ -20,6 +20,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.pki import utils
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -115,6 +116,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -890,6 +925,7 @@ class Ca(OTPmeObject):
     @check_acls(['edit:crl_validity'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def set_crl_validity(
         self,
         crl_validity: int,
@@ -907,6 +943,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_cert'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def create_cert(
         self,
         cn: str,
@@ -995,6 +1032,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_ca_cert'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def create_ca_cert(
         self,
         cn: str,
@@ -1062,6 +1100,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_server_cert'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def create_server_cert(
         self,
         cn: str,
@@ -1126,6 +1165,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_client_cert'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def create_client_cert(
         self,
         cn: str,
@@ -1313,6 +1353,7 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def update_crl(
         self,
         sign_algo: Union[str,None]=None,
@@ -1409,6 +1450,7 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def revoke_cert(
         self,
         cert: str,

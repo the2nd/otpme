@@ -22,6 +22,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.pki import utils
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
@@ -138,6 +139,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -885,6 +920,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_auth(
         self,
         force: bool=False,
@@ -929,6 +965,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_auth(
         self,
         force: bool=False,
@@ -977,6 +1014,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_sync(
         self,
         force: bool=False,
@@ -1016,6 +1054,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_sync(
         self,
         force: bool=False,

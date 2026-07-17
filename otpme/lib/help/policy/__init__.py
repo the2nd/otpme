@@ -87,6 +87,34 @@ cmd_help = {
                                     'cmd'                   : _('Get config parameter.'),
                                 },
                 },
+    'changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy changelog {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show object changelog.'),
+                                },
+                },
+    'edit_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy edit_changelog {policy} {entry_id} {comment}'),
+                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    '_help' :   {
+                                    'cmd'                   : _('Edit changelog entry comment.'),
+                                },
+                },
+    'del_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy del_changelog {policy} {entry_id}'),
+                    'cmd'   :   '<|object|> <entry_id>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove changelog entry comment.'),
+                                },
+                },
+    'clear_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy clear_changelog {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Clear object changelog.'),
+                                },
+                },
 
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-policy config -d -a {policy} {param} [value]'),

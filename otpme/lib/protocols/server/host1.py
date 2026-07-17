@@ -837,6 +837,12 @@ class OTPmeHostP1(OTPmeServer1):
                 message = {'message':"INCOMPLETE_COMMAND"}
                 status = False
                 return self.build_response(status, message, encrypt=False)
+            # Check node status.
+            this_node = backend.get_object(uuid=config.uuid)
+            if not this_node.enabled:
+                status = True
+                message = {'message':"Node disabled.", 'try_other_node':True}
+                return self.build_response(status, message, encrypt=False)
             # Load share
             share = backend.get_object(uuid=share_uuid)
             if not share:
@@ -846,12 +852,12 @@ class OTPmeHostP1(OTPmeServer1):
             # Block access on disabled share.
             if not share.enabled:
                 status = True
-                message = {'message':"Share disabled."}
+                message = {'message':"Share disabled.", 'try_other_node':False}
                 return self.build_response(status, message, encrypt=False)
             # Check token assignment.
             if not share.is_assigned_token(token_uuid=token_uuid):
                 status = True
-                message = {'message':"Share access denied."}
+                message = {'message':"Share access denied.", 'try_other_node':False}
                 return self.build_response(status, message, encrypt=False)
             # Check host limitations.
             if share.limit_by_hosts:
@@ -859,7 +865,7 @@ class OTPmeHostP1(OTPmeServer1):
                                                     include_groups=True,
                                                     include_roles=True):
                     status = True
-                    message = {'message':"Share host access denied."}
+                    message = {'message':"Share host access denied.", 'try_other_node':False}
                     return self.build_response(status, message, encrypt=False)
             # Nothing more to do for restore shares.
             if share.restore_share:

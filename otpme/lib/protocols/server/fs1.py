@@ -104,6 +104,8 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.aes_key = None
         # Deny access set by handle_share_setttings().
         self.block_access = False
+        # Indicates if other node should be tried on blocked access.
+        self.try_other_node = False
         # Indicates shutdown of connection.
         self.shutdown = False
         # Share settings handler thread.
@@ -154,6 +156,11 @@ class OTPmeFsP1(OTPmeFsServer1):
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
                 continue
+
+            try:
+                self.try_other_node = response['try_other_node']
+            except KeyError:
+                self.try_other_node = False
 
             if status:
                 self.block_access = True
@@ -215,9 +222,12 @@ class OTPmeFsP1(OTPmeFsServer1):
             return self.build_response(status, response)
 
         if self.block_access:
+            if self.try_other_node:
+                multiprocessing.cleanup(keep_queues=True)
+                os._exit(0)
             message, log_msg = _("Permission denied.", log=True)
             self.logger.warning(log_msg)
-            response = {'try_other_node':False, 'message':message}
+            response = {'try_other_node':self.try_other_node, 'message':message}
             return self.build_response(False, response)
 
         if self.mounted and self.root:

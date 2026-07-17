@@ -30,6 +30,7 @@ from otpme.lib import otpme_pass
 from otpme.lib.idle import notify
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -124,6 +125,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -1559,6 +1594,7 @@ class Token(OTPmeObject):
     @check_acls(['upgrade_pass_hash'])
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def upgrade_pass_hash(
         self,
         hash_type: Union[str,None]=None,
@@ -2317,6 +2353,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_pin(
         self,
         run_policies: bool=True,
@@ -2358,6 +2395,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_pin(
         self,
         run_policies: bool=True,
@@ -2402,6 +2440,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_sso_deploy(
         self,
         deploy_token_type: str=True,
@@ -2443,6 +2482,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_sso_deploy(
         self,
         run_policies: bool=True,
@@ -2477,6 +2517,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_mschap(
         self,
         run_policies: bool=True,
@@ -2518,6 +2559,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_mschap(
         self,
         run_policies: bool=True,
@@ -2550,6 +2592,7 @@ class Token(OTPmeObject):
     @check_acls(['remove:nt_hash'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_nt_hash(
         self,
         run_policies: bool=True,
@@ -2585,6 +2628,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_offline(
         self,
         run_policies: bool=True,
@@ -2635,6 +2679,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_offline(
         self,
         run_policies: bool=True,
@@ -2685,6 +2730,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_offline_expiry(
         self,
         expiry: str,
@@ -2743,6 +2789,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_offline_unused_expiry(
         self,
         expiry: str,
@@ -2801,6 +2848,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_session_keep(
         self,
         run_policies: bool=True,
@@ -2854,6 +2902,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_session_keep(
         self,
         run_policies: bool=True,
@@ -2909,6 +2958,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_auth_script(
         self,
         run_policies: bool=True,
@@ -2941,6 +2991,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_auth_script(
         self,
         run_policies: bool=True,
@@ -2971,6 +3022,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_auth_script(
         self,
         auth_script: Union[str,None]=None,
@@ -3107,6 +3159,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['password'])
+    @object_changelog()
     def change_password(
         self,
         password: Union[str,None]=None,
@@ -3275,6 +3328,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['temp_password'])
+    @object_changelog()
     def set_temp_password(
         self,
         temp_password: Union[str,None]=None,
@@ -3467,6 +3521,7 @@ class Token(OTPmeObject):
     @object_lock()
     @audit_log()
     @check_acls(['edit:password_hash'])
+    @object_changelog()
     def set_pass_hash(
         self,
         hash_json: str,
@@ -3536,6 +3591,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['pin'])
+    @object_changelog()
     def change_pin(
         self,
         pin: Union[str,None]=None,
@@ -3656,6 +3712,7 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_otp_format(
         self,
         otp_format: str,
@@ -3766,6 +3823,7 @@ class Token(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['password'])
+    @object_changelog()
     def add(
         self,
         owner_uuid: str,
@@ -3966,6 +4024,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def rename(
         self,
         new_name: str,
@@ -3992,6 +4051,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def move(
         self,
         new_token_path: str,
@@ -4195,6 +4255,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def delete(
         self,
         force: bool=False,

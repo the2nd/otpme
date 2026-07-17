@@ -34,6 +34,7 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.register import register_module
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.changelog import object_changelog
 from otpme.lib.pki.utils import check_ssl_cert_key
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
@@ -236,6 +237,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -2514,6 +2549,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_site_cert(
         self,
         site_cert: str=None,
@@ -2540,6 +2576,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_address(
         self,
         address: str,
@@ -2569,6 +2606,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_auth_fqdn(
         self,
         fqdn: str,
@@ -2684,6 +2722,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_mgmt_fqdn(
         self,
         fqdn: str,
@@ -2722,6 +2761,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_sso_fqdn(
         self,
         fqdn: str,
@@ -2760,6 +2800,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_radius_cert(
         self,
         radius_cert: str=None,
@@ -2795,6 +2836,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['radius_key'])
+    @object_changelog()
     def change_radius_key(
         self,
         radius_key: str=None,
@@ -2823,6 +2865,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_radius_ca_cert(
         self,
         radius_ca_cert: str=None,
@@ -2851,6 +2894,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_sso_cert(
         self,
         sso_cert: str=None,
@@ -2880,6 +2924,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['sso_key'])
+    @object_changelog()
     def change_sso_key(
         self,
         sso_key: str=None,
@@ -2906,6 +2951,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
+    @object_changelog()
     def change_sso_secret(
         self,
         secret: str,
@@ -2932,6 +2978,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
+    @object_changelog()
     def change_oidc_pairwise_secret(
         self,
         secret: str=None,
@@ -2992,6 +3039,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
+    @object_changelog()
     def change_sso_csrf_secret(
         self,
         secret: str,
@@ -3018,6 +3066,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['cluster_key'])
+    @object_changelog()
     def change_cluster_key(
         self,
         cluster_key: str,
@@ -3044,6 +3093,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_auth(
         self,
         force: bool=False,
@@ -3088,6 +3138,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_auth(
         self,
         force: bool=False,
@@ -3132,6 +3183,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_sync(
         self,
         force: bool=False,
@@ -3176,6 +3228,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_sync(
         self,
         force: bool=False,
@@ -3218,6 +3271,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def enable_oidc(
         self,
         force: bool=False,
@@ -3284,6 +3338,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def disable_oidc(
         self,
         force: bool=False,
@@ -3336,6 +3391,7 @@ class Site(OTPmeObject):
 
     @check_acls(['renew:oidc_key'])
     @audit_log()
+    @object_changelog()
     def gen_oidc_key(
         self,
         key_type: str=None,
@@ -3438,6 +3494,7 @@ class Site(OTPmeObject):
 
     @check_acls(['revoke:oidc_key'])
     @audit_log()
+    @object_changelog()
     def revoke_oidc_key(
         self,
         kid: str,
@@ -3571,6 +3628,7 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def renew_cert(
         self,
         valid: Union[int,None]=None,
@@ -3792,6 +3850,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_sso_host(
         self,
         host_name: str,
@@ -3843,6 +3902,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add_trust(
         self,
         site_name: str,
@@ -3898,6 +3958,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def del_trust(
         self,
         site_name: str,
@@ -3952,6 +4013,7 @@ class Site(OTPmeObject):
     @run_pre_post_add_policies()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def add(
         self,
         node_name: str,
@@ -5003,6 +5065,7 @@ class Site(OTPmeObject):
     @check_acls(['add:fido2_ca_cert'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_fido2_ca_cert(
         self,
         ca_cert: str,
@@ -5027,6 +5090,7 @@ class Site(OTPmeObject):
     @check_acls(['delete:fido2_ca_cert'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_fido2_ca_cert(
         self,
         subject: str,
@@ -5058,6 +5122,7 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def delete(
         self,
         force: bool=False,
@@ -5127,6 +5192,7 @@ class Site(OTPmeObject):
     @check_acls(['delete:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,

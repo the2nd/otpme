@@ -299,6 +299,8 @@ class OTPmeConfig(object):
 
         # Force operation (-f).
         self.register_config_var("force", bool, False)
+        # Custom changelog entry text (--changelog).
+        self.register_config_var("changelog", [None, str], None)
         # Indicates we run in daemon mode.
         self.register_config_var("daemon_mode", bool, False)
         # Daemon we are running at.

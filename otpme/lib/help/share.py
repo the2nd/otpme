@@ -96,6 +96,37 @@ cmd_help = {
                                 },
                 },
 
+    'changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share changelog {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Show object changelog.'),
+                                },
+                },
+
+    'edit_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share edit_changelog {share} {entry_id} {comment}'),
+                    'cmd'   :   '<|object|> <entry_id> <comment>',
+                    '_help' :   {
+                                    'cmd'                   : _('Edit changelog entry comment.'),
+                                },
+                },
+
+    'del_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share del_changelog {share} {entry_id}'),
+                    'cmd'   :   '<|object|> <entry_id>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove changelog entry comment.'),
+                                },
+                },
+    'clear_changelog'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share clear_changelog {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Clear object changelog.'),
+                                },
+                },
+
     'root_dir'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share root_dir {share} {/root/dir}'),
                     'cmd'   :   '<|object|> <root_dir>',
@@ -467,11 +498,13 @@ cmd_help = {
                 },
 
     'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share remove_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
-                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    '_cmd_usage_help' : _('Usage: otpme-share remove_token [--remove-share-key] [--keep-share-key] [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
+                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from share.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--keep-share-key'      : _('Keep share key.'),
+                                    '--remove-share-key'    : _('Remove share key.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
                                     '--persist-mount'       : _('Also remove persisted share mount on hosts.'),
                                     '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),

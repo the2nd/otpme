@@ -17,6 +17,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import encryption
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -463,6 +464,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:sign_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_sign_public_key(
         self,
         public_key: str,
@@ -502,6 +504,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:encrypt_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_encrypt_public_key(
         self,
         public_key: str,
@@ -541,6 +544,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:ssh_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
+    @object_changelog()
     def change_ssh_public_key(
         self,
         public_key: str,
@@ -581,6 +585,7 @@ class YubikeypivToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def change_key_type(
         self,
         key_type: str="rsa",
@@ -764,6 +769,7 @@ class YubikeypivToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog()
     def deploy(
         self,
         sign_public_key: str,

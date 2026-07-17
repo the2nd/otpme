@@ -20,6 +20,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -167,6 +168,40 @@ commands = {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_changelog',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'edit_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'edit_changelog',
+                    'args'              : ['entry_id', 'comment'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_changelog',
+                    'args'              : ['entry_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'clear_changelog'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'clear_changelog',
                     'job_type'          : 'process',
                     },
                 },
@@ -1436,6 +1471,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['add:address'])
     @audit_log()
+    @object_changelog()
     def add_address(
         self,
         address: str,
@@ -1469,6 +1505,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['delete:address'])
     @audit_log()
+    @object_changelog()
     def del_address(
         self,
         address: str,
@@ -1535,6 +1572,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['add:oidc_redirect_uri'])
     @audit_log()
+    @object_changelog()
     def add_oidc_redirect_uri(
         self,
         uri: str,
@@ -1568,6 +1606,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['delete:oidc_redirect_uri'])
     @audit_log()
+    @object_changelog()
     def del_oidc_redirect_uri(
         self,
         uri: str,
@@ -1608,6 +1647,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['add:oidc_logout_redirect_uri'])
     @audit_log()
+    @object_changelog()
     def add_oidc_logout_redirect_uri(
         self,
         uri: str,
@@ -1641,6 +1681,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['delete:oidc_logout_redirect_uri'])
     @audit_log()
+    @object_changelog()
     def del_oidc_logout_redirect_uri(
         self,
         uri: str,
@@ -1681,6 +1722,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_auth_method'])
     @audit_log()
+    @object_changelog()
     def change_oidc_auth_method(
         self,
         method: str,
@@ -1721,6 +1763,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_id_token_alg'])
     @audit_log()
+    @object_changelog()
     def change_oidc_id_token_alg(
         self,
         alg: str,
@@ -1769,6 +1812,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_subject_type'])
     @audit_log()
+    @object_changelog()
     def change_oidc_subject_type(
         self,
         subject_type: str,
@@ -1811,6 +1855,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_sector_identifier_uri'])
     @audit_log()
+    @object_changelog()
     def change_oidc_sector_identifier_uri(
         self,
         uri: str=None,
@@ -1878,6 +1923,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_backchannel_logout_uri'])
     @audit_log()
+    @object_changelog()
     def change_oidc_backchannel_logout_uri(
         self,
         uri: str=None,
@@ -1944,6 +1990,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:oidc_backchannel_tls_verify'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_oidc_backchannel_tls_verify(
         self,
         run_policies: bool=True,
@@ -1971,6 +2018,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:oidc_backchannel_tls_verify'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_oidc_backchannel_tls_verify(
         self,
         run_policies: bool=True,
@@ -2002,6 +2050,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:oidc_force_backchannel_logout'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_oidc_force_backchannel_logout(
         self,
         run_policies: bool=True,
@@ -2029,6 +2078,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:oidc_force_backchannel_logout'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_oidc_force_backchannel_logout(
         self,
         run_policies: bool=True,
@@ -2056,6 +2106,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_backchannel_ca_cert'])
     @audit_log()
+    @object_changelog()
     def change_oidc_backchannel_ca_cert(
         self,
         ca_cert: str=None,
@@ -2121,6 +2172,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['add:oidc_grant_type'])
     @audit_log()
+    @object_changelog()
     def add_oidc_grant_type(
         self,
         grant_type: str,
@@ -2155,6 +2207,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['delete:oidc_grant_type'])
     @audit_log()
+    @object_changelog()
     def del_oidc_grant_type(
         self,
         grant_type: str,
@@ -2195,6 +2248,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['add:oidc_response_type'])
     @audit_log()
+    @object_changelog()
     def add_oidc_response_type(
         self,
         response_type: str,
@@ -2229,6 +2283,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['delete:oidc_response_type'])
     @audit_log()
+    @object_changelog()
     def del_oidc_response_type(
         self,
         response_type: str,
@@ -2294,6 +2349,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:accessgroup'])
     @audit_log()
+    @object_changelog()
     def change_access_group(
         self,
         access_group: Union[str,None]=None,
@@ -2343,6 +2399,7 @@ class Client(OTPmeClientObject):
     @check_acls(['edit:auth_cache_timeout'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def change_auth_cache_timeout(
         self,
         timeout: int=60,
@@ -2371,6 +2428,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:dot1x_auth'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_dot1x(
         self,
         run_policies: bool=True,
@@ -2402,6 +2460,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:dot1x_auth'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_dot1x(
         self,
         run_policies: bool=True,
@@ -2433,6 +2492,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:oidc_auth'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_oidc(
         self,
         run_policies: bool=True,
@@ -2464,6 +2524,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:oidc_auth'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_oidc(
         self,
         run_policies: bool=True,
@@ -2495,6 +2556,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:auth_cache'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_auth_cache(
         self,
         run_policies: bool=True,
@@ -2526,6 +2588,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:auth_cache'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_auth_cache(
         self,
         run_policies: bool=True,
@@ -2557,6 +2620,7 @@ class Client(OTPmeClientObject):
     @check_acls(['add:sso_logo'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def add_sso_logo(
         self,
         image_data: str,
@@ -2594,6 +2658,7 @@ class Client(OTPmeClientObject):
     @check_acls(['del:sso_logo'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def del_sso_logo(
         self,
         run_policies: bool=True,
@@ -2646,6 +2711,7 @@ class Client(OTPmeClientObject):
     @check_acls(['edit:sso_name'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def change_sso_name(
         self,
         sso_name: str,
@@ -2672,6 +2738,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:sso'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_sso(
         self,
         run_policies: bool=True,
@@ -2711,6 +2778,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:sso'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_sso(
         self,
         run_policies: bool=True,
@@ -2742,6 +2810,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(acls=['edit:login_url'])
     @audit_log()
+    @object_changelog()
     def change_login_url(
         self,
         login_url: bool=False,
@@ -2771,6 +2840,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(acls=['edit:helper_url'])
     @audit_log()
+    @object_changelog()
     def change_helper_url(
         self,
         helper_url: str=None,
@@ -2800,6 +2870,7 @@ class Client(OTPmeClientObject):
     @check_acls(['enable:sso_popup'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def enable_sso_popup(
         self,
         run_policies: bool=True,
@@ -2838,6 +2909,7 @@ class Client(OTPmeClientObject):
     @check_acls(['disable:sso_popup'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def disable_sso_popup(
         self,
         run_policies: bool=True,
@@ -2868,6 +2940,7 @@ class Client(OTPmeClientObject):
     @check_acls(['remove:orphans'])
     @object_lock()
     @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
