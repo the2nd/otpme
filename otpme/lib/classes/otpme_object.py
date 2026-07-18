@@ -2958,8 +2958,13 @@ class OTPmeObject(OTPmeBaseObject):
         while str(entry_id) in self.changelog:
             entry_id += 1
         self.changelog[str(entry_id)] = entry
-        # Persist within the running transaction (triggers resync).
-        self._cache(callback=callback)
+        # NOTE: we intentionally do NOT call self._cache() here. The decorated
+        # command already modified the object and marked it for writing; we run
+        # inside that same transaction and only append to the in-memory instance
+        # (self.changelog), so the entry is persisted by the command's own
+        # write. Calling _cache() again would re-add the object to the modified
+        # set - fatal for delete/move, where it would rewrite the object (with a
+        # stale OID) after its tree location was already removed.
 
     def changelog_enabled(self):
         """ Whether commands on this object are recorded in the changelog.
