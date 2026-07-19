@@ -594,6 +594,29 @@ class Pool(OTPmeObject):
 
         return object_config
 
+    def remove_orphans(
+        self,
+        force=False,
+        run_policies=True,
+        verbose_level=0,
+        recursive=False,
+        callback=default_callback,
+        _caller="API",
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs. """
+        extra_ref_lists = [
+                ('nodes', 'node', None),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
+
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()

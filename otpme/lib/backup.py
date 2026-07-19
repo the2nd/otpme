@@ -19,6 +19,7 @@ except Exception:
     pass
 
 from otpme.lib import oid
+from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.protocols.utils import register_commands
@@ -138,6 +139,9 @@ def restore_object(object_data, force=False, callback=default_callback, **kwargs
         msg = _("Failed to restore object: {object_id}: {e}")
         msg = msg.format(object_id=object_id, e=e)
         return callback.error(msg)
+    # Clear caches.
+    cache.clear()
+    # Run class restore method.
     oc.restore_object_data(object_id, object_uuid, object_data, callback)
     # Set last used time.
     last_used = object_data['last_used']

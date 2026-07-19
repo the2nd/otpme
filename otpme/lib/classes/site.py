@@ -5189,73 +5189,48 @@ class Site(OTPmeObject):
         return super().delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    @check_acls(['delete:orphans'])
-    @object_lock()
-    @audit_log()
-    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
-        recursive: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
-        _caller: str="API",
+        recursive: bool=False,
         callback: JobCallback=default_callback,
+        _caller: str="API",
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_orphans",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
+        extra_ref_lists = []
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    recursive_func=self._remove_orphans_recursive,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
-        acl_list = self.get_orphan_acls()
-
-        remove_orphans = True
+    def _remove_orphans_recursive(self, force=False, verbose_level=0,
+        recursive=False, callback=default_callback, **kwargs):
+        """ Recurse into the site's top level units. """
         object_changed = False
-        if acl_list:
-            msg = _("{type}|{name}: Found the following orphan ACLs: {acl_list}\nRemove?: ")
-            msg = msg.format(type=self.type, name=self.name, acl_list=','.join(acl_list))
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                remove_orphans = False
-
-        if remove_orphans:
-            if self.remove_orphan_acls(force=True, verbose_level=verbose_level,
-                                        callback=callback, **kwargs):
+        all_units = backend.search(attribute="uuid",
+                                    object_type="unit",
+                                    value="*",
+                                    return_type="instance",
+                                    realm=config.realm,
+                                    site=self.name)
+        for unit in all_units:
+            # Skip all non top level units.
+            if unit and unit.unit:
+                continue
+            if verbose_level > 1:
+                callback.send(_("Processing {oid}").format(oid=unit.oid))
+            if unit.remove_orphans(force=force, verbose_level=verbose_level,
+                                    recursive=recursive, callback=callback):
                 object_changed = True
-
-        if recursive:
-            all_units = backend.search(attribute="uuid",
-                                        object_type="unit",
-                                        value="*",
-                                        return_type="instance",
-                                        realm=config.realm,
-                                        site=self.name)
-            for unit in all_units:
-                # Skip all non top level units..
-                if unit and unit.unit:
-                    continue
-                if verbose_level > 1:
-                    msg = _("Processing {unit_oid}")
-                    msg = msg.format(unit_oid=unit.oid)
-                    callback.send(msg)
-                if unit.remove_orphans(force=force,
-                                        verbose_level=verbose_level,
-                                        recursive=recursive,
-                                        callback=callback, **kwargs):
-                    object_changed = True
-        if not object_changed:
-            msg = _("No orphan objects found for {type}: {name}")
-            msg = msg.format(type=self.type, name=self.name)
-            return callback.ok(msg)
-
-        return self._write(callback=callback)
+        return object_changed
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show site config. """

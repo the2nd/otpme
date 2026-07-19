@@ -437,6 +437,71 @@ class PasswordPolicy(Policy):
         # Use parent class method to merge policy configs.
         return Policy._get_object_config(self, policy_config=policy_config)
 
+    def _get_orphan_dict_order(self):
+        """ Orphan dictionary names in strength_checker_opts['dict_order']. """
+        orphans = []
+        try:
+            dict_order = self.strength_checker_opts.get("dict_order", [])
+        except Exception:
+            dict_order = []
+        for entry in (dict_order or []):
+            try:
+                dict_name, dict_uuid = entry
+            except Exception:
+                continue
+            if not backend.get_oid(object_type="dictionary", uuid=dict_uuid):
+                orphans.append(dict_name)
+        return orphans
+
+    def _remove_orphan_dict_order(self, orphans):
+        """ Drop dict_order entries whose dictionary no longer exists. """
+        try:
+            dict_order = self.strength_checker_opts.get("dict_order", [])
+        except Exception:
+            return False
+        new_order = []
+        object_changed = False
+        for entry in (dict_order or []):
+            try:
+                dict_name, dict_uuid = entry
+            except Exception:
+                new_order.append(entry)
+                continue
+            if backend.get_oid(object_type="dictionary", uuid=dict_uuid):
+                new_order.append(entry)
+            else:
+                object_changed = True
+        if object_changed:
+            self.strength_checker_opts["dict_order"] = new_order
+        return object_changed
+
+    def remove_orphans(
+        self,
+        force=False,
+        run_policies=True,
+        verbose_level=0,
+        recursive=False,
+        callback=default_callback,
+        _caller="API",
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs. """
+        orphan_hooks = [
+                {
+                "label"  : "dictionaries",
+                "get"    : self._get_orphan_dict_order,
+                "remove" : self._remove_orphan_dict_order,
+                },
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    orphan_hooks=orphan_hooks,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
+
     def set_variables(self):
         """ Set instance variables """
         # Run parent class method that may override default values with those

@@ -128,23 +128,6 @@ commands = {
                     },
                 },
             },
-    'dump_pass_hash'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'dump_pass_hash',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    'set_pass_hash'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'set_pass_hash',
-                    'args'              : ['hash_json'],
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'test'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -403,6 +386,14 @@ class PasswordToken(Token):
 
         # Use parent class method to merge token configs.
         return Token._get_object_config(self, token_config=token_config)
+
+    def _get_token_data_attrs(self):
+        """ Attributes copied by dump/set_token_data. """
+        return [
+                'password_hash',
+                'password_hash_params',
+                'nt_hash',
+                ]
 
     def set_variables(self):
         """ Set instance variables. """

@@ -2811,6 +2811,36 @@ class Share(OTPmeObject):
             callback.post_methods.append(post_method)
         return result
 
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        recursive: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs. """
+        extra_ref_lists = [
+                ('tokens', 'token', ['token_options', 'token_login_interfaces']),
+                ('roles', 'role', None),
+                ('groups', 'group', None),
+                ('hosts', 'host', None),
+                ('nodes', 'node', None),
+                ('pools', 'pool', None),
+                ('master_password_tokens', 'token', None),
+                ('share_keys', 'user', None, 'dict_keys'),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
+
 
     @cli.check_rapi_opts()
     @check_acls(acls=['view:groups'])

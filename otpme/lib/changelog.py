@@ -106,6 +106,12 @@ def object_changelog():
     def wrapper(f):
         @wraps(f)
         def wrapped(self, *f_args, **f_kwargs):
+            # Allow callers to suppress changelog recording by passing
+            # changelog=False (analogous to verify_acls=False). We only read it
+            # (not pop), so it is still passed to the method and propagates into
+            # nested calls, just like verify_acls. When suppressed, any
+            # self.set_changelog() the method calls simply has no effect.
+            record = f_kwargs.get("changelog", True)
             depth = getattr(_ctx, "depth", 0)
             # Re-entrancy guard: only the outermost decorated call records. A
             # nested (internal) command still runs, but must not leak its own
@@ -129,6 +135,9 @@ def object_changelog():
                 _ctx.detail = None
             # Do not record failed commands.
             if result is False:
+                return result
+            # Caller asked to suppress the changelog (changelog=False).
+            if not record:
                 return result
             # Only tree objects keep a changelog (base command methods are also
             # inherited by non-tree objects like sessions).

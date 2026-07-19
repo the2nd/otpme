@@ -1342,76 +1342,44 @@ class Unit(OTPmeObject):
 
         return del_result
 
-    @check_acls(['remove:orphans'])
-    @object_lock()
-    @audit_log()
-    @object_changelog()
     def remove_orphans(
         self,
-        recursive: bool=False,
-        run_policies: bool=True,
         force: bool=False,
+        run_policies: bool=True,
         verbose_level: int=0,
+        recursive: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_orphans",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
+        extra_ref_lists = []
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    recursive_func=self._remove_orphans_recursive,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
-        acl_list = self.get_orphan_acls()
-
-        remove_orphans = True
+    def _remove_orphans_recursive(self, force=False, verbose_level=0,
+        recursive=False, callback=default_callback, **kwargs):
+        """ Recurse into the unit's member objects. """
         object_changed = False
-        if acl_list:
-            msg = _("{obj_type}{obj_name}: Found the following orphan ACLs: {acl_list}\nRemove?: ")
-            msg = msg.format(obj_type=self.type, obj_name=self.name, acl_list=','.join(acl_list))
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                remove_orphans = False
-
-        if remove_orphans:
-            if self.remove_orphan_acls(force=True,
-                                verbose_level=verbose_level,
-                                callback=callback, **kwargs):
-                object_changed = True
-
-        if recursive:
-            # Get member object names.
-            members = self.get_members(return_type="uuid")
-            for object_type in members:
-                uuids = members[object_type]
-                for i in uuids:
-                    o = backend.get_object(object_type=object_type, uuid=i)
-                    # Skip orphan objects.
-                    if not o:
-                        continue
-                    if verbose_level > 1:
-                        msg = _("Processing {oid}")
-                        msg = msg.format(oid=o.oid)
-                        callback.send(msg)
-                    if o.remove_orphans(force=force,
-                                        verbose_level=verbose_level,
-                                        recursive=recursive,
-                                        callback=callback,
-                                        **kwargs):
-                        object_changed = True
-        if not object_changed:
-            msg = None
-            if verbose_level > 0:
-                msg = _("No orphan objects found for {obj_type}: {obj_name}")
-                msg = msg.format(obj_type=self.type, obj_name=self.name)
-            return callback.ok(msg)
-
-        return self._cache(callback=callback)
+        members = self.get_members(return_type="uuid")
+        for object_type in members:
+            for x_uuid in members[object_type]:
+                o = backend.get_object(object_type=object_type, uuid=x_uuid)
+                if not o:
+                    continue
+                if verbose_level > 1:
+                    callback.send(_("Processing {oid}").format(oid=o.oid))
+                if o.remove_orphans(force=force, verbose_level=verbose_level,
+                                    recursive=recursive, callback=callback):
+                    object_changed = True
+        return object_changed
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show unit config. """

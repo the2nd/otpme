@@ -215,6 +215,12 @@ class PasskeyToken(Token):
             }
         return Token._get_object_config(self, token_config=token_config)
 
+    def _get_token_data_attrs(self):
+        """ Attributes copied by dump/set_token_data. """
+        return [
+                'credential_data',
+                ]
+
     def set_variables(self):
         Token.set_variables(self)
 

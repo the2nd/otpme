@@ -332,6 +332,14 @@ Disable ACL inheritance.
 .B export \fItoken\fR
 Export token configuration to stdout.
 .TP
+.B dump_token_data \fItoken\fR
+Dump the token's authentication data (secret, hashes, counters, keys, etc.) as JSON. Useful for copying credentials between two tokens of the same type. Available on all token types that support it (HOTP, TOTP, mOTP, password, SSH, FIDO2, U2F, passkey, YubiKey HMAC, YubiKey PIV, ...).
+.TP
+.B set_token_data \fItoken\fR \fIfile\fR
+Load token authentication data previously produced by
+.B dump_token_data
+back into a token of the same type.
+.TP
 .B remove_orphans \fItoken\fR
 Remove orphaned object references.
 .SH TOKEN TYPE COMMANDS
@@ -406,12 +414,6 @@ Disable MSCHAP authentication.
 .TP
 .B remove_nt_hash \fItoken\fR
 Remove NT hash used for MSCHAP authentication.
-.TP
-.B dump_pass_hash \fItoken\fR
-Dump password hash.
-.TP
-.B set_pass_hash \fItoken\fR \fIfile\fR
-Set password hash from file.
 .TP
 .B upgrade_pass_hash \fItoken\fR \fR[\fIhash_type\fR] \fR[\fIargs\fR]
 Upgrade password hash.

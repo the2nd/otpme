@@ -352,6 +352,17 @@ Disable ACL inheritance.
 **export *token***  
 Export token configuration to stdout.
 
+**dump_token_data *token***  
+Dump the token's authentication data (secret, hashes, counters, keys,
+etc.) as JSON. Useful for copying credentials between two tokens of the
+same type. Available on all token types that support it (HOTP, TOTP,
+mOTP, password, SSH, FIDO2, U2F, passkey, YubiKey HMAC, YubiKey PIV,
+...).
+
+**set_token_data *token* *file***  
+Load token authentication data previously produced by
+**dump_token_data** back into a token of the same type.
+
 **remove_orphans *token***  
 Remove orphaned object references.
 
@@ -432,12 +443,6 @@ Disable MSCHAP authentication.
 
 **remove_nt_hash *token***  
 Remove NT hash used for MSCHAP authentication.
-
-**dump_pass_hash *token***  
-Dump password hash.
-
-**set_pass_hash *token* *file***  
-Set password hash from file.
 
 **upgrade_pass_hash *token* \[*hash_type*\] \[*args*\]**  
 Upgrade password hash.

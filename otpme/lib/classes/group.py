@@ -1487,131 +1487,30 @@ class Group(OTPmeObject):
                                     force=force, callback=callback,
                                     **kwargs)
 
-    @check_acls(['remove:orphans'])
-    @object_lock()
-    @audit_log()
-    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
+        recursive: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_orphans",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        acl_list = self.get_orphan_acls()
-        policy_list = self.get_orphan_policies()
-
-        token_list = []
-        token_uuids = set(self.tokens + list(self.token_options))
-        for i in token_uuids:
-            token_oid = backend.get_oid(object_type="token", uuid=i)
-            if token_oid:
-                continue
-            token_list.append(i)
-
-        role_list = []
-        for i in self.roles:
-            role_oid = backend.get_oid(object_type="role", uuid=i)
-            if role_oid:
-                continue
-            role_list.append(i)
-
-        default_group_users_list = []
-        user_uuids = self.default_group_users
-        for i in user_uuids:
-            user_oid = backend.get_oid(object_type="user", uuid=i)
-            if user_oid:
-                continue
-            default_group_users_list.append(i)
-
-        msg = ""
-        if acl_list:
-            msg += _("{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n").format(
-                object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
-        if policy_list:
-            msg += _("{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n").format(
-                object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
-        if token_list:
-            msg += _("{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n").format(
-                object_type=self.type, object_name=self.name, token_list=','.join(token_list))
-        if role_list:
-            msg += _("{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n").format(
-                object_type=self.type, object_name=self.name, role_list=','.join(role_list))
-        if default_group_users_list:
-            msg += _("{object_type}|{object_name}: Found the following orphan user UUIDs: {user_list}\n").format(
-                object_type=self.type, object_name=self.name, user_list=','.join(default_group_users_list))
-        if msg:
-            msg = _("{msg}Remove?: ").format(msg=msg)
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                return callback.abort()
-
-        object_changed = False
-        if acl_list:
-            if self.remove_orphan_acls(force=True,
+        extra_ref_lists = [
+                ('tokens', 'token', ['token_options']),
+                ('roles', 'role', None),
+                ('default_group_users', 'user', None),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
                                     verbose_level=verbose_level,
-                                    callback=callback, **kwargs):
-                object_changed = True
-
-        if policy_list:
-            if self.remove_orphan_policies(force=True,
-                                        verbose_level=verbose_level,
-                                        callback=callback, **kwargs):
-                object_changed = True
-
-        for i in token_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan token UUID: {token_uuid}")
-                msg = msg.format(token_uuid=i)
-                callback.send(msg)
-            object_changed = True
-            if i in self.tokens:
-                self.tokens.remove(i)
-                # Update index.
-                self.del_index('token', i)
-            if i in self.token_options:
-                self.token_options.pop(i)
-
-        for i in role_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan role UUID: {role_uuid}")
-                msg = msg.format(role_uuid=i)
-                callback.send(msg)
-            object_changed = True
-            self.roles.remove(i)
-            # Update index.
-            self.del_index('role', i)
-
-        for i in default_group_users_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan user UUID: {user_uuid}")
-                msg = msg.format(user_uuid=i)
-                callback.send(msg)
-            object_changed = True
-            if i in self.default_group_users:
-                self.default_group_users.remove(i)
-                # Update index.
-                self.del_index('user', i)
-
-        if not object_changed:
-            msg = _("No orphan objects found for {object_type}: {object_name}")
-            msg = msg.format(object_type=self.type, object_name=self.name)
-            return callback.ok(msg)
-
-        return self._cache(callback=callback)
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
     def show_config(
         self,

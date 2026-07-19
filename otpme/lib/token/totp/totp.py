@@ -366,6 +366,14 @@ class TotpToken(OathToken):
         # Use parent class method to merge token configs.
         return super()._get_object_config(token_config=token_config)
 
+    def _get_token_data_attrs(self):
+        """ Attributes copied by dump/set_token_data. """
+        return [
+                'secret',
+                'server_secret',
+                'mode',
+                ]
+
     def set_variables(self):
         """ Set instance variables """
         # Run parent class method that may override default values with those

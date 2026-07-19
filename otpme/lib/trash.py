@@ -551,4 +551,4 @@ def show_trash(max_len=10, border=True, header=True,
         output = "\n".join(output.split("\n")[1:-1])
     output = f"{output}\n\n{footer}"
 
-    return callback.ok(output)
+    return callback.ok(output, return_value=True)

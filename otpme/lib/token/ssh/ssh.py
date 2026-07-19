@@ -478,6 +478,12 @@ class SshToken(Token):
         # Use parent class method to merge token configs.
         return Token._get_object_config(self, token_config=token_config)
 
+    def _get_token_data_attrs(self):
+        """ Attributes copied by dump/set_token_data. """
+        return [
+                'ssh_public_key',
+                ]
+
     def set_variables(self):
         """ Set instance variables. """
         # Run parent class method that may override default values with those

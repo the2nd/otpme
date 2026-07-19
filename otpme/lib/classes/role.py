@@ -1014,7 +1014,8 @@ class Role(OTPmeObject):
                 return callback.error(msg)
             x_group.add_role(role_uuid=object_uuid,
                             callback=callback,
-                            verify_acls=False)
+                            verify_acls=False,
+                            changelog=False)
         role_roles = object_data['role_roles']
         for x_role_uuid in role_roles:
             x_role = backend.get_object(uuid=x_role_uuid)
@@ -1024,7 +1025,8 @@ class Role(OTPmeObject):
                 return callback.error(msg)
             x_role.add_role(role_uuid=object_uuid,
                             callback=callback,
-                            verify_acls=False)
+                            verify_acls=False,
+                            changelog=False)
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,
@@ -2170,154 +2172,31 @@ class Role(OTPmeObject):
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    @check_acls(['remove:orphans'])
-    @object_lock()
-    @audit_log()
-    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
+        recursive: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_orphans",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        acl_list = self.get_orphan_acls()
-        policy_list = self.get_orphan_policies()
-
-        token_list = []
-        token_uuids = set(self.tokens + list(self.token_options))
-        for i in token_uuids:
-            token_oid = backend.get_oid(object_type="token", uuid=i)
-            if token_oid:
-                continue
-            token_list.append(i)
-
-        role_list = []
-        for i in self.roles:
-            role_oid = backend.get_oid(object_type="role", uuid=i)
-            if role_oid:
-                continue
-            role_list.append(i)
-
-        host_list = []
-        for i in self.hosts:
-            host_oid = backend.get_oid(object_type="host", uuid=i)
-            if not host_oid:
-                host_list.append(i)
-
-        device_list = []
-        for i in self.devices:
-            device_oid = backend.get_oid(object_type="device", uuid=i)
-            if not device_oid:
-                device_list.append(i)
-
-        msg = ""
-        if acl_list:
-            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n")
-            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
-
-        if policy_list:
-            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n")
-            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
-
-        if token_list:
-            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n")
-            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, token_list=','.join(token_list))
-
-        if role_list:
-            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
-            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
-
-        if host_list:
-            msg += _("{type}|{name}: Found the following orphan host UUIDs: {host_list}\n").format(
-                type=self.type, name=self.name, host_list=','.join(host_list))
-        if device_list:
-            msg += _("{type}|{name}: Found the following orphan device UUIDs: {device_list}\n").format(
-                type=self.type, name=self.name, device_list=','.join(device_list))
-
-        if msg:
-            msg = _("{msg}Remove?: ").format(msg=msg)
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                return callback.abort()
-
-        object_changed = False
-        if acl_list:
-            if self.remove_orphan_acls(force=True, verbose_level=verbose_level,
-                                        callback=callback, **kwargs):
-                object_changed = True
-
-        if policy_list:
-            if self.remove_orphan_policies(force=True, verbose_level=verbose_level,
-                                                callback=callback, **kwargs):
-                object_changed = True
-
-        for i in token_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan token UUID: {token_uuid}")
-                msg = msg.format(token_uuid=i)
-                callback.send(msg)
-            object_changed = True
-            # Update index.
-            self.del_index('token', i)
-            try:
-                self.tokens.remove(i)
-            except KeyError:
-                pass
-            try:
-                self.token_options.pop(i)
-            except KeyError:
-                pass
-            try:
-                self.token_login_interfaces.pop(i)
-            except KeyError:
-                pass
-
-        for i in role_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan role UUID: {role_uuid}")
-                msg = msg.format(role_uuid=i)
-                callback.send(msg)
-            object_changed = True
-            self.roles.remove(i)
-            # Update index.
-            self.del_index('role', i)
-
-        for i in device_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan device UUID: {uuid}")
-                msg = msg.format(uuid=i)
-                callback.send(msg)
-            object_changed = True
-            self.devices.remove(i)
-
-        for i in host_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan host UUID: {uuid}")
-                msg = msg.format(uuid=i)
-                callback.send(msg)
-            object_changed = True
-            self.hosts.remove(i)
-
-        if not object_changed:
-            msg = _("No orphan objects found for {object_type}: {object_name}")
-            msg = msg.format(object_type=self.type, object_name=self.name)
-            return callback.ok(msg)
-
-        return self._cache(callback=callback)
+        extra_ref_lists = [
+                ('tokens', 'token', ['token_options', 'token_login_interfaces']),
+                ('roles', 'role', None),
+                ('hosts', 'host', None),
+                ('devices', 'device', None),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """

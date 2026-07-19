@@ -440,6 +440,16 @@ class YubikeypivToken(Token):
         # Use parent class method to merge token configs.
         return Token._get_object_config(self, token_config=token_config)
 
+    def _get_token_data_attrs(self):
+        """ Attributes copied by dump/set_token_data. """
+        return [
+                'sign_public_key',
+                'sign_key_type',
+                'encrypt_public_key',
+                'encrypt_key_type',
+                'dot1x_secret',
+                ]
+
     def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()

@@ -1008,7 +1008,10 @@ class Host(OTPmeHost, OTPmeDevice):
             return
         for uuid in ags:
             ag = backend.get_object(uuid=uuid)
-            ag.add_host(object_id.name, verify_acl=False, callback=callback)
+            ag.add_host(object_id.name,
+                        verify_acl=False,
+                        changelog=False,
+                        callback=callback)
             ag._write(callback=callback)
 
     def __init__(

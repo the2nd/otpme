@@ -444,6 +444,32 @@ class HotpToken(OathToken):
         # Use parent class method to merge token configs.
         return super()._get_object_config(token_config=token_config)
 
+    def _get_token_data_attrs(self):
+        """ Attributes copied by dump/set_token_data. """
+        return [
+                'secret',
+                'server_secret',
+                'mode',
+                ]
+
+    def _get_token_data(self):
+        token_data = super()._get_token_data()
+        if token_data is None:
+            return None
+        # The HOTP counter is stored as separate token_counter objects.
+        token_data['counter'] = self.get_token_counter()
+        return token_data
+
+    def _set_token_data(self, token_data):
+        object_changed = super()._set_token_data(token_data)
+        if object_changed is None:
+            return None
+        counter = token_data.get('counter', None)
+        if counter is not None:
+            self._add_token_counter(int(counter))
+            object_changed = True
+        return object_changed
+
     def set_variables(self):
         """ Set instance variables """
         # Run parent class method that may override default values with those

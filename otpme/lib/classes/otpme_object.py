@@ -2965,6 +2965,9 @@ class OTPmeObject(OTPmeBaseObject):
         # write. Calling _cache() again would re-add the object to the modified
         # set - fatal for delete/move, where it would rewrite the object (with a
         # stale OID) after its tree location was already removed.
+        if action != "add":
+            return
+        self._cache(callback=callback)
 
     def changelog_enabled(self):
         """ Whether commands on this object are recorded in the changelog.
@@ -9599,31 +9602,250 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    def get_orphan_refs(self, attr, object_type, paired_dicts=None, kind="list"):
+        """ Return orphan UUIDs referenced by self.<attr>: UUIDs with no
+        existing backend object. Empty if the attribute is missing/None.
+
+        kind:
+            'list'             : self.<attr> is a list of UUIDs (plus any
+                                 uuid-keyed paired_dicts). object_type applies.
+            'dict_values'      : self.<attr> is a dict {key: uuid}. object_type
+                                 applies to all values.
+            'dict_lists'       : self.<attr> is a dict {key: [uuid, ...]}.
+                                 object_type applies to all list items.
+            'dict_lists_typed' : self.<attr> is a dict {object_type: [uuid,...]},
+                                 i.e. the dict key IS the object type of its
+                                 values (object_type arg ignored).
+        """
+        val = getattr(self, attr, None)
+        orphans = []
+        if kind == "list":
+            uuids = set()
+            if val:
+                uuids.update(val)
+            for dict_attr in (paired_dicts or []):
+                dict_val = getattr(self, dict_attr, None)
+                if dict_val:
+                    uuids.update(dict_val)
+            for x_uuid in uuids:
+                if not backend.get_oid(object_type=object_type, uuid=x_uuid):
+                    orphans.append(x_uuid)
+        elif kind == "dict_values":
+            if val:
+                for x_uuid in set(val.values()):
+                    if x_uuid and not backend.get_oid(object_type=object_type, uuid=x_uuid):
+                        orphans.append(x_uuid)
+        elif kind == "dict_lists":
+            if val:
+                seen = set()
+                for x_list in val.values():
+                    for x_uuid in (x_list or []):
+                        if x_uuid in seen:
+                            continue
+                        seen.add(x_uuid)
+                        if not backend.get_oid(object_type=object_type, uuid=x_uuid):
+                            orphans.append(x_uuid)
+        elif kind == "dict_lists_typed":
+            if val:
+                for x_type in val:
+                    for x_uuid in (val[x_type] or []):
+                        if not backend.get_oid(object_type=x_type, uuid=x_uuid):
+                            orphans.append(x_uuid)
+        elif kind == "value":
+            # self.<attr> is a single UUID (or None).
+            if val and not backend.get_oid(object_type=object_type, uuid=val):
+                orphans.append(val)
+        elif kind == "dict_values_typed":
+            # self.<attr> is a dict {object_type: uuid}: the key IS the type.
+            if val:
+                for x_type in val:
+                    x_uuid = val[x_type]
+                    if x_uuid and not backend.get_oid(object_type=x_type, uuid=x_uuid):
+                        orphans.append(x_uuid)
+        elif kind == "dict_keys":
+            # self.<attr> is a dict keyed by object UUID (e.g. share_keys per
+            # user); the value is data, not a reference.
+            if val:
+                for x_uuid in val:
+                    if not backend.get_oid(object_type=object_type, uuid=x_uuid):
+                        orphans.append(x_uuid)
+        return orphans
+
+    def remove_orphan_refs(self, attr, object_type, paired_dicts=None,
+        kind="list", orphans=None, verbose_level=0, callback=default_callback):
+        """ Remove orphan UUIDs from self.<attr>. See get_orphan_refs() for the
+        supported 'kind' values. Returns True if something was removed. """
+        if orphans is None:
+            orphans = self.get_orphan_refs(attr, object_type, paired_dicts, kind=kind)
+        if not orphans:
+            return False
+        orphan_set = set(orphans)
+        object_changed = False
+        if verbose_level > 0:
+            for x_uuid in orphans:
+                msg = _("Removing orphan {attr} UUID: {uuid}")
+                msg = msg.format(attr=attr, uuid=x_uuid)
+                callback.send(msg)
+        val = getattr(self, attr, None)
+        if kind == "list":
+            if val is not None:
+                for x_uuid in orphans:
+                    if x_uuid in val:
+                        val.remove(x_uuid)
+                        object_changed = True
+            for dict_attr in (paired_dicts or []):
+                ref_dict = getattr(self, dict_attr, None)
+                if ref_dict is not None:
+                    for x_uuid in orphans:
+                        if x_uuid in ref_dict:
+                            ref_dict.pop(x_uuid)
+                            object_changed = True
+        elif kind in ("dict_values", "dict_values_typed"):
+            if val is not None:
+                for x_key in list(val):
+                    if val[x_key] in orphan_set:
+                        val.pop(x_key)
+                        object_changed = True
+        elif kind == "value":
+            if val is not None and val in orphan_set:
+                setattr(self, attr, None)
+                object_changed = True
+        elif kind == "dict_keys":
+            if val is not None:
+                for x_key in list(val):
+                    if x_key in orphan_set:
+                        val.pop(x_key)
+                        object_changed = True
+        elif kind in ("dict_lists", "dict_lists_typed"):
+            if val is not None:
+                for x_key in list(val):
+                    x_list = val[x_key]
+                    if not x_list:
+                        continue
+                    for x_uuid in list(x_list):
+                        if x_uuid in orphan_set:
+                            x_list.remove(x_uuid)
+                            object_changed = True
+        return object_changed
+
+    @check_acls(['remove:orphans'])
+    @object_lock()
+    @audit_log()
+    @object_changelog()
     def remove_orphans(
         self,
-        _caller: str="API",
         force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        recursive: bool=False,
+        extra_ref_lists=None,
+        orphan_hooks=None,
+        recursive_func=None,
+        _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        """ Remove orphan UUIDs (central engine).
+
+        Handles orphan ACLs, policies and signatures plus any reference lists
+        passed via extra_ref_lists - a list of
+        (attr, object_type[, paired_dict_attrs[, kind]]) tuples (see
+        get_orphan_refs() for the supported kinds). Odd structures can be
+        covered via orphan_hooks: a list of {'label', 'get', 'remove'} dicts
+        (get()->[display items], remove(items)->bool). Child classes keep a thin
+        override that declares these and calls super().remove_orphans(...). A
+        single confirmation is shown for everything found.
         """
-        Remove orphan UUIDs. This method could be overridden by the child class
-        e.g. to remove orphan tokens. But then the child class must take care of
-        removing orphan ACLs!
-        """
-        return_status = True
-        status = self.remove_orphan_acls(force=force, callback=callback, **kwargs)
-        if return_status:
-            return_status = status
-        status = self.remove_orphan_policies(force=force, callback=callback, **kwargs)
-        if return_status:
-            return_status = status
-        status = self.remove_orphan_signatures(force=force, callback=callback, **kwargs)
-        if return_status:
-            return_status = status
-        if _caller == "API":
-            return return_status
-        return callback.ok()
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_orphans",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        # Detect orphans.
+        acl_list = self.get_orphan_acls()
+        policy_list = self.get_orphan_policies()
+        signature_list = self.get_orphan_signatures()
+        ref_found = []
+        for ref_entry in (extra_ref_lists or []):
+            attr = ref_entry[0]
+            object_type = ref_entry[1]
+            paired_dicts = ref_entry[2] if len(ref_entry) > 2 else None
+            kind = ref_entry[3] if len(ref_entry) > 3 else "list"
+            orphans = self.get_orphan_refs(attr, object_type, paired_dicts, kind=kind)
+            if orphans:
+                ref_found.append((attr, object_type, paired_dicts, kind, orphans))
+        hooks_found = []
+        for hook in (orphan_hooks or []):
+            items = hook['get']()
+            if items:
+                hooks_found.append((hook, items))
+
+        # Single confirmation for everything found.
+        msg = ""
+        if acl_list:
+            msg += _("{type}|{name}: Found the following orphan ACLs: {x}\n").format(
+                    type=self.type, name=self.name, x=','.join(acl_list))
+        if policy_list:
+            msg += _("{type}|{name}: Found the following orphan policies: {x}\n").format(
+                    type=self.type, name=self.name, x=','.join(policy_list))
+        if signature_list:
+            msg += _("{type}|{name}: Found the following orphan signatures: {x}\n").format(
+                    type=self.type, name=self.name, x=','.join(signature_list))
+        for attr, object_type, paired_dicts, kind, orphans in ref_found:
+            msg += _("{type}|{name}: Found the following orphan {attr} UUIDs: {x}\n").format(
+                    type=self.type, name=self.name, attr=attr, x=','.join(orphans))
+        for hook, items in hooks_found:
+            msg += _("{type}|{name}: Found the following orphan {label}: {x}\n").format(
+                    type=self.type, name=self.name, label=hook['label'],
+                    x=','.join(str(i) for i in items))
+        if msg:
+            msg = _("{msg}Remove? ").format(msg=msg)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+        # Remove.
+        object_changed = False
+        if acl_list:
+            if self.remove_orphan_acls(force=True, verbose_level=verbose_level,
+                                        callback=callback):
+                object_changed = True
+        if policy_list:
+            if self.remove_orphan_policies(force=True, verbose_level=verbose_level,
+                                        callback=callback):
+                object_changed = True
+        if signature_list:
+            if self.remove_orphan_signatures(force=True, verbose_level=verbose_level,
+                                        callback=callback):
+                object_changed = True
+        for attr, object_type, paired_dicts, kind, orphans in ref_found:
+            if self.remove_orphan_refs(attr, object_type, paired_dicts, kind=kind,
+                                    orphans=orphans, verbose_level=verbose_level,
+                                    callback=callback):
+                object_changed = True
+        for hook, items in hooks_found:
+            if hook['remove'](items):
+                object_changed = True
+
+        # Optional type specific recursive cascade.
+        if recursive and recursive_func is not None:
+            if recursive_func(force=force, verbose_level=verbose_level,
+                            recursive=recursive, callback=callback):
+                object_changed = True
+
+        if not object_changed:
+            msg = _("No orphan objects found for {type}: {name}")
+            msg = msg.format(type=self.type, name=self.name)
+            return callback.ok(msg)
+
+        return self._cache(callback=callback)
 
     @audit_log()
     @object_changelog()

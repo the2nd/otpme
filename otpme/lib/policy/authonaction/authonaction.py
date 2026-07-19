@@ -379,6 +379,29 @@ class AuthonactionPolicy(Policy):
         # Use parent class method to merge policy configs.
         return Policy._get_object_config(self, policy_config=policy_config)
 
+    def remove_orphans(
+        self,
+        force=False,
+        run_policies=True,
+        verbose_level=0,
+        recursive=False,
+        callback=default_callback,
+        _caller="API",
+        **kwargs,
+        ):
+        """ Remove orphan UUIDs. """
+        extra_ref_lists = [
+                ('whitelist', None, None, 'dict_lists_typed'),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
+
     def set_variables(self):
         """ Set instance variables. """
         # Run parent class method that may override default values with those

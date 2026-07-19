@@ -83,6 +83,7 @@ read_value_acls = {
                         "auto_disable",
                         "auth_script",
                         "dynamic_groups",
+                        "token_data",
                         ],
             }
 
@@ -96,6 +97,7 @@ write_value_acls = {
                     "edit"  : [
                                 "config",
                                 "auto_disable",
+                                "token_data",
                             ],
                 }
 
@@ -168,6 +170,23 @@ commands = {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'dump_token_data'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_token_data',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'set_token_data'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_token_data',
+                    'args'              : ['token_data'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -769,6 +788,8 @@ def register():
 
 def register_hooks():
     config.register_auth_on_action_hook("token", "move")
+    config.register_auth_on_action_hook("token", "dump_token_data")
+    config.register_auth_on_action_hook("token", "set_token_data")
     config.register_auth_on_action_hook("token", "get_otp")
     config.register_auth_on_action_hook("token", "show_pin")
     config.register_auth_on_action_hook("token", "change_pin")
@@ -1114,6 +1135,7 @@ class Token(OTPmeObject):
                             token_options=x_token_opts,
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
+                            changelog=False,
                             verify_acls=False)
         token_roles = object_data['token_roles']
         for x in token_roles:
@@ -1129,6 +1151,7 @@ class Token(OTPmeObject):
                             token_options=x_token_opts,
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
+                            changelog=False,
                             verify_acls=False)
 
     def __init__(
@@ -3479,10 +3502,47 @@ class Token(OTPmeObject):
             logger.warning(log_msg)
         return sotp_verify_status, nt_key, _sotp_hash
 
+    def _get_token_data_attrs(self):
+        """ Config attributes that make up this token's transferable
+        authentication data. Overridden by token types. Returns None when the
+        token type does not support dumping/setting token data. """
+        return None
+
+    def _get_token_data(self):
+        """ Return this token's authentication data as a dict, or None when the
+        token type does not support it. """
+        attrs = self._get_token_data_attrs()
+        if attrs is None:
+            return None
+        token_data = {}
+        for attr in attrs:
+            value = getattr(self, attr, None)
+            # Convert incremental list/dict attributes to plain data so the
+            # result is JSON serializable.
+            copy_method = getattr(value, "copy", None)
+            if callable(copy_method):
+                try:
+                    value = copy_method()
+                except Exception:
+                    pass
+            token_data[attr] = value
+        return token_data
+
+    def _set_token_data(self, token_data):
+        """ Apply authentication data (dict) to this token. Overridden by token
+        types that need custom handling. Returns None when unsupported. """
+        attrs = self._get_token_data_attrs()
+        if attrs is None:
+            return None
+        for attr in attrs:
+            if attr in token_data:
+                setattr(self, attr, token_data[attr])
+        return True
+
     @object_lock()
     @audit_log()
-    @check_acls(['view:password_hash'])
-    def dump_pass_hash(
+    @check_acls(['view:token_data'])
+    def dump_token_data(
         self,
         verify_acls: bool=True,
         run_policies=True,
@@ -3490,74 +3550,72 @@ class Token(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Dump password hash. """
-        if self.password_hash is False:
-            msg = _("Token type '{token_type}' does not have a password.")
+        """ Dump the token's authentication data (e.g. to copy it to another
+        token of the same type). """
+        token_data = self._get_token_data()
+        if token_data is None:
+            msg = _("Token type '{token_type}' does not support token data.")
             msg = msg.format(token_type=self.token_type)
             return callback.error(msg)
 
-        # Run policies on password change (e.g. auth_on_action).
+        # Run policies (e.g. auth_on_action).
         if run_policies:
             try:
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("dump_pass_hash",
+                self.run_policies("dump_token_data",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
                 return callback.error()
 
-        hash_dict = {
-                    'hash'          : self.password_hash,
-                    'hash_params'   : self.password_hash_params,
-                    'nt_hash'       : self.nt_hash,
-                    }
+        json_data = json.dumps(token_data, sort_keys=True, indent=4)
 
-        json_dict = json.dumps(hash_dict, sort_keys=True, indent=4)
-
-        return callback.ok(json_dict)
+        return callback.ok(json_data)
 
     @object_lock()
     @audit_log()
-    @check_acls(['edit:password_hash'])
+    @check_acls(['edit:token_data'])
     @object_changelog()
-    def set_pass_hash(
+    def set_token_data(
         self,
-        hash_json: str,
+        token_data: str,
         verify_acls: bool=True,
         run_policies=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Dump password hash. """
-        if self.password_hash is False:
-            msg = _("Token type '{token_type}' does not have a password.")
+        """ Set the token's authentication data (e.g. copied from another token
+        of the same type via dump_token_data). """
+        if self._get_token_data_attrs() is None:
+            msg = _("Token type '{token_type}' does not support token data.")
             msg = msg.format(token_type=self.token_type)
             return callback.error(msg)
 
-        # Run policies on password change (e.g. auth_on_action).
+        # Run policies (e.g. auth_on_action).
         if run_policies:
             try:
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("set_pass_hash",
+                self.run_policies("set_token_data",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
                 return callback.error()
 
         try:
-            hash_dict = json.loads(hash_json)
-        except Exception as e:
-            msg = _("Invalid json hash data.")
+            data = json.loads(token_data)
+        except Exception:
+            msg = _("Invalid json token data.")
             return callback.error(msg)
 
-        self.password_hash = hash_dict['hash']
-        self.password_hash_params = hash_dict['hash_params']
-        self.nt_hash = hash_dict['nt_hash']
+        if self._set_token_data(data) is None:
+            msg = _("Token type '{token_type}' does not support token data.")
+            msg = msg.format(token_type=self.token_type)
+            return callback.error(msg)
 
         return self._cache(callback=callback)
 

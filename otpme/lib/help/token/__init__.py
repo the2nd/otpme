@@ -110,6 +110,22 @@ cmd_help = {
                                 },
                 },
 
+    'dump_token_data'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token dump_token_data {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump token authentication data.'),
+                                },
+                },
+
+    'set_token_data'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token set_token_data {token} {file}'),
+                    'cmd'   :   '<|object|> <file:token_data>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set token authentication data.'),
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token enable [--share-notify] [--no-share-notify] [--no-persist-mount] {token}'),
                     'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|>',

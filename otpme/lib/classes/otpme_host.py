@@ -1318,86 +1318,28 @@ class OTPmeHost(OTPmeClientObject):
         return super().delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    @check_acls(['remove:orphans'])
-    @object_lock()
-    @audit_log()
-    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
+        recursive: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_orphans",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        acl_list = self.get_orphan_acls()
-        policy_list = self.get_orphan_policies()
-
-        token_list = []
-        token_uuids = list(self.tokens) + list(self.token_options)
-        token_uuids = list(set(token_uuids))
-        for i in token_uuids:
-            token_oid = backend.get_oid(object_type="token", uuid=i)
-            if not token_oid:
-                token_list.append(i)
-
-        if not force:
-            msg = ""
-            if acl_list:
-                msg = _("{msg}|{name}: Found the following orphan ACLs: {acl_list}\n")
-                msg = msg.format(msg=msg, name=self.name, acl_list=','.join(acl_list))
-
-            if policy_list:
-                msg = ""
-                if policy_list:
-                    msg = _("{msg}|{name}: Found the following orphan policies: {policy_list}\n")
-                    msg = msg.format(msg=msg, name=self.name, policy_list=','.join(policy_list))
-
-            if token_list:
-                msg = _("{msg}|{name}: Found the following orphan token UUIDs: {token_list}\n")
-                msg = msg.format(msg=msg, name=self.name, token_list=','.join(token_list))
-
-        object_changed = False
-        if acl_list:
-            if self.remove_orphan_acls(force=True, verbose_level=verbose_level,
-                                                callback=callback, **kwargs):
-                object_changed = True
-
-        if policy_list:
-            if self.remove_orphan_policies(force=True, verbose_level=verbose_level,
-                                                callback=callback, **kwargs):
-                object_changed = True
-
-        for i in token_list:
-            if verbose_level > 0:
-                msg = _("Removing orphan token UUID: {token_uuid}")
-                msg = msg.format(token_uuid=i)
-                callback.send(msg)
-            object_changed = True
-            if i in self.tokens:
-                self.tokens.remove(i)
-            if i in self.token_options:
-                self.token_options.pop(i)
-
-        if not object_changed:
-            msg = _("No orphan objects found for {host_type}: {name}")
-            msg = msg.format(host_type=self.type, name=self.name)
-            return callback.ok(msg)
-
-        return self._cache(callback=callback)
+        extra_ref_lists = [
+                ('tokens', 'token', ['token_options']),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
     def show_config(
         self,

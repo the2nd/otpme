@@ -1553,6 +1553,7 @@ class User(OTPmeObject):
             return callback.error(msg)
         user_group.add_default_group_user(user_uuid=object_uuid,
                                         callback=callback,
+                                        changelog=False,
                                         verify_acls=False)
 
     def __init__(
@@ -6567,11 +6568,6 @@ class User(OTPmeObject):
                                             force=force, callback=callback)
         return del_status
 
-    @check_acls(['remove:orphans'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    @object_changelog()
     def remove_orphans(
         self,
         force: bool=False,
@@ -6583,83 +6579,31 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Remove orphan UUIDs. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_orphans",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                msg = _("Error running policies: {e}")
-                msg = msg.format(e=e)
-                return callback.error(msg)
+        extra_ref_lists = [
+                ('tokens', 'token', None),
+                ]
+        return super().remove_orphans(force=force,
+                                    run_policies=run_policies,
+                                    verbose_level=verbose_level,
+                                    recursive=recursive,
+                                    extra_ref_lists=extra_ref_lists,
+                                    recursive_func=self._remove_orphans_recursive,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **kwargs)
 
-        remove_orphans = True
-        acl_list = self.get_orphan_acls()
-        policy_list = self.get_orphan_policies()
-
-        token_list = []
-        token_uuids = self.tokens
-        for i in token_uuids:
-            token_oid = backend.get_oid(object_type="token", uuid=i)
-            if not token_oid:
-                token_list.append(i)
-
-        msg = ""
-        if acl_list:
-            msg += _("{self_type}|{self_name}: Found the following orphan ACLs: {acl_list}\n").format(
-                self_type=self.type, self_name=self.name, acl_list=','.join(acl_list))
-        if policy_list:
-            msg += _("{self_type}|{self_name}: Found the following orphan policies: {policy_list}\n").format(
-                self_type=self.type, self_name=self.name, policy_list=','.join(policy_list))
-        if token_list:
-            msg += _("{self_type}|{self_name}: Found the following orphan token UUIDs: {token_list}\n").format(
-                self_type=self.type, self_name=self.name, token_list=','.join(token_list))
-        if msg:
-            msg = _("{msg}Remove?: ").format(msg=msg)
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                remove_orphans = False
-
+    def _remove_orphans_recursive(self, force=False, verbose_level=0,
+        recursive=False, callback=default_callback, **kwargs):
+        """ Recurse into the user's (non-orphan) tokens. """
         object_changed = False
-        if remove_orphans:
-            if acl_list:
-                if self.remove_orphan_acls(force=True,
-                                        verbose_level=verbose_level,
-                                        callback=callback, **kwargs):
-                    object_changed = True
-
-            if policy_list:
-                if self.remove_orphan_policies(force=True,
-                                        verbose_level=verbose_level,
-                                        callback=callback, **kwargs):
-                    object_changed = True
-
-            for i in token_list:
-                if verbose_level > 0:
-                    msg = _("Removing orphan token UUID: {i}")
-                    msg = msg.format(i=i)
-                    callback.send(msg)
+        for x_uuid in list(self.tokens):
+            token = backend.get_object(object_type="token", uuid=x_uuid)
+            if not token:
+                continue
+            if token.remove_orphans(force=force, verbose_level=verbose_level,
+                                    callback=callback):
                 object_changed = True
-                if i in self.tokens:
-                    self.tokens.remove(i)
-
-        if recursive:
-            for i in self.tokens:
-                token = backend.get_object(object_type="token", uuid=i)
-                if token.remove_orphans(force=force,
-                                        callback=callback,
-                                        verbose_level=verbose_level,
-                                        **kwargs):
-                    object_changed = True
-
-        if not object_changed:
-            msg = _("No orphan objects found for {self_type}: {self_name}")
-            msg = msg.format(self_type=self.type, self_name=self.name)
-            return callback.ok(msg)
-
-        return self._cache(callback=callback)
+        return object_changed
 
     def show(
         self,
