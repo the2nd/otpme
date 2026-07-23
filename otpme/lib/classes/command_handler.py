@@ -1463,6 +1463,10 @@ class CommandHandler(object):
                     msg = _("Unknown share: {share_name}")
                     msg = msg.format(share_name=object_name)
                     raise OTPmeException(msg)
+                if o.restore_share:
+                    msg = _("Cannot backup restore share: {share_name}")
+                    msg = msg.format(share_name=object_name)
+                    raise OTPmeException(msg)
                 backup_mode = "tree"
                 source_dir = o.root_dir
                 repository = f"{o.type}/{o.site}/{o.name}"
@@ -5495,7 +5499,7 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg)
 
-        table = PrettyTable(["user", "login token", "host", "ip", "connect time", "login time"],
+        table = PrettyTable(["user", "login token", "host", "ip", "connect time", "login time", "session"],
                             header_style="title",
                             vrules=NONE,
                             hrules=HEADER)
@@ -5516,6 +5520,7 @@ class CommandHandler(object):
                 ip = entry.get("client_ip", "-")
                 login_token = entry.get("login_token")
                 login_time = entry.get("login_time")
+                session = entry.get("session")
                 if login_time is None:
                     login_time_str = "-"
                 else:
@@ -5527,7 +5532,7 @@ class CommandHandler(object):
                 else:
                     connect_time_str = datetime.datetime.fromtimestamp(
                         connect_time).strftime("%Y-%m-%d %H:%M:%S")
-                table.add_row([user, login_token, host, ip, connect_time_str, login_time_str])
+                table.add_row([user, login_token, host, ip, connect_time_str, login_time_str, session])
 
         return table.get_string()
 
@@ -6903,7 +6908,8 @@ class CommandHandler(object):
 
         deploy_args = smartcard_client_handler.handle_deploy(command_handler=self,
                                                     no_token_write=no_token_write,
-                                                    pre_deploy_result=pre_deploy_result)
+                                                    pre_deploy_result=pre_deploy_result,
+                                                    command_args=local_command_args)
 
         # Encode token deploy data (e.g. token keys)
         deploy_data = json.encode(deploy_args, encoding="hex")

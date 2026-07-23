@@ -1676,33 +1676,16 @@ class Share(OTPmeObject):
     @object_lock()
     def is_master_password_token(
         self,
-        token_path: str,
+        token_uuid: str,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Add token that is allowed to mount share with master password. """
-        if not "/" in token_path:
-            msg = _("Invalid token path: {token_path}")
-            msg = msg.format(token_path=token_path)
-            return callback.error(msg)
-
         if not self.encrypted:
             msg = _("Share not encrypted.")
             return callback.error(msg)
-
-        result = backend.search(object_type="token",
-                                attribute="rel_path",
-                                value=token_path,
-                                realm=config.realm,
-                                site=config.site,
-                                return_type="uuid")
-        if not result:
-            msg = _("Unknown token: {token_path}")
-            msg = msg.format(token_path=token_path)
-            return callback.error(msg)
-        token_uuid = result[0]
         if token_uuid in self.master_password_tokens:
             return True
         return False

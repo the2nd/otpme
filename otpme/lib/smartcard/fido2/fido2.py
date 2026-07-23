@@ -133,38 +133,17 @@ class Fido2ClientHandler(object):
             msg = str(e)
             raise OTPmeException(msg) from e
 
-    def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None):
-        # Get command syntax.
+    def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None, command_args=None):
         try:
-            command_syntax = command_map['token']['fido2']['deploy']['cmd']
+            setup_pin = command_args['setup_pin']
         except Exception:
-            msg = _("Unknown token type: {type}")
-            msg = msg.format(type=self.smartcard_type)
-            raise OTPmeException(msg) from None
-
-        # Parse command line.
-        local_command_args = {}
-        try:
-            object_cmd, \
-            object_required, \
-            object_identifier, \
-            local_command_args = cli.get_opts(command_syntax=command_syntax,
-                                            command_line=command_handler.command_line,
-                                            command_args=local_command_args)
-        except Exception as e:
-            if str(e) == "help":
-                exception = command_handler.get_help()
-                raise ShowHelp(exception) from e
-            elif str(e) != "":
-                msg = str(e)
-                exception = command_handler.get_help(message=msg)
-                raise ShowHelp(exception) from e
-
+            setup_pin = True
         # Try to find a locally connected U2F token.
         self.detect_fido2_sc()
         # Set pin if supported.
         if self.fido2_token.pin is False:
-            self.fido2_token.setup_pin()
+            if setup_pin:
+                self.fido2_token.setup_pin()
 
         create_options_json = pre_deploy_result['create_options']
         create_options = json.loads(create_options_json)

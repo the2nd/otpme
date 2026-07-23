@@ -162,7 +162,6 @@ class OTPmeHostP1(OTPmeServer1):
                             "dump_instance_cache",
                             "dump_acl_cache",
                             "dump_sync_map",
-                            "dump_object_counter",
                             "sync_sites",
                             "sync_objects",
                             "sync_nsscache",
@@ -179,6 +178,24 @@ class OTPmeHostP1(OTPmeServer1):
                             "reload_radius",
                         ]
 
+        # Commands that queue expensive daemon jobs or trigger cluster-wide
+        # reloads must only be callable by root. The hostd socket is
+        # world-writable by design (local realm/site lookups), and
+        # client_user is derived from SO_PEERCRED, so a root check is sound.
+        root_only_commands = [
+                            "sync_sites",
+                            "sync_objects",
+                            "sync_nsscache",
+                            "sync_token_data",
+                            "resync_objects",
+                            "resync_nsscache",
+                            "sync_ssh_authorized_keys",
+                            "reload_radius",
+                            "dump_instance_cache",
+                            "dump_acl_cache",
+                            "dump_sync_map",
+                        ]
+
         if command in valid_commands:
             if config.debug_level() > 3:
                 log_msg = _("Received command {command} from client: {client}", log=True)[1]
@@ -193,6 +210,10 @@ class OTPmeHostP1(OTPmeServer1):
         if command not in valid_commands:
             message = _("Unknown command: {command}")
             message = message.format(command=command)
+            status = False
+
+        elif command in root_only_commands and self.client_user != "root":
+            message = _("Permission denied.")
             status = False
 
         elif command == "get_realm":
@@ -626,16 +647,12 @@ class OTPmeHostP1(OTPmeServer1):
                 object_id = None
                 search_regex = None
 
-            if self.client_user == "root":
-                try:
-                    message = cache.dump_instance_cache(object_id=object_id,
-                                                    search_regex=search_regex)
-                except Exception as e:
-                    message = str(e)
-                status = True
-            else:
-                message = _("Permission denied.")
-                status = False
+            try:
+                message = cache.dump_instance_cache(object_id=object_id,
+                                                search_regex=search_regex)
+            except Exception as e:
+                message = str(e)
+            status = True
 
         elif command == "dump_acl_cache":
             try:
@@ -654,27 +671,19 @@ class OTPmeHostP1(OTPmeServer1):
                 object_id = None
                 search_regex = None
 
-            if self.client_user == "root":
-                try:
-                    message = cache.dump_acl_cache(object_id=object_id,
-                                                search_regex=search_regex)
-                except Exception as e:
-                    message = str(e)
-                status = True
-            else:
-                message = _("Permission denied.")
-                status = False
+            try:
+                message = cache.dump_acl_cache(object_id=object_id,
+                                            search_regex=search_regex)
+            except Exception as e:
+                message = str(e)
+            status = True
 
         elif command == "dump_sync_map":
-            if self.client_user == "root":
-                try:
-                    message = backend.dump_sync_map()
-                except Exception as e:
-                    message = str(e)
-                status = True
-            else:
-                message = _("Permission denied.")
-                status = False
+            try:
+                message = backend.dump_sync_map()
+            except Exception as e:
+                message = str(e)
+            status = True
 
         elif command == "sync_sites":
             try:
@@ -856,9 +865,10 @@ class OTPmeHostP1(OTPmeServer1):
                 return self.build_response(status, message, encrypt=False)
             # Check token assignment.
             if not share.is_assigned_token(token_uuid=token_uuid):
-                status = True
-                message = {'message':"Share access denied.", 'try_other_node':False}
-                return self.build_response(status, message, encrypt=False)
+                if not share.is_master_password_token(token_uuid=token_uuid):
+                    status = True
+                    message = {'message':"Share access denied.", 'try_other_node':False}
+                    return self.build_response(status, message, encrypt=False)
             # Check host limitations.
             if share.limit_by_hosts:
                 if not share.is_assigned_host(host_uuid=host_uuid,

@@ -667,6 +667,14 @@ Settings page. Set to false to restrict FIDO2 deployment to
 administrator workflows.  
 Object types: site, unit, user, token
 
+**force_fido2_rp (str, default: realm)**  
+Force the Relying Party ID used when registering FIDO2 tokens,
+overriding the per-path default (SSO portal defaults to the site's SSO
+FQDN, CLI defaults to the realm name). Applies to FIDO2 tokens only -
+passkeys are unaffected. Valid values: *realm* (use the realm name) or
+*sso_fqdn* (use the site's SSO FQDN).  
+Object types: site, unit, user
+
 **sso_allow_totp_deploy (bool, default: true)**  
 Whether end users may register a new TOTP token through the SSO portal
 Settings page. Set to false to restrict TOTP deployment to administrator

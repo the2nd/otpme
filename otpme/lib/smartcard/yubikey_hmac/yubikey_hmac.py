@@ -151,6 +151,7 @@ class YubikeyHmacClientHandler(object):
         deploy_args = {}
         deploy_args['hmac_challenge'] = hmac_challenge
         deploy_args['smartcard_id'] = smartcard_id
+        deploy_args['serial'] = yk.get_serial()
         deploy_args['hmac_id'] = hmac_id
         deploy_args['secret'] = secret
         deploy_args['slot'] = slot

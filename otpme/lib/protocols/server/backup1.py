@@ -134,6 +134,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
         self.client_password = None
         # Password file.
         self.pass_file = None
+        # Set once the repo password has been verified (or a new repo was
+        # initialized by this client). Data commands require this.
+        self.repo_pass_verified = False
         # Allow backup of disabled nodes.
         self.check_peer_disabled = False
         # Call parent class init.
@@ -303,6 +306,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
             msg = _("Failed to read password file {pass_file}")
             raise PermissionDenied(msg) from e
         if self.client_password == repo_pass:
+            self.repo_pass_verified = True
             return True
         msg = _("Permission denied.")
         raise PermissionDenied(msg)
@@ -367,6 +371,18 @@ class OTPmeBackupP1(OTPmeFsServer1):
             status = False
             return self.build_response(status, message)
 
+        # All data commands require a verified repository password. The
+        # entry-point commands below either verify it themselves
+        # (open_repository / start_restore / mount) or initialize a brand-new
+        # repo (start_backup). Everything else must not run until the
+        # password has been verified for this connection.
+        verify_exempt = ("open_repository", "start_backup",
+                        "start_restore", "mount")
+        if command not in verify_exempt and not self.repo_pass_verified:
+            status = status_codes.PERMISSION_DENIED
+            message = _("Open repository first.")
+            return self.build_response(status, message)
+
         status = True
         if command == "open_repository":
             if not os.path.exists(config.backup_dir):
@@ -414,18 +430,23 @@ class OTPmeBackupP1(OTPmeFsServer1):
                         allow_new_repos = False
             if not write:
                 allow_new_repos = False
-            if not allow_new_repos:
-                if not os.path.exists(self.backup_root):
-                    status = status_codes.UNKNOWN_OBJECT
-                    message = _("Unknown repository: {repository}: {root_dir}")
-                    message = message.format(repository=self.repository, root_dir=self.backup_root)
-                    return self.build_response(status, message)
+            if os.path.exists(self.pass_file):
+                # An already-initialized repository (password file present)
+                # must always pass the password check. allow_new_backup_repos
+                # must never bypass it for an existing repo -- it only permits
+                # creating a brand-new one.
                 try:
                     self.verify_client_pass()
                 except Exception:
                     status = status_codes.PERMISSION_DENIED
                     message = _("Permission denied.")
                     return self.build_response(status, message)
+            elif not allow_new_repos:
+                # Repository not initialized and we may not create a new one.
+                status = status_codes.UNKNOWN_OBJECT
+                message = _("Unknown repository: {repository}: {root_dir}")
+                message = message.format(repository=self.repository, root_dir=self.backup_root)
+                return self.build_response(status, message)
             self.backup_handler = BackupServer(self.backup_root)
             self.set_proctitle(self.repository, action="open")
             message = _("Repository openend.")
@@ -466,6 +487,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
                     message = _("Failed to write password file {pass_file}")
                     message = message.format(pass_file=self.pass_file)
                     return self.build_response(status, message)
+                # The client just set the repo password -> authorized.
+                self.repo_pass_verified = True
                 status = True
                 message = _("Repository initialized.")
             self.set_proctitle(self.repository, action="backup")

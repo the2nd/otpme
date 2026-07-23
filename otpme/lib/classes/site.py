@@ -983,11 +983,6 @@ TEMPLATES_UNIT = "templates"
 def register():
     register_dn()
     register_oid()
-    config.register_config_parameter(name="max_site_name_len",
-                                    ctype=int,
-                                    default_value=32,
-                                    setter=name_len_setter,
-                                    object_types=['site', 'unit'])
     register_hooks()
     register_config()
     register_backend()
@@ -1025,6 +1020,12 @@ def register_config():
     config.register_config_var("sso_user_role", str, SSO_USER_ROLE)
     config.register_base_object("role", SSO_USER_ROLE)
 
+    # Register max site name length.
+    config.register_config_parameter(name="max_site_name_len",
+                                    ctype=int,
+                                    default_value=32,
+                                    setter=name_len_setter,
+                                    object_types=['site', 'unit'])
     # Object types our config parameter is valid for.
     object_types = [
                     'site',
@@ -2022,6 +2023,17 @@ def register_config():
                                     ctype=bool,
                                     default_value=False,
                                     object_types=['site', 'unit', 'share', 'user', 'token'])
+    # Fido2 RP forcing.
+    def force_fido2_rp_setter(rp, **kwargs):
+        if rp not in ['sso_fqdn', 'realm']:
+            msg = _("RP must be 'sso_fqdn' or 'realm'.")
+            raise ValueError(msg)
+        return rp
+    config.register_config_parameter(name="force_fido2_rp",
+                                    ctype=str,
+                                    setter=force_fido2_rp_setter,
+                                    default_value="realm",
+                                    object_types=['site', 'unit', 'user'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")

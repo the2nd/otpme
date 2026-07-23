@@ -76,7 +76,7 @@ class YubikeygpgClientHandler(object):
 
         # Try to find yubikey
         try:
-            Yubikey()
+            yk = Yubikey()
         except Exception as e:
             msg = _("Error detecting yubikey: {error}")
             msg = msg.format(error=e)
@@ -122,6 +122,7 @@ class YubikeygpgClientHandler(object):
         deploy_args = {}
         deploy_args['card_type'] = "gpg"
         deploy_args['public_key'] = ssh_public_key
+        deploy_args['serial'] = yk.get_serial()
 
         return deploy_args
 

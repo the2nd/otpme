@@ -1233,6 +1233,8 @@ class Client(OTPmeClientObject):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
 
+        self.track_last_used = True
+
         self.access_group = None
         self.access_group_uuid = None
         if access_group:

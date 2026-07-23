@@ -467,6 +467,15 @@ Whether end users may register a new FIDO2 token through the SSO portal Settings
 .br
 Object types: site, unit, user, token
 .TP
+.B force_fido2_rp \fR(str, default: realm)
+Force the Relying Party ID used when registering FIDO2 tokens, overriding the per\-path default (SSO portal defaults to the site's SSO FQDN, CLI defaults to the realm name). Applies to FIDO2 tokens only \- passkeys are unaffected. Valid values:
+.IR realm
+(use the realm name) or
+.IR sso_fqdn
+(use the site's SSO FQDN).
+.br
+Object types: site, unit, user
+.TP
 .B sso_allow_totp_deploy \fR(bool, default: true)
 Whether end users may register a new TOTP token through the SSO portal Settings page. Set to false to restrict TOTP deployment to administrator workflows.
 .br

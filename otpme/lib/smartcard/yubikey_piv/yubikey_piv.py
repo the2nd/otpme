@@ -21,6 +21,7 @@ from otpme.lib import encryption
 from otpme.lib.help import command_map
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.smartcard.yubikey import piv
+from otpme.lib.smartcard.yubikey.yubikey import Yubikey
 
 
 # PIV slot roles used by this handler.
@@ -148,6 +149,14 @@ class YubikeypivClientHandler(object):
             add_user_key = self.local_command_args['add_user_key']
         except KeyError:
             add_user_key = False
+
+        # Try to find yubikey.
+        try:
+            yk = Yubikey()
+        except Exception as e:
+            msg = _("Error detecting yubikey: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
 
         # Pick algos for the two slots. Defaults stay rsa for back-compat;
         # ed25519/x25519 need YubiKey firmware 5.7+ (the YubiKey will
@@ -441,6 +450,14 @@ class YubikeypivClientHandler(object):
             deploy_args['dot1x_secret'] = dot1x_secret
         if private_key_backup:
             deploy_args['private_key_backup'] = private_key_backup
+        deploy_args['serial'] = yk.get_serial()
+
+        # FIXME: do we need this?
+        # Workaround for http://bugs.python.org/issue24596
+        try:
+            del yk
+        except Exception:
+            pass
 
         return deploy_args
 

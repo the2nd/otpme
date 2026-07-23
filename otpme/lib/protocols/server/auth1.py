@@ -594,6 +594,16 @@ class OTPmeAuthP1(OTPmeServer1):
             for token in user_tokens:
                 if token.token_type == "passkey" and not passkeys_allowed:
                     continue
+                # Only offer credentials that were registered for this RP: an
+                # authenticator's assertion is bound to the rpIdHash it was
+                # created with, so a credential from a different rp would never
+                # produce a valid signature anyway. Filtering here keeps the
+                # allow-list clean (and avoids leaking foreign-rp cred IDs).
+                # Legacy tokens without a stored rp (rp is None) are not
+                # filtered, preserving pre-existing deployments.
+                if token.token_type in ("fido2", "passkey") \
+                and token.rp and token.rp != rp_id:
+                    continue
                 if token.token_type in ("fido2", "passkey") and token.credential_data:
                     cred_data = decode(token.credential_data, "hex")
                     acd = AttestedCredentialData(cred_data)

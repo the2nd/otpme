@@ -10092,7 +10092,7 @@ class OTPmeObject(OTPmeBaseObject):
                     msg = msg.format(e=e)
                     callback.error(msg)
             config_params[para] = value
-        return callback.ok(config_params)
+        return callback.ok(config_params, return_value=True)
 
     def show_config(
         self,

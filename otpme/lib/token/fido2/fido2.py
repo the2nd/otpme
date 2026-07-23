@@ -304,12 +304,18 @@ class Fido2Token(Token):
         self.offline_pinnable = True
         self.uv = "preferred"
         self.hmac_supported = False
+        self.rp = None
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'fido2' ]
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
         token_config = {
+            'RP'                        : {
+                                            'var_name'      : 'rp',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
             'UV'                        : {
                                             'var_name'      : 'uv',
                                             'type'          : str,
@@ -345,9 +351,10 @@ class Fido2Token(Token):
     def _get_token_data_attrs(self):
         """ Attributes copied by dump/set_token_data. """
         return [
-                'credential_data',
+                'rp',
                 'uv',
                 'hmac_supported',
+                'credential_data',
                 ]
 
     def set_variables(self):
@@ -372,13 +379,13 @@ class Fido2Token(Token):
     def need_password(self, *args, **kwargs):
         return
 
-    @property
-    def rp(self):
-        return config.site_sso_fqdn
-
     def get_fido2_server(self, rp_id=None):
         if rp_id is None:
-            rp_id = self.rp
+            force_fido2_rp = self.get_config_parameter("force_fido2_rp")
+            if force_fido2_rp == "sso_fqdn":
+                rp_id = config.site_sso_fqdn
+            else:
+                rp_id = config.realm
         rp_data = {"id": rp_id, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="direct")
         return fido2_server
@@ -471,6 +478,13 @@ class Fido2Token(Token):
                 callback.send(msg)
         # Set credential data.
         self.credential_data = encode(auth_data.credential_data, "hex")
+        # Bind the token to the RP the credential was registered for. This is
+        # the authoritative rp.id used in the create_options (SHA256'd into the
+        # authenticator's rpIdHash); it is NOT recoverable from registration_data
+        # in plaintext. We take it straight from the server object so it always
+        # matches what get_fido2_server() actually used. Later this lets us
+        # filter a user's fido2 tokens by rp at authenticate_begin.
+        self.rp = fido2_server.rp.id
         # Clear registration state.
         self.reg_state = {}
         # Write object.
@@ -572,15 +586,7 @@ class Fido2Token(Token):
             return False
         credential_data = decode(self.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
-        # Cross-site auth: the browser is on the originating site's SSO
-        # portal and signs the assertion with that site's FQDN as origin.
-        # When verify() runs on the user's home site, self.rp (=
-        # config.site_sso_fqdn of *this* node) is the home FQDN and would
-        # reject the assertion with "Invalid origin in CollectedClientData".
-        # The auth_handler passes the originating rp_id through
-        # smartcard_data['rp_id'] -- honour it.
-        rp_id = smartcard_data.get('rp_id') or self.rp
-        fido2_server = self.get_fido2_server(rp_id)
+        fido2_server = self.get_fido2_server(self.rp)
         try:
             fido2_server.authenticate_complete(self.auth_state,
                                                 credentials,
@@ -633,6 +639,7 @@ class Fido2Token(Token):
         lines = []
 
         lines.append(f'UV="{self.uv}"')
+        lines.append(f'RP="{self.rp}"')
         lines.append(f'HMAC_SUPPORTED="{self.hmac_supported}"')
 
         if self.verify_acl("view:credential_data"):

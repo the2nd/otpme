@@ -757,6 +757,7 @@ class OTPmeSsoP1(OTPmeServer1):
             for info_msg in info_messages:
                 self.logger.info(info_msg)
         # Store credential data on token.
+        fido2_token.rp = rp_id
         fido2_token.credential_data = encode(auth_data.credential_data, "hex")
         fido2_token._write(callback=self.get_callback())
         log_msg = _("FIDO2 token '{token}' registered for user '{user_name}'.")
@@ -1133,6 +1134,7 @@ class OTPmeSsoP1(OTPmeServer1):
         token = user.token(token_name)
         if not token:
             return self.build_response(False, {'message':'Failed to create passkey token.', 'status':False})
+        token.rp = rp_id
         token.credential_data = encode(auth_data.credential_data, "hex")
         token.description = device_name
         token.update_index('description', token.description)
@@ -1452,6 +1454,20 @@ class OTPmeSsoP1(OTPmeServer1):
                                'listed in sso_temp_pass_role_trusts.',
                     'status': False})
             role = backend.get_object(object_type="role", uuid=peer_role_uuid)
+            if role is None:
+                return self.build_response(False, {
+                    'message': 'Admin access not available: invalid role.',
+                    'status': False})
+            # For one of OUR OWN roles, the peer must not override which role
+            # gets the set_temp_password ACL: re-resolve authoritatively and
+            # require a match. Foreign roles are governed by the (trusted)
+            # peer's site, so the reciprocal trust check above suffices.
+            if role.site == config.site:
+                resolved = self._resolve_temp_pass_role(user)
+                if resolved is None or resolved.uuid != role.uuid:
+                    return self.build_response(False, {
+                        'message': 'Admin access not available: role mismatch.',
+                        'status': False})
         else:
             role = self._resolve_temp_pass_role(user)
         if role is None:
@@ -1806,6 +1822,24 @@ class OTPmeSsoP1(OTPmeServer1):
         if not trusts:
             return False
         return user.site in trusts
+
+    def _site_trusts_site_for_device_token_roles(self, site):
+        """ Does this site (config.site) list ``site`` under
+        ``device_token_roles_trusts``? Used on the user's home site to
+        decide whether to accept a device-token creation forwarded by a
+        peer ssod (originator's SSO portal site). Reciprocal counterpart
+        of ``_site_trusts_user_home``. """
+        local_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if local_site is None:
+            return False
+        try:
+            trusts = local_site.get_config_parameter("device_token_roles_trusts")
+        except Exception:
+            trusts = None
+        if not trusts:
+            return False
+        return site in trusts
 
     def _resolve_device_token_roles(self, user, command_args):
         """ Resolve device_token_roles to a list of role instances.
@@ -2302,16 +2336,26 @@ class OTPmeSsoP1(OTPmeServer1):
         # which may be either user.get_config_parameter (trusted) or
         # the originator's site.get_config_parameter (untrusted via
         # device_token_roles_trusts) -- so we can't redo the same
-        # check here without rejecting the legitimate untrusted-foreign
-        # case. Trust the peer and load any cluster-synced role by uuid;
-        # non-peer callers still go through the device_token_roles
-        # allow-list as a safety net.
+        # membership check here without rejecting the legitimate
+        # untrusted-foreign case. Instead apply a reciprocal trust check:
+        # only accept a peer-forwarded role_uuid when our own
+        # device_token_roles_trusts lists the peer's site (mirrors
+        # set_admin_access_state / passkey_register_complete). Non-peer
+        # callers still go through the device_token_roles allow-list.
         is_cluster_peer = (not self.client.startswith("socket://")
                            and self.peer is not None
                            and self.peer.type == "node")
         role = None
         if is_cluster_peer:
             role = backend.get_object(object_type="role", uuid=role_uuid)
+            if not role:
+                return self.build_response(False, {'message':'Invalid role.', 'status':False})
+            if role.site == config.site:
+                if not self._site_trusts_site_for_device_token_roles(self.peer.site):
+                    return self.build_response(False, {
+                        'message': 'Device token creation not available: peer site '
+                                   'is not listed in device_token_roles_trusts.',
+                        'status': False})
         else:
             for candidate in self._get_device_token_roles(user):
                 if candidate.uuid == role_uuid:
@@ -2472,9 +2516,20 @@ class OTPmeSsoP1(OTPmeServer1):
         token_name = None
         if user.site != config.site:
             # Token creation must happen on the user's home site (authoritative
-            # write). The remote ssod re-validates role_uuid against the
-            # user's device_token_roles and appends the role's
-            # device_token_suffix to build the final token name.
+            # write). We are the originator: validate role_uuid against the
+            # roles this site resolves for the user (honouring
+            # device_token_roles_trusts) BEFORE forwarding, so a user cannot
+            # pick an arbitrary role_uuid. The home site then applies a
+            # reciprocal site-trust check and derives the token name from the
+            # role's device_token_suffix.
+            role = None
+            for candidate in self._resolve_device_token_roles(user, command_args):
+                if candidate.uuid == role_uuid:
+                    role = candidate
+                    break
+            if not role:
+                response = {'message':'Invalid role.', 'status':False}
+                return self.build_response(False, response)
             remote_args = dict(command_args)
             remote_args['device_name'] = device_name
             remote_args['role_uuid'] = role_uuid

@@ -67,6 +67,10 @@ class OTPmeJoinP1(OTPmeServer1):
         self.session_otp_type = None
         # Indicates master node join.
         self.master_node_join = False
+        # UUID of the host that was master-node-joined in this session. Used
+        # to bind the follow-up add_site_cert/add_ca_crl commands to that
+        # exact host so they cannot target an arbitrary foreign site.
+        self.master_node_join_host_uuid = None
         # Join/Leave job UUID.
         self.job_uuid = None
         self.callback = None
@@ -191,6 +195,7 @@ class OTPmeJoinP1(OTPmeServer1):
                     status = False
                     return self.build_response(status, message)
                 self.master_node_join = True
+                self.master_node_join_host_uuid = host.uuid
 
         # Make host join the realm.
         try:
@@ -1264,7 +1269,11 @@ class OTPmeJoinP1(OTPmeServer1):
             status = False
             message = (_("Permission denied"))
             # If this is a master node join we may have to update site cert.
-            if self.master_node_join:
+            # Bind to the exact host that was master-node-joined so a peer
+            # cannot push a certificate for an arbitrary foreign site.
+            if self.master_node_join \
+            and host \
+            and host.uuid == self.master_node_join_host_uuid:
                 # Get hosts site.
                 site = backend.get_object(object_type="site",
                                         uuid=host.site_uuid)
@@ -1299,7 +1308,12 @@ class OTPmeJoinP1(OTPmeServer1):
             status = False
             message = (_("Permission denied"))
             # If this is a master node join we have to update sites CRL.
-            if host.type == "node" and host.site_uuid != config.site_uuid:
+            # Bind to the exact host that was master-node-joined so a peer
+            # cannot overwrite an arbitrary foreign site's CRL.
+            if self.master_node_join \
+            and host \
+            and host.uuid == self.master_node_join_host_uuid \
+            and host.type == "node" and host.site_uuid != config.site_uuid:
                 # Get hosts site.
                 site = backend.get_object(object_type="site",
                                         uuid=host.site_uuid)

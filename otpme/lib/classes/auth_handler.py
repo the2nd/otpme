@@ -3186,10 +3186,14 @@ class AuthHandler(object):
             if self.auth_session:
                 auth_response['slp'] = self.auth_session.slp
 
-            # Update last used timestamps for user and token.
+            # Update last used timestamps.
             self.user.update_last_used_time()
             if self.auth_token:
                 self.auth_token.update_last_used_time()
+            if self.auth_client:
+                self.auth_client.update_last_used_time()
+            if self.auth_host:
+                self.auth_host.update_last_used_time()
 
             if self.realm_login:
                 log_msg = _("Realm login successful with token '{token_name}'", log=True)[1]

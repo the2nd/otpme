@@ -528,7 +528,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
-                and not share.is_master_password_token(config.auth_token.rel_path):
+                and not share.is_master_password_token(config.auth_token.uuid):
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
                     message = message.format(share=self.share)
@@ -692,7 +692,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 except KeyError:
                     master_password_mount = False
                 if master_password_mount:
-                    if not share.is_master_password_token(config.auth_token.rel_path):
+                    if not share.is_master_password_token(config.auth_token.uuid):
                         status = status_codes.PERMISSION_DENIED
                         message, log_msg = _("Master password mount not allowed: {token_path}", log=True)
                         message = message.format(token_path=config.auth_token.rel_path)
@@ -808,7 +808,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
             share = result[0]
-            if not share.is_master_password_token(config.auth_token.rel_path):
+            if not share.is_master_password_token(config.auth_token.uuid):
                 status = status_codes.PERMISSION_DENIED
                 message, log_msg = _("No share permissions: {share}", log=True)
                 message = message.format(share=self.share)

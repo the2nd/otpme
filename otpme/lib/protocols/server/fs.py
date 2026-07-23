@@ -56,6 +56,16 @@ def with_root_path(allow_symlinks=False):
                 path = os.path.realpath(path)
                 if not _within_root(self.root, path):
                     raise OSError(errno.ENOENT, "No such file or directory")
+            elif path != self.root:
+                # These handlers must operate on a final-component symlink
+                # itself (lstat/unlink/lchown/readlink), so we cannot realpath
+                # the whole path. But an intermediate directory symlink must
+                # not pivot outside the share: resolve the parent directory and
+                # re-check, keeping only the final component unresolved.
+                parent = os.path.realpath(os.path.dirname(path))
+                if not _within_root(self.root, parent):
+                    raise OSError(errno.ENOENT, "No such file or directory")
+                path = os.path.join(parent, os.path.basename(path))
             return f(self, path, *args, **kwargs)
         return wrapped
     return wrapper
@@ -231,6 +241,12 @@ class OTPmeFsServer1(OTPmeServer1):
         new = os.path.abspath(self.root + new)
         if not _within_root(self.root, new):
             raise OSError(errno.ENOENT, "No such file or directory")
+        # Confine new's parent too so an intermediate directory symlink
+        # cannot pivot the rename destination outside the share root.
+        new_parent = os.path.realpath(os.path.dirname(new))
+        if not _within_root(self.root, new_parent):
+            raise OSError(errno.ENOENT, "No such file or directory")
+        new = os.path.join(new_parent, os.path.basename(new))
         return os.rename(old, new)
 
     @with_root_path()
@@ -246,11 +262,16 @@ class OTPmeFsServer1(OTPmeServer1):
         # Resolve source path relative to target's directory.
         if not os.path.isabs(source):
             abs_source = os.path.abspath(os.path.join(os.path.dirname(target), source))
+            link_content = source
         else:
+            # An absolute source is interpreted relative to the share root
+            # (chroot-like). Store it relative to the link's directory so the
+            # on-disk link content cannot point outside the share.
             abs_source = os.path.abspath(self.root + source)
+            link_content = os.path.relpath(abs_source, os.path.dirname(target))
         if not _within_root(self.root, abs_source):
             raise OSError(errno.ENOENT, "No such file or directory")
-        result = os.symlink(source, target)
+        result = os.symlink(link_content, target)
         if self.force_group_gid:
             os.lchown(target, -1, self.force_group_gid)
         return result
@@ -367,7 +388,10 @@ class OTPmeFsServer1(OTPmeServer1):
     def link(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
-        source = os.path.abspath(self.root + source)
+        # Fully resolve the source (following any symlink components) and
+        # require the resolved path to stay inside the share, so a symlink
+        # cannot make os.link hardlink a file outside root.
+        source = os.path.realpath(self.root + source)
         if not _within_root(self.root, source):
             raise OSError(errno.ENOENT, "No such file or directory")
         return os.link(source, target)

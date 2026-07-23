@@ -191,6 +191,7 @@ class PasskeyToken(Token):
         self.token_type = "passkey"
         self.pass_type = "smartcard"
         self.credential_data = None
+        self.rp = None
         self.allow_offline = False
         self.offline_expiry = 0
         self.offline_unused_expiry = 0
@@ -201,6 +202,12 @@ class PasskeyToken(Token):
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
         token_config = {
+            'RP'                        : {
+                                            'var_name'      : 'rp',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+
             'REG_STATE'                 : {
                                             'var_name'      : 'reg_state',
                                             'type'          : dict,
@@ -238,12 +245,15 @@ class PasskeyToken(Token):
     def need_password(self, *args, **kwargs):
         return
 
-    @property
-    def rp(self):
-        return config.site_sso_fqdn
-
-    def get_fido2_server(self):
-        rp_data = {"id": self.rp, "name": "OTPme RP"}
+    def get_fido2_server(self, rp_id=None):
+        # rp is stored on the token once deployed. During registration it is
+        # still None, so fall back to the site's current SSO FQDN -- the same
+        # value that gets baked into the create_options / rpIdHash.
+        if rp_id is None:
+            rp_id = self.rp
+        if rp_id is None:
+            rp_id = config.site_sso_fqdn
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
         # attestation="none": passkeys (especially synced ones) rarely
         # ship a useful attestation; requiring it would lock out major
         # platform authenticators.
@@ -311,6 +321,12 @@ class PasskeyToken(Token):
             msg = msg.format(error=e)
             return callback.error(msg)
         self.credential_data = encode(auth_data.credential_data, "hex")
+        # Bind the token to the RP the credential was registered for. Taken
+        # from the server object so it always matches what get_fido2_server()
+        # used; lets us filter a user's passkey tokens by rp at
+        # authenticate_begin. Not recoverable from registration_data in
+        # plaintext (only as origin / rpIdHash).
+        self.rp = fido2_server.rp.id
         self.reg_state = {}
         self._cache(callback=callback)
         cred_hash = hashlib.sha256(auth_data.credential_data).hexdigest()[:16]
@@ -389,6 +405,7 @@ class PasskeyToken(Token):
             msg = _("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
+        lines.append(f'RP="{self.rp}"')
         if self.verify_acl("view:credential_data"):
             lines.append(f'CREDENTIAL_DATA="{self.credential_data}"')
         else:

@@ -364,6 +364,7 @@ class YubikeypivToken(Token):
         self.signatures = {}
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_piv' ]
+        self.serial = None
 
         self._sub_sync_fields = {
                     'host'  : {
@@ -434,6 +435,11 @@ class YubikeypivToken(Token):
                                             'var_name'  : 'signatures',
                                             'type'      : dict,
                                             'required'  : False,
+                                        },
+            'SERIAL'                    : {
+                                            'var_name'      : 'serial',
+                                            'type'          : str,
+                                            'required'      : False,
                                         },
             }
 
@@ -791,6 +797,7 @@ class YubikeypivToken(Token):
         ssh_public_key_type: str=None,
         dot1x_secret: str=None,
         private_key_backup: Union[dict,None]=None,
+        serial: str=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -831,6 +838,8 @@ class YubikeypivToken(Token):
             self.key_type = ssh_public_key_type
         if dot1x_secret:
             self.dot1x_secret = dot1x_secret
+        if serial:
+            self.serial = str(serial)
         msg = _("Yubikey PIV token deployed successful.")
         callback.send(msg)
         return self._cache(callback=callback)
@@ -883,6 +892,8 @@ class YubikeypivToken(Token):
             lines.append(f'DOT1X_SECRET="{self.dot1x_secret}"')
         else:
             lines.append('DOT1X_SECRET=""')
+
+        lines.append(f'SERIAL="{self.serial}"')
 
         return Token.show_config(self,
                                 config_lines=lines,

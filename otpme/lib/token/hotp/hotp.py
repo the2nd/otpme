@@ -378,6 +378,7 @@ class HotpToken(OathToken):
                         ]
         self.user_acls = []
         self.creator_acls = []
+        self.serial = None
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -436,6 +437,12 @@ class HotpToken(OathToken):
 
             'SECRET_ENCODING'           : {
                                             'var_name'      : 'secret_encoding',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+
+            'SERIAL'                    : {
+                                            'var_name'      : 'serial',
                                             'type'          : str,
                                             'required'      : False,
                                         },
@@ -1042,6 +1049,7 @@ class HotpToken(OathToken):
         secret_len: int,
         pin: str,
         secret_encoding: str,
+        serial: str=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1065,6 +1073,9 @@ class HotpToken(OathToken):
             msg = _("Token secret: {token_secret}")
             msg = msg.format(token_secret=token_secret)
             callback.send(msg)
+
+        if serial:
+            self.serial = str(serial)
 
         msg = _("You have to resync the token after re-deploying.")
         callback.send(msg)
@@ -1103,6 +1114,8 @@ class HotpToken(OathToken):
         if self.verify_acl("view:server_secret"):
             server_secret = str(self.server_secret)
         lines.append(f'SERVER_SECRET="{server_secret}"')
+
+        lines.append(f'SERIAL="{self.serial}"')
 
         return super().show_config(config_lines=lines,
                                                 callback=callback,

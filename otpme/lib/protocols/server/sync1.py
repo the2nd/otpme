@@ -104,6 +104,8 @@ class OTPmeSyncP1(OTPmeServer1):
         self.require_cluster_status = False
         # Sync parameters of peer.
         self.peer_sync_params = {}
+        # Sync list of peer.
+        self.sync_list = None
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -263,6 +265,7 @@ class OTPmeSyncP1(OTPmeServer1):
         finally:
             # Release sync lock.
             sync_lock.release_lock()
+        self.sync_list = sync_list
         # Build response.
         _sync_params = dict(sync_params)
         _sync_params['skip_admin'] = skip_admin
@@ -325,8 +328,20 @@ class OTPmeSyncP1(OTPmeServer1):
         """ Handle get object command. """
         status = True
         object_type = object_id.object_type
+        if not self.sync_list:
+            status = False
+            response, log_msg = _("Send sync list command first", log=True)
+            self.logger.warning(log_msg)
+            return status, response
         # Check if a valid object is requested.
         if object_type not in valid_object_types:
+            status = False
+            response, log_msg = _("Permission denied: {object_id}", log=True)
+            response = response.format(object_id=object_id)
+            log_msg = log_msg.format(object_id=object_id)
+            self.logger.warning(log_msg)
+            return status, response
+        if object_id not in self.sync_list:
             status = False
             response, log_msg = _("Permission denied: {object_id}", log=True)
             response = response.format(object_id=object_id)
@@ -386,6 +401,8 @@ class OTPmeSyncP1(OTPmeServer1):
 
         object_checksum = backend.get_sync_checksum(object_id)
         response = {'checksum':object_checksum,'object_config':sync_config}
+        if o.track_last_used:
+            response['last_used'] = o.last_used
         o_size = stuff.get_dict_size(sync_config)
         object_size = units.int2size(o_size)
         log_msg = _("Sending object ({object_size}): {object_id}", log=True)[1]
@@ -402,10 +419,12 @@ class OTPmeSyncP1(OTPmeServer1):
             log_name = "used OTP"
             sync_otps = True
             object_class = UsedOTP
+            expected_type = "used_otp"
         elif data_type == "counter":
             log_name = "token counter"
             sync_counter = True
             object_class = TokenCounter
+            expected_type = "token_counter"
         else:
              msg = _("Unknown data type: {data_type}")
              msg = msg.format(data_type=data_type)
@@ -431,6 +450,14 @@ class OTPmeSyncP1(OTPmeServer1):
                                             return_type="oid")
         for x in remote_objects:
             x_oid = oid.get(object_id=x)
+            # Reject OIDs whose object type does not match the requested
+            # data type so a peer cannot overwrite arbitrary object slots
+            # (e.g. push a "user" OID via sync_token_data).
+            if x_oid.object_type != expected_type:
+                log_msg = _("Rejecting object with unexpected type from peer: {peer_fqdn}: {x_oid} (expected {expected_type})", log=True)[1]
+                log_msg = log_msg.format(peer_fqdn=self.peer.fqdn, x_oid=x_oid, expected_type=expected_type)
+                self.logger.critical(log_msg)
+                continue
             x_config = remote_objects[x]
             # Decrypt object config..
             try:
@@ -573,16 +600,27 @@ class OTPmeSyncP1(OTPmeServer1):
             log_name = "used OTP"
             sync_otps = True
             object_class = UsedOTP
+            expected_type = "used_otp"
         elif data_type == "counter":
             log_name = "token counter"
             sync_counter = True
             object_class = TokenCounter
+            expected_type = "token_counter"
         else:
              msg = _("Unknown data type: {data_type}")
              msg = msg.format(data_type=data_type)
              raise OTPmeException(msg)
 
         token_oid = oid.get(object_id=object_id)
+        # Ensure the peer-supplied token OID actually addresses a token,
+        # not e.g. a user or policy slot.
+        if token_oid.object_type != "token":
+            log_msg = _("Rejecting token OID with unexpected type from peer: {peer_fqdn}: {oid}", log=True)[1]
+            log_msg = log_msg.format(peer_fqdn=self.peer.fqdn, oid=token_oid)
+            self.logger.critical(log_msg)
+            status = False
+            response = f"SYNC_UNKNOWN_OBJECT: {token_oid}"
+            return status, response
         try:
             token = backend.get_object(object_type="token",
                                     object_id=token_oid)
@@ -621,6 +659,17 @@ class OTPmeSyncP1(OTPmeServer1):
             response = f"SYNC_UNKNOWN_SESSION: {session_uuid}"
             return status, response
 
+        # The session's user must own the token whose offline data is
+        # synced, so a host cannot use its own session's offline_data_key
+        # to read or inject another user's token data.
+        if token.owner_uuid != session.user_uuid:
+            log_msg = _("Session user does not own token: {peer_fqdn}: {oid}", log=True)[1]
+            log_msg = log_msg.format(peer_fqdn=self.peer.fqdn, oid=token_oid)
+            self.logger.warning(log_msg)
+            status = status_codes.PERMISSION_DENIED
+            response = f"SYNC_PERMISSION_DENIED: {token_oid}"
+            return status, response
+
         offline_data_key = session.offline_data_key
         log_msg = _("Reading {name}s: {oid}", log=True)[1]
         log_msg = log_msg.format(name=log_name, oid=token_oid)
@@ -634,6 +683,21 @@ class OTPmeSyncP1(OTPmeServer1):
 
         for x in remote_objects:
             x_oid = oid.get(object_id=x)
+            # Reject OIDs whose object type does not match the requested
+            # data type so a peer cannot overwrite arbitrary object slots.
+            if x_oid.object_type != expected_type:
+                log_msg = _("Rejecting object with unexpected type from peer: {peer_fqdn}: {x_oid} (expected {expected_type})", log=True)[1]
+                log_msg = log_msg.format(peer_fqdn=self.peer.fqdn, x_oid=x_oid, expected_type=expected_type)
+                self.logger.critical(log_msg)
+                continue
+            # The injected object must belong to the token being synced so a
+            # peer cannot write counter/used_otp records for an unrelated
+            # token.
+            if x_oid.token_uuid != token.uuid:
+                log_msg = _("Rejecting object for unrelated token from peer: {peer_fqdn}: {x_oid}", log=True)[1]
+                log_msg = log_msg.format(peer_fqdn=self.peer.fqdn, x_oid=x_oid)
+                self.logger.critical(log_msg)
+                continue
             x_config = remote_objects[x]
             # Decrypt object config..
             try:
@@ -1126,6 +1190,13 @@ class OTPmeSyncP1(OTPmeServer1):
             return self.build_response(status, response)
 
         if command == "sync_token_data":
+            # Node-only: full node-to-node token-data replication. Hosts
+            # sync token data exclusively via sync_offline_token_data
+            # (command_handler enforces offline=True for hosts).
+            if self.peer.type != "node":
+                response, log_msg = _("Permission denied.", log=True)
+                self.logger.warning(log_msg)
+                return self.build_response(False, response)
             try:
                 data_type = command_args['data_type']
             except Exception:

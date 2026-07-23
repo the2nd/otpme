@@ -494,11 +494,20 @@ class OTPmeAgent(UnixDaemon):
                     except Exception:
                         pass
                     return
+                try:
+                    session_uuid = self.login_sessions[login_pid]['server_sessions'][realm][site]['session_uuid']
+                except Exception as e:
+                    try:
+                        idled_conn.close()
+                    except Exception:
+                        pass
+                    return
 
                 command_args = {
                                 'username'      : login_user,
                                 'login_token'   : login_token,
                                 'login_time'    : login_time,
+                                'session_uuid'  : session_uuid,
                                 }
                 try:
                     status, \

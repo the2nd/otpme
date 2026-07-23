@@ -3470,6 +3470,9 @@ def index_dump(object_id=None, uuid=None, session=None, checksum_ready=False, **
         attr_name = c.name.replace("user.", "")
         if attr_name == "id":
             continue
+        if checksum_ready:
+            if attr_name == "last_used":
+                continue
         attr_val = getattr(index_object, attr_name)
         base_attributes[attr_name] = attr_val
     result['base_attributes'] = base_attributes

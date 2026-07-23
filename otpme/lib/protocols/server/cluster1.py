@@ -767,7 +767,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_id = oid.get(object_id)
-                if object_id in config.tree_object_types:
+                if object_id.object_type in config.tree_object_types:
                     if config.master_node:
                         message = _("Cannot rename tree object on master node.")
                         status = False
@@ -810,7 +810,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_id = oid.get(object_id)
-                if object_id in config.tree_object_types:
+                if object_id.object_type in config.tree_object_types:
                     if config.master_node:
                         message = _("Cannot delete tree object on master node.")
                         status = False

@@ -2957,6 +2957,8 @@ class User(OTPmeObject):
         if config.auth_token:
             if config.auth_token.uuid == self.uuid:
                 check_acl = False
+        if not private:
+            check_acl = False
         if check_acl:
             acl = "view:sign_public_key"
             if private:
@@ -2985,6 +2987,8 @@ class User(OTPmeObject):
         if config.auth_token:
             if config.auth_token.uuid == self.uuid:
                 check_acl = False
+        if not private:
+            check_acl = False
         if check_acl:
             acl = "view:encrypt_public_key"
             if private:

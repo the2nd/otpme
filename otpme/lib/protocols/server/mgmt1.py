@@ -1465,6 +1465,11 @@ class OTPmeMgmtP1(OTPmeServer1):
             status = False
             return self.build_response(status, message)
 
+        # Collect usernames being moved in this set. A token has no
+        # unit-level add ACL; its owning user's add:user check is the
+        # authorization boundary for a cross-site move, and legitimate token
+        # moves are always bundled with their user (user.cross_site_move).
+        move_user_names = set()
         # Check if objects are moveable.
         for x_src_oid in objects:
             x_oc = objects[x_src_oid]['object_config']
@@ -1473,6 +1478,8 @@ class OTPmeMgmtP1(OTPmeServer1):
             except KeyError:
                 x_path = None
             x_src_oid = oid.get(x_src_oid)
+            if x_src_oid.object_type == "user":
+                move_user_names.add(x_src_oid.name)
             x_uuid = x_oc['UUID']
             x_oid = backend.get_oid(x_uuid)
             if not x_oid:
@@ -1561,6 +1568,17 @@ class OTPmeMgmtP1(OTPmeServer1):
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
                 moved_objects[x_src_oid.full_oid]['dst'] = move_object.oid.full_oid
             elif x_src_oid.object_type == "token":
+                # Unlike the user/group branches this branch has no
+                # destination ACL check. Tokens are user-owned with no
+                # unit-level add:token ACL, so refuse to relocate a token
+                # unless its owning user is moved in the same set (whose
+                # add:user check gates the bundle). This prevents a
+                # standalone token move/overwrite without that gate.
+                if x_src_oid.user not in move_user_names:
+                    message = _("Cannot move token without its owner: {oid}")
+                    message = message.format(oid=x_src_oid)
+                    status = False
+                    return self.build_response(status, message)
                 try:
                     backend.delete_object(x_src_oid, cluster=True)
                 except UnknownObject:
@@ -2123,6 +2141,13 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(status, message)
 
             object_id = oid.get(object_id=object_id)
+            # Only legitimate use is resolving script OIDs (get_script_uuid);
+            # restrict non-admins to that so this cannot be used as a general
+            # cross-realm/site object existence/UUID oracle.
+            if not self.is_admin and object_id.object_type != "script":
+                response = _("Error getting UUID: {id}").format(id=object_id)
+                status = False
+                return self.build_response(status, response)
             try:
                 response = backend.get_uuid(object_id)
                 status = True
@@ -2538,6 +2563,22 @@ class OTPmeMgmtP1(OTPmeServer1):
             response = _("Unknown share: {name}").format(name=share_name)
             return self.build_response(False, response)
         share = result[0]
+        # Only return a share the caller is actually entitled to (mirrors
+        # _cmd_get_shares), so a non-admin user cannot enumerate arbitrary
+        # shares' node topology / encryption state across sites. Use the
+        # same "Unknown share" response for a non-entitled share so it is
+        # indistinguishable from a non-existent one (no existence oracle).
+        if not self.is_admin:
+            user_shares = config.auth_token.get_shares(skip_disabled=True,
+                                                    return_type="uuid")
+            entitled = share.uuid in user_shares
+            if entitled and share.limit_by_hosts:
+                entitled = share.is_assigned_host(self.peer.uuid,
+                                                include_groups=True,
+                                                include_roles=True)
+            if not entitled:
+                response = _("Unknown share: {name}").format(name=share_name)
+                return self.build_response(False, response)
         share_nodes = share.get_nodes(include_pools=True,
                                     return_type="instance")
         node_fqdns = [node.fqdn for node in share_nodes]
@@ -2588,9 +2629,18 @@ class OTPmeMgmtP1(OTPmeServer1):
             token_path = command_args['token_path']
         except KeyError:
             return self.build_response(False, "Missing <token_path>")
+        # Pin to the caller's own realm/site and require a view ACL for
+        # non-admins (mirrors the backend 'search' branch), so this cannot
+        # be used as a cross-site token existence/type oracle.
+        verify_acls = []
+        if not self.is_admin:
+            verify_acls = ["view_public:rel_path"]
         result = backend.search(object_type="token",
                                 attribute="rel_path",
                                 value=token_path,
+                                realm=config.realm,
+                                site=config.site,
+                                verify_acls=verify_acls,
                                 return_attributes=['token_type'])
         if not result:
             response = _("Unknown token: {path}").format(path=token_path)
@@ -2602,9 +2652,18 @@ class OTPmeMgmtP1(OTPmeServer1):
             policy_name = command_args['policy_name']
         except KeyError:
             return self.build_response(False, "Missing <policy_name>")
+        # Pin to the caller's own realm/site and require a view ACL for
+        # non-admins (mirrors the backend 'search' branch), so this cannot
+        # be used as a cross-site policy existence/type oracle.
+        verify_acls = []
+        if not self.is_admin:
+            verify_acls = ["view_public:name"]
         result = backend.search(object_type="policy",
                                 attribute="name",
                                 value=policy_name,
+                                realm=config.realm,
+                                site=config.site,
+                                verify_acls=verify_acls,
                                 return_attributes=['policy_type'])
         if not result:
             response = _("Unknown policy: {name}").format(name=policy_name)

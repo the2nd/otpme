@@ -122,6 +122,7 @@ class YubikeyHotpClientHandler(object):
         deploy_args['secret_len'] = self.secret_len
         deploy_args['secret_encoding'] = "hex"
         deploy_args['pin'] = pin
+        deploy_args['serial'] = yk.get_serial()
 
         if not config.force:
             message(_("WARNING!!!!!!! You will lose any key/password configured for the given slot!!!"))

@@ -329,6 +329,7 @@ class YubikeyhmacToken(Token):
         self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_hmac' ]
+        self.serial = None
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -377,6 +378,11 @@ class YubikeyhmacToken(Token):
                                             'var_name'      : 'secret_len',
                                             'type'          : int,
                                             'required'      : True,
+                                        },
+            'SERIAL'                    : {
+                                            'var_name'      : 'serial',
+                                            'type'          : str,
+                                            'required'      : False,
                                         },
             }
 
@@ -660,6 +666,7 @@ class YubikeyhmacToken(Token):
         hmac_challenge: str,
         hmac_id: str,
         slot: int=DEFAULT_SLOT,
+        serial: str=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -690,6 +697,8 @@ class YubikeyhmacToken(Token):
             msg = msg.format(slot=slot)
             callback.send(msg)
         self.slot = slot
+        if serial:
+            self.serial = str(serial)
         msg = _("Yubikey HMAC token deployed successful.")
         callback.send(msg)
         return self._cache(callback=callback)
@@ -735,6 +744,8 @@ class YubikeyhmacToken(Token):
             lines.append(f'HMAC_CHALLENGE="{self.hmac_challenge}"')
         else:
             lines.append('HMAC_CHALLENGE=""')
+
+        lines.append(f'SERIAL="{self.serial}"')
 
         return Token.show_config(self,
                                 config_lines=lines,

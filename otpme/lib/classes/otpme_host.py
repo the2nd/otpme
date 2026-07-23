@@ -152,6 +152,7 @@ class OTPmeHost(OTPmeClientObject):
         self.join_token = None
         self.join_token_cache  = None
         self.private_key = None
+        self.track_last_used = True
         self.dynamic_groups = []
 
     def _get_object_config(self, object_config: Union[dict,None]=None):

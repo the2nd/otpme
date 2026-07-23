@@ -27,13 +27,14 @@ cmd_help = {
                 },
 
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] <token>'),
-                    'cmd'   :   '-d :debug=True: --uv :uv: -r :replace=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] [--uv <uv>] [--no-pin] <token>'),
+                    'cmd'   :   '-d :debug=True: --no-pin :setup_pin=False: --uv :uv: -r :replace=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Deploy fido2 token.'),
                                     '-r'                    : _('Replace existing token.'),
-                                    '-d'                    : _('Enable token related debug output.'),
+                                    '--no-pin'              : _('Dont set PIN for fido2 token.'),
                                     '--uv <uv>'             : _('Set fido2 user verification.'),
+                                    '-d'                    : _('Enable token related debug output.'),
                                 },
                     },
 

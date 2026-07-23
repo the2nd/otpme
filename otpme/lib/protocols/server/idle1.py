@@ -61,6 +61,8 @@ class OTPmeIdleP1(OTPmeServer1):
         # dropped on the floor while no q is registered.
         self.subscribed_username = None
         self.q = None
+        # Session of connected user.
+        self.session = None
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -114,7 +116,11 @@ class OTPmeIdleP1(OTPmeServer1):
                 login_time = command_args['login_time']
             except Exception:
                 login_time = None
-            return self._handle_wait(username, login_token, login_time)
+            try:
+                session_uuid = command_args['session_uuid']
+            except Exception:
+                session_uuid = None
+            return self._handle_wait(username, login_token, login_time, session_uuid)
 
         if command == "who":
             return self._handle_who(username)
@@ -124,6 +130,13 @@ class OTPmeIdleP1(OTPmeServer1):
         the given user. Producers call this via connections.get("idled")
         from share.add_token / add_role / remove_* etc. """
         if not self.peer.type == "node":
+            return self.build_response(False, "Permission denied")
+        # Bind to our own site/realm: idled coordinates share events for
+        # this site's users and its producers are same-site nodes. A
+        # foreign-site node (whose cert still chains to the realm CA) must
+        # not be able to inject events into local users' agents.
+        if self.peer.realm_uuid != config.realm_uuid \
+        or self.peer.site_uuid != config.site_uuid:
             return self.build_response(False, "Permission denied")
         if not username:
             return self.build_response(False, "Missing username")
@@ -138,7 +151,7 @@ class OTPmeIdleP1(OTPmeServer1):
         self.dispatcher.publish(username, event)
         return self.build_response(True, "ok")
 
-    def _handle_wait(self, username, login_token, login_time):
+    def _handle_wait(self, username, login_token, login_time, session_uuid):
         """ Long-poll: subscribe the calling agent to its user's queue
         and block until an event arrives. On timeout we loop silently
         (no keepalive frame). Returns one matching event per call; the
@@ -152,6 +165,17 @@ class OTPmeIdleP1(OTPmeServer1):
         dropped. """
         if not username:
             return self.build_response(False, "Missing username")
+        if session_uuid:
+            return_attributes = ['session_id']
+            result = backend.search(object_type="session",
+                                        attribute="uuid",
+                                        value=session_uuid,
+                                        return_attributes=return_attributes,
+                                        return_type="uuid")
+            if result:
+                self.session = result[0]
+        else:
+            self.session = None
         if self.q is None:
             host = self.peer.name
             login_data = {
@@ -160,6 +184,7 @@ class OTPmeIdleP1(OTPmeServer1):
                         'login_time'    : login_time,
                         'login_token'   : login_token,
                         'client_ip'     : self.client,
+                        'session'       : self.session,
                         }
             self.q = self.dispatcher.subscribe(username, host, login_data=login_data)
             self.subscribed_username = username
@@ -182,6 +207,9 @@ class OTPmeIdleP1(OTPmeServer1):
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
                 return self.build_response(False, str(e))
+            # Dont notify clients without session.
+            if not self.session:
+                continue
             try:
                 result = self.process_event(username, login_token, event)
             except Exception as e:
@@ -390,6 +418,12 @@ class OTPmeIdleP1(OTPmeServer1):
         if not allow_who_from_hosts:
             if not self.peer.type == "node":
                 return self.build_response(False, "Permission denied")
+        # Scope to our own site/realm: the presence map (login_token,
+        # client_ip, ...) belongs to this site's users. A foreign-site peer
+        # must not enumerate it.
+        if self.peer.realm_uuid != config.realm_uuid \
+        or self.peer.site_uuid != config.site_uuid:
+            return self.build_response(False, "Permission denied")
         login_data = self.dispatcher.get_login_data()
         if username:
             try:

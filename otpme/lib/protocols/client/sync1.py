@@ -712,6 +712,22 @@ class OTPmeSyncP1(OTPmeClient1):
                             if value == "USE_LOCAL":
                                 local_value = object_config[attribute]
                                 new_object_config[attribute] = local_value
+                        # Set last used.
+                        try:
+                            last_used = response['last_used']
+                        except KeyError:
+                            pass
+                        else:
+                            try:
+                                x_uuid = new_object_config['UUID']
+                            except KeyError:
+                                pass
+                            else:
+                                x_oid = oid.get(object_id)
+                                backend.set_last_used(object_id=x_oid,
+                                                    uuid=x_uuid,
+                                                    timestamp=last_used,
+                                                    cluster=False)
 
                         # Update object in sync dict.
                         self.sync_cache[object_id] = new_object_config
