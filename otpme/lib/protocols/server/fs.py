@@ -259,19 +259,13 @@ class OTPmeFsServer1(OTPmeServer1):
     def symlink(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
-        # Resolve source path relative to target's directory.
-        if not os.path.isabs(source):
-            abs_source = os.path.abspath(os.path.join(os.path.dirname(target), source))
-            link_content = source
-        else:
-            # An absolute source is interpreted relative to the share root
-            # (chroot-like). Store it relative to the link's directory so the
-            # on-disk link content cannot point outside the share.
-            abs_source = os.path.abspath(self.root + source)
-            link_content = os.path.relpath(abs_source, os.path.dirname(target))
-        if not _within_root(self.root, abs_source):
-            raise OSError(errno.ENOENT, "No such file or directory")
-        result = os.symlink(link_content, target)
+        # Store the link content verbatim. Symlinks are resolved by the
+        # client's VFS, not the server, so the on-disk content is opaque to
+        # us. Server-side escapes are prevented where they matter: the
+        # dereferencing handlers (open/read/write/link/...) run under
+        # with_root_path() without allow_symlinks, so realpath() confinement
+        # blocks any operation that would follow a link out of the share.
+        result = os.symlink(source, target)
         if self.force_group_gid:
             os.lchown(target, -1, self.force_group_gid)
         return result

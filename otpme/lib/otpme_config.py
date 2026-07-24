@@ -1570,8 +1570,12 @@ class OTPmeConfig(object):
     def register_config_parameter(self, name, ctype,
         default_value=None, valid_values=None, object_types=None,
         getter=None, setter=None, deller=None, warn_if_exists=False,
-        default_genner=None):
-        """ Register config parameter. """
+        default_genner=None, sensitive=False):
+        """ Register config parameter.
+
+        sensitive: the parameter value is a secret (e.g. a password) and must
+        not be written to the object changelog in cleartext.
+        """
         if object_types is None:
             object_types = []
         if name in self.valid_config_params:
@@ -1588,6 +1592,7 @@ class OTPmeConfig(object):
                                             'deller'            : deller,
                                             'default_genner'    : default_genner,
                                             'warn_if_exists'    : warn_if_exists,
+                                            'sensitive'         : sensitive,
                                         }
     def get_config_parameter(self, name):
         try:

@@ -32,6 +32,11 @@ IGNORE_ARGS = [
                 "verify_acls",
                 "changelog",
                 "no_audit_log",
+                # 'value' is free-form data (e.g. set_config_param's parameter
+                # value) and may be a secret like a repo password -- never dump
+                # it into the auto text. Methods that want it recorded do so
+                # explicitly (and masked when sensitive) via set_changelog().
+                "value",
                 ]
 
 # Thread-local recording context. Ensures exactly one changelog entry per

@@ -1077,16 +1077,8 @@ def register_config():
                     'node',
                     'share',
                     ]
-    # Enable/disable backups.
-    def backup_enabled_setter(backup_enabled, config_object, **kwargs):
-        config_object.update_index('backup_enabled', backup_enabled)
-        return backup_enabled
-    def backup_enabled_deller(config_object, **kwargs):
-        config_object.del_index('backup_enabled')
     config.register_config_parameter(name="backup_enabled",
                                     ctype=bool,
-                                    setter=backup_enabled_setter,
-                                    deller=backup_enabled_deller,
                                     object_types=object_types)
     # Exclude special files?
     config.register_config_parameter(name="backup_exclude_special",
@@ -1211,6 +1203,7 @@ def register_config():
                                     setter=backup_key_setter,
                                     getter=backup_key_getter,
                                     default_genner=backup_key_default_genner,
+                                    sensitive=True,
                                     object_types=object_types)
     # Backup repo password used for authentication to backup server.
     def backup_pass_setter(backup_pass, callback=default_callback, **kwargs):
@@ -1247,6 +1240,7 @@ def register_config():
                                     setter=backup_pass_setter,
                                     getter=backup_pass_getter,
                                     warn_if_exists=True,
+                                    sensitive=True,
                                     object_types=object_types)
     # Backup report settings.
     config.register_config_parameter(name="backup_report_enabled",
@@ -1323,6 +1317,7 @@ def register_config():
                                     ctype=str,
                                     getter=backup_smtp_pass_getter,
                                     setter=backup_smtp_pass_setter,
+                                    sensitive=True,
                                     object_types=object_types)
     # Object types our config parameter is valid for.
     object_types = [

@@ -75,6 +75,13 @@ def fix_snapshot_path():
                             mode = result.get("st_mode", 0)
                             if stat.S_ISDIR(mode):
                                 is_dir = True
+                        if is_dir:
+                            # The directory exists in the shared tree/ but may
+                            # not belong to this snapshot -> report as absent
+                            # (covers getattr and the readdir target itself).
+                            if not self._dir_in_snapshot(path):
+                                raise FileNotFoundError(errno.ENOENT,
+                                                    os.strerror(errno.ENOENT))
                         if not is_dir:
                             # Check for longname.
                             x = f"{path}-{self.snapshot}"
@@ -1233,6 +1240,38 @@ class OTPmeBackupP1(OTPmeFsServer1):
     def create(self, path: str, mode, fi=None) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
+    def _dir_in_snapshot(self, tree_path):
+        """ Return True if the tree/ directory 'tree_path' belongs to the
+        currently selected snapshot (self.snapshot).
+
+        Directories live in the shared tree/ across ALL snapshots, so their
+        mere presence on disk does not imply membership. get_entry_full()
+        resolves that correctly: in tree mode (the only mode that mounts) it
+        reads the per-snapshot meta/ entry (written for new/changed dirs,
+        hardlinked for unchanged ones) and returns None when the dir is not
+        part of this snapshot -- this is exactly the check the client-side
+        implementation used and it is read-only (it does NOT touch the
+        read-write snap_index.db, which raises "attempt to write a readonly
+        database" on a restore mount). 'tree_path' is the internal
+        "/tree/<enc-rel>" path; stripping the "/tree/" prefix yields the
+        encrypted rel path. Fails open (True) when there is nothing to check
+        against (no snapshot / no handler / unexpected path), so non-snapshot
+        browsing is unaffected.
+        """
+        if not self.snapshot or not self.backup_handler:
+            return True
+        prefix = "/tree/"
+        if not tree_path.startswith(prefix):
+            return True
+        rel_key = tree_path[len(prefix):]
+        if not rel_key:
+            return True
+        try:
+            entry = self.backup_handler.get_entry_full(self.snapshot, rel_key)
+        except Exception:
+            return True
+        return entry is not None and entry.get("type_line") == "DIR"
+
     @fix_snapshot_path()
     def getattr(self, path: str, fh: Optional[int] = None) -> dict[str, Any]:
         global getattr_cache
@@ -1307,7 +1346,10 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 x_data = getattr_data[x_path]['result']
                 x_mode = x_data.get("st_mode", 0)
             if stat.S_ISDIR(x_mode):
-                readdir_result.append(x)
+                # Shared tree/ dirs leak across snapshots -> only list the
+                # ones that actually belong to this snapshot.
+                if x == "." or x == ".." or self._dir_in_snapshot(path + "/" + x):
+                    readdir_result.append(x)
                 continue
             try:
                 x, entry, longname = self.resolve_longname(path, x)
@@ -1323,6 +1365,10 @@ class OTPmeBackupP1(OTPmeFsServer1):
             x_data = result['getattr'].pop(x_path)
             x_mode = x_data['result'].get("st_mode", 0)
             if stat.S_ISDIR(x_mode):
+                # Drop dirs that are not part of this snapshot (keep the
+                # getattr map consistent with the filtered readdir list).
+                if not self._dir_in_snapshot(x_path):
+                    continue
                 x_path = x_path.split("/")
                 x_path.pop(1)
                 x_path.insert(1, self.snapshot)

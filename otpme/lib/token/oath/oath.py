@@ -331,9 +331,7 @@ class OathToken(Token):
         **kwargs,
         ):
         """ Change token PIN. """
-        result = super().change_pin(*args,
-                                                callback=callback,
-                                                **kwargs)
+        result = super().change_pin(*args, callback=callback, **kwargs)
         if not result:
             return result
         if self.mode == "mode2":
@@ -509,8 +507,12 @@ class OathToken(Token):
         if self.mode == "mode1":
             token_secret = stuff.gen_secret(self.secret_len, "base32")
             self.secret = token_secret
-        else:
+        elif self.mode == "mode2":
             self.server_secret = stuff.gen_secret(self.secret_len, "base32")
+        else:
+            msg = _("Invalid mode: {mode}")
+            msg = msg.format(mode=mode)
+            return callback.error(msg)
         # Gen PIN.
         pin = stuff.gen_pin(self.default_pin_len)
         self.pin = pin

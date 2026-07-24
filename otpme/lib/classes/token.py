@@ -3926,6 +3926,8 @@ class Token(OTPmeObject):
                                     callback=callback,
                                     verbose_level=verbose_level,
                                     **kwargs)
+        if not token_add_status:
+            return token_add_status
 
         # Add object using parent class.
         add_status = super().add(verbose_level=verbose_level,

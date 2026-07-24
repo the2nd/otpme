@@ -348,7 +348,7 @@ class CommandHandler(object):
             raise OTPmeException(response)
 
         # Make sure we start pager (less) if result exceeds terminal size.
-        if client_type == "CLIENT":
+        if daemon == "mgmtd" and client_type == "CLIENT":
             try:
                 lines = config.term_size['lines']
                 columns = config.term_size['columns']

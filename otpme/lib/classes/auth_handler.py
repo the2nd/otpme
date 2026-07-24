@@ -1186,7 +1186,9 @@ class AuthHandler(object):
         if verify_status is None:
             return None
         if verify_status is False:
-            return None
+            # FIXME: We should return False if token failed (e.g. found already used OTP)
+            #return None
+            return False
         # Mark auth as temp password auth.
         self.temp_password_auth = True
         # Make sure session is only valid as long as the temp password.
@@ -1336,9 +1338,10 @@ class AuthHandler(object):
             # but is also not failed and we can check next token.
             return None
 
-        # Ignore failed tokens, continue processing available tokens.
         if verify_status is False:
-            return None
+            # FIXME: We should return False if token failed (e.g. found already used OTP)
+            #return None
+            return False
 
         # If status is not None we found token of this request.
         self.auth_token = token
@@ -1652,6 +1655,7 @@ class AuthHandler(object):
                 return True
             # False means token verification failed.
             if token_status is False:
+                self.auth_failed = True
                 return False
         # Default should be None (e.g. no valid token found)
         return None

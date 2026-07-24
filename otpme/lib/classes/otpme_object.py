@@ -36,7 +36,6 @@ from otpme.lib import otpme_acl
 from otpme.lib import encryption
 from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
-from otpme.lib.changelog import object_changelog
 from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.extensions import utils
@@ -54,6 +53,7 @@ from otpme.lib.cache import assigned_host_cache
 from otpme.lib.cache import assigned_device_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.policy import one_time_policy_run
+from otpme.lib.changelog import object_changelog
 from otpme.lib.cache import supported_acls_cache
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.object_config import ObjectConfig
@@ -136,9 +136,11 @@ global_write_value_acls = {
                     "add"       : [
                                 "extension",
                                 "attribute",
-                                "policy",
                                 "config",
                                 "acl",
+                                ],
+                    "assign"    : [
+                                "policy",
                                 ],
                     "remove"    : [
                                 "extension",
@@ -4936,7 +4938,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(acls=['add:policy'])
+    @check_acls(acls=['assign:policy'])
     @object_lock()
     @audit_log()
     @object_changelog()
@@ -9099,9 +9101,9 @@ class OTPmeObject(OTPmeBaseObject):
         if internal_user:
             # Call base class add method.
             return super().add(verbose_level=verbose_level,
-                                                    verify_acls=verify_acls,
-                                                    callback=callback,
-                                                    **kwargs)
+                                verify_acls=verify_acls,
+                                callback=callback,
+                                **kwargs)
         # Extensions to add.
         try:
             add_extensions = config.default_extensions[self.type]
@@ -9913,6 +9915,10 @@ class OTPmeObject(OTPmeBaseObject):
                     msg = msg.format(value=value)
                     return callback.error(msg)
                 config_cache.invalidate()
+                if para_data.get('sensitive', False):
+                    self.set_changelog(f"removed value from '{parameter}'")
+                else:
+                    self.set_changelog(f"removed value '{value}' from '{parameter}'")
                 return self._cache(callback=callback)
             else:
                 try:
@@ -9931,6 +9937,7 @@ class OTPmeObject(OTPmeBaseObject):
                     msg = _("Config parameter not set.")
                     return callback.error(msg)
                 config_cache.invalidate()
+                self.set_changelog(f"removed config parameter '{parameter}'")
                 return self._cache(callback=callback)
         try:
             object_types = para_data['object_types']
@@ -10028,7 +10035,16 @@ class OTPmeObject(OTPmeBaseObject):
 
         config_cache.invalidate()
 
-        return self._write(callback=callback)
+        # Record the change in the object changelog. The auto text only names
+        # the parameter (its 'value' arg is ignored, see changelog.IGNORE_ARGS);
+        # append the actual value here, but never for sensitive parameters
+        # (e.g. backup_repo_password) to keep secrets out of the changelog.
+        if not para_data.get('sensitive', False):
+            self.set_changelog(f"set to '{value}'")
+        # Use _cache() (not _write()) so the change rides the running
+        # transaction -- the object_changelog decorator appends its entry after
+        # this method returns and relies on that deferred write to persist it.
+        return self._cache(callback=callback)
 
     def show_config_parameters(
         self,

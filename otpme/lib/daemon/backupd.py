@@ -202,22 +202,18 @@ class BackupDaemon(OTPmeDaemon):
 
     def process_backups(self):
         """ Check if we have to run a backup. """
-        backup_enabled = backend.search(object_types=["node", "share"],
-                                        attribute="backup_enabled",
-                                        value=True,
+        backup_objects = backend.search(object_types=["node", "share"],
+                                        attribute="name",
+                                        value="*",
                                         realm=config.realm,
                                         site=config.site,
                                         return_type="oid")
-        backup_disabled = backend.search(object_types=["node", "share"],
-                                        attribute="backup_enabled",
-                                        value=False,
-                                        realm=config.realm,
-                                        site=config.site,
-                                        return_type="oid")
-        for x_oid in backup_enabled:
-            if x_oid in backup_disabled:
-                continue
+        for x_oid in backup_objects:
             o = backend.get_object(x_oid)
+            if not o:
+                continue
+            if not o.get_config_parameter("backup_enabled"):
+                continue
             if o.type == "node":
                 # Backup of node must be started on node.
                 if o.uuid != config.uuid:
