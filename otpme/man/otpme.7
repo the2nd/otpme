@@ -270,6 +270,8 @@ Object types: site, unit, token, script
 .B private_key_backup_key \fR(str)
 Public RSA key (base64-encoded) used for encryption of user private key backups. If not set, a new key pair is generated automatically.
 .br
+Can only be changed by an admin.
+.br
 Object types: site, unit
 .TP
 .B private_key_backup_key_len \fR(int, default: 2048)
@@ -350,18 +352,20 @@ If enabled, temporary passwords can be set on tokens.
 .br
 Object types: site, unit, user, token
 .TP
-.B sso_temp_pass_role \fR(str)
+.B admin_access_role \fR(str)
 Role whose members are allowed to set a temporary password on another user's token through the SSO portal admin\-access flow. Resolved per\-user with the standard cascade (token overrides user overrides unit overrides site). Foreign\-site users only resolve via this cascade if the local site lists the home site under
-.BR sso_temp_pass_role_trusts ;
+.BR admin_access_trusts ;
 otherwise the local site's setting (site\-only, no user/unit walk) is used as a fallback.
+.br
+Can only be changed by an admin.
 .br
 Object types: site, unit, user, token
 .TP
-.B sso_temp_pass_role_trusts \fR(list)
+.B admin_access_trusts \fR(list)
 Comma\-separated list of remote sites whose user\-scoped
-.B sso_temp_pass_role
+.B admin_access_role
 cascade this site trusts when a foreign user opens an SSO portal admin\-access session here. Sites not in the list fall back to the local site's
-.BR sso_temp_pass_role .
+.BR admin_access_role .
 Own\-site users are always trusted.
 .br
 Object types: site
@@ -399,7 +403,9 @@ Path of the default script used to mount shares.
 Object types: site, unit
 .TP
 .B share_root \fR(str, default: /otpme-mounts/)
-Root directory for new shares. A new share automatically gets \fIshare_root\fR/\fIsharename\fR as its root directory (e.g. with \fBshare_root=/otpme-mounts/\fR a share named \fBprojects\fR gets \fB/otpme-mounts/projects\fR as its root directory).
+Root directory for new shares. A new share automatically gets \fIshare_root\fR/\fIsharename\fR as its root directory (e.g. with \fBshare_root=/otpme-mounts/\fR a share named \fBprojects\fR gets \fB/otpme-mounts/projects\fR as its root directory). This is also the boundary a share's root directory is checked against.
+.br
+Can only be changed by an admin.
 .br
 Object types: site, unit, user, token
 .SS Hosts
@@ -417,9 +423,23 @@ Object types: site, unit
 .SS VLAN
 .TP
 .B vlan \fR(str)
-VLAN identifier to assign. This is used for VLAN assignment during 802.1x or MAB port authentication. The parameter can be set at various levels; the most specific match wins (e.g. a VLAN set on a token overrides the one set on the user or site).
+Name of the VLAN to assign. This is used for VLAN assignment during 802.1x or MAB port authentication. The parameter can be set at various levels; the most specific match wins (e.g. a VLAN set on a token overrides the one set on the user or site).
+.br
+The value must be the name of an existing VLAN object (see \fBotpme-vlan\fR(1)). Assigning a VLAN requires the \fBassign\fR ACL on the VLAN object, so VLAN assignment can be delegated per VLAN.
+.br
+VLANs of other sites can be assigned as \fIsite\fB/\fIvlan\fR, which is needed when users are created on the master site only while each site runs its own VLANs. A cross\-site assignment additionally requires the VLAN owning site to list the assigning site under
+.BR vlan_trusts .
+.br
+What is sent to the switch as \fBTunnel\-Private\-Group\-Id\fR is the VLAN objects VLAN ID, or its name if no VLAN ID is set. The assignment is stored by UUID, so renaming a VLAN keeps existing assignments intact.
 .br
 Object types: site, unit, host, device, user, token
+.TP
+.B vlan_trusts \fR(list)
+Comma\-separated list of remote sites this site accepts VLAN assignments from. Without an entry, a VLAN of this site assigned to an object of a remote site is ignored when this site answers the RADIUS request, and no VLAN is returned.
+.br
+This is enforced where the VLAN is resolved, on the site serving the RADIUS request, not only where the assignment is made. The \fBassign\fR ACL alone is not sufficient for cross\-site assignments: it is checked by the site making the assignment, against its own copy of the VLAN. Own\-site assignments are always trusted.
+.br
+Object types: site
 .SS SSO Portal
 .TP
 .B device_token_roles \fR(list)

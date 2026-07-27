@@ -26,6 +26,7 @@ table_headers = [
                 "group",
                 "status",
                 "authscript",
+                "admin_access",
                 "policies",
                 "inherit",
                 "description",
@@ -42,6 +43,7 @@ def register():
                         'auth_script',
                         'description',
                         'auth_script_enabled',
+                        'admin_access_enabled',
                         'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
@@ -175,6 +177,29 @@ def row_getter(realm, site, user_order, user_data, acls,
                 else:
                     auth_script_string = ""
                 row.append(auth_script_string)
+            else:
+                row.append("-")
+        # Admin access. Reads the cached ``admin_access_enabled`` index
+        # attribute -- set by user.enable_admin_access, cleared by
+        # disable_admin_access. Source of truth is the
+        # ``allow_temp_passwords`` config parameter; direct edits of
+        # that parameter (via ``otpme-user config``) won't refresh the
+        # index and can drift here (documented trade-off for list-view
+        # speed). The detail view (``otpme-user show <user>``)
+        # re-resolves against the config cascade and stays accurate.
+        if "admin_access" in output_fields:
+            if check_acl("enable:admin_access") \
+            or check_acl("disable:admin_access") \
+            or check_acl("edit"):
+                try:
+                    admin_access_enabled = user_data[user_uuid]['admin_access_enabled'][0]
+                except (KeyError, IndexError):
+                    admin_access_enabled = False
+                if admin_access_enabled:
+                    admin_access_string = _("Enabled")
+                else:
+                    admin_access_string = _("Disabled")
+                row.append(admin_access_string)
             else:
                 row.append("-")
         # Policies.

@@ -31,6 +31,7 @@ from otpme.lib import encryption
 from otpme.lib.encryption import aes
 from otpme.lib import sign_key_cache
 from otpme.lib.audit import audit_log
+from otpme.lib.audit import emit_audit
 from otpme.lib.changelog import object_changelog
 from otpme.lib import multiprocessing
 from otpme.lib.locking import object_lock
@@ -127,8 +128,10 @@ write_value_acls = {
                     "deploy"    : [
                                 "token",
                                 ],
-                    "edit"      : [
+                    "set"      : [
                                 "config",
+                                ],
+                    "edit"      : [
                                 "group",
                                 "key_mode",
                                 "private_key_pass",
@@ -150,6 +153,7 @@ write_value_acls = {
                                 "login_script",
                                 "token",
                                 "auto_mount",
+                                "admin_access",
                                 ],
                     "disable"   : [
                                 "disabled_login",
@@ -158,6 +162,7 @@ write_value_acls = {
                                 "login_script",
                                 "token",
                                 "auto_mount",
+                                "admin_access",
                                 ],
         }
 
@@ -388,6 +393,22 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_auto_mount',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_admin_access'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_admin_access',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_admin_access'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_admin_access',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1052,21 +1073,37 @@ commands = {
     }
 
 def get_acls(**kwargs):
-    return _get_acls(read_acls, write_acls, **kwargs)
+    acls = _get_acls(read_acls, write_acls, **kwargs)
+    return acls
 
 def get_value_acls(split=False, **kwargs):
+    from otpme.lib.extensions import utils
     result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
-    config_params = config.get_config_parameters("user")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        add_acls = result[1]['add']
+        edit_acls = result[1]['edit']
+        set_acls = result[1]['set']
+        del_acls = result[1]['delete']
     else:
+        add_acls = result['add']
         read_acls = result['view']
-        write_acls = result['edit']
+        edit_acls = result['edit']
+        set_acls = result['set']
+        del_acls = result['delete']
+    config_params = config.get_config_parameters("user")
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
+    # Get extension value ACLs.
+    value_acls = utils.get_value_acls("user")
+    for a in value_acls:
+        for acl in value_acls[a]:
+            add_acls.append(acl)
+            read_acls.append(acl)
+            edit_acls.append(acl)
+            del_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -1670,7 +1707,7 @@ class User(OTPmeObject):
                             "uidNumber",
                             "givenName",
                             "sn",
-                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
@@ -5228,6 +5265,207 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    def admin_access_available(self):
+        """ Is admin access (temporary-password self-service) available
+        for this user? True iff ``admin_access_role`` is resolvable via
+        the user's config cascade (user → unit → site) AND the target
+        role exists. Callers use this to decide whether the SSO-portal
+        toggle should be surfaced or the CLI ``enable_admin_access``
+        would succeed. """
+        role, _err = self._resolve_admin_access_role()
+        return role is not None
+
+    def admin_access_enabled(self):
+        """ Is admin access currently turned on for this user? Reads
+        ``allow_temp_passwords`` non-recursively so unit/site defaults
+        don't leak into the per-user answer -- the toggle only reflects
+        an explicit write via ``enable_admin_access``. """
+        try:
+            return bool(self.get_config_parameter("allow_temp_passwords",
+                                                    recursive=False))
+        except Exception:
+            return False
+
+    def _resolve_admin_access_role(self):
+        """ Resolve ``admin_access_role`` (user config cascade: user
+        → unit → site) to a role instance. Returns
+        ``(role, error_msg)`` -- ``role`` is ``None`` if unset or not
+        found, and ``error_msg`` is a translated message the caller
+        can surface via ``callback.error``. """
+        try:
+            role_path = self.get_config_parameter("admin_access_role")
+        except Exception:
+            role_path = None
+        if not role_path:
+            msg = _("Admin access is not available: "
+                    "admin_access_role is not configured.")
+            return None, msg
+        if "/" in role_path:
+            role_site, role_name = role_path.split("/", 1)
+        else:
+            role_site = config.site
+            role_name = role_path
+        result = backend.search(object_type="role",
+                                attribute="name",
+                                value=role_name,
+                                realm=config.realm,
+                                site=role_site,
+                                return_type="instance")
+        if not result:
+            msg = _("Admin-access role not found: {role_path}")
+            msg = msg.format(role_path=role_path)
+            return None, msg
+        return result[0], None
+
+    # Granting admin access hands the admin-access role the
+    # set_temp_password ACL on this user, which is enough to log in as
+    # them. Doing it on someone's behalf is fine, but it has to be meant:
+    # need_exact_acl keeps a value-less "enable" ACL (may enable/disable
+    # accounts) from reaching it.
+    @check_acls(['enable:admin_access'], need_exact_acl=True)
+    @object_lock()
+    @audit_log()
+    @object_changelog()
+    def enable_admin_access(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Enable admin access (temporary-password self-service) for
+        this user: set ``allow_temp_passwords`` and grant the
+        ``set_temp_password`` ACL on the user for the role resolved
+        from the user's ``admin_access_role`` config cascade. Errors
+        if the parameter is unset or the role cannot be found --
+        admin access has no meaningful default target. """
+        if self.admin_access_enabled():
+            msg = _("Admin access already enabled for this user.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_admin_access",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        role, err = self._resolve_admin_access_role()
+        if role is None:
+            return callback.error(err)
+
+        self.set_config_param("allow_temp_passwords", True,
+                              verify_acls=False,
+                              run_policies=False,
+                              callback=callback)
+        acl = f"role:{role.uuid}:set_temp_password"
+        self.add_acl(acl=acl,
+                     recursive_acls=False,
+                     apply_default_acls=False,
+                     verify_acls=False,
+                     run_policies=False,
+                     callback=callback)
+        # Mirror to the object index so ``otpme-user show`` can pull
+        # the flag via one indexed backend.search instead of loading
+        # every user to walk CONFIG_PARAMS. ``allow_temp_passwords``
+        # stays the source of truth; the index is a cached hint that
+        # can drift if the config param is edited directly (documented
+        # trade-off for list-view speed).
+        self.update_index('admin_access_enabled', True)
+        # The user is the subject, not necessarily the one acting: this
+        # can be done on their behalf.
+        actor = self.name
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Auth", "admin_access_enabled",
+                   user=self.name,
+                   actor=actor,
+                   role=f"{role.site}/{role.name}")
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:admin_access'])
+    @object_lock()
+    @audit_log()
+    @object_changelog()
+    def disable_admin_access(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable admin access: clear ``allow_temp_passwords``,
+        revoke the ``set_temp_password`` ACL for the
+        ``admin_access_role`` role, and remove any active temporary
+        password from every token that still has one. Errors if
+        ``admin_access_role`` is unset or the role cannot be
+        resolved -- otherwise the ACL revocation half of the
+        operation would silently no-op. """
+        if not self.admin_access_enabled():
+            msg = _("Admin access is not enabled for this user.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_admin_access",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        role, err = self._resolve_admin_access_role()
+        if role is None:
+            return callback.error(err)
+
+        self.set_config_param("allow_temp_passwords",
+                              delete=True,
+                              verify_acls=False,
+                              run_policies=False,
+                              callback=callback)
+        acl = f"role:{role.uuid}:set_temp_password"
+        self.del_acl(acl=acl,
+                     recursive_acls=False,
+                     apply_default_acls=False,
+                     verify_acls=False,
+                     run_policies=False,
+                     callback=callback)
+        for token in self.get_tokens(return_type="instance"):
+            if not token._temp_password_hash:
+                continue
+            token.set_temp_password(force=True,
+                                    verify_acls=False,
+                                    remove=True,
+                                    run_policies=False,
+                                    callback=callback)
+        self.del_index('admin_access_enabled')
+        actor = self.name
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Auth", "admin_access_disabled",
+                   user=self.name,
+                   actor=actor,
+                   role=f"{role.site}/{role.name}")
+
+        return self._cache(callback=callback)
+
     @check_acls(['enable:disabled_login'])
     @object_lock()
     @audit_log()
@@ -5543,7 +5781,8 @@ class User(OTPmeObject):
         return self.change_script(script_var='key_script',
                         script_options_var='key_script_options',
                         script_options=script_options,
-                        script=key_script, callback=callback)
+                        script=key_script, callback=callback,
+                        **kwargs)
 
     @check_acls(['edit:agent_script'])
     @check_special_user()
@@ -5578,7 +5817,8 @@ class User(OTPmeObject):
         return self.change_script(script_var='agent_script',
                         script_options_var='agent_script_options',
                         script_options=script_options,
-                        script=agent_script, callback=callback)
+                        script=agent_script, callback=callback,
+                        **kwargs)
 
     @check_acls(['edit:login_script'])
     @check_special_user()
@@ -5613,7 +5853,8 @@ class User(OTPmeObject):
         return self.change_script(script_var='login_script',
                         script_options_var='login_script_options',
                         script_options=script_options,
-                        script=login_script, callback=callback)
+                        script=login_script, callback=callback,
+                        **kwargs)
 
     @check_acls(['edit:auth_script'])
     @check_special_user()
@@ -5648,7 +5889,8 @@ class User(OTPmeObject):
         return self.change_script(script_var='auth_script',
                         script_options_var='auth_script_options',
                         script_options=script_options,
-                        script=auth_script, callback=callback)
+                        script=auth_script, callback=callback,
+                        **kwargs)
 
     def _shares_data_for_notify(self, persist_mount: bool=True):
         """ Build the per-share notify dict covering every share this
@@ -5732,7 +5974,7 @@ class User(OTPmeObject):
                        event_type="share_mount",
                        data=shares_data)
             if share_notifications is None:
-                share_notifications = self.get_config_parameter("send_share_notifications")
+                share_notifications = self.get_share_notifications()
             if share_notifications:
                 callback.post_methods.append(post_method)
         return result
@@ -5768,7 +6010,7 @@ class User(OTPmeObject):
                        event_type="share_unmount",
                        data=shares_data)
             if share_notifications is None:
-                share_notifications = self.get_config_parameter("send_share_notifications")
+                share_notifications = self.get_share_notifications()
             if share_notifications:
                 callback.post_methods.append(post_method)
         return result
@@ -6708,6 +6950,16 @@ class User(OTPmeObject):
             if self.allow_disabled_login:
                 allow_disabled_login = "Enabled"
             lines.append(f"\tallow-disabled-login:\t{allow_disabled_login}\n")
+
+        if view_acl or edit_acl:
+            if self.admin_access_available():
+                if self.admin_access_enabled():
+                    admin_access = "Enabled"
+                else:
+                    admin_access = "Disabled"
+            else:
+                admin_access = "N/A"
+            lines.append(f"\tadmin-access:\t\t{admin_access}\n")
 
         if self.verify_acl("view:auth_script") \
         or self.verify_acl("enable:auth_script") \

@@ -759,6 +759,9 @@ class CommandHandler(object):
             if command == "scope":
                 register_module('otpme.lib.classes.scope')
                 register_module('otpme.lib.cli.scope')
+            if command == "vlan":
+                register_module('otpme.lib.classes.vlan')
+                register_module('otpme.lib.cli.vlan')
 
             if subcommand == "show":
                 register_module("otpme.lib.cli")
@@ -1600,6 +1603,9 @@ class CommandHandler(object):
                                     skip_special=skip_special,
                                     apply_retention=apply_retention,
                                     dry_run=dry_run)
+        if subcommand == "status":
+            return self.list_running_backups()
+
         if subcommand == "list":
             try:
                 backup_object = command_args['backup_object']
@@ -1664,11 +1670,12 @@ class CommandHandler(object):
     def start_backup(self, backup_object, exclude=None, include=None,
         return_result=False, skip_special=None, apply_retention=True,
         mode=None, dry_run=False):
+        from otpme.lib import pidfile
+        from otpme.lib.classes.backup import BackupClient
         if exclude is None:
             exclude = []
         if include is None:
             include = []
-        from otpme.lib.classes.backup import BackupClient
         special_files = True
         if skip_special:
             special_files = False
@@ -1703,18 +1710,29 @@ class CommandHandler(object):
                                     password=repo_pass,
                                     write=True)
         if not dry_run:
+            pidfile_name = repository.replace("/", "_")
+            pidfile_name = f"backup-{pidfile_name}.pid"
+            pid_file = os.path.join(config.pidfile_dir, pidfile_name)
+            if pidfile.is_running(pid_file):
+                msg = _("Already running.")
+                raise OTPmeException(msg)
             if mode is None:
                 mode = backup_mode
             log_msg = _("Starting backup: {backup_object}", log=True)[1]
             log_msg = log_msg.format(backup_object=backup_object)
             self.logger.info(log_msg)
+            pidfile.create_pidfile(pid_file)
             backupd_conn.start_backup(mode=backup_mode)
         client = BackupClient(server=backupd_conn, key=aes_key, compress=True)
-        result = client.backup(source=source_dir,
-                                special_files=special_files,
-                                excludes=exclude,
-                                includes=include,
-                                dry_run=dry_run)
+        try:
+            result = client.backup(source=source_dir,
+                                    special_files=special_files,
+                                    excludes=exclude,
+                                    includes=include,
+                                    dry_run=dry_run)
+        finally:
+            if not dry_run:
+                os.remove(pid_file)
         if not apply_retention:
             if not return_result:
                 return
@@ -1745,6 +1763,22 @@ class CommandHandler(object):
         backup_log += log_lines
         result['log'] = backup_log
         return result
+
+    def list_running_backups(self):
+        import re
+        from otpme.lib import pidfile
+        for x in os.listdir(config.pidfile_dir):
+            pid_file = os.path.join(config.pidfile_dir, x)
+            if not os.path.basename(pid_file).startswith("backup-"):
+                continue
+            if not pidfile.is_running(pid_file):
+                continue
+            backup_start = os.path.getmtime(pid_file)
+            backup_start = datetime.datetime.fromtimestamp(backup_start)
+            backup_start = backup_start.strftime('%H:%M:%S %d.%m.%Y')
+            backup_object = re.sub('^backup-(.*).pid$', r'\1', x)
+            backup_object = backup_object.replace("_", "/")
+            print(backup_object, f"(running since {backup_start})")
 
     def list_backup_snapshots(self, backup_object):
         from otpme.lib.classes.backup import _format_size
@@ -4229,7 +4263,8 @@ class CommandHandler(object):
         register_module("otpme.lib.classes.realm")
         from otpme.lib import connections
         if access_group is None:
-            access_group = config.realm_access_group
+            # gen_jwt() expects <site>/<accessgroup>.
+            access_group = f"{site}/{config.realm_access_group}"
         try:
             authd_conn = connections.get("authd",
                                         realm=realm,
@@ -4250,7 +4285,7 @@ class CommandHandler(object):
         command_args = {}
         command_args['jwt_reason'] = reason
         command_args['jwt_challenge'] = challenge
-        command_args['jwt_accessgroup'] = access_group
+        command_args['jwt_access_group'] = access_group
         try:
             status, \
             status_code, \

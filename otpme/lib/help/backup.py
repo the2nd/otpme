@@ -45,6 +45,14 @@ cmd_help = {
                                 },
                 },
 
+    'status'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-backup status'),
+                    'cmd'   :   '',
+                    '_help' :   {
+                                    'cmd'                           : _('List running backup.'),
+                                },
+                },
+
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-backup list {backup_object}'),
                     'cmd'   :   '<backup_object>',

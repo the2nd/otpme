@@ -713,8 +713,24 @@ class BackupServer:
             "SELECT 1 FROM pack_index WHERE hash=?", (h,)).fetchone()
         return row is not None
 
+    @staticmethod
+    def _is_valid_block_hash(h) -> bool:
+        """A block hash is a 64-char lowercase hex SHA-256 digest.
+
+        The on-disk pack format hard-codes a 64-byte hash field (store
+        writes h + 4-byte length + blob; retrieve seeks offset + 68), so
+        a client-supplied h of any other length silently desyncs the
+        pack accounting and misaligns later retrieves. Reject anything
+        that is not exactly 64 hex chars.
+        """
+        return (isinstance(h, str)
+                and len(h) == 64
+                and all(c in "0123456789abcdef" for c in h))
+
     def store_block(self, h: str, blob: bytes) -> None:
         """Append a pre-encrypted blob to the active pack file."""
+        if not self._is_valid_block_hash(h):
+            raise OTPmeException(f"Invalid block hash: {h!r}")
         if self.block_exists(h):
             return  # dedup
         self._ensure_active_pack()
@@ -859,11 +875,39 @@ class BackupServer:
 
     # -- snapshot management --
 
+    @staticmethod
+    def _safe_snap_name(snap_name: str) -> str:
+        """Reject client-supplied snapshot names that would escape the
+        snapshots dir.
+
+        snap_name is used unmodified as a path component (snap_dir /
+        snap_meta_dir / snap_chunks_path / ...). pathlib's '/' operator
+        discards its left operand on an absolute right operand and never
+        normalises "..", so an unchecked snap_name is a traversal
+        primitive -- and backup mode runs as root. Restrict it to a
+        single, harmless path component (mirrors _safe_rel_path).
+        """
+        if not isinstance(snap_name, str):
+            raise OTPmeException(
+                f"Invalid snap_name type: {type(snap_name).__name__}")
+        if not snap_name:
+            raise OTPmeException("Empty snap_name")
+        if "\x00" in snap_name:
+            raise OTPmeException("snap_name contains NUL byte")
+        if "/" in snap_name or "\\" in snap_name:
+            raise OTPmeException(
+                f"Refusing snap_name with path separator: {snap_name!r}")
+        if snap_name in (".", ".."):
+            raise OTPmeException(f"Refusing snap_name: {snap_name!r}")
+        return snap_name
+
     def snap_meta_dir(self, name: str) -> Path:
+        self._safe_snap_name(name)
         return self.snapshots_dir / name / "meta"
 
 
     def snap_dir(self, name: str) -> Path:
+        self._safe_snap_name(name)
         return self.snapshots_dir / name
 
     def _snap_index_db_path(self) -> str:
@@ -2507,6 +2551,7 @@ class BackupClient:
             self._siv = AESSIV(self._path_key)
         else:
             self._siv = None
+        self.logger = config.logger
 
     def encrypt_rel_path(self, rel_path: str) -> str:
         """Encrypt a relative path for storage on the server."""
@@ -2612,7 +2657,7 @@ class BackupClient:
         if os.path.exists(fp_file) and os.path.exists(cached_db):
             cached_fp = open(fp_file).read().strip()
         if cached_fp == fingerprint and os.path.getsize(cached_db) > 0:
-            logger.info("Snap index cache is current, skipping download")
+            self.logger.info("Snap index cache is current, skipping download")
         else:
             chunk_size = 64 * 1024 * 1024  # 64 MiB
             offset = 0
@@ -2630,7 +2675,7 @@ class BackupClient:
             # Save fingerprint for next time
             with open(fp_file, 'w') as f:
                 f.write(fingerprint + '\n')
-            logger.info("Snap index downloaded (%d bytes, %d compressed)",
+            self.logger.info("Snap index downloaded (%d bytes, %d compressed)",
                         total, transferred)
         self._prev_db = sqlite3.connect(cached_db)
         self._prev_snap = prev_snap
@@ -2757,9 +2802,9 @@ class BackupClient:
         t_start = time.monotonic()
 
         if dry_run:
-            logger.info("Dry run: %s", source)
+            self.logger.info("Dry run: %s", source)
         else:
-            logger.info("Backing up %s → '%s'", source, snap_name)
+            self.logger.info("Backing up %s → '%s'", source, snap_name)
 
         for fpath, st in _walk(source, excluded_dirs=walk_skip_dirs):
             rel = os.path.relpath(fpath, source)
@@ -2817,7 +2862,7 @@ class BackupClient:
                 entry_type = "socket"
 
             if entry_type is None:
-                logger.debug("Skipping special file %s", fpath)
+                self.logger.debug("Skipping special file %s", fpath)
                 continue
 
             if dry_run:
@@ -2925,7 +2970,7 @@ class BackupClient:
                             skipped = True
 
                     if not skipped:
-                        logger.info("Processing file: %s", fpath)
+                        self.logger.info("Processing file: %s", fpath)
                         with open(fpath, "rb") as fh:
                             while True:
                                 chunk = fh.read(CHUNK_SIZE)
@@ -2946,9 +2991,9 @@ class BackupClient:
                         try:
                             st2 = os.lstat(fpath)
                             if st2.st_mtime != st.st_mtime or st2.st_size != st.st_size:
-                                logger.warning("File changed during backup: %s", fpath)
+                                self.logger.warning("File changed during backup: %s", fpath)
                         except OSError:
-                            logger.warning("File vanished during backup: %s", fpath)
+                            self.logger.warning("File vanished during backup: %s", fpath)
 
                         meta = {
                             "type": "file",
@@ -3052,7 +3097,7 @@ class BackupClient:
                             self.server.set_entry_metadata(snap_name, enc_rel, meta)
 
             except (PermissionError, OSError) as exc:
-                logger.warning("Skipping %s: %s", fpath, exc)
+                self.logger.warning("Skipping %s: %s", fpath, exc)
 
         if dry_run:
             self._close_prev_index()
@@ -3066,7 +3111,7 @@ class BackupClient:
         # Deferred: set directory metadata deepest-first so mtime isn't
         # clobbered by later file creation in tree/.
         if dir_entries and repo_mode != "pack":
-            logger.info("Processing changed directories: %d", len(dir_entries))
+            self.logger.info("Processing changed directories: %d", len(dir_entries))
             # dir_entries is (rel, enc_rel, meta); server needs (enc_rel, meta)
             enc_dir_entries = [(enc_r, m) for _, enc_r, m in dir_entries]
             self.server.set_dirs_metadata(snap_name, enc_dir_entries)
@@ -3106,7 +3151,7 @@ class BackupClient:
         log_msg = log_msg.format(snap_name=self.server.snap_dir(snap_name))
 
         for line in log_lines:
-            logger.info(line)
+            self.logger.info(line)
 
         result = {'snap_name':snap_name, 'log':log_lines}
         return result
@@ -3123,9 +3168,9 @@ class BackupClient:
 
     def _restore_locked(self, snap_name, dest, filter_path, dry_run):
         if filter_path is not None:
-            logger.info("Restoring '%s:%s' → %s", snap_name, filter_path, dest)
+            self.logger.info("Restoring '%s:%s' → %s", snap_name, filter_path, dest)
         else:
-            logger.info("Restoring '%s' → %s", snap_name, dest)
+            self.logger.info("Restoring '%s' → %s", snap_name, dest)
 
         dest = os.path.abspath(dest)
 
@@ -3138,7 +3183,7 @@ class BackupClient:
         first_batch = self.server.next_entries(2)
         if not first_batch:
             self.server.close_entry_cursor()
-            logger.warning("No entries found")
+            self.logger.warning("No entries found")
             return
         single_file = (len(first_batch) == 1 and first_batch[0]["type"] != "dir")
 
@@ -3216,14 +3261,14 @@ class BackupClient:
                         os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
                         msg = "Restoring file: {file}"
                         msg = msg.format(file=dst_entry)
-                        logger.info(msg)
+                        self.logger.info(msg)
                         with open(dst_entry, "wb") as fh:
                             for h in entry["chunk_hashes"]:
                                 encrypted_blob = self.server.retrieve_block(h)
                                 fh.write(self.decrypt_block(encrypted_blob))
 
                 except (PermissionError, OSError) as exc:
-                    logger.warning("Skipping %s: %s", dst_entry, exc)
+                    self.logger.warning("Skipping %s: %s", dst_entry, exc)
                     continue
 
                 restored.append((dst_entry, entry))
@@ -3240,7 +3285,7 @@ class BackupClient:
                     os.unlink(dst_entry)
                 os.link(link_src, dst_entry)
             except (PermissionError, OSError) as exc:
-                logger.warning("Skipping %s: %s", dst_entry, exc)
+                self.logger.warning("Skipping %s: %s", dst_entry, exc)
                 continue
             restored.append((dst_entry, entry))
 
@@ -3252,12 +3297,12 @@ class BackupClient:
             try:
                 os.lchown(dst_path, entry["uid"], entry["gid"])
             except (PermissionError, OSError) as exc:
-                logger.debug("lchown %s: %s", dst_path, exc)
+                self.logger.debug("lchown %s: %s", dst_path, exc)
             if not is_link:
                 try:
                     os.chmod(dst_path, stat.S_IMODE(entry["mode"]))
                 except (PermissionError, OSError) as exc:
-                    logger.debug("chmod %s: %s", dst_path, exc)
+                    self.logger.debug("chmod %s: %s", dst_path, exc)
                 if entry.get("acl"):
                     _set_acl_text(dst_path, entry["acl"])
             try:
@@ -3265,7 +3310,7 @@ class BackupClient:
             except (OSError, AttributeError):
                 pass
 
-        logger.info("Restore complete: %s", dest)
+        self.logger.info("Restore complete: %s", dest)
 
     def print_contents(self, snap_name: str,
                        filter_path: Optional[str] = None,

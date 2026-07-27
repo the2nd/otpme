@@ -72,7 +72,7 @@ write_value_acls = {
                                     "host",
                                     "dynamic_group",
                                 ],
-                    "edit"       : [
+                    "set"        : [
                                     "config",
                                 ],
                     "remove"    : [
@@ -738,18 +738,33 @@ def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
 def get_value_acls(split=False, **kwargs):
+    from otpme.lib.extensions import utils
     result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
     config_params = config.get_config_parameters("role")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        add_acls = result[1]['add']
+        edit_acls = result[1]['edit']
+        set_acls = result[1]['set']
+        del_acls = result[1]['delete']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        add_acls = result['add']
+        edit_acls = result['edit']
+        set_acls = result['set']
+        del_acls = result['delete']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
+    # Get extension value ACLs.
+    value_acls = utils.get_value_acls("role")
+    for a in value_acls:
+        for acl in value_acls[a]:
+            add_acls.append(acl)
+            read_acls.append(acl)
+            edit_acls.append(acl)
+            del_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -1357,7 +1372,7 @@ class Role(OTPmeObject):
             notify(username=username, event_type="share_mount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -1430,7 +1445,7 @@ class Role(OTPmeObject):
             notify(username=username, event_type="share_unmount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -1541,7 +1556,7 @@ class Role(OTPmeObject):
                     notify(username=x[0], event_type=x[1], data=x[2])
 
             if share_notifications is None:
-                share_notifications = self.get_config_parameter("send_share_notifications")
+                share_notifications = self.get_share_notifications()
 
             if share_notifications:
                 callback.post_methods.append(post_method)
@@ -1655,7 +1670,7 @@ class Role(OTPmeObject):
                 notify(username=username, event_type="share_unmount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if shares_before and share_notifications:
             callback.post_methods.append(post_method)
@@ -1885,7 +1900,7 @@ class Role(OTPmeObject):
                 notify(username=username, event_type="share_mount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if role_shares and role_tokens and share_notifications:
             callback.post_methods.append(post_method)
@@ -1985,7 +2000,7 @@ class Role(OTPmeObject):
                 notify(username=username, event_type="share_unmount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if role_shares and role_tokens and share_notifications:
             callback.post_methods.append(post_method)

@@ -235,6 +235,16 @@ class OTPmeSsoP1(OTPmeServer1):
         if jwt_data.get('reason') != 'SSO_AUTH':
             msg = "AUTH_WRONG_JWT_REASON"
             raise OTPmeException(msg)
+        # The reason alone does not prove the token was allowed to open an
+        # SSO session -- that is what membership in the SSO accessgroup
+        # says, and gen_jwt() only checks it when the JWT is bound to one.
+        # So require that binding here. Only the name is compared: a
+        # foreign user's JWT is signed by, and carries the accessgroup of,
+        # their home site.
+        jwt_ag = jwt_data.get('accessgroup') or ""
+        if jwt_ag.split("/")[-1] != config.sso_access_group:
+            msg = "AUTH_WRONG_JWT_ACCESSGROUP"
+            raise OTPmeException(msg)
         auth_token_uuid = jwt_data['login_token']
         auth_token = backend.get_object(uuid=auth_token_uuid)
         if not auth_token:
@@ -863,7 +873,7 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Gated by the ``sso_allow_passkeys`` config parameter, resolved
         under ``sso_allow_passkeys_trusts`` (mirrors the
-        ``sso_temp_pass_role_trusts`` pattern: originator decides under
+        ``admin_access_trusts`` pattern: originator decides under
         its own trust policy before the cross-site redirect, home
         re-validates with a reciprocal trust check). When disabled,
         return ``allowed=False`` and an empty list so the frontend can
@@ -1264,28 +1274,9 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         return self.build_response(True, {'status': True})
 
-    def _site_trusts_user_home_for_temp_pass(self, user):
-        """ The local site decides whether it trusts a user's home-site
-        ``sso_temp_pass_role`` cascade. Own-site users are implicitly
-        trusted; foreign users only when the local site lists their
-        home site under ``sso_temp_pass_role_trusts``. """
-        if user.site == config.site:
-            return True
-        local_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-        if local_site is None:
-            return False
-        try:
-            trusts = local_site.get_config_parameter("sso_temp_pass_role_trusts")
-        except Exception:
-            trusts = None
-        if not trusts:
-            return False
-        return user.site in trusts
-
-    def _site_trusts_site_for_temp_pass(self, site):
+    def _site_trusts_site_for_admin_access(self, site):
         """ Does this site (config.site) list ``site`` under
-        ``sso_temp_pass_role_trusts``? Used on the user's home site to
+        ``admin_access_trusts``? Used on the user's home site to
         decide whether to accept an admin-access modification from a
         peer ssod (originator's SSO portal site). """
         local_site = backend.get_object(object_type="site",
@@ -1293,69 +1284,22 @@ class OTPmeSsoP1(OTPmeServer1):
         if local_site is None:
             return False
         try:
-            trusts = local_site.get_config_parameter("sso_temp_pass_role_trusts")
+            trusts = local_site.get_config_parameter("admin_access_trusts")
         except Exception:
             trusts = None
         if not trusts:
             return False
         return site in trusts
 
-    def _resolve_temp_pass_role(self, user):
-        """ Resolve ``sso_temp_pass_role`` to a role instance.
-
-        Where the parameter is evaluated depends on the local site's
-        ``sso_temp_pass_role_trusts``:
-          - trusted user (own site or home in the trust list) →
-            ``user.get_config_parameter`` (user → unit → site cascade,
-            anchored at the user's home site).
-          - untrusted foreign user → the *local* site's
-            ``sso_temp_pass_role`` (site-only, no user/unit walk).
-        Returns ``None`` if the parameter is unset or the role does not
-        exist. """
-        if self._site_trusts_user_home_for_temp_pass(user):
-            try:
-                role_path = user.get_config_parameter("sso_temp_pass_role")
-            except Exception:
-                role_path = None
-        else:
-            local_site = backend.get_object(object_type="site",
-                                            uuid=config.site_uuid)
-            if local_site is None:
-                return None
-            try:
-                role_path = local_site.get_config_parameter("sso_temp_pass_role")
-            except Exception:
-                role_path = None
-        if not role_path:
-            return None
-        if "/" in role_path:
-            role_site, role_name = role_path.split("/", 1)
-        else:
-            role_site = config.site
-            role_name = role_path
-        result = backend.search(object_type="role",
-                                attribute="name",
-                                value=role_name,
-                                realm=config.realm,
-                                site=role_site,
-                                return_type="instance")
-        if not result:
-            return None
-        return result[0]
-
     def get_admin_access_state(self, username, sso_jwt, command_args):
-        """ Tell the settings page whether the admin-access toggle is
-        applicable for this user, and what its current state is.
-
-        ``available`` depends on the role resolution (which honours the
-        local site's ``sso_temp_pass_role_trusts`` -- user-cascade for
-        trusted users, local-site config for untrusted foreign users).
-        ``enabled`` reads ``allow_temp_passwords`` on the user object
-        non-recursively and must always run on the user's home site --
-        for foreign users we redirect to home (carrying the originator's
-        resolved ``_temp_pass_role_uuid`` so home knows the toggle is
-        ``available=True`` without re-doing the resolution under its own
-        config). """
+        """ Tell the settings page whether admin access is applicable
+        for this user and what its current state is. Delegates the
+        read to ``user.admin_access_available`` /
+        ``user.admin_access_enabled`` (both anchored on the user's
+        home-site config cascade). Foreign users get redirected to
+        the home site so the authoritative read runs there;
+        cluster-peer-forwarded reads require reciprocal trust
+        (``admin_access_trusts``). """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1367,61 +1311,35 @@ class OTPmeSsoP1(OTPmeServer1):
         is_cluster_peer = (not self.client.startswith("socket://")
                            and self.peer is not None
                            and self.peer.type == "node")
-        peer_role_uuid = command_args.get('_temp_pass_role_uuid')
-        if is_cluster_peer and peer_role_uuid:
-            # Home side, peer-forwarded GET. Reciprocal trust gate, then
-            # just read enabled (peer already decided the role under its
-            # own policy).
-            if not self._site_trusts_site_for_temp_pass(self.peer.site):
+        if is_cluster_peer:
+            if not self._site_trusts_site_for_admin_access(self.peer.site):
                 return self.build_response(False, {
                     'message': 'Admin access not available: peer site is not '
-                               'listed in sso_temp_pass_role_trusts.',
+                               'listed in admin_access_trusts.',
                     'status': False})
-            try:
-                enabled = bool(user.get_config_parameter("allow_temp_passwords",
-                                                         recursive=False))
-            except Exception:
-                enabled = False
-            return self.build_response(True, {
-                    'available': True, 'enabled': enabled, 'status': True})
+        # Foreign user: redirect to the home site so the config
+        # cascade + allow_temp_passwords read run authoritatively
+        # there. Not reachable in the cluster-peer branch above --
+        # peer forwarding always targets the home site, so by then
+        # user.site == config.site.
         if user.site != config.site:
-            # Originator side, foreign user. Trust check decides where the
-            # role is evaluated; redirect so the authoritative
-            # ``allow_temp_passwords`` read happens on the user's home site.
-            role = self._resolve_temp_pass_role(user)
-            if role is None:
-                return self.build_response(True, {
-                        'available': False, 'enabled': False, 'status': True})
-            forward_args = dict(command_args)
-            forward_args['_temp_pass_role_uuid'] = role.uuid
             return self.ssod_redirect_command(command="get_admin_access_state",
                                             user=user,
-                                            command_args=forward_args,
+                                            command_args=command_args,
                                             mgmt=True)
-        # Local user.
-        role = self._resolve_temp_pass_role(user)
-        if role is None:
-            return self.build_response(True, {
-                    'available': False, 'enabled': False, 'status': True})
-        try:
-            enabled = bool(user.get_config_parameter("allow_temp_passwords",
-                                                     recursive=False))
-        except Exception:
-            enabled = False
         return self.build_response(True, {
-                'available': True, 'enabled': enabled, 'status': True})
+                'available': user.admin_access_available(),
+                'enabled':   user.admin_access_enabled(),
+                'status':    True})
 
     def set_admin_access_state(self, username, sso_jwt, command_args):
-        """ Self-service: flip ``allow_temp_passwords`` on the user and
-        grant / revoke the ``set_temp_password`` ACL (recursive, so it
-        cascades to every one of the user's tokens) for the role
-        configured under ``sso_temp_pass_role``.
-
-        Foreign users get redirected to their home site -- writes are
-        authoritative there. The home site additionally checks
-        ``sso_temp_pass_role_trusts`` against the originating peer's
-        site so a peer can't trigger admin-access changes on home
-        without an explicit reciprocal trust. """
+        """ Self-service: flip admin access on the user via
+        ``user.enable_admin_access`` / ``user.disable_admin_access``.
+        Role resolution + mutations + audit emission are done by the
+        User object; this method is the protocol wrapper -- JWT
+        verify, cross-site redirect for foreign users, reciprocal
+        trust check on the home site for cluster-peer-forwarded
+        writes. """
         try:
             enabled = bool(command_args['enabled'])
         except Exception:
@@ -1434,92 +1352,39 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        # Role resolution must honour the local site's
-        # sso_temp_pass_role_trusts -- it decides *where* the parameter
-        # is evaluated (user-cascade vs. local site). Do it on the
-        # originating side before the redirect so a peer-supplied
-        # role_uuid carries the originator's policy decision to the
-        # home site.
+        # Cluster-peer-forwarded write: the originator side already
+        # decided the operation was allowed under its own trust list;
+        # here on the home side we require reciprocal trust so a peer
+        # can't drive admin-access changes on our users without an
+        # explicit admin_access_trusts entry.
         is_cluster_peer = (not self.client.startswith("socket://")
                            and self.peer is not None
                            and self.peer.type == "node")
-        peer_role_uuid = command_args.get('_temp_pass_role_uuid')
-        if is_cluster_peer and peer_role_uuid:
-            # We're the home site receiving a peer-forwarded write.
-            # Reciprocal trust: only accept if our own
-            # sso_temp_pass_role_trusts lists the peer's site.
-            if not self._site_trusts_site_for_temp_pass(self.peer.site):
+        if is_cluster_peer:
+            if not self._site_trusts_site_for_admin_access(self.peer.site):
                 return self.build_response(False, {
                     'message': 'Admin access not available: peer site is not '
-                               'listed in sso_temp_pass_role_trusts.',
+                               'listed in admin_access_trusts.',
                     'status': False})
-            role = backend.get_object(object_type="role", uuid=peer_role_uuid)
-            if role is None:
-                return self.build_response(False, {
-                    'message': 'Admin access not available: invalid role.',
-                    'status': False})
-            # For one of OUR OWN roles, the peer must not override which role
-            # gets the set_temp_password ACL: re-resolve authoritatively and
-            # require a match. Foreign roles are governed by the (trusted)
-            # peer's site, so the reciprocal trust check above suffices.
-            if role.site == config.site:
-                resolved = self._resolve_temp_pass_role(user)
-                if resolved is None or resolved.uuid != role.uuid:
-                    return self.build_response(False, {
-                        'message': 'Admin access not available: role mismatch.',
-                        'status': False})
-        else:
-            role = self._resolve_temp_pass_role(user)
-        if role is None:
-            return self.build_response(False, {
-                'message': 'Admin access is not available: sso_temp_pass_role '
-                           'is not configured.',
-                'status': False})
+        # Foreign users: writes are authoritative on the home site.
+        # (Not reachable in the cluster-peer branch above -- peer
+        # forwarding always targets the home site.)
         if user.site != config.site:
-            forward_args = dict(command_args)
-            forward_args['_temp_pass_role_uuid'] = role.uuid
             return self.ssod_redirect_command(command="set_admin_access_state",
                                             user=user,
-                                            command_args=forward_args,
+                                            command_args=command_args,
                                             mgmt=True)
         callback = self.get_callback()
         callback.raise_exception = True
-        acl = f"role:{role.uuid}:set_temp_password"
         try:
             if enabled:
-                user.set_config_param("allow_temp_passwords", True,
-                                      verify_acls=False,
-                                      run_policies=False,
-                                      callback=callback)
-                user.add_acl(acl=acl,
-                             recursive_acls=False,
-                             apply_default_acls=False,
-                             verify_acls=False,
-                             run_policies=False,
-                             callback=callback)
+                user.enable_admin_access(verify_acls=False,
+                                         run_policies=False,
+                                         callback=callback)
             else:
-                try:
-                    user.set_config_param("allow_temp_passwords",
-                                          delete=True,
-                                          verify_acls=False,
+                user.disable_admin_access(verify_acls=False,
                                           run_policies=False,
                                           callback=callback)
-                except Exception:
-                    pass
-                user.del_acl(acl=acl,
-                             recursive_acls=False,
-                             apply_default_acls=False,
-                             verify_acls=False,
-                             run_policies=False,
-                             callback=callback)
-                for token in user.get_tokens(return_type="instance"):
-                    if not token._temp_password_hash:
-                        continue
-                    token.set_temp_password(force=True,
-                                            verify_acls=False,
-                                            remove=True,
-                                            run_policies=False,
-                                            callback=callback)
         except Exception as e:
             log_msg = _("Admin-access toggle failed for user '{u}': {e}", log=True)[1]
             log_msg = log_msg.format(u=user.name, e=e)
@@ -1527,11 +1392,6 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                             {'message': str(e), 'status': False})
         user._write(callback=callback)
-        emit_audit("Auth",
-                   "admin_access_enabled" if enabled else "admin_access_disabled",
-                   user=user.name,
-                   actor=user.name,
-                   role=f"{role.site}/{role.name}")
         return self.build_response(True, {'enabled': enabled, 'status': True})
 
     def change_language(self, username, sso_jwt, command_args):

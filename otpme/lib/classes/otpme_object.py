@@ -78,6 +78,7 @@ global_write_acls = [
                     "all",
                     "rename",
                     "edit",
+                    "set",
                     "add",
                     "remove",
                     "delete",
@@ -136,7 +137,6 @@ global_write_value_acls = {
                     "add"       : [
                                 "extension",
                                 "attribute",
-                                "config",
                                 "acl",
                                 ],
                     "assign"    : [
@@ -148,10 +148,12 @@ global_write_value_acls = {
                                 "policy",
                                 ],
                     "edit"      : [
-                                "config",
                                 "attribute",
                                 "info",
                                 "changelog",
+                                ],
+                    "set"      : [
+                                "config",
                                 ],
                     "clear"     : [
                                 "changelog",
@@ -2389,13 +2391,20 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         parameter: str,
         recursive: bool=True,
-        check_token: bool=True,
         verify_acls: bool=False,
+        apply_getter: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Get config parameter. """
+        """ Get config parameter.
+
+        apply_getter: run the registered getter on the stored value. Getters
+        turn internal references into human readable ones (e.g. a VLAN UUID
+        into "<site>/<name>"), which is what the CLI wants but not what
+        callers that need to resolve the referenced object want. Pass False
+        to get the raw stored value.
+        """
         # Try to get config parameter.
         try:
             para_data = config.get_config_parameter(parameter)
@@ -2423,16 +2432,8 @@ class OTPmeObject(OTPmeBaseObject):
             para_getter = para_data['getter']
         except Exception:
             para_getter = None
-        # If we have an authenticated user we have to check users token first
-        # because user/token settings are preferred over object settings.
-        if check_token and config.auth_token:
-            try:
-                value = config.auth_token.config_params[parameter]
-                if para_getter:
-                    value = para_getter(value)
-                return value
-            except Exception:
-                pass
+        if not apply_getter:
+            para_getter = None
 
         value = None
         parent_object = self
@@ -2879,6 +2880,20 @@ class OTPmeObject(OTPmeBaseObject):
             auto_revoke = self.get_config_parameter("auto_revoke")
         return auto_revoke
 
+    def get_share_notifications(self):
+        """ Whether share notifications should be sent.
+
+        A setting on the acting token itself wins, so a user can turn off
+        the notifications caused by their own changes. Everything else
+        comes from this objects cascade.
+        """
+        if config.auth_token:
+            value = config.auth_token.get_config_parameter("send_share_notifications",
+                                                        recursive=False)
+            if value is not None:
+                return value
+        return self.get_config_parameter("send_share_notifications")
+
     def acquire_cached_lock(self, callback: JobCallback=default_callback):
         """ Acquire cached lock. """
         self.acquire_lock(lock_caller="cached",
@@ -2977,12 +2992,10 @@ class OTPmeObject(OTPmeBaseObject):
         A site's 'force_changelog' parameter (resolved via the inheritance chain
         up to the site) forces recording on and overrides everything; otherwise
         the 'changelog' parameter is resolved the same way, defaulting to True.
-        check_token=False: this is a target-object decision, so it must not
-        depend on the acting auth token's config params.
         """
-        if self.get_config_parameter("force_changelog", check_token=False):
+        if self.get_config_parameter("force_changelog"):
             return True
-        value = self.get_config_parameter("changelog", check_token=False)
+        value = self.get_config_parameter("changelog")
         if value is None:
             return True
         return bool(value)
@@ -5058,7 +5071,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(acls=['remove:policy'])
+    # Detaching a policy takes away whatever it enforces, so it must not be
+    # cheaper than attaching one. add_policy() needs assign:policy, and a
+    # value-less "assign" is not even grantable (it is not in
+    # global_write_acls), so that one can only be given verbatim. "remove"
+    # is grantable and covers a lot of unrelated things -- extensions,
+    # orphans, tokens, dynamic groups -- so require the value ACL here.
+    @check_acls(acls=['remove:policy'], need_exact_acl=True)
     @object_lock()
     @audit_log()
     @object_changelog()
@@ -5883,7 +5902,6 @@ class OTPmeObject(OTPmeBaseObject):
             val_list = []
         return val_list
 
-    @check_acls(acls=['add:attribute'])
     @object_lock()
     @audit_log()
     @object_changelog()
@@ -5895,12 +5913,22 @@ class OTPmeObject(OTPmeBaseObject):
         ignore_ro: bool=False,
         position: int=-1,
         ignore_missing_attributes: List=None,
+        verify_acls: bool=True,
+        verify_id_range: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Add attribute to object. """
+        # Per attribute, like the read side (view:attribute:<name>). A
+        # blanket add:attribute still covers all of them, but this way an
+        # admin can hand out mail or telephoneNumber without handing out
+        # uidNumber with it.
+        if verify_acls:
+            if not self.verify_acl(f"add:attribute:{attribute}"):
+                msg = _("Permission denied.")
+                return callback.error(msg, exception=PermissionDenied)
         if ignore_missing_attributes is None:
             ignore_missing_attributes = []
         if run_policies:
@@ -5940,6 +5968,7 @@ class OTPmeObject(OTPmeBaseObject):
             extension.add_attribute(self, attribute, value,
                                 position=position,
                                 ignore_ro=ignore_ro,
+                                verify_id_range=verify_id_range,
                                 ignore_missing_attributes=ignore_missing_attributes,
                                 verbose_level=verbose_level,
                                 callback=callback)
@@ -5957,7 +5986,6 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(acls=['edit:attribute'])
     @object_lock()
     @audit_log()
     @object_changelog()
@@ -5968,12 +5996,18 @@ class OTPmeObject(OTPmeBaseObject):
         new_value: Union[str,int,float],
         run_policies: bool=True,
         ignore_ro: bool=False,
+        verify_acls: bool=True,
+        verify_id_range: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Add attribute to object. """
+        if verify_acls:
+            if not self.verify_acl(f"edit:attribute:{attribute}"):
+                msg = _("Permission denied.")
+                return callback.error(msg, exception=PermissionDenied)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -6012,9 +6046,10 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             extension.modify_attribute(self, attribute, old_value,
                                         new_value, ignore_ro=ignore_ro,
+                                        verify_id_range=verify_id_range,
                                         verbose_level=verbose_level)
         except Exception as e:
-            config.raise_exception()
+            #config.raise_exception()
             msg = _("Unable to add attribute: {attribute}: {exception}")
             msg = msg.format(attribute=attribute, exception=e)
             return callback.error(msg)
@@ -6029,7 +6064,6 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    @check_acls(acls=['delete:attribute'])
     @object_lock()
     @audit_log()
     @object_changelog()
@@ -6040,12 +6074,17 @@ class OTPmeObject(OTPmeBaseObject):
         run_policies: bool=True,
         ignore_ro: bool=False,
         ignore_missing: bool=False,
+        verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Delete attribute from object. """
+        if verify_acls:
+            if not self.verify_acl(f"delete:attribute:{attribute}"):
+                msg = _("Permission denied.")
+                return callback.error(msg, exception=PermissionDenied)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -6709,6 +6748,18 @@ class OTPmeObject(OTPmeBaseObject):
         supported_acls = self.get_supported_acls(acl_types=acl_types)
         if acl.id in supported_acls:
             return True
+
+        # A sub value narrows a supported ACL -- edit:attribute:mail grants
+        # strictly less than edit:attribute -- so accept it if the ACL
+        # without the sub value is supported. Attribute names cannot be
+        # registered as supported ACLs, they come from the LDAP schema, so
+        # this is the only way to hand out a single one of them.
+        if acl._sub_value:
+            sub_value_suffix = f":{acl._sub_value}"
+            if acl.id.endswith(sub_value_suffix):
+                parent_acl_id = acl.id[:-len(sub_value_suffix)]
+                if parent_acl_id in supported_acls:
+                    return True
 
         return False
 
@@ -7947,10 +7998,16 @@ class OTPmeObject(OTPmeBaseObject):
         script_options_var: str,
         script: Union[str,None]=None,
         script_options: Union[List,None]=None,
+        verify_acls: bool=True,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Change the given script and its options. """
+        """ Change the given script and its options.
+
+        The caller needs an ACL on us to change our scripts, but that says
+        nothing about the script being pointed at. Assigning one makes it
+        run in our context, so the script has to allow it (assign).
+        """
         # Get current script and script options.
         cur_script = getattr(self, script_var)
         cur_script_opts = getattr(self, script_options_var)
@@ -7983,6 +8040,11 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(script=script)
                 return callback.error(msg)
             s = result[0]
+            if verify_acls:
+                if not s.verify_acl("assign"):
+                    msg = _("Permission denied: {script}")
+                    msg = msg.format(script=s.rel_path)
+                    return callback.error(msg, exception=PermissionDenied)
             script = s.uuid
 
         # Set new script and options.
@@ -9872,9 +9934,18 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Invalid parameter: {obj}: {param}")
             msg = msg.format(obj=self, param=parameter)
             return callback.error(msg)
-        if verify_acls and not self.verify_acl(f'edit:config:{parameter}'):
+        if verify_acls and not self.verify_acl(f'set:config:{parameter}'):
             msg = _("Permission denied.")
             return callback.error(msg)
+        # Some parameters take effect outside the object they are set on
+        # (a filesystem path, a reference to a privileged object), so no ACL
+        # on this object can say whether the value is acceptable. Checked
+        # here rather than in the setters: this also covers deletion, which
+        # never reaches the setter, and parameters that have no setter.
+        if verify_acls and para_data.get('admin_only', False):
+            if config.auth_token and not config.auth_token.is_admin():
+                msg = _("You need to be admin to change this config parameter.")
+                return callback.error(msg, exception=PermissionDenied)
         if run_policies:
             try:
                 self.run_policies("set_config_parameter",

@@ -127,8 +127,10 @@ write_value_acls = {
                                 "oidc_backchannel_tls_verify",
                                 "oidc_force_backchannel_logout",
                                 ],
-                    "edit"      : [
+                    "set"       : [
                                 "config",
+                                ],
+                    "edit"      : [
                                 "accessgroup",
                                 "secret",
                                 "login_url",
@@ -1040,14 +1042,14 @@ def get_value_acls(split=False, **kwargs):
     config_params = config.get_config_parameters("client")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        set_acls = result[1]['set']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        set_acls = result['set']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):

@@ -2696,6 +2696,12 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.handle_tool_commands(subcommand, command_args)
 
     def _cmd_check_duplicate_ids(self, subcommand, command_args):
+        # Reports names plus uid/gid of every object sharing an ID, across
+        # the whole realm and all its sites, without consulting a single
+        # ACL. That is a maintenance task, like the other dump and mass
+        # commands next to it.
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
         if subcommand == "user":
             id_attribute = "ldif:uidNumber"
         elif subcommand == "group":
@@ -3263,8 +3269,13 @@ class OTPmeMgmtP1(OTPmeServer1):
                     self.org_auth_token = None
                     self.org_auth_user = None
             else:
-                token_user = impersonate_token.split("/")[0]
-                token_name = impersonate_token.split("/")[1]
+                try:
+                    token_user = impersonate_token.split("/")[0]
+                    token_name = impersonate_token.split("/")[1]
+                except Exception:
+                    message = _("Invalid token.")
+                    return self.build_response(False, message)
+
                 impersonate_token = backend.get_object(object_type="token",
                                                         realm=config.realm,
                                                         user=token_user,

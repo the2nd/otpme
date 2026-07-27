@@ -1,6 +1,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 
-REGISTER_BEFORE = []
+REGISTER_BEFORE = ['otpme.lib.classes.site']
 REGISTER_AFTER = []
 
 modules = [

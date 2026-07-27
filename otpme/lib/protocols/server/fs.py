@@ -287,7 +287,12 @@ class OTPmeFsServer1(OTPmeServer1):
     @with_root_path(allow_symlinks=True)
     def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
         now = time.time_ns()
-        os.utime(path, ns=times or (now, now))
+        # follow_symlinks=False so we set the times of the symlink itself
+        # (a legitimate op, like lutimes) instead of following a final
+        # symlink out of the share. The parent dir is already realpath-
+        # confined by the decorator; for a regular file this is identical
+        # to the default behaviour.
+        os.utime(path, ns=times or (now, now), follow_symlinks=False)
         return 0
 
     @with_root_path()
@@ -372,7 +377,7 @@ class OTPmeFsServer1(OTPmeServer1):
             os.close(write_fh)
         return 0
 
-    @with_root_path(allow_symlinks=True)
+    @with_root_path()
     def access(self, path: str, amode: int) -> int:
         if not os.access(path, amode):
             raise PermissionError(errno.EACCES, "Permission denied")
@@ -390,7 +395,7 @@ class OTPmeFsServer1(OTPmeServer1):
             raise OSError(errno.ENOENT, "No such file or directory")
         return os.link(source, target)
 
-    @with_root_path(allow_symlinks=True)
+    @with_root_path()
     def exists(self, path: str) -> int:
         return os.path.exists(path)
 
@@ -697,26 +702,6 @@ class OTPmeFsServer1(OTPmeServer1):
                 return self.build_response(status, message)
             try:
                 message = self.symlink(target, source)
-            except Exception as e:
-                status = getattr(e, 'errno', False)
-                message = str(e)
-            return self.build_response(status, message)
-
-        elif command == "link":
-            try:
-                source = command_args['source']
-            except KeyError:
-                status = False
-                message = _("Missing source.")
-                return self.build_response(status, message)
-            try:
-                target = command_args['target']
-            except KeyError:
-                status = False
-                message = _("Missing target.")
-                return self.build_response(status, message)
-            try:
-                message = self.link(target, source)
             except Exception as e:
                 status = getattr(e, 'errno', False)
                 message = str(e)

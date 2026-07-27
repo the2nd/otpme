@@ -462,6 +462,7 @@ Object types: site, unit, token, script
 **private_key_backup_key (str)**  
 Public RSA key (base64-encoded) used for encryption of user private key
 backups. If not set, a new key pair is generated automatically.  
+Can only be changed by an admin.  
 Object types: site, unit
 
 **private_key_backup_key_len (int, default: 2048)**  
@@ -534,22 +535,23 @@ Object types: site, unit, user
 If enabled, temporary passwords can be set on tokens.  
 Object types: site, unit, user, token
 
-**sso_temp_pass_role (str)**  
+**admin_access_role (str)**  
 Role whose members are allowed to set a temporary password on another
 user's token through the SSO portal admin-access flow. Resolved per-user
 with the standard cascade (token overrides user overrides unit overrides
 site). Foreign-site users only resolve via this cascade if the local
-site lists the home site under **sso_temp_pass_role_trusts**; otherwise
-the local site's setting (site-only, no user/unit walk) is used as a
+site lists the home site under **admin_access_trusts**; otherwise the
+local site's setting (site-only, no user/unit walk) is used as a
 fallback.  
+Can only be changed by an admin.  
 Object types: site, unit, user, token
 
-**sso_temp_pass_role_trusts (list)**  
+**admin_access_trusts (list)**  
 Comma-separated list of remote sites whose user-scoped
-**sso_temp_pass_role** cascade this site trusts when a foreign user
-opens an SSO portal admin-access session here. Sites not in the list
-fall back to the local site's **sso_temp_pass_role**. Own-site users are
-always trusted.  
+**admin_access_role** cascade this site trusts when a foreign user opens
+an SSO portal admin-access session here. Sites not in the list fall back
+to the local site's **admin_access_role**. Own-site users are always
+trusted.  
 Object types: site
 
 **password_allowed_chars (str, default: 0-9A-Za-z!@#$%&\*()\_+-={}\[\]:;\<\>.?/)**  
@@ -585,7 +587,9 @@ Object types: site, unit
 Root directory for new shares. A new share automatically gets
 *share_root*/*sharename* as its root directory (e.g. with
 **share_root=/otpme-mounts/** a share named **projects** gets
-**/otpme-mounts/projects** as its root directory).  
+**/otpme-mounts/projects** as its root directory). This is also the
+boundary a share's root directory is checked against.  
+Can only be changed by an admin.  
 Object types: site, unit, user, token
 
 ## Hosts
@@ -609,11 +613,33 @@ Object types: site, unit
 ## VLAN
 
 **vlan (str)**  
-VLAN identifier to assign. This is used for VLAN assignment during
+Name of the VLAN to assign. This is used for VLAN assignment during
 802.1x or MAB port authentication. The parameter can be set at various
 levels; the most specific match wins (e.g. a VLAN set on a token
 overrides the one set on the user or site).  
+The value must be the name of an existing VLAN object (see
+**otpme-vlan**(1)). Assigning a VLAN requires the **assign** ACL on the
+VLAN object, so VLAN assignment can be delegated per VLAN.  
+VLANs of other sites can be assigned as *site***/***vlan*, which is
+needed when users are created on the master site only while each site
+runs its own VLANs. A cross-site assignment additionally requires the
+VLAN owning site to list the assigning site under **vlan_trusts**.  
+What is sent to the switch as **Tunnel-Private-Group-Id** is the VLAN
+objects VLAN ID, or its name if no VLAN ID is set. The assignment is
+stored by UUID, so renaming a VLAN keeps existing assignments intact.  
 Object types: site, unit, host, device, user, token
+
+**vlan_trusts (list)**  
+Comma-separated list of remote sites this site accepts VLAN assignments
+from. Without an entry, a VLAN of this site assigned to an object of a
+remote site is ignored when this site answers the RADIUS request, and no
+VLAN is returned.  
+This is enforced where the VLAN is resolved, on the site serving the
+RADIUS request, not only where the assignment is made. The **assign**
+ACL alone is not sufficient for cross-site assignments: it is checked by
+the site making the assignment, against its own copy of the VLAN.
+Own-site assignments are always trusted.  
+Object types: site
 
 ## SSO Portal
 

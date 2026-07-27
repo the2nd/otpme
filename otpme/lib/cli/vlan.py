@@ -1,31 +1,28 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import importlib
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
-        msg = _("Loading module: {module}")
-        msg = msg.format(module=__name__)
+        msg = _("Loading module: {module_name}")
+        msg = msg.format(module_name=__name__)
         print(msg)
 except Exception:
     pass
 
-from otpme.lib import config
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
-from otpme.lib.classes.resolver import get_acls
-from otpme.lib.classes.resolver import get_value_acls
+from otpme.lib.classes.vlan import get_acls
+from otpme.lib.classes.vlan import get_value_acls
 
 from otpme.lib.exceptions import *
 
 table_headers = [
-                "resolver",
+                "vlanname",
                 "unit",
-                "type",
                 "status",
-                "sync_deletions",
+                "vlan_id",
                 "policies",
                 "inherit",
                 "description",
@@ -39,9 +36,8 @@ def register():
                         'name',
                         'enabled',
                         'unit',
+                        'vlan_id',
                         'description',
-                        'resolver_type',
-                        'sync_deletions',
                         'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
@@ -54,27 +50,10 @@ def register():
         for x in write_value_acls[acl]:
             x_acl = f"{acl}:{x}"
             write_acls.append(x_acl)
-    for sub_type in config.get_sub_object_types("resolver"):
-        x_module_path = f"otpme.lib.resolver.{sub_type}.{sub_type}"
-        x_module = importlib.import_module(x_module_path)
-        x_get_acls = getattr(x_module, "get_acls")
-        x_get_value_acls = getattr(x_module, "get_value_acls")
-        x_read_acls, x_write_acls = x_get_acls(split=True)
-        read_acls += x_read_acls
-        write_acls += x_write_acls
-        x_read_value_acls, x_write_value_acls = x_get_value_acls(split=True)
-        for acl in x_read_value_acls:
-            for x in x_read_value_acls[acl]:
-                x_acl = f"{acl}:{x}"
-                read_acls.append(x_acl)
-        for acl in x_write_value_acls:
-            for x in x_write_value_acls[acl]:
-                x_acl = f"{acl}:{x}"
-                write_acls.append(x_acl)
     # Remove duplicates.
     read_acls = set(read_acls)
     write_acls = set(write_acls)
-    register_cli(name="resolver",
+    register_cli(name="vlan",
                 table_headers=table_headers,
                 return_attributes=return_attributes,
                 row_getter=row_getter,
@@ -82,80 +61,77 @@ def register():
                 read_acls=read_acls,
                 max_len=30)
 
-def row_getter(realm, site, resolver_order, resolver_data, acls,
-    limit=None, acl_checker=None, output_fields=None, max_policies=5,
-    **kwargs):
-    """ Build table rows for resolvers. """
+def row_getter(realm, site, vlan_order, vlan_data, acls,
+    limit=None, max_policies=5, output_fields=None,
+    acl_checker=None, **kwargs):
+    """ Build table rows for VLANs. """
     if output_fields is None:
         output_fields = []
     _result = []
     if limit is None:
-        if len(resolver_order) == 1:
+        if len(vlan_order) == 1:
             limit = 30
     if limit is not None:
         max_policies = limit
-    for resolver_uuid in resolver_order:
+    for vlan_uuid in vlan_order:
         row = []
-        resolver_name = resolver_data[resolver_uuid]['name']
-        unit_uuid = resolver_data[resolver_uuid]['unit'][0]
-        resolver_type = resolver_data[resolver_uuid]['resolver_type'][0]
+        vlan_name = vlan_data[vlan_uuid]['name']
+        unit_uuid = vlan_data[vlan_uuid]['unit'][0]
         try:
-            enabled = resolver_data[resolver_uuid]['enabled'][0]
+            enabled = vlan_data[vlan_uuid]['enabled'][0]
         except Exception:
             enabled = False
         try:
-            sync_deletions = resolver_data[resolver_uuid]['sync_deletions'][0]
+            vlan_id = vlan_data[vlan_uuid]['vlan_id'][0]
         except Exception:
-            sync_deletions = None
+            vlan_id = None
         try:
-            description = resolver_data[resolver_uuid]['description'][0]
+            description = vlan_data[vlan_uuid]['description'][0]
         except Exception:
             description = None
         try:
-            acl_inheritance_enabled = resolver_data[resolver_uuid]['acl_inheritance_enabled'][0]
+            acl_inheritance_enabled = vlan_data[vlan_uuid]['acl_inheritance_enabled'][0]
         except Exception:
             acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
-            resolver_acls = acls[resolver_uuid]
+            vlan_acls = acls[vlan_uuid]
         except Exception:
-            resolver_acls = {}
+            vlan_acls = {}
 
         # Get ACL checker.
-        check_acl = acl_checker(resolver_acls)
+        check_acl = acl_checker(vlan_acls)
 
-        # Dict name.
-        if "resolver" in output_fields:
-            row.append(resolver_name)
+        # VLAN name.
+        if "vlanname" in output_fields:
+            row.append(vlan_name)
         # Unit.
         if "unit" in output_fields:
             unit_string = get_unit_string(unit_uuid)
             row.append(unit_string)
-        # Dictionary type.
-        if "type" in output_fields:
-            row.append(resolver_type)
         # Status.
         if "status" in output_fields:
             if check_acl("view:status") \
             or check_acl("enable:object") \
             or check_acl("disable:object"):
                 if enabled:
-                    enabled_string = "Enabled"
+                    enabled_string = _("Enabled")
                 else:
-                    enabled_string = "Disabled"
+                    enabled_string = _("Disabled")
                 row.append(enabled_string)
             else:
                 row.append("-")
-        # Sync deletions status.
-        if "sync_deletions" in output_fields:
-            if check_acl("view:deletions") \
-            or check_acl("enable:deletions") \
-            or check_acl("disable:deletions"):
-                if sync_deletions:
-                    row.append("Enabled")
+        # VLAN ID.
+        if "vlan_id" in output_fields:
+            if check_acl("view:vlan_id") \
+            or check_acl("edit:vlan_id"):
+                if vlan_id is None:
+                    # Without an ID the VLAN name goes on the wire.
+                    vlan_id_string = ""
                 else:
-                    row.append("Disabled")
+                    vlan_id_string = vlan_id
+                row.append(vlan_id_string)
             else:
                 row.append("-")
         # Policies.
@@ -163,8 +139,8 @@ def row_getter(realm, site, resolver_order, resolver_data, acls,
             if check_acl("view:policies") \
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
-                policies_string = get_policies_string(object_type="resolver",
-                                                    object_uuid=resolver_uuid,
+                policies_string = get_policies_string(object_type="vlan",
+                                                    object_uuid=vlan_uuid,
                                                     max_policies=max_policies)
                 row.append(policies_string)
             else:
@@ -194,8 +170,8 @@ def row_getter(realm, site, resolver_order, resolver_data, acls,
                 row.append("-")
         # Build row entry.
         entry = {
-                'uuid'              : resolver_uuid,
-                'name'              : resolver_name,
+                'uuid'              : vlan_uuid,
+                'name'              : vlan_name,
                 'row'               : row,
                 }
         _result.append(entry)

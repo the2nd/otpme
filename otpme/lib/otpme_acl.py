@@ -28,8 +28,13 @@ class OTPmeACL(object):
     def __init__(self):
         pass
 
-def check_acls(acls):
-    """ Decorator to check ACLs in class methods. """
+def check_acls(acls, need_exact_acl=False):
+    """ Decorator to check ACLs in class methods.
+
+    need_exact_acl: require the ACL to be granted verbatim, so a value-less
+    ACL of the same name does not cover it (a plain "enable" must not
+    imply "enable:admin_access").
+    """
     def wrapper(f):
         @wraps(f)
         def wrapped(self, *f_args, **f_kwargs):
@@ -52,7 +57,13 @@ def check_acls(acls):
             if verify_acls:
                 access_granted = False
                 for acl in acls:
-                    if not self.verify_acl(acl):
+                    # Only pass the kwarg when it is set: some classes
+                    # override verify_acl() with a fixed signature.
+                    if need_exact_acl:
+                        acl_status = self.verify_acl(acl, need_exact_acl=True)
+                    else:
+                        acl_status = self.verify_acl(acl)
+                    if not acl_status:
                         continue
                     access_granted = True
                     break
@@ -465,17 +476,20 @@ def check_acl(acl, verify_acl, token_roles, need_exact_acl=False, auth_token=Non
     if _acl.default:
         return None
 
-    #print("VVVVVVVVVVVVVVVV", verify_acl, acl)
+    # ACL "all" means full access. Checked before need_exact_acl, which is
+    # there to stop a value-less ACL from covering a more specific one of
+    # the same name (a global "add" must not allow "add:unit"). "all" is
+    # not that -- it is the deliberate full grant, and excluding it would
+    # leave its holder unable to do things they may do everywhere else.
+    if _acl.name == "all":
+        return True
+
     # Skip not matching ACLs if need_exact_acl is set.
     if need_exact_acl:
         if _acl.name != requested_acl_name:
             return None
         if _acl.value != requested_acl_value:
             return None
-
-    # ACL "all" means full access
-    if _acl.name == "all":
-        return True
 
     # If the current ACL has a value we have to do some more checks.
     if _acl.value:
@@ -484,9 +498,14 @@ def check_acl(acl, verify_acl, token_roles, need_exact_acl=False, auth_token=Non
         if x_acl == verify_acl:
             return True
         elif requested_acl_sub_value:
-            if _acl.name == "view" and _acl.value == requested_acl_value:
+            if _acl.name == requested_acl_name \
+            and _acl.value == requested_acl_value:
                 # The statement above covers the following:
                 # "view:attribute" covers e.g. "view:attribute:uidNumber"
+                # "set:config" covers e.g. "set:config:allow_temp_passwords"
+                # The ACL name must match. Otherwise a read ACL like
+                # "view:config" would cover a write request like
+                # "set:config:vlan".
                 return True
         elif requested_acl_name == "view_public" \
         and (_acl.name == "view" or _acl.name == "view_all") \

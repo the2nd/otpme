@@ -70,6 +70,26 @@ Enable auto-mount for user.
 .TP
 .B disable_auto_mount \fIuser\fR
 Disable auto-mount for user.
+.TP
+.B enable_admin_access \fIuser\fR
+Enable admin access (temporary\-password self\-service) for the user via the SSO portal. Sets the
+.B allow_temp_passwords
+config parameter and grants the
+.B set_temp_password
+ACL for the role resolved from the user's
+.B admin_access_role
+cascade. Errors if
+.B admin_access_role
+is unset or the role cannot be resolved.
+.TP
+.B disable_admin_access \fIuser\fR
+Disable admin access for the user: clear
+.BR allow_temp_passwords ,
+revoke the
+.B set_temp_password
+ACL for the
+.B admin_access_role
+role, and purge any active temporary password from every token that still has one.
 .SS Token Management
 .TP
 .B list_tokens \fR[\fIuser\fR]

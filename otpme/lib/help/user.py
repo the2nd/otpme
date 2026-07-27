@@ -345,6 +345,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_admin_access'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user enable_admin_access {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable admin access (temporary-password self-service) for the user via the SSO portal.'),
+                                },
+                },
+
+    'disable_admin_access'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user disable_admin_access {user}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable admin access for the user and purge any active temporary passwords.'),
+                                },
+                },
+
     'enable_disabled_login'    : {
                     '_cmd_usage_help' : _('Usage: otpme-user enable_disabled_login {user}'),
                     'cmd'   :   '<|object|>',

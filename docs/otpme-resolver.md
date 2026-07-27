@@ -20,6 +20,13 @@ Resolvers can run periodically at a configured sync interval, and can
 optionally delete OTPme objects that no longer exist in the external
 directory.
 
+A resolver is a **trusted** source. The objects it imports are created
+without ACL checks, in the unit named by the remote DN, and with the IDs
+the remote directory hands out. Deciding that a directory may do that is
+an administrative decision, so creating, changing, running and deleting
+a resolver requires admin rights. Viewing a resolver can still be
+delegated via ACLs.
+
 # COMMANDS
 
 ## Resolver Management

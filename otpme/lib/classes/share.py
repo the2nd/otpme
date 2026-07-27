@@ -857,14 +857,14 @@ def get_value_acls(split=False, **kwargs):
     config_params = config.get_config_parameters("share")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        set_acls = result[1]['set']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        set_acls = result['set']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -1043,10 +1043,13 @@ def register_config():
             raise ValueError(msg)
         return share_root
     # Default password hash algo.
+    # This is the containment boundary every share root_dir is checked
+    # against, so it must not be settable by whoever may edit a share.
     config.register_config_parameter(name="share_root",
                                     ctype=str,
                                     setter=share_root_setter,
                                     default_value="/otpme-mounts/",
+                                    admin_only=True,
                                     object_types=object_types)
 
 @match_class_typing
@@ -1924,7 +1927,7 @@ class Share(OTPmeObject):
             notify(username=username, event_type="share_mount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -2058,7 +2061,7 @@ class Share(OTPmeObject):
             notify(username=username, event_type="share_unmount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -2168,7 +2171,7 @@ class Share(OTPmeObject):
                 notify(username=username, event_type="share_mount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -2276,7 +2279,7 @@ class Share(OTPmeObject):
                 notify(username=username, event_type="share_unmount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -2661,7 +2664,7 @@ class Share(OTPmeObject):
                 notify(username=x[0], event_type=x[1], data=x[2])
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -2788,7 +2791,7 @@ class Share(OTPmeObject):
                 notify(username=x[0], event_type=x[1], data=x[2])
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -3209,7 +3212,7 @@ class Share(OTPmeObject):
                 notify(username=username, event_type=event_type, data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -3323,7 +3326,8 @@ class Share(OTPmeObject):
         return self.change_script(script_var='add_script',
                         script_options_var='add_script_options',
                         script_options=script_options,
-                        script=add_script, callback=callback)
+                        script=add_script, callback=callback,
+                        **kwargs)
 
     @check_acls(['enable:mount_script'])
     @object_lock()
@@ -3438,7 +3442,8 @@ class Share(OTPmeObject):
         return self.change_script(script_var='mount_script',
                         script_options_var='mount_script_options',
                         script_options=script_options,
-                        script=mount_script, callback=callback)
+                        script=mount_script, callback=callback,
+                        **kwargs)
 
     def run_mount_script(self):
         self.run_share_script(self.mount_script, self.root_dir)
@@ -3565,7 +3570,7 @@ class Share(OTPmeObject):
                 notify(username=username, event_type="share_mount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)
@@ -3655,7 +3660,7 @@ class Share(OTPmeObject):
                 notify(username=username, event_type="share_unmount", data=shares)
 
         if share_notifications is None:
-            share_notifications = self.get_config_parameter("send_share_notifications")
+            share_notifications = self.get_share_notifications()
 
         if share_notifications:
             callback.post_methods.append(post_method)

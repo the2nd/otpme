@@ -69,8 +69,10 @@ write_value_acls = {
                 "disable"   : [
                                 "vote_script",
                             ],
-                "edit"      : [
+                "set"       : [
                                 "config",
+                            ],
+                "edit"      : [
                                 "vote_script",
                             ],
             }
@@ -771,18 +773,33 @@ def __get_value_acls(split=False, **kwargs):
     return _acls
 
 def get_value_acls(split=False, **kwargs):
+    from otpme.lib.extensions import utils
     result = __get_value_acls(split=split, **kwargs)
     config_params = config.get_config_parameters("node")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        add_acls = result[1]['add']
+        edit_acls = result[1]['edit']
+        set_acls = result[1]['set']
+        del_acls = result[1]['delete']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        add_acls = result['add']
+        edit_acls = result['edit']
+        set_acls = result['set']
+        del_acls = result['delete']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
+    # Get extension value ACLs.
+    value_acls = utils.get_value_acls("node")
+    for a in value_acls:
+        for acl in value_acls[a]:
+            add_acls.append(acl)
+            read_acls.append(acl)
+            edit_acls.append(acl)
+            del_acls.append(acl)
     return result
 
 
@@ -1073,7 +1090,8 @@ class Node(OTPmeHost):
         return self.change_script(script_var='vote_script',
                         script_options_var='vote_script_options',
                         script_options=script_options,
-                        script=vote_script, callback=callback)
+                        script=vote_script, callback=callback,
+                        **kwargs)
 
     @check_acls(['enable:vote_script'])
     @object_lock()

@@ -95,8 +95,10 @@ write_value_acls = {
                             "child_session",
                             ],
 
-                "edit"      : [
+                "set"       : [
                             "config",
+                            ],
+                "edit"      : [
                             "max_fail",
                             "max_fail_reset",
                             "max_sessions",
@@ -790,14 +792,14 @@ def get_value_acls(split=False, **kwargs):
     config_params = config.get_config_parameters("accessgroup")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        set_acls = result[1]['set']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        set_acls = result['set']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -1348,6 +1350,7 @@ class AccessGroup(OTPmeObject):
     def add_child_group(
         self,
         group_name: str,
+        verify_acls: bool=True,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1366,6 +1369,37 @@ class AccessGroup(OTPmeObject):
         if group.uuid == self.uuid:
             msg = _("Cannot add a group as child group of itself.")
             return callback.error(msg)
+
+        # Check for current parent.
+        result = backend.search(object_type="accessgroup",
+                                attribute="child_group",
+                                value=group.uuid,
+                                realm=config.realm,
+                                site=self.site,
+                                return_type="name")
+        if result:
+            current_parent = result[0]
+            if current_parent:
+                msg = _("Group is already a child group of group: {current_parent}")
+                msg = msg.format(current_parent=current_parent)
+                return callback.error(msg)
+
+        # Access is inherited from parent to child: is_assigned_token()
+        # walks parents(), so our tokens and the tokens of our roles gain
+        # access to the child group. This way in must not be cheaper than
+        # putting them there directly, and the decorator only covers us --
+        # the group the caller already controls.
+        # Either ACL is enough, because either one alone already produces
+        # the same access directly: add:token by entering the tokens,
+        # add:role by adding a role that holds them.
+        # add:host is not needed: is_assigned_host() has a parent branch but
+        # no caller passes check_parent_groups, so hosts do not inherit.
+        if verify_acls:
+            if not group.verify_acl("add:token") \
+            and not group.verify_acl("add:role"):
+                msg = _("Permission denied: {group_name}")
+                msg = msg.format(group_name=group.name)
+                return callback.error(msg, exception=PermissionDenied)
 
         if group.uuid in self.childs(return_type="uuid"):
             msg = _("Group is already a child group of this group.")

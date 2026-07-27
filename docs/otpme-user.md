@@ -77,6 +77,19 @@ Enable auto-mount for user.
 **disable_auto_mount *user***  
 Disable auto-mount for user.
 
+**enable_admin_access *user***  
+Enable admin access (temporary-password self-service) for the user via
+the SSO portal. Sets the **allow_temp_passwords** config parameter and
+grants the **set_temp_password** ACL for the role resolved from the
+user's **admin_access_role** cascade. Errors if **admin_access_role** is
+unset or the role cannot be resolved.
+
+**disable_admin_access *user***  
+Disable admin access for the user: clear **allow_temp_passwords**,
+revoke the **set_temp_password** ACL for the **admin_access_role** role,
+and purge any active temporary password from every token that still has
+one.
+
 ## Token Management
 
 **list_tokens \[*user*\]**  

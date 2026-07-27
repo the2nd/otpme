@@ -1570,11 +1570,19 @@ class OTPmeConfig(object):
     def register_config_parameter(self, name, ctype,
         default_value=None, valid_values=None, object_types=None,
         getter=None, setter=None, deller=None, warn_if_exists=False,
-        default_genner=None, sensitive=False):
+        default_genner=None, sensitive=False, admin_only=False):
         """ Register config parameter.
 
         sensitive: the parameter value is a secret (e.g. a password) and must
         not be written to the object changelog in cleartext.
+
+        admin_only: the parameter may only be changed by an admin, no matter
+        which ACLs someone holds on the object. For parameters whose effect
+        reaches beyond the object they are set on (e.g. a filesystem path or
+        a reference to a privileged object), where an ACL on that object says
+        nothing about whether the value is acceptable. Enforced centrally in
+        set_config_param(), so it also covers deletion and parameters that
+        have no setter to put the check in.
         """
         if object_types is None:
             object_types = []
@@ -1593,6 +1601,7 @@ class OTPmeConfig(object):
                                             'default_genner'    : default_genner,
                                             'warn_if_exists'    : warn_if_exists,
                                             'sensitive'         : sensitive,
+                                            'admin_only'        : admin_only,
                                         }
     def get_config_parameter(self, name):
         try:

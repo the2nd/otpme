@@ -65,7 +65,7 @@ write_value_acls = {
                                 "policy",
                                 "resolver",
                                 ],
-                    "edit"      : [
+                    "set"       : [
                                 "config",
                                 ],
                     "delete"    : [
@@ -573,18 +573,33 @@ def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
 def get_value_acls(split=False, **kwargs):
+    from otpme.lib.extensions import utils
     result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
     config_params = config.get_config_parameters("unit")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        add_acls = result[1]['add']
+        edit_acls = result[1]['edit']
+        set_acls = result[1]['set']
+        del_acls = result[1]['delete']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        add_acls = result['add']
+        edit_acls = result['edit']
+        set_acls = result['set']
+        del_acls = result['delete']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
+    # Get extension value ACLs.
+    value_acls = utils.get_value_acls("unit")
+    for a in value_acls:
+        for acl in value_acls[a]:
+            add_acls.append(acl)
+            read_acls.append(acl)
+            edit_acls.append(acl)
+            del_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -782,7 +797,7 @@ class Unit(OTPmeObject):
                             "EXTENSION_ATTRIBUTES",
                             "OBJECT_CLASSES",
                             "ou",
-                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },

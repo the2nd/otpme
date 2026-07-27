@@ -61,6 +61,7 @@ modules = [
             'otpme.lib.cli.share',
             'otpme.lib.cli.pool',
             'otpme.lib.cli.scope',
+            'otpme.lib.cli.vlan',
             'otpme.lib.cli.job',
             'otpme.lib.classes',
         ]
@@ -426,6 +427,9 @@ def get_opts(command_syntax, command_line, command_args=None,
     def check_string_opt(x):
         result = check_string(x, '"', '"')
         return result
+
+    if not command_syntax:
+        return None, None, None, None
 
     para_count = 0
     cmd_list = command_syntax.split(" ")

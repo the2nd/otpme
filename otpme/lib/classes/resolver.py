@@ -63,12 +63,15 @@ read_value_acls = {
                         "resolver_type",
                         "key_attribute",
                         "sync_interval",
+                        "deletions",
                         ],
             }
 
 write_value_acls = {
-                "edit"  : [
+                "set"   : [
                         "config",
+                        ],
+                "edit"  : [
                         "key_attribute",
                         "sync_interval",
                         ],
@@ -337,7 +340,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls'],
+                    'oargs'             : ['object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -480,6 +484,13 @@ commands = {
             },
     }
 
+def get_read_acl_names():
+    """ ACL names that only allow reading a resolver. """
+    read_names = list(read_acls)
+    read_names += list(read_value_acls)
+    read_names += ["view", "view_all", "view_public"]
+    return read_names
+
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
@@ -488,14 +499,14 @@ def get_value_acls(split=False, **kwargs):
     config_params = config.get_config_parameters("resolver")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        set_acls = result[1]['set']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        set_acls = result['set']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -732,6 +743,20 @@ class Resolver(OTPmeObject):
                                 return_attributes=['enabled'])
         enabled = result[0]
         return enabled
+
+    def verify_acl(self, action: str):
+        """ Verify ACLs required to allow <action>.
+
+        The objects a resolver creates are trusted, which only holds as
+        long as nobody but an admin decides where it points. Creating one
+        is admin only (see add()), and so is everything that changes one --
+        otherwise repointing an existing resolver at your own server would
+        be the cheaper way in. Reading stays delegatable.
+        """
+        if action.split(":")[0] not in get_read_acl_names():
+            if config.auth_token and not config.auth_token.is_admin():
+                return False
+        return self._verify_acl(action)
 
     @check_acls(['enable:sync_units'])
     @object_lock()
@@ -1602,9 +1627,13 @@ class Resolver(OTPmeObject):
 
                         if not test:
                             try:
+                                # A resolver is a trusted source and imports
+                                # accounts with the IDs they already have,
+                                # so the ID range does not apply here.
                                 x_object.add_attribute(attribute=oa,
                                                         value=av,
-                                                        verify_acls=False)
+                                                        verify_acls=False,
+                                                        verify_id_range=False)
                             except Exception as e:
                                 sync_status = False
                                 object_failed = True
@@ -1794,6 +1823,15 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Add a resolver. """
+        # A resolver is a trusted source: it writes the objects it gets
+        # with verify_acls=False, into the unit the remote DN names, with
+        # the IDs the remote server hands out. Deciding that some server is
+        # allowed to do that is an admin decision, so creating a resolver
+        # is one too. _prepare_add() only checks add:resolver on the unit,
+        # which is delegatable.
+        if config.auth_token and not config.auth_token.is_admin():
+            msg = _("You need to be admin to add a resolver.")
+            return callback.error(msg, exception=PermissionDenied)
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:

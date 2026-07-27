@@ -155,6 +155,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 log_msg = _("Share access check failed: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
+                config.raise_exception()
                 continue
 
             try:
@@ -1117,31 +1118,6 @@ class OTPmeFsP1(OTPmeFsServer1):
             except Exception as e:
                 status = status_codes.BACKUP_CONNECTION_BROKEN
                 message, log_msg = _("Failed to run symlink command: {e}", log=True)
-                message = message.format(e=e)
-                log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
-                response = {'try_other_node':True, 'message':message}
-                return self.build_response(status, response)
-            return self.build_response(status, message)
-
-        elif command == "link":
-            try:
-                source = command_args['source']
-            except KeyError:
-                status = False
-                message = _("Missing source.")
-                return self.build_response(status, message)
-            try:
-                target = command_args['target']
-            except KeyError:
-                status = False
-                message = _("Missing target.")
-                return self.build_response(status, message)
-            try:
-                status, message = self.backupd_conn.link(target, source)
-            except Exception as e:
-                status = status_codes.BACKUP_CONNECTION_BROKEN
-                message, log_msg = _("Failed to run link command: {e}", log=True)
                 message = message.format(e=e)
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)

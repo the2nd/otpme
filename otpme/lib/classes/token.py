@@ -94,8 +94,10 @@ write_value_acls = {
                     "remove"  : [
                                 "dynamic_group",
                             ],
-                    "edit"  : [
+                    "set"   : [
                                 "config",
+                            ],
+                    "edit"  : [
                                 "auto_disable",
                                 "token_data",
                             ],
@@ -734,14 +736,14 @@ def get_value_acls(split=False, **kwargs):
     config_params = config.get_config_parameters("token")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        set_acls = result[1]['set']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        set_acls = result['set']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -900,7 +902,7 @@ def register_config_parameters():
                                     default_value=False,
                                     object_types=object_types)
     # Role that is allowed to set temp password if enabled in SSO portal.
-    def sso_temp_pass_role_setter(role, callback=JobCallback, **kwargs):
+    def admin_access_role_setter(role, callback=JobCallback, **kwargs):
         if "/" in role:
             role_site = role.split("/")[0]
             role_name = role.split("/")[1]
@@ -912,18 +914,14 @@ def register_config_parameters():
                                 value=role_name,
                                 realm=config.realm,
                                 site=role_site,
-                                return_type="instance")
+                                return_type="uuid")
         if not result:
             msg = _("Unknown role: {role}")
             msg = msg.format(role=role)
             raise ValueError(msg)
-        role = result[0]
-        if not role.verify_acl("add:token"):
-            msg = _("You dont have permissions to add tokens to this role: {role}")
-            msg = msg.format(role=role.oid)
-            raise PermissionDenied(msg)
-        return role.uuid
-    def sso_temp_pass_role_getter(role_uuid, callback=JobCallback, **kwargs):
+        role_uuid = result[0]
+        return role_uuid
+    def admin_access_role_getter(role_uuid, callback=JobCallback, **kwargs):
         result = backend.search(object_type='role',
                                 attribute="uuid",
                                 value=role_uuid,
@@ -935,10 +933,14 @@ def register_config_parameters():
         role = result[0]
         role_path = f"{role.site}/{role.name}"
         return role_path
-    config.register_config_parameter(name="sso_temp_pass_role",
+    # The role named here gets the set_temp_password ACL on users that
+    # enable admin access, so it must not be selectable by whoever holds
+    # write access to a user or token object.
+    config.register_config_parameter(name="admin_access_role",
                                     ctype=str,
-                                    setter=sso_temp_pass_role_setter,
-                                    getter=sso_temp_pass_role_getter,
+                                    setter=admin_access_role_setter,
+                                    getter=admin_access_role_getter,
+                                    admin_only=True,
                                     object_types=object_types)
 
 def register_backend():
@@ -1269,7 +1271,7 @@ class Token(OTPmeObject):
                             "CROSS_SITE_LINKS",
                             "DESTINATION_TOKEN",
                             "DYNAMIC_GROUPS",
-                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
@@ -3072,7 +3074,8 @@ class Token(OTPmeObject):
         return self.change_script(script_var='auth_script',
                         script_options=script_options,
                         script_options_var='auth_script_options',
-                        script=auth_script, callback=callback)
+                        script=auth_script, callback=callback,
+                        **kwargs)
 
     def check_password(
         self,
@@ -4037,7 +4040,7 @@ class Token(OTPmeObject):
                        event_type="share_mount",
                        data=shares_data)
             if share_notifications is None:
-                share_notifications = self.get_config_parameter("send_share_notifications")
+                share_notifications = self.get_share_notifications()
             if share_notifications:
                 callback.post_methods.append(post_method)
         return result
@@ -4076,7 +4079,7 @@ class Token(OTPmeObject):
                        event_type="share_unmount",
                        data=shares_data)
             if share_notifications is None:
-                share_notifications = self.get_config_parameter("send_share_notifications")
+                share_notifications = self.get_share_notifications()
             if share_notifications:
                 callback.post_methods.append(post_method)
         return result

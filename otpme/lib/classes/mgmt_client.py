@@ -81,7 +81,9 @@ class OTPmeMgmtClient(object):
         command_args = {}
         command_args['jwt_reason'] = "REALM_AUTH"
         command_args['jwt_challenge'] = challenge
-        command_args['jwt_accessgroup'] = config.realm_access_group
+        # gen_jwt() expects <site>/<accessgroup>. We are talking to the
+        # local authd socket, so that is our own site.
+        command_args['jwt_access_group'] = f"{config.site}/{config.realm_access_group}"
         # Send command.
         try:
             status, \

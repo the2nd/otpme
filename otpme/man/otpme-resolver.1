@@ -11,6 +11,10 @@ otpme-resolver \- manage OTPme resolvers for importing objects from external dir
 manages resolvers in the OTPme system. Resolvers synchronize objects (users, groups) from external directory services into OTPme. Currently the supported resolver type is LDAP, which connects to LDAP directories (e.g. Active Directory, OpenLDAP) and imports user and group objects.
 .PP
 Resolvers can run periodically at a configured sync interval, and can optionally delete OTPme objects that no longer exist in the external directory.
+.PP
+A resolver is a
+.B trusted
+source. The objects it imports are created without ACL checks, in the unit named by the remote DN, and with the IDs the remote directory hands out. Deciding that a directory may do that is an administrative decision, so creating, changing, running and deleting a resolver requires admin rights. Viewing a resolver can still be delegated via ACLs.
 .SH COMMANDS
 .SS Resolver Management
 .TP

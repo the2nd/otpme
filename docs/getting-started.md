@@ -1212,16 +1212,47 @@ otpme-site config <site> devices_accessgroup lan
 
 ### VLAN Assignment
 
+VLANs are objects. Create one before you can assign it. The VLAN ID is
+optional — switches configured with named VLANs (e.g. Cisco) get the VLAN
+name instead:
+
+```bash
+# VLAN with an 802.1Q VLAN ID.
+otpme-vlan add guests 100
+# VLAN without an ID. The name "printers" is sent to the switch.
+otpme-vlan add printers
+```
+
 To assign a VLAN during MAB or 802.1x authentication, set the `vlan`
 config parameter. It can be set at different levels — the most specific
 match wins:
 
 ```bash
 # VLAN based on token authentication.
-otpme-token config joe/login vlan <vlan_name>
+otpme-token config joe/login vlan guests
 # VLAN based on host or device.
-otpme-host config <yourhostname> vlan <vlan_name>
-otpme-device config <devicename> vlan <vlan_name>
+otpme-host config <yourhostname> vlan guests
+otpme-device config <devicename> vlan printers
+```
+
+Assigning a VLAN requires the `assign` ACL on the VLAN object. That way you
+can let an operator hand out the guest VLAN without giving them access to
+the server VLAN:
+
+```bash
+otpme-vlan add_acl guests role helpdesk assign
+```
+
+If your users live on the master site only while each site runs its own
+VLANs, prefix the site name. The site owning the VLAN has to accept
+assignments from the assigning site first — otherwise the VLAN is ignored
+when that site answers the RADIUS request:
+
+```bash
+# On the site owning the VLAN:
+otpme-site config berlin vlan_trusts <master_site>
+# On the master site:
+otpme-host config <yourhostname> vlan berlin/guests
 ```
 
 ### 802.1x Authentication

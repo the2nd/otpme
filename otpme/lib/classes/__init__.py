@@ -26,6 +26,7 @@ modules = [
         'otpme.lib.classes.pool',
         'otpme.lib.classes.device',
         'otpme.lib.classes.scope',
+        'otpme.lib.classes.vlan',
         ]
 
 def register():

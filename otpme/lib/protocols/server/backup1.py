@@ -1299,6 +1299,18 @@ class OTPmeBackupP1(OTPmeFsServer1):
                     result["st_blocks"] = 0
                     result["st_blksize"] = 4194304
                 else:
+                    # A HARDLINK entry's dest is built from attacker-controlled
+                    # file content (link_target is not validated on write), so
+                    # _resolve_link can hand back an unbounded path. Confine it
+                    # to the repo root before opening, mirroring
+                    # read_restore_file. On escape we raise ENOENT (caught
+                    # below) so the size stays unmodified instead of turning
+                    # this into an out-of-repo size/existence oracle.
+                    root_real = os.path.realpath(self.root)
+                    resolved_real = os.path.realpath(file_path)
+                    if os.path.commonpath([root_real, resolved_real]) != root_real:
+                        raise OSError(errno.ENOENT,
+                                      os.strerror(errno.ENOENT))
                     with gzip.open(file_path, 'rt') as f:
                         f.readline()  # line 0: rel_path (skip)
                         size_line = f.readline()  # line 1: "<size> <mtime>"

@@ -511,12 +511,25 @@ class OTPmeLDIFHandler(object):
 
         return at
 
+    def verify_id_range(self, o, attribute, value, callback=default_callback):
+        """ Check an ID against the ID range policy.
+
+        Only extensions that own ID attributes implement this.
+        """
+        return
+
     def add_attribute_value(self, o, attribute, value, position=-1,
-        auto_value=False, verify=True, callback=default_callback):
+        auto_value=False, verify=True, verify_id_range=False,
+        callback=default_callback):
         """ Add attribute value to object config. """
         # Make sure we only add allowed attribute values.
         if verify:
             self.verify_attribute_value(o, attribute, value, callback=callback)
+        # Only for values typed in by hand. Derived ones (a users
+        # gidNumber taken from their group) and the ones a resolver
+        # imports must not be forced into the range.
+        if verify_id_range:
+            self.verify_id_range(o, attribute, value, callback=callback)
         # Get current attribute values from object.
         current_attr_values = o.get_attribute(attribute)
         current_attr_ext_values = o.get_extension_attribute(extension=self.name,
@@ -611,7 +624,8 @@ class OTPmeLDIFHandler(object):
         return val_list
 
     def modify_attribute(self, o, a, old_value, new_value, ignore_ro=False,
-        verify=True, auto_value=False, verbose_level=0, callback=default_callback):
+        verify=True, verify_id_range=False, auto_value=False,
+        verbose_level=0, callback=default_callback):
         """ Add attribute to object. """
         # FIXME: what are valid chars for attributes and values?
         if "\\" in str(a) or "\\" in str(new_value):
@@ -650,6 +664,7 @@ class OTPmeLDIFHandler(object):
                                 attribute=a,
                                 value=new_value,
                                 verify=verify,
+                                verify_id_range=verify_id_range,
                                 auto_value=auto_value,
                                 callback=callback)
         except Exception as e:
@@ -661,8 +676,9 @@ class OTPmeLDIFHandler(object):
         return callback.ok()
 
     def add_attribute(self, o, a, v=None, position=-1, ignore_ro=False,
-        verify=True, auto_value=False, verbose_level=0,
-        ignore_missing_attributes=None, callback=default_callback):
+        verify=True, verify_id_range=False, auto_value=False,
+        verbose_level=0, ignore_missing_attributes=None,
+        callback=default_callback):
         """ Add attribute to object. """
         if ignore_missing_attributes is None:
             ignore_missing_attributes = []
@@ -726,6 +742,7 @@ class OTPmeLDIFHandler(object):
                                     attribute=a,
                                     value=v,
                                     verify=verify,
+                                    verify_id_range=verify_id_range,
                                     auto_value=auto_value,
                                     position=position,
                                     callback=callback)

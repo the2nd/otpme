@@ -126,8 +126,10 @@ write_value_acls = {
                                 "syslog",
                                 "audit_log",
                                 ],
-                    "edit"      : [
+                    "set"       : [
                                 "config",
+                                ],
+                    "edit"      : [
                                 "address",
                                 "auth_fqdn",
                                 "mgmt_fqdn",
@@ -945,18 +947,33 @@ def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
 def get_value_acls(split=False, **kwargs):
+    from otpme.lib.extensions import utils
     result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
     config_params = config.get_config_parameters("site")
     if split:
         read_acls = result[0]['view']
-        write_acls = result[1]['edit']
+        add_acls = result[1]['add']
+        edit_acls = result[1]['edit']
+        set_acls = result[1]['set']
+        del_acls = result[1]['delete']
     else:
         read_acls = result['view']
-        write_acls = result['edit']
+        add_acls = result['add']
+        edit_acls = result['edit']
+        set_acls = result['set']
+        del_acls = result['delete']
     for x in config_params:
         acl = f"config:{x}"
         read_acls.append(acl)
-        write_acls.append(acl)
+        set_acls.append(acl)
+    # Get extension value ACLs.
+    value_acls = utils.get_value_acls("site")
+    for a in value_acls:
+        for acl in value_acls[a]:
+            add_acls.append(acl)
+            read_acls.append(acl)
+            edit_acls.append(acl)
+            del_acls.append(acl)
     return result
 
 def get_default_acls(**kwargs):
@@ -1052,11 +1069,14 @@ def register_config():
             raise ValueError(msg) from e
         return public_key
     # Public key used for encryption of user private keys.
+    # PIV private keys are escrowed to this public key, so whoever picks it
+    # can decrypt the backups of every token deployed below that object.
     config.register_config_parameter(name="private_key_backup_key",
                                     ctype=str,
                                     warn_if_exists=True,
                                     setter=public_key_setter,
                                     default_genner=private_key_genner,
+                                    admin_only=True,
                                     object_types=object_types)
 
     def key_len_setter(key_len, callback=JobCallback, **kwargs):
@@ -1545,11 +1565,113 @@ def register_config():
                     'user',
                     'token',
                     ]
-    def vlan_setter(vlan, **kwargs):
-        return str(vlan)
+    # VLAN trusts. Sites this site accepts VLAN assignments from.
+    def vlan_trusts_setter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        sites_uuids = []
+        for site_name in sites:
+            result = backend.search(object_type='site',
+                                    attribute="name",
+                                    value=site_name,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            site_uuid = result[0]
+            sites_uuids.append(site_uuid)
+        return sites_uuids
+    def vlan_trusts_getter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        _sites = []
+        for site_uuid in sites:
+            result = backend.search(object_type='site',
+                                    attribute="uuid",
+                                    value=site_uuid,
+                                    return_type="name")
+            if not result:
+                msg = _("Unknown site: {uuid}")
+                msg = msg.format(uuid=site_uuid)
+                raise ValueError(msg)
+            site_name = result[0]
+            _sites.append(site_name)
+        return _sites
+    config.register_config_parameter(name="vlan_trusts",
+                                    ctype=list,
+                                    setter=vlan_trusts_setter,
+                                    getter=vlan_trusts_getter,
+                                    object_types=['site'])
+    def vlan_setter(vlan, config_object=None, callback=JobCallback, **kwargs):
+        """ Resolve a VLAN name to the VLAN objects UUID.
+
+        Storing the UUID keeps assignments intact when a VLAN is renamed.
+        More importantly it moves the authorization to the VLAN itself:
+        assigning a VLAN requires the "assign" ACL on that VLAN, not just
+        permission to set config parameters on the object the VLAN is
+        assigned to. Otherwise anyone allowed to set config parameters
+        could put themselves into any VLAN of the network.
+
+        VLANs of other sites can be assigned (e.g. users created on the
+        master site only, while each site runs its own VLANs), so the VLAN
+        may be given as "<site>/<name>". VLAN names are uniq per site only.
+        A cross site assignment additionally requires the VLAN owning site
+        to list our site in its "vlan_trusts". The ACL alone would not do:
+        it is checked here, by the site making the assignment, against its
+        own copy of the VLAN. The check that actually binds runs when the
+        VLAN is resolved on the site serving the RADIUS request (see
+        AuthHandler.get_vlan()); this one just fails early.
+        """
+        from otpme.lib.classes.vlan import site_trusts_site_for_vlan
+        if "/" in vlan:
+            vlan_site = vlan.split("/")[0]
+            vlan_name = vlan.split("/")[1]
+        else:
+            vlan_site = config.site
+            vlan_name = vlan
+        result = backend.search(object_type='vlan',
+                                attribute="name",
+                                value=vlan_name,
+                                realm=config.realm,
+                                site=vlan_site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown VLAN: {vlan}")
+            msg = msg.format(vlan=vlan)
+            raise ValueError(msg)
+        vlan_object = result[0]
+        if not vlan_object.verify_acl("assign"):
+            msg = _("You dont have permission to assign this VLAN: {vlan}")
+            msg = msg.format(vlan=vlan_object.oid)
+            raise PermissionDenied(msg)
+        if config_object is None:
+            assign_site_uuid = config.site_uuid
+        else:
+            assign_site_uuid = config_object.site_uuid
+        if not site_trusts_site_for_vlan(vlan_object.site_uuid,
+                                        assign_site_uuid):
+            msg = _("Site does not accept VLAN assignments from us: {vlan}")
+            msg = msg.format(vlan=vlan_object.oid)
+            raise PermissionDenied(msg)
+        return vlan_object.uuid
+    def vlan_getter(vlan_uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='vlan',
+                                attribute="uuid",
+                                value=vlan_uuid,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown VLAN: {uuid}")
+            msg = msg.format(uuid=vlan_uuid)
+            raise ValueError(msg)
+        vlan_object = result[0]
+        vlan_path = f"{vlan_object.site}/{vlan_object.name}"
+        return vlan_path
     config.register_config_parameter(name="vlan",
                                     ctype=str,
                                     setter=vlan_setter,
+                                    getter=vlan_getter,
                                     object_types=object_types)
     # Role devices tokens added by the SSO portal added to.
     object_types = [
@@ -1646,8 +1768,8 @@ def register_config():
                                     setter=trust_device_tokens_roles_setter,
                                     getter=trust_device_tokens_roles_getter,
                                     object_types=['site'])
-    # SSO temp pass role trusts.
-    def sso_temp_pass_role_trusts_setter(sites, callback=JobCallback, **kwargs):
+    # Admin-access trusts.
+    def admin_access_trusts_setter(sites, callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
         sites_uuids = []
@@ -1664,7 +1786,7 @@ def register_config():
             site_uuid = result[0]
             sites_uuids.append(site_uuid)
         return sites_uuids
-    def sso_temp_pass_role_trusts_getter(sites, callback=JobCallback, **kwargs):
+    def admin_access_trusts_getter(sites, callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
         _sites = []
@@ -1680,10 +1802,10 @@ def register_config():
             site_name = result[0]
             _sites.append(site_name)
         return _sites
-    config.register_config_parameter(name="sso_temp_pass_role_trusts",
+    config.register_config_parameter(name="admin_access_trusts",
                                     ctype=list,
-                                    setter=sso_temp_pass_role_trusts_setter,
-                                    getter=sso_temp_pass_role_trusts_getter,
+                                    setter=admin_access_trusts_setter,
+                                    getter=admin_access_trusts_getter,
                                     object_types=['site'])
     # Passkeys allowed trusts.
     def sso_allow_passkeys_trusts_setter(sites, callback=JobCallback, **kwargs):
@@ -2237,7 +2359,7 @@ class Site(OTPmeObject):
                             "SSO_FQDN",
                             "FIDO2_CA_CERTS",
                             "ou",
-                            "CONFIG_PARAMS:sso_temp_pass_role",
+                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             ],
                         },

@@ -1,32 +1,29 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-from typing import List
 from typing import Union
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
-        msg = _("Loading module: {module_name}")
-        msg = msg.format(module_name=__name__)
+        msg = _("Loading module: {module}")
+        msg = msg.format(module=__name__)
         print(msg)
 except Exception:
     pass
 
 from otpme.lib import oid
 from otpme.lib import cli
-from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib.spsc import SPSC
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
-from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -44,19 +41,31 @@ logger = config.logger
 
 default_callback = config.get_callback()
 
-read_acls =   [
-                    "dump",
-                ]
+DEFAULT_UNIT = "vlans"
+REGISTER_BEFORE = []
+REGISTER_AFTER = ["otpme.lib.classes.site"]
 
-write_acls =   []
+# Lowest/highest 802.1Q VLAN ID. 0 and 4095 are reserved.
+MIN_VLAN_ID = 1
+MAX_VLAN_ID = 4094
+
+read_acls = []
+
+# Permission to assign this VLAN to an object (e.g. a token or a host) via
+# the "vlan" config parameter. This is what makes VLAN assignment delegable
+# per VLAN instead of realm wide.
+write_acls = ["assign"]
 
 read_value_acls = {
-                    "view"      : [ "dictionaries" ],
+                    "view"      : [
+                                    "vlan_id",
+                                ],
             }
+
 write_value_acls = {
-                    "add"       : [ "words", "dictionary" ],
-                    "set"       : [ "config" ],
-                    "delete"    : [ "words", "dictionary" ],
+                    "edit"      : [
+                                    "vlan_id",
+                                ],
             }
 
 default_acls = []
@@ -68,11 +77,21 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['dict_type'],
+                    'oargs'             : ['unit', 'vlan_id'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
+                    'oargs'             : ['unit', 'vlan_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'vlan_id'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_vlan_id',
+                    'oargs'             : ['vlan_id'],
                     'job_type'          : 'process',
                     },
                 },
@@ -84,6 +103,16 @@ commands = {
                     'args'              : ['parameter'],
                     'dargs'             : {'verify_acls':True},
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_config_param',
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'append', 'delete'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -132,13 +161,12 @@ commands = {
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
-                    'method'            : cli.show_getter("dictionary"),
+                    'method'            : cli.show_getter("vlan"),
+                    'args'              : ['realm'],
                     'oargs'              : [
                                         'max_len',
                                         'show_all',
                                         'output_fields',
-                                        'max_policies',
-                                        'limit',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -147,6 +175,8 @@ commands = {
                                         'csv_sep',
                                         'realm',
                                         'site',
+                                        'max_policies',
+                                        'limit',
                                         ],
                     'job_type'          : 'thread',
                     },
@@ -160,7 +190,7 @@ commands = {
     'list'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
-                    'method'            : cli.list_getter("dictionary"),
+                    'method'            : cli.list_getter("vlan"),
                     'oargs'              : [
                                         'reverse',
                                         'show_all',
@@ -171,7 +201,7 @@ commands = {
                     'job_type'          : None,
                     },
                 'exists'    : {
-                    'method'            : cli.list_getter("dictionary"),
+                    'method'            : cli.list_getter("vlan"),
                     'oargs'              : [
                                         'reverse',
                                         'show_all',
@@ -216,7 +246,7 @@ commands = {
                     },
                 },
             },
-    'move'      : {
+    'move'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'move',
@@ -242,36 +272,13 @@ commands = {
                     },
                 },
             },
-    'dump'   : {
+    'list_policies'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'dump',
+                    'method'            : 'list_policies',
                     'job_type'          : 'process',
-                    },
-                },
-            },
-    'word_import'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'add_words',
-                    'args'              : ['word_list'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'word_export'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'dump',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'clear'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'clear',
-                    'job_type'          : 'process',
+                    'oargs'             : ['return_type', 'policy_types'],
+                    'dargs'             : {'return_type':'name', 'ignore_hooks':True},
                     },
                 },
             },
@@ -311,16 +318,6 @@ commands = {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
                     'job_type'          : 'process',
-                    },
-                },
-            },
-    'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'list_policies',
-                    'job_type'          : 'process',
-                    'oargs'             : ['return_type', 'policy_types'],
-                    'dargs'             : {'return_type':'name', 'ignore_hooks':True},
                     },
                 },
             },
@@ -377,6 +374,14 @@ commands = {
                     },
                 },
             },
+    '_show_object_classes'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_object_classes',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'show_acls'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -411,16 +416,6 @@ commands = {
                     },
                 },
             },
-    'config'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'set_config_param',
-                    'args'              : ['parameter'],
-                    'oargs'             : ['value', 'append', 'delete'],
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -428,7 +423,7 @@ def get_acls(**kwargs):
 
 def get_value_acls(split=False, **kwargs):
     result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
-    config_params = config.get_config_parameters("dictionary")
+    config_params = config.get_config_parameters("vlan")
     if split:
         read_acls = result[0]['view']
         set_acls = result[1]['set']
@@ -443,138 +438,108 @@ def get_value_acls(split=False, **kwargs):
 
 def get_default_acls(**kwargs):
     acls = _get_default_acls(default_acls, **kwargs)
-    acls += config.get_default_acls("dictionary")
+    acls += config.get_default_acls("vlan")
     return acls
 
 def get_recursive_default_acls(**kwargs):
     acls = _get_recursive_default_acls(recursive_default_acls, **kwargs)
-    acls += config.get_recursive_default_acls("dictionary")
+    acls += config.get_recursive_default_acls("vlan")
     return acls
 
-DEFAULT_UNIT = "dictionaries"
+def site_trusts_site_for_vlan(vlan_site_uuid, site_uuid):
+    """ Does the site owning a VLAN accept VLAN assignments made by the
+    given site?
 
-REGISTER_BEFORE = []
-REGISTER_AFTER = [
-                "otpme.lib.classes.unit",
-                "otpme.lib.compression",
-                ]
+    Assigning a VLAN needs the "assign" ACL on the VLAN. But that ACL is
+    checked by whichever site processes the assignment, against its own
+    copy of the VLAN. For a cross site assignment that means the assigning
+    site checks a rule it also controls, which is not consent. So the site
+    owning the VLAN declares the sites it accepts assignments from via its
+    "vlan_trusts" config parameter.
+    """
+    if vlan_site_uuid == site_uuid:
+        return True
+    vlan_site = backend.get_object(object_type="site", uuid=vlan_site_uuid)
+    if not vlan_site:
+        return False
+    try:
+        trusts = vlan_site.get_config_parameter("vlan_trusts",
+                                                apply_getter=False)
+    except Exception:
+        trusts = None
+    if not trusts:
+        return False
+    return site_uuid in trusts
+
+def check_vlan_id(vlan_id):
+    """ Make sure the given VLAN ID is a valid 802.1Q tag. """
+    try:
+        _vlan_id = int(vlan_id)
+    except (TypeError, ValueError) as err:
+        msg = _("VLAN ID must be a number: {vlan_id}")
+        msg = msg.format(vlan_id=vlan_id)
+        raise OTPmeException(msg) from err
+    if _vlan_id < MIN_VLAN_ID or _vlan_id > MAX_VLAN_ID:
+        msg = _("VLAN ID out of range ({min_id}-{max_id}): {vlan_id}")
+        msg = msg.format(min_id=MIN_VLAN_ID,
+                        max_id=MAX_VLAN_ID,
+                        vlan_id=vlan_id)
+        raise OTPmeException(msg)
+    return str(_vlan_id)
 
 def register():
     register_oid()
-    config.register_config_parameter(name="max_dictionary_name_len",
+    config.register_config_parameter(name="max_vlan_name_len",
                                     ctype=int,
                                     default_value=64,
                                     setter=name_len_setter,
                                     object_types=['site', 'unit'])
+    register_hooks()
     register_backend()
-    register_base_object()
     register_object_unit()
     register_sync_settings()
-    register_commands("dictionary", commands)
-    config.register_recursive_default_acl("site", "+dictionary")
-    config.register_default_acl("unit", "+dictionary")
-    config.register_recursive_default_acl("unit", "+dictionary")
+    register_commands("vlan", commands)
+    config.register_recursive_default_acl("site", "+vlan")
+    config.register_default_acl("unit", "+vlan")
+    config.register_recursive_default_acl("unit", "+vlan")
+    config.register_index_attribute("vlan_id")
+
+def register_hooks():
+    config.register_auth_on_action_hook("vlan", "change_vlan_id")
+    config.register_auth_on_action_hook("vlan", "set_config_parameter")
 
 def register_object_unit():
     """ Register default unit for this object type. """
-    config.register_default_unit("dictionary", DEFAULT_UNIT)
-    config.register_base_object("unit", DEFAULT_UNIT, early=True)
-
-def register_base_object():
-    """ Base dictionaries to add. """
-    base_dictionaries = {
-            'de-male'           : {
-                                    'pos'   : 0,
-                                    'type'  : 'sorted-list',
-                                },
-            'de-female'         : {
-                                    'pos'   : 1,
-                                    'type'  : 'sorted-list',
-                                },
-            'de-surnames'       : {
-                                    'pos'   : 2,
-                                    'type'  : 'sorted-list',
-                                },
-            'at-surnames'       : {
-                                    'pos'   : 3,
-                                    'type'  : 'sorted-list',
-                                },
-            'de-top10000'       : {
-                                    'pos'   : 4,
-                                    'type'  : 'sorted-list',
-                                },
-            'us-female'         : {
-                                    'pos'   : 5,
-                                    'type'  : 'sorted-list',
-                                },
-            'us-male'           : {
-                                    'pos'   : 6,
-                                    'type'  : 'sorted-list',
-                                },
-            'us-surnames'       : {
-                                    'pos'   : 7,
-                                    'type'  : 'sorted-list',
-                                },
-            'en-top10000'       : {
-                                    'pos'   : 8,
-                                    'type'  : 'sorted-list',
-                                },
-            'abbreviations-it'  : {
-                                    'pos'   : 9,
-                                    'type'  : 'list',
-                                },
-            'german'            : {
-                                    'pos'   : 10,
-                                    'type'  : 'list',
-                                },
-            'english'           : {
-                                    'pos'   : 11,
-                                    'type'  : 'list',
-                                },
-            'common-passwords'  : {
-                                    'pos'   : 12,
-                                    'type'  : 'list',
-                                },
-            'german-guessing'   : {
-                                    'pos'   : 13,
-                                    'type'  : 'guessing',
-                                },
-            'english-guessing'  : {
-                                    'pos'   : 14,
-                                    'type'  : 'guessing',
-                                },
-        }
-    # Register base dictionaries.
-    x_sort = lambda x: base_dictionaries[x]['pos']
-    for x_name in sorted(base_dictionaries, key=x_sort):
-        x_type = base_dictionaries[x_name]['type']
-        config.register_base_object(object_type="dictionary",
-                                    name=x_name,
-                                    stype=x_type)
+    config.register_base_object("unit", DEFAULT_UNIT)
+    config.register_default_unit("vlan", DEFAULT_UNIT)
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'unit', 'name' ]
     read_oid_schema = [ 'realm', 'site', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
-    dictionary_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
-    dictionary_path_re = f'{unit_path_re}[/]{dictionary_name_re}'
-    dictionary_oid_re = f'dictionary|{dictionary_path_re}'
-    oid.register_oid_schema(object_type="dictionary",
+    vlan_name_re = '([0-9A-Za-z]([0-9A-Za-z_.-]*[0-9A-Za-z]){0,})'
+    vlan_path_re = f'{unit_path_re}[/]{vlan_name_re}'
+    vlan_oid_re = f'vlan|{vlan_path_re}'
+    oid.register_oid_schema(object_type="vlan",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
-                            name_regex=dictionary_name_re,
-                            path_regex=dictionary_path_re,
-                            oid_regex=dictionary_oid_re)
-    rel_path_getter = lambda x: x[2:]
-    oid.register_rel_path_getter(object_type="dictionary",
+                            name_regex=vlan_name_re,
+                            path_regex=vlan_path_re,
+                            oid_regex=vlan_oid_re)
+    rel_path_getter = lambda x: x[-2:]
+    oid.register_rel_path_getter(object_type="vlan",
                                 getter=rel_path_getter)
+
+def register_sync_settings():
+    """ Register sync settings. """
+    config.register_object_sync(host_type="node", object_type="vlan")
 
 def register_backend():
     """ Register object for the file backend. """
-    dict_dir_extension = "dictionary"
-    def path_getter(dict_oid, dict_uuid):
-        return backend.config_path_getter(dict_oid, dict_dir_extension)
+    vlan_dir_extension = "vlan"
+    def path_getter(vlan_oid, vlan_uuid):
+        return backend.config_path_getter(vlan_oid, vlan_dir_extension)
     def index_rebuild(objects):
         after = [
                 'realm',
@@ -588,214 +553,175 @@ def register_backend():
                 'token',
                 'accessgroup',
                 'client',
-                'role',
-                'policy',
-                'resolver',
-                'script',
                 ]
-        return backend.rebuild_object_index("dictionary", objects, after)
+        return backend.rebuild_object_index("vlan", objects, after)
     # Register object to config.
-    config.register_object_type(object_type="dictionary",
+    config.register_object_type(object_type="vlan",
                             tree_object=True,
-                            add_after=["unit", "resolver"],
-                            sync_after=["user", "token"],
                             uniq_name=True,
-                            object_cache=128,
+                            add_after=["host"],
+                            sync_after=["user", "token"],
+                            object_cache=1024,
                             cache_region="tree_object",
                             backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
-    class_getter = lambda: Dictionary
-    backend.register_object_type(object_type="dictionary",
-                                dir_name_extension=dict_dir_extension,
+    class_getter = lambda: Vlan
+    backend.register_object_type(object_type="vlan",
+                                dir_name_extension=vlan_dir_extension,
                                 class_getter=class_getter,
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
 
-def register_sync_settings():
-    """ Register sync settings. """
-    config.register_object_sync(host_type="node", object_type="dictionary")
-    config.register_object_sync(host_type="host", object_type="dictionary")
-
 @match_class_typing
-class Dictionary(OTPmeObject):
-    """ Dictionary object. """
+class Vlan(OTPmeObject):
+    """ Class that implements OTPme VLAN object. """
     commands = commands
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,
-        path: Union[str,None]=None,
         name: Union[str,None]=None,
+        realm: Union[str,None]=None,
         unit: Union[str,None]=None,
         site: Union[str,None]=None,
-        realm: Union[str,None]=None,
+        path: Union[str,None]=None,
         **kwargs,
         ):
-        # Set our type (used in parent class)
-        self.type = "dictionary"
-
+        # Set our type (used in parent class).
+        self.type = "vlan"
         # Call parent class init.
         super().__init__(object_id=object_id,
-                                        realm=realm,
-                                        site=site,
-                                        unit=unit,
-                                        name=name,
-                                        path=path,
-                                        **kwargs)
-        # Dictionary type.
-        self.dictionary_type = "list"
-        self.supported_dict_types = [ 'list', 'sorted-list', 'guessing' ]
-
+                            realm=realm,
+                            site=site,
+                            unit=unit,
+                            name=name,
+                            path=path,
+                            **kwargs)
         self._acls = get_acls()
         self._value_acls = get_value_acls()
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
 
-        # Dictionaries should not inherit ACLs by default.
+        # The 802.1Q tag. Optional: switches that are configured with named
+        # VLANs (e.g. Cisco) accept the VLAN name in Tunnel-Private-Group-Id,
+        # so without a VLAN ID we hand out the object name.
+        self.vlan_id = None
+
+        # VLANs should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
 
-        self.dictionary = {}
-        self.dict_size = 0
-
         self._sync_fields = {
-                            'host'  : {
-                                'trusted'  : [
-                                        "DICTIONARY",
-                                        "DICTIONARY_TYPE",
-                                        "DICT_SIZE",
-                                        ]
-                            },
-                        }
+                    'host'  : {
+                        'trusted'  : [
+                            "EXTENSIONS",
+                            "OBJECT_CLASSES",
+                            "EXTENSION_ATTRIBUTES",
+                            ]
+                        },
 
-    def _get_object_config(self):
-        """ Get object config dict. """
-        object_config = {
-                        'DICTIONARY'                : {
-                                                        'var_name'      : 'dictionary',
-                                                        'type'          : dict,
-                                                        'incremental'   : False,
-                                                        'required'      : False,
-                                                        'compression'   : 'ZLIB',
-                                                    },
-
-                        'DICTIONARY_TYPE'           : {
-                                                        'var_name'  : 'dictionary_type',
-                                                        'type'      : str,
-                                                        'required'  : False,
-                                                    },
-                        'DICT_SIZE'                      : {
-                                                        'var_name'      : 'dict_size',
-                                                        'type'          : int,
-                                                        'required'      : False,
-                                                    },
-
-            }
-
-        return object_config
-
-    def set_variables(self):
-        """ Set instance variables. """
-        # Set OID.
-        self.set_oid()
+                    'node'  : {
+                        'untrusted'  : [
+                            "EXTENSIONS",
+                            "OBJECT_CLASSES",
+                            "EXTENSION_ATTRIBUTES",
+                            ]
+                        },
+                    }
 
     def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        # VLAN names are passed to the switch as is, so keep the case.
+        self.name = str(name)
 
-    @check_acls(['dump'])
-    @audit_log()
-    def dump(
-        self,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Dump dictionary words. """
-        if run_policies:
-            try:
-                self.run_policies("dump",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
+    def set_variables(self):
+        """ Set instance variables. """
+        return True
 
-        dicts = {
-            self.name : {
-                    'dict'      : self.dictionary,
-                    'dict_type' : self.dictionary_type,
-                    }
-                }
-        spsc = SPSC(dictionaries=dicts)
-        word_list = spsc.dump(self.name)
-        if _caller != "API":
-            word_list = "\n".join(word_list)
-        return callback.ok(word_list)
+    def _get_object_config(self, **kwargs):
+        """ Get object config dict. """
+        object_config = {
+                        'VLAN_ID'                   : {
+                                                        'var_name'  : 'vlan_id',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+
+                        }
+
+        return object_config
+
+    def get_vlan(self):
+        """ Get the value to hand out via RADIUS (Tunnel-Private-Group-Id).
+
+        The VLAN ID wins if one is configured. Without it the object name is
+        used, which is what named-VLAN switch configs expect.
+        """
+        if self.vlan_id:
+            return self.vlan_id
+        return self.name
 
     @object_lock()
-    def update_dict_size(self):
-        """ Update size of dictionary. """
-        self.dict_size = stuff.get_dict_size(self.dictionary)
-        # Update index.
-        self.update_index("dict_size", self.dict_size)
-
-    @check_acls(['delete:words'])
-    @object_lock()
-    @backend.transaction
+    @check_acls(['edit:vlan_id'])
     @audit_log()
     @object_changelog()
-    def clear(
+    def change_vlan_id(
         self,
-        _caller: str="API",
+        vlan_id: Union[str,int,None]=None,
+        verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Remove all dictionary data. """
-        self.dictionary = {}
-        self.update_dict_size()
+        """ Change VLAN ID. """
+        if vlan_id is None or vlan_id == "":
+            self.vlan_id = None
+            self.del_index("vlan_id")
+            return self._cache(callback=callback)
+        try:
+            vlan_id = check_vlan_id(vlan_id)
+        except OTPmeException as e:
+            return callback.error(str(e))
+        # add_index() appends, so drop the old ID or the object stays
+        # searchable (and shows up) under both.
+        if self.vlan_id:
+            self.del_index("vlan_id", self.vlan_id)
+        self.vlan_id = vlan_id
+        self.add_index("vlan_id", vlan_id)
         return self._cache(callback=callback)
 
-    @check_acls(['add:words'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
+    @run_pre_post_add_policies()
     @audit_log()
     @object_changelog()
-    def add_words(
+    def add(
         self,
-        word_list: List,
-        run_policies: bool=True,
-        _caller: str="API",
+        vlan_id: Union[str,int,None]=None,
+        verify_acls: bool=True,
+        verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Add words to dictionary. """
-        if run_policies:
+        """ Add a VLAN. """
+        # Fail before creating the object if the ID is not usable.
+        if vlan_id is not None:
             try:
-                self.run_policies("modify",
-                                    callback=callback,
-                                    _caller=_caller)
-                self.run_policies("add_words",
-                                    callback=callback,
-                                    _caller=_caller)
-            except Exception as e:
-                return callback.error()
+                check_vlan_id(vlan_id)
+            except OTPmeException as e:
+                return callback.error(str(e))
+        # Run parent class stuff e.g. verify ACLs.
+        result = self._prepare_add(callback=callback, **kwargs)
+        if result is False:
+            return callback.error()
+        # Add object using parent class.
+        add_result = super().add(verify_acls=verify_acls,
+                                verbose_level=verbose_level,
+                                callback=callback, **kwargs)
+        if not add_result:
+            msg = _("Failed to add VLAN.")
+            return callback.error(msg)
+        if vlan_id is not None:
+            self.change_vlan_id(vlan_id, verify_acls=False, callback=callback)
+        return callback.ok()
 
-        position = len(self.dictionary)
-        dict_changed = False
-        for word in word_list:
-            if word not in self.dictionary:
-                position += 1
-                self.dictionary[word] = position
-                dict_changed = True
-
-        if not dict_changed:
-            return callback.ok()
-
-        self.update_dict_size()
-
-        return self._cache(callback=callback)
-
-    @check_acls(['rename'])
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
@@ -807,99 +733,36 @@ class Dictionary(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Rename dictionary. """
+        """ Rename VLAN. """
         # Build new OID.
-        new_oid = oid.get(object_type="dictionary",
+        new_oid = oid.get(object_type="vlan",
                         realm=self.realm,
                         site=self.site,
                         unit=self.unit,
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock(full_lock=True)
-    @backend.transaction
-    @run_pre_post_add_policies()
-    def add(
-        self,
-        dict_type: str="list",
-        verbose_level: int=0,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Add a dictionary. """
-        # Run parent class stuff e.g. verify ACLs.
-        result = self._prepare_add(callback=callback, **kwargs)
-        if result is False:
-            return callback.error()
-
-        if not dict_type in self.supported_dict_types:
-            msg = _("Unknown dictionary type: {dict_type}")
-            msg = msg.format(dict_type=dict_type)
-            return callback.error(msg)
-
-        # Set dict type.
-        self.dictionary_type = dict_type
-        # Update index.
-        self.add_index("dictionary_type", dict_type)
-        # Update dict size.
-        self.update_dict_size()
-
-        # Add object using parent class.
-        return OTPmeObject.add(self, verbose_level=verbose_level,
-                                callback=callback, **kwargs)
-
-    @check_acls(['delete'])
-    @object_lock(full_lock=True)
-    @backend.transaction
-    @audit_log()
-    @object_changelog()
-    def delete(
-        self,
-        force: bool=False,
-        run_policies: bool=True,
-        verbose_level: int=0,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Delete dictionary. """
-        if not self.exists():
-            return callback.error("Dictionary does not exist.")
-
-        if run_policies:
-            try:
-                self.run_policies("delete", callback=callback, _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        if not self.ask_delete_confirmation(force=force, callback=callback):
-            return callback.abort()
-
-        # Delete object using parent class.
-        return OTPmeObject.delete(self, verbose_level=verbose_level,
-                                    force=force, callback=callback)
-
-
-    def show_config(
-        self,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Show dictionary config. """
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
+        """ Show VLAN config. """
         if not self.verify_acl("view_public:object"):
-            msg = ("Permission denied.")
+            msg = _("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
+
         lines = []
-        lines.append(f'DICTIONARY_TYPE="{self.dictionary_type}"')
-        lines.append(f'SIZE="{self.dict_size}"')
+
+        if self.verify_acl("view:vlan_id"):
+            vlan_id = self.vlan_id
+            if vlan_id is None:
+                vlan_id = ""
+            lines.append(f'VLAN_ID="{vlan_id}"')
+        else:
+            lines.append('VLAN_ID=""')
+
         return OTPmeObject.show_config(self,
                                     config_lines=lines,
                                     callback=callback,
                                     **kwargs)
 
     def show(self, **kwargs):
-        """ Show dictionary details. """
-        #if not self.verify_acl("view_public:object"):
-        #    msg = ("Permission denied.")
-        #    return callback.error(msg, exception=PermissionDenied)
+        """ Show VLAN details. """
         return self.show_config(**kwargs)

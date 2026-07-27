@@ -93,6 +93,45 @@ class AuthHandler(object):
         self.password_hash = password_hash
         self.pass_hash_params = hash_params
 
+    def get_vlan(self, config_object):
+        """ Get the VLAN to return in the rlm_python module.
+
+        The "vlan" config parameter stores the VLAN objects UUID, so read it
+        unresolved (the getter would give us the human readable path) and ask
+        the VLAN object for the value to put on the wire.
+        """
+        from otpme.lib.classes.vlan import site_trusts_site_for_vlan
+        vlan_uuid = config_object.get_config_parameter("vlan",
+                                                    apply_getter=False)
+        if not vlan_uuid:
+            return
+        vlan = backend.get_object(object_type="vlan", uuid=vlan_uuid)
+        if not vlan:
+            log_msg = _("Ignoring unknown VLAN assigned to {object_id}: {vlan_uuid}", log=True)[1]
+            log_msg = log_msg.format(object_id=config_object.oid,
+                                    vlan_uuid=vlan_uuid)
+            self.logger.warning(log_msg)
+            return
+        if not vlan.enabled:
+            log_msg = _("Ignoring disabled VLAN assigned to {object_id}: {vlan}", log=True)[1]
+            log_msg = log_msg.format(object_id=config_object.oid,
+                                    vlan=vlan.oid)
+            self.logger.warning(log_msg)
+            return
+        # A cross site assignment was authorized by the site that made it,
+        # against its own copy of the VLAN. We are the site serving this
+        # RADIUS request, so this is where the VLAN owning site gets to
+        # decide. Without this a site holding the users (e.g. the master
+        # site) could put them into any VLAN of our network.
+        if not site_trusts_site_for_vlan(vlan.site_uuid,
+                                        config_object.site_uuid):
+            log_msg = _("Ignoring VLAN assigned to {object_id} by untrusted site: {vlan}", log=True)[1]
+            log_msg = log_msg.format(object_id=config_object.oid,
+                                    vlan=vlan.oid)
+            self.logger.warning(log_msg)
+            return
+        return vlan.get_vlan()
+
     def verify_session(self, session, **kwargs):
         """ Try to verify session. """
         # Try to verify session:
@@ -378,7 +417,7 @@ class AuthHandler(object):
         # Get VLAN.
         if self.auth_token.support_dot1x:
             if self.auth_client and self.auth_client.dot1x_auth:
-                self.vlan = self.auth_token.get_config_parameter("vlan")
+                self.vlan = self.get_vlan(self.auth_token)
 
         if self.found_sotp:
             config.auth_type = "sotp"
@@ -1353,7 +1392,7 @@ class AuthHandler(object):
 
         # Get VLAN we will return in rlm_python module.
         if do_dot1x_auth:
-            self.vlan = self.verify_token.get_config_parameter("vlan")
+            self.vlan = self.get_vlan(self.verify_token)
 
         # Verify auth token.
         if not self.auth_failed:
@@ -2746,7 +2785,7 @@ class AuthHandler(object):
                         self.create_sessions = False
                         self.auth_message = "AUTH_OK_MAC"
                         # Get VLAN we will return in rlm_python module.
-                        self.vlan = self.user.get_config_parameter("vlan")
+                        self.vlan = self.get_vlan(self.user)
                     else:
                         self.auth_failed = True
                         self.auth_message = "AUTH_FAILED_MAC"

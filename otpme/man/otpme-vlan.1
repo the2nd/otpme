@@ -1,0 +1,206 @@
+.TH OTPME-VLAN 1 "2026-07-26" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-vlan \- manage OTPme VLANs
+.SH SYNOPSIS
+.B otpme-vlan
+.I command
+[\fIoptions\fR] [\fIvlan\fR]
+.SH DESCRIPTION
+.B otpme-vlan
+manages VLAN objects in the OTPme system. A VLAN object is the assignable
+representation of a network VLAN. It is referenced by the
+.B vlan
+config parameter of sites, units, hosts, devices, users and tokens, and the
+resulting value is returned as
+.B Tunnel\-Private\-Group\-Id
+during 802.1x or MAB port authentication.
+.PP
+Assigning a VLAN requires the
+.B assign
+ACL on the VLAN object. This makes VLAN assignment delegable per VLAN: an
+operator can be allowed to hand out the guest VLAN without being able to put
+anybody into the server VLAN.
+.PP
+VLANs are site local objects, but they can be assigned across sites by
+prefixing the site name (\fIsite\fB/\fIvlan\fR). This is needed when users
+are created on the master site only while each site runs its own VLANs.
+.PP
+A cross site assignment additionally requires the VLAN owning site to list
+the assigning site under
+.BR vlan_trusts .
+The
+.B assign
+ACL alone is not enough here, because it is checked by the site making the
+assignment against its own copy of the VLAN. The trust check is enforced
+again when the VLAN is resolved, on the site that answers the RADIUS
+request, so a site holding the users cannot put them into a VLAN of a
+network that did not agree.
+.PP
+A VLAN object carries an optional VLAN ID. If a VLAN ID is set it is sent to
+the switch. Without a VLAN ID the VLAN name is sent instead, which is what
+switches configured with named VLANs (e.g. Cisco) expect.
+.SH COMMANDS
+.SS VLAN Management
+.TP
+.B add \fIvlan\fR \fR[\fIvlan_id\fR]
+Create a new VLAN, optionally with a VLAN ID.
+.TP
+.B del \fIvlan\fR
+Delete a VLAN.
+.TP
+.B show \fR[\fIvlan\fR]
+Display VLAN information.
+.TP
+.B list \fR[\fIregex\fR]
+List VLANs, optionally filtered by regex pattern.
+.TP
+.B enable \fIvlan\fR
+Enable a disabled VLAN. A disabled VLAN is not handed out on authentication.
+.TP
+.B disable \fIvlan\fR
+Disable a VLAN without deleting it.
+.TP
+.B rename \fIvlan\fR \fInew_name\fR
+Rename a VLAN. Existing assignments are kept, because they reference the
+VLAN by UUID.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIvlan\fR \fIunit\fR
+Move VLAN to a different unit.
+.TP
+.B touch \fIvlan\fR
+Re-index the object to fix potential index problems.
+.SS VLAN ID
+.TP
+.B vlan_id \fIvlan\fR \fR[\fIvlan_id\fR]
+Set the 802.1Q VLAN ID (1-4094). Without \fIvlan_id\fR the VLAN ID is
+removed and the VLAN name is sent to the switch instead.
+.SS Policy Management
+.TP
+.B add_policy \fIvlan\fR \fIpolicy\fR
+Attach a policy to the VLAN.
+.TP
+.B remove_policy \fIvlan\fR \fIpolicy\fR
+Remove a policy from the VLAN.
+.TP
+.B list_policies \fIvlan\fR
+List policies attached to the VLAN.
+.SS ACL Management
+.TP
+.B add_acl \fIvlan\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry. Use the \fBassign\fR ACL to allow assigning
+this VLAN to other objects.
+.TP
+.B del_acl \fIvlan\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIvlan\fR
+Display all ACLs for the VLAN.
+.TP
+.B enable_acl_inheritance \fIvlan\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIvlan\fR
+Disable ACL inheritance.
+.SS Configuration
+.TP
+.B config \fR[\fB\-a\fR] [\fB\-d\fR] \fIvlan\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set, append to or delete a config parameter.
+.TP
+.B get_config \fIvlan\fR \fIparameter\fR
+Show a config parameter.
+.TP
+.B description \fIvlan\fR \fR[\fIdescription\fR]
+Set VLAN description.
+.TP
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIvlan\fR
+Dump the info text to stdout.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIvlan\fR
+Export VLAN configuration.
+.TP
+.B remove_orphans \fIvlan\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all VLANs.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-limit \fIN\fR
+Limit number of items shown per object.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving VLAN.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-vlan add guests 100
+Create a VLAN with VLAN ID 100
+.TP
+.B otpme-vlan add printers
+Create a VLAN without a VLAN ID. The name "printers" is sent to the switch.
+.TP
+.B otpme-vlan vlan_id guests 110
+Change the VLAN ID
+.TP
+.B otpme-vlan add_acl guests role netadmins assign
+Allow the role "netadmins" to assign this VLAN
+.TP
+.B otpme-token config joe/login vlan guests
+Assign the VLAN to a token
+.TP
+.B otpme-host config myhost vlan berlin/guests
+Assign a VLAN of another site to a host
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-token (1),
+.BR otpme-host (1),
+.BR otpme-device (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

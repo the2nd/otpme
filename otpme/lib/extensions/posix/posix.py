@@ -127,8 +127,8 @@ class OTPmeExtension(OTPmeLDIFHandler):
         """ Preload extension """
         return
 
-    def get_free_id(self, o, attribute, assign=True, callback=default_callback):
-        """ Get free ID for the given attribute via policy. """
+    def get_idrange_policies(self, o):
+        """ Get the IDRange policies that apply to the given object. """
         policies = None
         if o.unit_uuid:
             unit = backend.get_object(object_type="unit", uuid=o.unit_uuid)
@@ -142,6 +142,49 @@ class OTPmeExtension(OTPmeLDIFHandler):
             realm = backend.get_object(object_type="realm", uuid=o.realm_uuid)
             policies = realm.get_policies(policy_type="idrange",
                                         return_type="instance")
+        return policies
+
+    def verify_id_range(self, o, attribute, value, callback=default_callback):
+        """ Make sure a hand written uid/gid falls into the configured range.
+
+        check_free_id() only knows OTPme objects, so it happily accepts an
+        ID that belongs to a local system account or group on every host --
+        and uid/gid are what NSS publishes there. The ID range policy is
+        what says which IDs OTPme may hand out, so a value typed in here
+        has to respect it too, not just the ones OTPme generates itself.
+        """
+        # A user has a gidNumber too -- their primary group, which is what
+        # they get as primary gid on every host.
+        id_attributes = {
+                        'user'  : ["uidNumber", "gidNumber"],
+                        'group' : ["gidNumber"],
+                        }
+        try:
+            object_id_attributes = id_attributes[o.type]
+        except KeyError:
+            return
+        if attribute not in object_id_attributes:
+            return
+        policies = self.get_idrange_policies(o)
+        if not policies:
+            return
+        in_range = None
+        for policy in policies:
+            in_range = policy.id_in_range(attribute, value)
+            # No range for this attribute: nothing to enforce.
+            if in_range is None:
+                continue
+            if in_range:
+                return
+        if in_range is None:
+            return
+        msg = _("{attribute} outside of the configured ID range: {value}")
+        msg = msg.format(attribute=attribute, value=value)
+        raise OTPmeException(msg)
+
+    def get_free_id(self, o, attribute, assign=True, callback=default_callback):
+        """ Get free ID for the given attribute via policy. """
+        policies = self.get_idrange_policies(o)
         if not policies:
             msg = _("No IDRange policy found to get {}.")
             msg = msg.format(attribute)

@@ -489,6 +489,37 @@ class IdrangePolicy(Policy):
 
         return free_ids
 
+    def id_in_range(self, attribute, value):
+        """ Is the given ID within one of our ranges for this attribute?
+
+        Returns None if we have no range for the attribute, so callers can
+        tell "outside the range" from "nothing configured".
+        """
+        try:
+            id_ranges = self.id_ranges[attribute]
+        except KeyError:
+            return None
+        if not id_ranges:
+            return None
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return False
+        for x in id_ranges:
+            # Ranges are stored as "<type>:<start>-<end>".
+            try:
+                x_range = x.split(":")[1]
+                range_start = int(x_range.split("-")[0])
+                range_end = int(x_range.split("-")[1])
+            except Exception:
+                log_msg = _("Invalid ID range: {name}: {range}", log=True)[1]
+                log_msg = log_msg.format(name=self.name, range=x)
+                logger.warning(log_msg)
+                continue
+            if value >= range_start and value <= range_end:
+                return True
+        return False
+
     @_lock_idrange_attribute
     def get_next_free_id(self, object_type, attribute,
         callback=default_callback, **kwargs):

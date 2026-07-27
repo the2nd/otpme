@@ -482,7 +482,8 @@ class OtppushToken(Token):
                 return callback.error()
         return self.change_script(script_var='push_script',
                         script_options_var='push_script_options',
-                        script=push_script, callback=callback)
+                        script=push_script, callback=callback,
+                        **kwargs)
 
     @check_acls(['edit:push_token'])
     @object_lock(full_lock=True)

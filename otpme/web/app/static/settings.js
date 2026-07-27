@@ -552,7 +552,7 @@
             if (error) {
                 throw new Error(error);
             }
-            // available=false → sso_temp_pass_role unresolvable for this
+            // available=false → admin_access_role unresolvable for this
             // user; hide the entire card.
             if (!body.available) {
                 card.classList.add('is-hidden');
