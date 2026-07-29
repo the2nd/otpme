@@ -345,11 +345,11 @@ class OTPmeMgmtP1(OTPmeServer1):
         if args is None:
             args = {}
         if _args is None:
-            _args = {}
+            _args = []
         if opt_args is None:
             opt_args = {}
         if _opt_args is None:
-            _opt_args = {}
+            _opt_args = []
         if _dargs is None:
             _dargs = {}
         if command_args is None:
@@ -2514,10 +2514,22 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = response.format(command=backend_command, error=e)
 
         if trash_command == "empty":
-            if not self.is_admin:
-                status = False
-                message = _("You need to be admin to run this command.")
-                return self.build_response(status, message)
+            full = False
+            auth_token = None
+            if config.auth_token:
+                if config.auth_token.is_admin():
+                    full = True
+                else:
+                    allow_trash_empty = config.auth_token.get_config_parameter("allow_non_admin_trash_emtpy")
+                    if not allow_trash_empty:
+                        status = False
+                        response = _("You need to be admin to run this command.")
+                        return self.build_response(status, response)
+                    auth_token = config.auth_token.rel_path
+            # We have to override client command args to prevent client from
+            # setting "full" and "auth_token".
+            command_args['full'] = full
+            command_args['auth_token'] = auth_token
             try:
                 status, \
                 response = self.start_job(name="trash_empty",
@@ -3142,7 +3154,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 try:
                     _args = command_map[object_type][object_status][subcommand]['args']
                 except KeyError:
-                    _args = {}
+                    _args = []
             # Get optional args.
             try:
                 _opt_args = command_map[x_type][object_status][subcommand]['oargs']

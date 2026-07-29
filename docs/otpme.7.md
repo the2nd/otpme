@@ -431,8 +431,9 @@ OTPs and token counters back to the server.
 Configuration parameters are set per-object using the **config** command
 and displayed with **show_config**. Parameters set on a parent object
 (e.g. site or unit) act as defaults for all child objects unless
-overridden locally. The column *Object types* lists on which object
-types each parameter can be set.
+overridden locally. A site can also enforce parameters for all of its
+objects, see **force_site_config_parameters** below. The column *Object
+types* lists on which object types each parameter can be set.
 
 **otpme-site config mysite parameter \[*value*\]**  
 **otpme-site config -d mysite parameter \[*value*\]**
@@ -456,6 +457,19 @@ Object types: site, unit, user, token
 If enabled, object signatures are automatically revoked when the object
 is changed.  
 Object types: site, unit, token, script
+
+**force_site_config_parameters (list)**  
+Comma-separated list of config parameter names the site enforces for all
+of its objects. For each parameter listed here the value set on the site
+itself wins over the values set on the objects below it (units, users,
+tokens, ...), instead of only acting as their default.  
+If the site holds no value for an enforced parameter, the values set on
+the child objects are ignored as well and the parameter's default
+applies.  
+Only parameters that are valid for sites can be enforced, and the
+parameter cannot enforce itself. Further values can be added with **-a**
+and removed individually with **-d**.  
+Object types: site
 
 ## Key Backup
 

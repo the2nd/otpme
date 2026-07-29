@@ -949,7 +949,15 @@ class OTPmeClusterP1(OTPmeServer1):
             if status:
                 message = "done"
                 try:
-                    trash.empty(cluster=False)
+                    full = command_args['full']
+                except Exception:
+                    full = False
+                try:
+                    auth_token = command_args['auth_token']
+                except Exception:
+                    auth_token = None
+                try:
+                    trash.empty(full=full, auth_token=auth_token, cluster=False)
                 except Exception as e:
                     message, log_msg = _("Failed to empty trash: {error}", log=True)
                     message = message.format(error=e)

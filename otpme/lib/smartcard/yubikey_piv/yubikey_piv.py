@@ -14,6 +14,7 @@ except Exception:
     pass
 
 from otpme.lib import cli
+from otpme.lib import ssh
 from otpme.lib import json
 from otpme.lib import sotp
 from otpme.lib import config
@@ -200,9 +201,10 @@ class YubikeypivClientHandler(object):
                                             PublicFormat.SubjectPublicKeyInfo).decode()
             # SSH key always derives from the sign key (SSH is signature-based).
             ssh_public_key = sign_pub.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
-            ssh_public_key_type, \
-            ssh_public_key = ssh_public_key.decode().split()
-            ssh_public_key_type = ssh_public_key_type.split("-")[1]
+            ssh_public_key = ssh.normalize_ssh_public_key(ssh_public_key.decode())
+            # Get the key type from the key. Cutting it out of the algo name
+            # (e.g. "ssh-rsa") breaks for EC keys ("ecdsa-sha2-nistp256").
+            ssh_public_key_type = ssh.get_ssh_key_type(ssh_public_key)
         else:
             try:
                 key_len = self.local_command_args['key_len']
@@ -419,9 +421,11 @@ class YubikeypivClientHandler(object):
             sign_public_key = sign_token_key.export_public_key(encoding="PEM")
             encrypt_public_key = encrypt_token_key.export_public_key(encoding="PEM")
             # SSH always uses the sign key.
-            ssh_public_key_type, \
-            ssh_public_key = sign_token_key.ssh_public_key.decode().split()
-            ssh_public_key_type = ssh_public_key_type.split("-")[1]
+            ssh_public_key = sign_token_key.ssh_public_key.decode()
+            ssh_public_key = ssh.normalize_ssh_public_key(ssh_public_key)
+            # Get the key type from the key. Cutting it out of the algo name
+            # (e.g. "ssh-rsa") breaks for EC keys ("ecdsa-sha2-nistp256").
+            ssh_public_key_type = ssh.get_ssh_key_type(ssh_public_key)
 
         if not sign_public_key or not encrypt_public_key:
             msg = _("Cannot continue without sign + encrypt public keys.")

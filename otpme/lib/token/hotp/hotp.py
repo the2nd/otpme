@@ -841,7 +841,7 @@ class HotpToken(OathToken):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['otp'])
-    @object_changelog()
+    @object_changelog(ignore_args=["otp"])
     def resync(
         self,
         otp: Union[str,None]=None,
@@ -1042,7 +1042,7 @@ class HotpToken(OathToken):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['server_secret', 'pin'])
-    @object_changelog()
+    @object_changelog(ignore_args=["server_secret", "pin"])
     def deploy(
         self,
         server_secret: str,

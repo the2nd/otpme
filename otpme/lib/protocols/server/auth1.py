@@ -43,16 +43,6 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-auth-1.0"
 
-# JWT reasons a client may ask for via get_jwt(). REALM_AUTH is used by
-# the mgmt client, REALM_LOGIN by the agent and TESTING by
-# "otpme-tool get_jwt". Everything else is issued by the server side login
-# paths only.
-CLIENT_JWT_REASONS = [
-                        "REALM_AUTH",
-                        "REALM_LOGIN",
-                        "TESTING",
-                    ]
-
 def register():
     config.register_otpme_protocol("authd", PROTOCOL_VERSION, server=True)
 
@@ -369,22 +359,6 @@ class OTPmeAuthP1(OTPmeServer1):
         except Exception:
             status = False
             message = "AUTHD_INCOMPLETE_COMMAND"
-            return self.build_response(status, message)
-
-        # The reason is what tells a verifier which JWT it is looking at, so
-        # a client must not be able to name one freely. SSO_AUTH above all:
-        # it is only ever issued by the login paths below, which bind it to
-        # the SSO accessgroup the token has to be a member of.
-        if jwt_reason not in CLIENT_JWT_REASONS:
-            emit_audit("AuthZ", "denied",
-                       level='warning',
-                       actor=config.auth_token.rel_path,
-                       method='get_jwt',
-                       reason='jwt_reason_not_allowed',
-                       jwt_reason=jwt_reason)
-            status = False
-            message = _("Invalid JWT reason: {jwt_reason}")
-            message = message.format(jwt_reason=jwt_reason)
             return self.build_response(status, message)
 
         try:

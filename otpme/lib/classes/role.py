@@ -2059,7 +2059,7 @@ class Role(OTPmeObject):
                     return callback.error(msg)
                 _group = result[0]
                 if verify_acls:
-                    if not _group.verify_acl("add:groups"):
+                    if not _group.verify_acl("add:role"):
                         msg = _("Group: {group_name}: Permission denied")
                         msg = msg.format(group_name=group_name)
                         return callback.error(msg)
@@ -2254,8 +2254,8 @@ class Role(OTPmeObject):
             role_list.sort()
 
         if self.verify_acl("view:hosts") \
-        or self.verify_acl("add:hosts") \
-        or self.verify_acl("remove:hosts"):
+        or self.verify_acl("add:host") \
+        or self.verify_acl("remove:host"):
             host_list = []
             for i in self.hosts:
                 host_oid = backend.get_oid(uuid=i,

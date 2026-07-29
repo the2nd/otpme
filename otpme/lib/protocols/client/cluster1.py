@@ -265,10 +265,28 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return response
 
-    def trash_empty(self):
+    def trash_empty(self, trash_data):
         """ Send trash empty request to peer. """
+        import json
         command = "trash_empty"
-        command_args = {}
+        try:
+            trash_data = json.loads(trash_data)
+        except Exception as e:
+            msg = _("Unable to decode trash data: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        try:
+            full = trash_data['full']
+        except Exception:
+            full = False
+        try:
+            auth_token = trash_data['auth_token']
+        except Exception:
+            auth_token = None
+        command_args = {
+                        'full'          : full,
+                        'auth_token'    : auth_token,
+                        }
         status, \
         status_code, \
         response, \

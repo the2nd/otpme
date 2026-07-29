@@ -2729,7 +2729,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["private_key"])
     def change_sign_private_key(
         self,
         private_key: str,
@@ -2749,7 +2749,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["private_key"])
     def change_encrypt_private_key(
         self,
         private_key: str,
@@ -2799,7 +2799,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key"])
     def change_sign_public_key(
         self,
         public_key: str,
@@ -2828,7 +2828,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key"])
     def change_encrypt_public_key(
         self,
         public_key: str,
@@ -3041,7 +3041,7 @@ class User(OTPmeObject):
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["aes_key", "aes_key_enc"])
     def gen_keys(
         self,
         key_mode: str="client",
@@ -3350,7 +3350,7 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["private_key", "aes_key", "aes_key_enc"])
     def import_sign_key(
         self,
         private_key: str,
@@ -3385,7 +3385,7 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["private_key", "aes_key", "aes_key_enc"])
     def import_encrypt_key(
         self,
         private_key: str,
@@ -3530,7 +3530,7 @@ class User(OTPmeObject):
     @check_acls(['sign'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["data", "digest", "aes_key"])
     def sign_data(
         self,
         data: Union[str,None]=None,
@@ -4671,7 +4671,7 @@ class User(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['deploy_data'])
-    @object_changelog()
+    @object_changelog(ignore_args=["deploy_data"])
     def deploy_token(
         self,
         token_name: str,
@@ -4852,7 +4852,7 @@ class User(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["password"])
     def add_token(
         self,
         token_name: Union[str,None]=None,
@@ -4863,7 +4863,7 @@ class User(OTPmeObject):
         password: Union[str,None]=None,
         replace: bool=False,
         gen_qrcode: bool=True,
-        mode: str="mode2",
+        mode: str=None,
         no_token_infos: bool=False,
         enable_mschap: bool=False,
         force: bool=False,
@@ -4878,6 +4878,9 @@ class User(OTPmeObject):
         if self.template_object:
             msg = "Cannot add token to template user."
             return callback.error(msg)
+
+        if mode is None:
+            mode = "mode2"
 
         if new_token:
             token_name = new_token.name
@@ -5115,6 +5118,7 @@ class User(OTPmeObject):
 
     @object_lock()
     @backend.transaction
+    @object_changelog()
     def del_token(
         self,
         token_name: str,
@@ -6077,7 +6081,7 @@ class User(OTPmeObject):
     @one_time_policy_run
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["password"])
     def add(
         self,
         group: Union[str,None]=None,

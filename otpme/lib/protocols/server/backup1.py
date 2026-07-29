@@ -5,6 +5,7 @@ import re
 import time
 import gzip
 import stat
+import glob
 import errno
 import setproctitle
 from typing import Any
@@ -1162,7 +1163,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
             raise OTPmeException(msg)
         file_path = self.load_longname(file_path)
         entry = os.path.basename(file_path)
-        return name, entry, True
+        return name, entry
 
     def _resolve_link(self, file_path):
         """ Resolve HARDLINK/SYMLINK entries to the target file path.
@@ -1342,7 +1343,22 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 pass
             else:
                 return result
-        result = super().readdir(path, permanent_cache=True)
+        if self.snapshot:
+            # tree/ holds the entries of all snapshots side by side. Let the
+            # FS layer skip the files of the other snapshots right away, so it
+            # does not stat() them and does not build getattr/getxattr cache
+            # entries we would drop below anyway. Directories are not snapshot
+            # suffixed and are returned regardless of the glob.
+            # The snapshot name comes from the client supplied path, so escape
+            # any glob metacharacters in it.
+            snapshot = glob.escape(self.snapshot)
+            file_glob = [
+                        f"*-{snapshot}",
+                        f"*-{snapshot}.longname",
+                        ]
+        else:
+            file_glob = None
+        result = super().readdir(path, permanent_cache=True, glob=file_glob)
         if not self.snapshot:
             return result
         readdir_result = []
@@ -1363,11 +1379,21 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 if x == "." or x == ".." or self._dir_in_snapshot(path + "/" + x):
                     readdir_result.append(x)
                 continue
+            # resolve_longname() does check the snapshot: it strips the
+            # ".longname" suffix and requires the remainder to end with our
+            # snapshot. On mismatch we land in the except below, and since x
+            # then still ends with ".longname" (never with our snapshot) the
+            # entry is skipped.
             try:
-                x, entry, longname = self.resolve_longname(path, x)
-            except Exception as e:
+                x, entry = self.resolve_longname(path, x)
+                longname = True
+            except Exception:
                 longname = False
             if not longname:
+                # The entry name of a non-longname entry is the tree file name,
+                # so we have to strip the snapshot suffix. For a longname entry
+                # resolve_longname() took the name from the entry file's first
+                # line (the original rel path), which never carries a suffix.
                 if not x.endswith(self.snapshot):
                     continue
                 entry = re.sub(f'(.*)-{self.snapshot}$', r'\1', x)
@@ -1407,7 +1433,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
             x_path.pop(1)
             x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
-            x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
+            if not longname:
+                # Only a non-longname name comes from the tree file name and
+                # thus carries the snapshot suffix. A longname name was taken
+                # from the entry file's first line (the original rel path):
+                # stripping there would mangle files that are themselves named
+                # like "<something>-<snapshot>".
+                x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
             result['getattr'][x_path] = x_data
         for x_path in dict(result['getxattr']):
             x_data = result['getxattr'].pop(x_path)
@@ -1427,7 +1459,10 @@ class OTPmeBackupP1(OTPmeFsServer1):
             x_path.pop(1)
             x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
-            x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
+            if not longname:
+                # See the getattr loop above: the snapshot suffix only exists
+                # in the tree file name, not in a resolved longname.
+                x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
             result['getxattr'][x_path] = x_data
         # Update cache.
         if self.snapshot:

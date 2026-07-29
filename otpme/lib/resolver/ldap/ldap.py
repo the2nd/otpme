@@ -656,7 +656,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['login_password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["login_password"])
     def change_login_password(self, login_password=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login passowrd. """
@@ -682,7 +682,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['ca_data'])
-    @object_changelog()
+    @object_changelog(ignore_args=["ca_data"])
     def change_ca_data(self, ca_data=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set the PEM CA bundle used to verify the LDAP server's TLS

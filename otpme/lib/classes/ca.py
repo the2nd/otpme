@@ -943,7 +943,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["key", "cert_req"])
     def create_cert(
         self,
         cn: str,
@@ -1032,7 +1032,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_ca_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["key", "cert_req"])
     def create_ca_cert(
         self,
         cn: str,
@@ -1100,7 +1100,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_server_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["key", "cert_req"])
     def create_server_cert(
         self,
         cn: str,
@@ -1165,7 +1165,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_client_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["key", "cert_req"])
     def create_client_cert(
         self,
         cn: str,
@@ -1450,7 +1450,7 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["cert"])
     def revoke_cert(
         self,
         cert: str,

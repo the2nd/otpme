@@ -553,6 +553,8 @@ class ClusterEntry(object):
     @entry_lock(write=True)
     def delete(self):
         object_id = self.object_id
+        if not object_id:
+            object_id = self.trash_id
         random_part = stuff.gen_secret(len=8)
         entry_del_dir = f"{self.entry_dir}-{random_part}.deleting"
         try:
@@ -3794,8 +3796,18 @@ class ClusterDaemon(OTPmeDaemon):
                             pass
                     # Send trash empty request to peer.
                     if action == "trash_empty":
+                        trash_data = cluster_journal_entry.object_data
+                        # Remove outdated cluster journal entry.
+                        if not trash_data:
+                            try:
+                                cluster_journal_entry.add_node(node_name)
+                            except ObjectDeleted:
+                                pass
+                            if self.check_member_nodes(cluster_journal_entry):
+                                self.check_online_nodes(cluster_journal_entry)
+                            continue
                         try:
-                            trash_empty_status = node_conn.trash_empty()
+                            trash_empty_status = node_conn.trash_empty(trash_data=trash_data)
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                             self.node_disconnect(node_name)
                             msg, log_msg = _("Failed to send trash empty request: {node}: {error}", log=True)

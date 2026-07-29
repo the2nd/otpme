@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import re
 import time
 import errno
 import xattr
 import struct
 import orjson
+import fnmatch
 from typing import Any
 from functools import wraps
 from typing import Optional
@@ -189,13 +191,43 @@ class OTPmeFsServer1(OTPmeServer1):
         return mkdir_result
 
     @with_root_path()
-    def readdir(self, path: str, permanent_cache=False) -> list:
+    def readdir(self, path: str, permanent_cache=False, glob=None) -> list:
+        """ List a directory including cacheable getattr/getxattr data.
+
+        glob: fnmatch pattern (or a list of patterns) applied to FILES only.
+        Non matching files are skipped entirely, so we neither stat them nor
+        build getattr/getxattr cache entries for them (that is where the time
+        goes, the readdir() itself is unavoidable). Directories are always
+        listed: e.g. backup tree/ directories are shared between snapshots and
+        thus carry no snapshot suffix.
+        """
         if permanent_cache:
             cache_time = None
         else:
             cache_time = time.time()
         result = {'getattr':{}, 'getxattr':{}}
-        entries = os.listdir(path)
+        if glob is None:
+            entries = os.listdir(path)
+        else:
+            if isinstance(glob, str):
+                glob = [glob]
+            # Compile the patterns once instead of matching each entry
+            # against each pattern.
+            glob_re = "|".join([fnmatch.translate(x) for x in glob])
+            glob_re = re.compile(glob_re)
+            entries = []
+            with os.scandir(path) as dir_entries:
+                for dir_entry in dir_entries:
+                    if not glob_re.match(dir_entry.name):
+                        try:
+                            # d_type based, so no extra stat() in the common
+                            # case.
+                            is_dir = dir_entry.is_dir(follow_symlinks=False)
+                        except OSError:
+                            is_dir = False
+                        if not is_dir:
+                            continue
+                    entries.append(dir_entry.name)
         for entry in entries:
             entry_path = os.path.join(path, entry)
             # Strip only the root prefix, not every occurrence — a file named

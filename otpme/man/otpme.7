@@ -242,6 +242,7 @@ When the server becomes available again, the hostd synchronizes used OTPs and to
 .SH CONFIG PARAMETERS
 Configuration parameters are set per-object using the \fBconfig\fR command and displayed with \fBshow_config\fR.
 Parameters set on a parent object (e.g. site or unit) act as defaults for all child objects unless overridden locally.
+A site can also enforce parameters for all of its objects, see \fBforce_site_config_parameters\fR below.
 The column \fIObject types\fR lists on which object types each parameter can be set.
 .PP
 .B otpme-site config mysite parameter \fR[\fIvalue\fR]
@@ -265,6 +266,16 @@ Object types: site, unit, user, token
 If enabled, object signatures are automatically revoked when the object is changed.
 .br
 Object types: site, unit, token, script
+.TP
+.B force_site_config_parameters \fR(list)
+Comma\-separated list of config parameter names the site enforces for all of its objects.
+For each parameter listed here the value set on the site itself wins over the values set on the objects below it (units, users, tokens, ...), instead of only acting as their default.
+.br
+If the site holds no value for an enforced parameter, the values set on the child objects are ignored as well and the parameter's default applies.
+.br
+Only parameters that are valid for sites can be enforced, and the parameter cannot enforce itself. Further values can be added with \fB\-a\fR and removed individually with \fB\-d\fR.
+.br
+Object types: site
 .SS Key Backup
 .TP
 .B private_key_backup_key \fR(str)

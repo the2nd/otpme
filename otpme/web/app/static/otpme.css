@@ -550,6 +550,12 @@ a:hover { text-decoration: underline; }
 .device-token-list .btn {
   flex: 0 0 auto;
 }
+.device-token-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
 .device-token-list li.empty,
 .device-token-list li.error-msg {
   justify-content: flex-start;

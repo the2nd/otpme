@@ -243,13 +243,21 @@
                 label.className = 'device-label';
                 label.textContent = t.device_name || t.name;
                 li.appendChild(label);
+                const actions = document.createElement('span');
+                actions.className = 'device-token-actions';
+                actions.appendChild(buildEnableToggle({
+                    enabled: !!t.enabled,
+                    onChange: (desired) => toggleDeviceToken(t.name, desired),
+                    fallbackError: getPageI18n().labelFailedToggleDeviceToken || 'Failed to update device token.',
+                }));
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
                 delBtn.className = 'btn btn-secondary btn-small';
                 delBtn.textContent = i18n.labelDelete || 'Delete';
                 delBtn.addEventListener('click',
                     () => deleteDeviceToken(t.name, t.device_name || t.name));
-                li.appendChild(delBtn);
+                actions.appendChild(delBtn);
+                li.appendChild(actions);
                 listEl.appendChild(li);
             }
         }
@@ -406,13 +414,21 @@
                 label.className = 'device-label';
                 label.textContent = p.device_name || p.name;
                 li.appendChild(label);
+                const actions = document.createElement('span');
+                actions.className = 'device-token-actions';
+                actions.appendChild(buildEnableToggle({
+                    enabled: !!p.enabled,
+                    onChange: (desired) => togglePasskey(p.name, desired),
+                    fallbackError: i18n.labelFailedTogglePasskey || 'Failed to update passkey.',
+                }));
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-secondary btn-small';
                 btn.textContent = i18n.labelDeleteBtn || 'Delete';
                 btn.addEventListener('click',
                     () => deletePasskey(p.name, p.device_name || p.name));
-                li.appendChild(btn);
+                actions.appendChild(btn);
+                li.appendChild(actions);
                 listEl.appendChild(li);
             }
         } catch (e) {
@@ -507,6 +523,76 @@
         } finally {
             btn.disabled = false;
         }
+    }
+
+    // Build a small enable/disable toggle switch used next to the
+     // delete button on each device-token / passkey row. The visual
+     // markup matches the toggle-switch used by the admin-access card
+     // (see settings.html) so the styles from base.css apply.
+    function buildEnableToggle({enabled, onChange, fallbackError}) {
+        const i18n = getPageI18n();
+        const wrapper = document.createElement('label');
+        wrapper.className = 'toggle-switch';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.setAttribute('role', 'switch');
+        input.checked = !!enabled;
+        input.title = enabled
+            ? (i18n.labelTokenEnabled || 'Enabled')
+            : (i18n.labelTokenDisabled || 'Disabled');
+        input.setAttribute('aria-label', input.title);
+        const track = document.createElement('span');
+        track.className = 'toggle-track';
+        track.setAttribute('aria-hidden', 'true');
+        wrapper.appendChild(input);
+        wrapper.appendChild(track);
+        input.addEventListener('change', async () => {
+            const desired = input.checked;
+            input.disabled = true;
+            try {
+                const newEnabled = await onChange(desired);
+                input.checked = !!newEnabled;
+                input.title = newEnabled
+                    ? (i18n.labelTokenEnabled || 'Enabled')
+                    : (i18n.labelTokenDisabled || 'Disabled');
+                input.setAttribute('aria-label', input.title);
+            } catch (e) {
+                // Revert UI state on failure so it matches reality.
+                input.checked = !desired;
+                alert(e.message || fallbackError || 'Update failed.');
+            } finally {
+                input.disabled = false;
+            }
+        });
+        return wrapper;
+    }
+
+    async function toggleDeviceToken(name, enabled) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const resp = await fetchJSON(urls.urlToggleDeviceToken, {
+            method: 'POST',
+            body: JSON.stringify({name: name, enabled: enabled}),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            throw new Error(result.error || i18n.labelFailedToggleDeviceToken || 'Failed to update device token.');
+        }
+        return !!result.enabled;
+    }
+
+    async function togglePasskey(name, enabled) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const resp = await fetchJSON(urls.urlTogglePasskey, {
+            method: 'POST',
+            body: JSON.stringify({name: name, enabled: enabled}),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            throw new Error(result.error || i18n.labelFailedTogglePasskey || 'Failed to update passkey.');
+        }
+        return !!result.enabled;
     }
 
     async function deletePasskey(name, label) {

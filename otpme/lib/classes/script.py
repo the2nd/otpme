@@ -792,7 +792,7 @@ class Script(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['script'])
-    @object_changelog()
+    @object_changelog(ignore_args=["script"])
     def add(
         self,
         script: str,

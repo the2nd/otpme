@@ -1778,7 +1778,7 @@ class Share(OTPmeObject):
 
     @object_lock()
     @audit_log(ignore_args=['share_key'])
-    @object_changelog()
+    @object_changelog(ignore_args=["share_key"])
     def add_token(
         self,
         token_path: str,
@@ -2289,7 +2289,7 @@ class Share(OTPmeObject):
     @check_acls(['add:share_key'])
     @object_lock()
     @audit_log(ignore_args=['share_key'])
-    @object_changelog()
+    @object_changelog(ignore_args=["share_key"])
     def add_share_key(
         self,
         username: str,

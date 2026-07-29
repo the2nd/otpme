@@ -432,6 +432,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             run_policies=True,
                             add_to_trash=add_to_trash,
                             callback=callback)
+            user._write(callback=callback)
         # Create sso-deploy token under the user.
         try:
             user.add_token(token_name=DEPLOY_NAME,
@@ -443,6 +444,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             verify_acls=False,
                             run_policies=True,
                             callback=callback)
+            user._write(callback=callback)
         except Exception as e:
             log_msg = _("SSO deploy failed for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(user_name=user.name)
@@ -934,6 +936,7 @@ class OTPmeSsoP1(OTPmeServer1):
             passkeys.append({
                         'name'          : token.name,
                         'device_name'   : token.description or token.name,
+                        'enabled'       : bool(token.enabled),
                     })
         return self.build_response(True, {'passkeys': passkeys, 'allowed': True, 'status': True})
 
@@ -1136,6 +1139,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             verify_acls=False,
                             run_policies=True,
                             callback=callback)
+            user._write(callback=callback)
         except Exception as e:
             log_msg = _("Failed to add passkey token: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -1264,6 +1268,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             verify_acls=False,
                             run_policies=True,
                             callback=callback)
+            user._write(callback=callback)
         except Exception as e:
             log_msg = _("Failed to delete passkey '{token}' for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(token=token_name, user_name=user.name, e=e)
@@ -2083,12 +2088,49 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        # No cross-site redirect here: the role list comes from
-        # _resolve_device_token_roles (which honours device_token_roles_trusts
-        # on the local site and falls back to the local site-level config
-        # for untrusted foreign users), and user.tokens is cluster-synced
-        # so we can enumerate the user's tokens locally on any site.
-        roles = self._resolve_device_token_roles(user, command_args)
+        # Cross-site read pattern:
+        #
+        #   * Originator, foreign user, trusted home
+        #     (``_site_trusts_user_home`` → True) — no local resolve
+        #     needed; forward to home and let home resolve authoritatively
+        #     via the user's config cascade.
+        #   * Originator, foreign user, untrusted home — resolve the
+        #     local-site fallback here (we would otherwise refuse to
+        #     accept the user's home cascade) and forward those role
+        #     UUIDs with the ``_device_token_role_uuids`` marker. Home
+        #     accepts them under reciprocal ``device_token_roles_trusts``.
+        #   * Home, peer-forwarded with marker — accept the peer-supplied
+        #     role list only when the peer's site is reciprocally trusted;
+        #     refuse otherwise.
+        #   * Local user — resolve locally.
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_role_uuids = command_args.get('_device_token_role_uuids')
+        peer_forwarded = is_cluster_peer and peer_role_uuids is not None
+        if peer_forwarded:
+            if not self._site_trusts_site_for_device_token_roles(self.peer.site):
+                return self.build_response(True, {
+                            'roles'             : [],
+                            'roles_configured'  : False,
+                            'status'            : True,
+                        })
+            roles = []
+            for role_uuid in peer_role_uuids:
+                role = backend.get_object(object_type="role", uuid=role_uuid)
+                if role is None:
+                    continue
+                roles.append(role)
+        elif user.site != config.site:
+            forward_args = dict(command_args)
+            if not self._site_trusts_user_home(user):
+                local_roles = self._get_local_site_device_token_roles()
+                forward_args['_device_token_role_uuids'] = [r.uuid for r in local_roles]
+            return self.ssod_redirect_command(command="list_device_tokens",
+                                            user=user,
+                                            command_args=forward_args)
+        else:
+            roles = self._resolve_device_token_roles(user, command_args)
         # Roles without a device_token_suffix have no way to render a
         # usable token name and are therefore hidden from the portal.
         roles = [r for r in roles if r.get_config_parameter("device_token_suffix")]
@@ -2132,6 +2174,7 @@ class OTPmeSsoP1(OTPmeServer1):
             entry = {
                         'name'          : token.name,
                         'device_name'   : token.description or token.name,
+                        'enabled'       : bool(token.enabled),
                     }
             for role_uuid in token.get_roles(return_type="uuid"):
                 group = role_groups.get(role_uuid)
@@ -2157,6 +2200,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                     enable_mschap=True,
                                     run_policies=True,
                                     callback=callback)
+        user._write(callback=callback)
         token = user.token(token_name)
         if not token:
             raise OTPmeException("Failed to create device token.")
@@ -2268,6 +2312,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                 run_policies=True,
                                 add_to_trash=add_to_trash,
                                 callback=callback)
+                user._write(callback=callback)
             except Exception:
                 pass
         response = {
@@ -2305,6 +2350,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             run_policies=True,
                             add_to_trash=add_to_trash,
                             callback=callback)
+            user._write(callback=callback)
         except Exception as e:
             log_msg = _("Failed to delete device token '{token}' for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(token=token_name, user_name=user.name, e=e)
@@ -2503,6 +2549,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                     run_policies=True,
                                     add_to_trash=add_to_trash,
                                     callback=callback)
+                    user._write(callback=callback)
             except Exception:
                 pass
             response = {'message':'Failed to add device token to role.', 'status':False}
@@ -2572,6 +2619,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             run_policies=True,
                             add_to_trash=add_to_trash,
                             callback=callback)
+            user._write(callback=callback)
         except Exception as e:
             log_msg = _("Failed to delete device token '{token}' for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(token=token_name, user_name=user.name, e=e)
@@ -2583,6 +2631,236 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         response = {'message':'Device token deleted.', 'status':True}
         return self.build_response(True, response)
+
+    def enable_device_token(self, username, sso_jwt, command_args):
+        return self._set_device_token_enabled(username, sso_jwt,
+                                                command_args, enable=True)
+
+    def disable_device_token(self, username, sso_jwt, command_args):
+        return self._set_device_token_enabled(username, sso_jwt,
+                                                command_args, enable=False)
+
+    def _set_device_token_enabled(self, username, sso_jwt, command_args, enable):
+        """ Flip the ``enabled`` flag on a device token.
+
+        Mirrors the sso_create_device_token cross-site pattern:
+
+          * Originator (foreign user): resolve device_token_roles locally
+            via ``_resolve_device_token_roles`` (honours
+            ``device_token_roles_trusts``), validate role membership,
+            then forward to the user's home site with the
+            ``_device_token_roles_verified`` marker.
+          * Home (peer-forwarded): accept the originator's role decision
+            only when the peer's site is listed in the local
+            ``device_token_roles_trusts`` (reciprocal). Skip re-checking
+            role membership here — the originator may have used its own
+            site fallback config, not the home site's config.
+          * Local user: resolve + validate on this site.
+
+        Enable/disable propagates via the normal cluster sync, so no
+        separate mirror step is required beyond the home-site mutation. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_verified = command_args.get('_device_token_roles_verified')
+        skip_role_check = False
+
+        if is_cluster_peer and peer_verified is not None:
+            # Home, peer-forwarded. Accept the originator's role membership
+            # decision only when reciprocally trusted. Membership was
+            # already validated on the originator (possibly against its
+            # own site fallback config), so we do not re-check it here.
+            if not self._site_trusts_site_for_device_token_roles(self.peer.site):
+                return self.build_response(False, {
+                    'message': 'Device token modification not available: peer '
+                               'site is not listed in device_token_roles_trusts.',
+                    'status': False})
+            skip_role_check = True
+
+        token = user.token(token_name)
+        if not token or token.owner_uuid != user.uuid:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if token.token_type != "password":
+            return self.build_response(False,
+                            {'message':'Not a device token.', 'status':False})
+
+        if not skip_role_check:
+            roles = self._resolve_device_token_roles(user, command_args)
+            if not any(token.uuid in role.tokens for role in roles):
+                return self.build_response(False,
+                                {'message':'Not a device token.', 'status':False})
+
+        # Refuse to disable the token the caller is currently signed in with.
+        # See del_passkey for the rationale — the JWT would still carry the
+        # token's UUID and the next request would fail verify_sso_jwt.
+        if (not enable
+                and config.auth_token is not None
+                and config.auth_token.uuid == token.uuid):
+            return self.build_response(False, {
+                'message': 'Cannot disable the device token you are currently '
+                           'signed in with. Sign in with another factor first.',
+                'status': False})
+
+        # Originator with foreign user: forward to home for the actual
+        # mutation now that role membership has been validated locally.
+        if user.site != config.site:
+            forward_args = dict(command_args)
+            forward_args['_device_token_roles_verified'] = True
+            remote_command = "enable_device_token" if enable else "disable_device_token"
+            return self.ssod_redirect_command(command=remote_command,
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            if enable:
+                token.enable(force=True, verify_acls=False, callback=callback)
+            else:
+                token.disable(force=True, verify_acls=False, callback=callback)
+            token._write(callback=callback)
+        except Exception as e:
+            action = "enable" if enable else "disable"
+            log_msg = _("Failed to {action} device token '{token}' for user "
+                        "'{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(action=action, token=token_name,
+                                    user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':f'Failed to update device token: {e}',
+                     'status':False})
+        log_msg = _("Device token '{token}' {state} for user '{user_name}'.",
+                    log=True)[1]
+        log_msg = log_msg.format(token=token_name,
+                                state=("enabled" if enable else "disabled"),
+                                user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True,
+                {'status': True, 'enabled': bool(token.enabled)})
+
+    def enable_passkey(self, username, sso_jwt, command_args):
+        return self._set_passkey_enabled(username, sso_jwt,
+                                        command_args, enable=True)
+
+    def disable_passkey(self, username, sso_jwt, command_args):
+        return self._set_passkey_enabled(username, sso_jwt,
+                                        command_args, enable=False)
+
+    def _set_passkey_enabled(self, username, sso_jwt, command_args, enable):
+        """ Flip the ``enabled`` flag on a passkey token.
+
+        Mirrors the list_passkeys / passkey_register_begin cross-site
+        pattern:
+
+          * Originator (foreign user): resolve ``sso_allow_passkeys``
+            locally (honours ``sso_allow_passkeys_trusts``), then forward
+            to the user's home site with the ``_passkeys_allowed`` marker.
+          * Home (peer-forwarded): accept the originator's decision only
+            when the peer's site is listed in the local
+            ``sso_allow_passkeys_trusts`` (reciprocal).
+          * Local user: resolve locally. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_allowed = command_args.get('_passkeys_allowed')
+
+        if is_cluster_peer and peer_allowed is not None:
+            # Home, peer-forwarded. Accept the originator's decision only
+            # when reciprocally trusted.
+            if not self._site_trusts_site_for_passkeys(self.peer.site):
+                return self.build_response(False, {
+                    'message': 'Passkey modification not available: peer site '
+                               'is not listed in sso_allow_passkeys_trusts.',
+                    'status': False})
+            if not bool(peer_allowed):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+        else:
+            # Originator (foreign user) or local user: check local policy.
+            if not self._resolve_passkeys_allowed(user):
+                return self.build_response(False,
+                        {'message':'Passkeys are not enabled.', 'status':False})
+
+        token = user.token(token_name)
+        if not token or token.owner_uuid != user.uuid:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if token.token_type != "passkey":
+            return self.build_response(False,
+                            {'message':'Not a passkey token.', 'status':False})
+
+        # Refuse to disable the passkey the caller is currently signed in with.
+        if (not enable
+                and config.auth_token is not None
+                and config.auth_token.uuid == token.uuid):
+            return self.build_response(False, {
+                'message': 'Cannot disable the passkey you are currently '
+                           'signed in with. Sign in with another factor first.',
+                'status': False})
+
+        # Originator with foreign user: forward to home for the mutation.
+        if user.site != config.site:
+            forward_args = dict(command_args)
+            forward_args['_passkeys_allowed'] = True
+            remote_command = "enable_passkey" if enable else "disable_passkey"
+            return self.ssod_redirect_command(command=remote_command,
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            if enable:
+                token.enable(force=True, verify_acls=False, callback=callback)
+            else:
+                token.disable(force=True, verify_acls=False, callback=callback)
+            token._write(callback=callback)
+        except Exception as e:
+            action = "enable" if enable else "disable"
+            log_msg = _("Failed to {action} passkey '{token}' for user "
+                        "'{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(action=action, token=token_name,
+                                    user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':f'Failed to update passkey: {e}', 'status':False})
+        log_msg = _("Passkey '{token}' {state} for user '{user_name}'.",
+                    log=True)[1]
+        log_msg = log_msg.format(token=token_name,
+                                state=("enabled" if enable else "disabled"),
+                                user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True,
+                {'status': True, 'enabled': bool(token.enabled)})
 
     # ------------------------------------------------------------------
     # OIDC OP commands. Server-to-server: the RP authenticates with
@@ -4916,6 +5194,10 @@ class OTPmeSsoP1(OTPmeServer1):
                             "list_device_tokens",
                             "add_device_token",
                             "del_device_token",
+                            "enable_device_token",
+                            "disable_device_token",
+                            "enable_passkey",
+                            "disable_passkey",
                             "sso_create_device_token",
                             "sso_delete_device_token",
                             "sso_get_device_token_role_uuids",
@@ -5085,6 +5367,16 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.info(log_msg)
             return self.del_device_token(username, sso_jwt, command_args)
 
+        if command == "enable_device_token":
+            log_msg = _("Processing command enable_device_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.enable_device_token(username, sso_jwt, command_args)
+
+        if command == "disable_device_token":
+            log_msg = _("Processing command disable_device_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.disable_device_token(username, sso_jwt, command_args)
+
         if command == "sso_create_device_token":
             log_msg = _("Processing command sso_create_device_token.", log=True)[1]
             self.logger.info(log_msg)
@@ -5129,6 +5421,16 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command del_passkey.", log=True)[1]
             self.logger.info(log_msg)
             return self.del_passkey(username, sso_jwt, command_args)
+
+        if command == "enable_passkey":
+            log_msg = _("Processing command enable_passkey.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.enable_passkey(username, sso_jwt, command_args)
+
+        if command == "disable_passkey":
+            log_msg = _("Processing command disable_passkey.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.disable_passkey(username, sso_jwt, command_args)
 
         if command == "oidc_authorize_validate":
             log_msg = _("Processing command oidc_authorize_validate.", log=True)[1]

@@ -3185,7 +3185,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["password"])
     def change_password(
         self,
         password: Union[str,None]=None,
@@ -3354,7 +3354,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['temp_password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["temp_password"])
     def set_temp_password(
         self,
         temp_password: Union[str,None]=None,
@@ -3652,7 +3652,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['pin'])
-    @object_changelog()
+    @object_changelog(ignore_args=["pin"])
     def change_pin(
         self,
         pin: Union[str,None]=None,
@@ -3884,7 +3884,7 @@ class Token(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["password"])
     def add(
         self,
         owner_uuid: str,

@@ -502,6 +502,30 @@ def del_device_token():
         return error
     return jsonify({"status": "ok", "message": "Device token deleted."})
 
+@app.route('/settings/device_tokens/toggle', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def toggle_device_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    if 'enabled' not in data:
+        return jsonify({"error": gettext("Missing 'enabled' flag.")}), 400
+    enabled = bool(data.get('enabled'))
+    command = "enable_device_token" if enabled else "disable_device_token"
+    default_error = (gettext("Failed to enable device token.")
+                    if enabled
+                    else gettext("Failed to disable device token."))
+    response, error = _send_ssod_command(command=command,
+                                        extra_args={'token_name': token_name},
+                                        default_error=default_error,
+                                        mgmt=True)
+    if error:
+        return error
+    new_enabled = bool(response.get('enabled')) if isinstance(response, dict) else enabled
+    return jsonify({"status": "ok", "enabled": new_enabled})
+
 @app.route('/settings/passkeys', methods=['GET'])
 @login_required
 @limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
@@ -596,6 +620,31 @@ def del_passkey():
     if error:
         return error
     return jsonify({"status": "ok", "message": "Passkey deleted."})
+
+@app.route('/settings/passkeys/toggle', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def toggle_passkey():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    if 'enabled' not in data:
+        return jsonify({"error": gettext("Missing 'enabled' flag.")}), 400
+    enabled = bool(data.get('enabled'))
+    command = "enable_passkey" if enabled else "disable_passkey"
+    default_error = (gettext("Failed to enable passkey.")
+                    if enabled
+                    else gettext("Failed to disable passkey."))
+    response, error = _send_ssod_command(
+            command=command,
+            extra_args={'token_name': token_name},
+            default_error=default_error,
+            mgmt=True)
+    if error:
+        return error
+    new_enabled = bool(response.get('enabled')) if isinstance(response, dict) else enabled
+    return jsonify({"status": "ok", "enabled": new_enabled})
 
 @app.route('/settings/admin_access', methods=['GET'])
 @login_required

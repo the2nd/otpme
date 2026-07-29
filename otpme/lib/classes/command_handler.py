@@ -2034,7 +2034,13 @@ class CommandHandler(object):
             return self.handle_cache_command(command_line)
 
         if subcommand == "index":
-            command = command_line[0]
+            if config.system_user() != "root":
+                msg = _("You need to be root to run index commands.")
+                raise OTPmeException(msg)
+            try:
+                command = command_line[0]
+            except Exception:
+                return self.get_help()
             if command == "backup":
                 return self.handle_index_backup()
             elif command == "restore":
@@ -2309,17 +2315,22 @@ class CommandHandler(object):
         config.reload()
         _index = config.get_index_module()
         command = command_line[0]
-        try:
-            config_dir = command_line[1]
-        except IndexError:
-            config_dir = None
-        if config_dir:
-            if not os.path.isdir(config_dir):
-                msg = _("Path must be a directory.")
-                raise OTPmeException(msg)
+        if command == "fix":
             self.init()
             backend.init()
-            return backend.index_rebuild_object(config_dir)
+            return backend.index_fix()
+        if command == "rebuild":
+            try:
+                config_dir = command_line[1]
+            except IndexError:
+                config_dir = None
+            if config_dir:
+                if not os.path.isdir(config_dir):
+                    msg = _("Path must be a directory.")
+                    raise OTPmeException(msg)
+                self.init()
+                backend.init()
+                return backend.index_rebuild_object(config_dir)
         _index.command(command)
 
     def handle_index_backup(self):
@@ -4296,6 +4307,9 @@ class CommandHandler(object):
             raise OTPmeException(msg) from e
         finally:
             authd_conn.close()
+        if not status:
+            msg = f"Failed to get JWT: {response}"
+            raise OTPmeException(msg)
         return response
 
     def get_login_sessions(self):
@@ -5054,10 +5068,12 @@ class CommandHandler(object):
         #       - send command to hostd that executes commands?
         if signer_type not in config.valid_private_signer_types:
             if config.system_user() != "root":
-                msg = f"You need to be root to add signers of type: {signer_type}"
+                msg = _("You need to be root to add signers of type: {signer_type}")
+                msg = msg.format(signer_type=signer_type)
                 raise OTPmeException(msg)
             if private:
-                msg = f"signer type only allowed as global signer: {signer_type}"
+                msg = _("signer type only allowed as global signer: {signer_type}")
+                msg = msg.format(signer_type=signer_type)
                 raise OTPmeException(msg)
 
         # Resolve tags.

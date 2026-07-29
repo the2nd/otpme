@@ -4242,6 +4242,27 @@ def rebuild_object_index(object_type, objects, after=None):
                 full_acl_update=True)
     objects.pop(object_type)
 
+def index_fix():
+    fixed_count = 0
+    all_objects = index_search(attribute="uuid", value="*", return_type="oid")
+    for object_id in all_objects:
+        object_paths = get_config_paths(object_id, use_index=True)
+        config_file = object_paths['config_file']
+        if os.path.exists(config_file):
+            continue
+        log_msg = _("Removing missing object from index: {object_id}", log=True)[1]
+        log_msg = log_msg.format(object_id=object_id.full_oid)
+        logger.debug(log_msg)
+        index_del(object_id)
+        fixed_count += 1
+    if fixed_count == 0:
+        log_msg = _("Nothing found to fix.", log=True)[1]
+        logger.debug(log_msg)
+    else:
+        log_msg = _("Fixed {fixed_count} objects.", log=True)[1]
+        log_msg = log_msg.format(fixed_count=fixed_count)
+        logger.debug(log_msg)
+
 def index_rebuild_object(config_dir):
     log_current_object.counter = 0
     log_current_object.file_count = 1

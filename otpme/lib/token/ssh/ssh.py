@@ -357,9 +357,13 @@ class SshToken(Token):
         self.token_type = "ssh"
         # Set password type.
         self.pass_type = "ssh_key"
-        # Set SSH key type.
+        # Set SSH key type. The challenge signature is verified via the key
+        # class the key blob itself names (see lib/ssh.py verify_sign()), so
+        # all key types the ssh-agent can sign with work. Note that a token
+        # that carries its own SSH private key is still RSA only (see
+        # deploy()/get_private_key()).
         self.key_type = "rsa"
-        self.valid_key_types = [ "rsa", "dsa" ]
+        self.valid_key_types = [ "rsa", "ed25519", "ecdsa" ]
         # Set default values.
         self.ssh_public_key = None
         self.ssh_private_key = None
@@ -616,7 +620,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["ssh_public_key"])
     def change_ssh_public_key(
         self,
         ssh_public_key: Union[str,None]=None,
@@ -641,7 +645,22 @@ class SshToken(Token):
         if ssh_public_key is None:
             ssh_public_key = callback.ask(_("Please enter/paste SSH public key: "))
         if ssh_public_key:
+            # Users usually paste a complete openssh line, but we store the
+            # bare key.
+            ssh_public_key = ssh.normalize_ssh_public_key(ssh_public_key)
+            # The key type is part of the key, so verify the key and take the
+            # type from it instead of relying on a separately set key_type.
+            try:
+                key_type = ssh.get_ssh_key_type(ssh_public_key)
+            except OTPmeException as e:
+                return callback.error(str(e))
+            if key_type not in self.valid_key_types:
+                msg = _("Unsupported key type: {key_type} (supported: {valid})")
+                msg = msg.format(key_type=key_type,
+                                valid=", ".join(self.valid_key_types))
+                return callback.error(msg)
             self.ssh_public_key = ssh_public_key
+            self.key_type = key_type
             self.offline_challenge = stuff.gen_sha256(ssh_public_key)
         else:
             self.ssh_public_key = None
@@ -849,7 +868,7 @@ class SshToken(Token):
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("change_ssh_public_key",
+                self.run_policies("change_2f_token",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
@@ -963,7 +982,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['private_key', 'password'])
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key", "private_key", "password"])
     def deploy(
         self,
         public_key: Union[str,None]=None,
@@ -986,8 +1005,16 @@ class SshToken(Token):
             msg = msg.format(rel_path=self.rel_path)
             callback.send(msg)
 
-            # Encrypt private key with password.
-            rsa_key = RSAKey(key=private_key)
+            # Encrypt private key with password. A token that carries its own
+            # private key is RSA only (get_private_key()/change_key_pass()
+            # decrypt it via RSAKey), even though a token that just holds a
+            # public key works with all key types.
+            try:
+                rsa_key = RSAKey(key=private_key)
+            except Exception as e:
+                msg = _("Only RSA private keys are supported: {error}")
+                msg = msg.format(error=e)
+                return callback.error(msg)
             self.ssh_private_key = rsa_key.encrypt_key(password=password,
                                                     hash_type=pass_hash_type)
             # Get public key from private key if not given.

@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import base64
 from Cryptodome.PublicKey import RSA
 
 try:
@@ -149,6 +150,105 @@ def add_agent_key(ssh_key, passphrase=None):
         elif result != 0:
             raise Exception("Unknown error while running ssh-add(1) command.")
 
+def normalize_ssh_public_key(ssh_public_key):
+    """ Get the plain base64 blob of an SSH public key.
+
+    We store SSH public keys as the bare base64 blob (no "ssh-rsa " prefix, no
+    comment). This also accepts a complete openssh line, which is what users
+    usually paste, and cuts it down to the blob.
+    """
+    key_parts = ssh_public_key.split()
+    if len(key_parts) > 1:
+        # Complete openssh line: <algo> <key> [comment]
+        return key_parts[1]
+    return ssh_public_key.strip()
+
+def get_ssh_key_algo(ssh_public_key):
+    """ Get the algo of an SSH public key (e.g. "ssh-rsa", "ssh-ed25519",
+    "ecdsa-sha2-nistp256").
+
+    This is the string an authorized_keys line starts with. It cannot be built
+    from our short key type (e.g. "dsa" -> "ssh-dss", "ecdsa" -> the curve is
+    part of the algo), so read it from the key: the algo name is the first
+    field of the key blob.
+
+    Only reads the blob header, it does not verify the key itself (use
+    get_ssh_key_info() for that).
+    """
+    from paramiko import Message
+    ssh_public_key = normalize_ssh_public_key(ssh_public_key)
+    try:
+        # Decode via base64 directly: encoding.base.decode() would try to turn
+        # the (binary) key blob into a string.
+        key_blob = base64.b64decode(ssh_public_key)
+        algo = Message(key_blob).get_text()
+    except Exception as e:
+        msg = _("Invalid SSH public key: {error}")
+        msg = msg.format(error=e)
+        raise OTPmeException(msg) from e
+    if not algo:
+        msg = _("Invalid SSH public key: no algo found.")
+        raise OTPmeException(msg)
+    return algo
+
+def get_ssh_key_info(ssh_public_key):
+    """ Get algo, key type and key length of an SSH public key.
+
+    Takes the key the way we store it (the plain base64 blob, without the
+    "ssh-rsa " prefix and without the comment), but a complete openssh line is
+    accepted too. The key type does not have to be known/given: the algo name
+    is the first field of the key blob itself.
+
+    Returns a tuple: (algo, key_type, key_len), e.g.
+        ("ssh-rsa", "rsa", 4096)
+        ("ecdsa-sha2-nistp256", "ecdsa", 256)
+        ("ssh-ed25519", "ed25519", None)
+
+    Raises OTPmeException if the given key is not a valid SSH public key.
+    """
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives.asymmetric import dsa
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    key_types = {
+                rsa.RSAPublicKey            : "rsa",
+                dsa.DSAPublicKey            : "dsa",
+                ec.EllipticCurvePublicKey   : "ecdsa",
+                ed25519.Ed25519PublicKey    : "ed25519",
+                }
+    ssh_public_key = normalize_ssh_public_key(ssh_public_key)
+    # The algo name is part of the key itself.
+    algo = get_ssh_key_algo(ssh_public_key)
+    try:
+        # Rebuild the openssh line (algo + key) to also verify the key itself,
+        # not just its header.
+        key = serialization.load_ssh_public_key(f"{algo} {ssh_public_key}".encode())
+    except Exception as e:
+        msg = _("Invalid SSH public key: {error}")
+        msg = msg.format(error=e)
+        raise OTPmeException(msg) from e
+    key_type = None
+    for x_class in key_types:
+        if not isinstance(key, x_class):
+            continue
+        key_type = key_types[x_class]
+        break
+    if key_type is None:
+        msg = _("Unsupported SSH key algo: {algo}")
+        msg = msg.format(algo=algo)
+        raise OTPmeException(msg)
+    if isinstance(key, ec.EllipticCurvePublicKey):
+        key_len = key.curve.key_size
+    else:
+        key_len = getattr(key, "key_size", None)
+    return algo, key_type, key_len
+
+def get_ssh_key_type(ssh_public_key):
+    """ Get the key type (e.g. "rsa") of an SSH public key. """
+    algo, key_type, key_len = get_ssh_key_info(ssh_public_key)
+    return key_type
+
 def gen_challenge(ssh_public_key, otp_len=0):
     """ Generate OTPme SSH challenge. """
     epoch_time = str(int(time.time()))
@@ -188,15 +288,31 @@ def sign_challenge(challenge):
     return rsa_message
 
 def verify_sign(public_key, data, plaintext):
-    """ Verify signed data with given public key. """
+    """ Verify signed data with given public key.
+
+    Takes the decoded key blob. The key class is derived from the algo the
+    blob itself carries, so RSA, ed25519 and ECDSA keys all work.
+    """
+    from paramiko import PKey
     from paramiko import Message
-    from paramiko.rsakey import RSAKey
-    rsa_key = RSAKey(data=public_key)
-    rsa_message = Message(data)
+    if isinstance(public_key, str):
+        # encoding.base.decode() returns a string if the blob happens to be
+        # valid UTF-8. Encoding it back is lossless.
+        public_key = public_key.encode()
+    try:
+        # The algo name is the first field of the key blob.
+        algo = Message(public_key).get_text()
+        ssh_key = PKey.from_type_string(algo, public_key)
+    except Exception as e:
+        config.raise_exception()
+        msg = _("Unable to load SSH public key: {error}")
+        msg = msg.format(error=e)
+        raise Exception(msg) from e
+    ssh_message = Message(data)
     if isinstance(plaintext, str):
         plaintext = plaintext.encode()
     try:
-        return_value = rsa_key.verify_ssh_sig(plaintext, rsa_message)
+        return_value = ssh_key.verify_ssh_sig(plaintext, ssh_message)
     except Exception as e:
         config.raise_exception()
         msg = _("Unable to verify SSH signature: {error}")
@@ -495,8 +611,18 @@ def update_authorized_keys():
         if otpme_user_env not in key_opts:
             key_opts.append(otpme_user_env)
 
-        # Build authorized_keys line.
-        line = f"{','.join(key_opts)} ssh-{verify_token.key_type} {verify_token.ssh_public_key} {token.rel_path}"
+        # Build authorized_keys line. The algo must be taken from the key
+        # (e.g. "ssh-dss", "ecdsa-sha2-nistp256"), it cannot be built from our
+        # short key type.
+        try:
+            key_algo = get_ssh_key_algo(verify_token.ssh_public_key)
+        except OTPmeException as e:
+            log_msg = _("Ignoring SSH token with invalid public key: "
+                        "{token_path}: {error}", log=True)[1]
+            log_msg = log_msg.format(token_path=token.rel_path, error=e)
+            logger.warning(log_msg)
+            continue
+        line = f"{','.join(key_opts)} {key_algo} {verify_token.ssh_public_key} {token.rel_path}"
 
         system_user_name = system_user.name
         if not system_user_name in authorized_keys:

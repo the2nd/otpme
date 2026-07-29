@@ -105,6 +105,10 @@ commands = {
     'empty'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
+                    'oargs'             : [
+                                        'full',
+                                        'auth_token',
+                                        ],
                     'job_type'          : 'thread',
                     },
                 },
@@ -167,6 +171,10 @@ def get_trash_data():
 
 def get_deleted_by(trash_id):
     deleted_by_file = get_deleted_by_file(trash_id)
+    deleted_by = read_deleted_by_file(deleted_by_file)
+    return deleted_by
+
+def read_deleted_by_file(deleted_by_file):
     try:
         fd = open(deleted_by_file, "r")
     except Exception as e:
@@ -415,11 +423,8 @@ def dump(trash_id, object_id, callback=default_callback, **kwargs):
         return callback.error(msg)
 
     if config.auth_token and not config.auth_token.is_admin():
-        deleted_by = get_deleted_by(trash_id)
-        deleted_by_token = f"token:{config.auth_token.rel_path}"
-        if deleted_by != deleted_by_token:
-            msg = _("Permission denied")
-            return callback.error(msg)
+        msg = _("Permission denied")
+        return callback.error(msg)
 
     x_file = object_id.replace("/", "+")
     trash_file = os.path.join(trash_dir, x_file)
@@ -444,10 +449,20 @@ def dump(trash_id, object_id, callback=default_callback, **kwargs):
         return callback.error(msg)
     return callback.ok(object_config, return_value=True)
 
-def empty(cluster=True, callback=default_callback, **kwargs):
+def empty(cluster=True, auth_token=None, full=False, callback=default_callback, **kwargs):
+    if not full and not auth_token:
+        msg = _("Cannot empty trash without <full> or <auth_token>.")
+        return callback.error(msg)
+    if auth_token:
+        auth_token_string = f"token:{auth_token}"
     for root, dirs, files in os.walk(TRASH_DIR):
         for x_dir in dirs:
             trash_dir = os.path.join(TRASH_DIR, x_dir)
+            if auth_token is not None:
+                deleted_by_file = os.path.join(trash_dir, DELETED_BY_FILENAME)
+                deleted_by = read_deleted_by_file(deleted_by_file)
+                if deleted_by != auth_token_string:
+                    continue
             try:
                 filetools.remove_dir(trash_dir,
                                     recursive=True,
@@ -459,7 +474,14 @@ def empty(cluster=True, callback=default_callback, **kwargs):
     if not cluster:
         return callback.ok()
     # Cluster trash empty.
-    event_data = cluster_sync_object(action="trash_empty")
+    trash_data = {
+                    'full'          : full,
+                    'auth_token'    : auth_token,
+                }
+    trash_data = json.dumps(trash_data)
+    event_data = cluster_sync_object(action="trash_empty",
+                                    trash_id="trash_empty",
+                                    object_data=trash_data)
     cluster_event = event_data[0]
     if cluster_event:
         cluster_event.wait()
@@ -503,9 +525,6 @@ def show_trash(max_len=10, border=True, header=True,
         x_sort = lambda x: x_dirs[x]['timestamp']
         x_dirs_sorted = sorted(x_dirs, key=x_sort, reverse=True)
         for x_dir in x_dirs_sorted:
-            entry_counter += 1
-            if entry_counter > max_len:
-                continue
             x_dir = os.path.join(TRASH_DIR, x_dir)
             trash_id = os.path.basename(x_dir)
             deleted_by = get_deleted_by(trash_id)
@@ -513,6 +532,9 @@ def show_trash(max_len=10, border=True, header=True,
                 deleted_by_token = f"token:{config.auth_token.rel_path}"
                 if deleted_by != deleted_by_token:
                     continue
+            entry_counter += 1
+            if entry_counter > max_len:
+                continue
             deletion_date = float(trash_id.split("-")[0])
             deletion_date = datetime.datetime.fromtimestamp(deletion_date)
             deletion_date = deletion_date.strftime('%d.%m.%Y %H:%M:%S')

@@ -24,6 +24,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
 from otpme.lib.audit import emit_audit
+from otpme.lib.changelog import object_changelog
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.encoding.base import encode
@@ -299,6 +300,7 @@ class PasskeyToken(Token):
     @object_lock(full_lock=True)
     @audit_log(ignore_args=['registration_data'])
     @backend.transaction
+    @object_changelog(ignore_args=["registration_data"])
     def deploy(
         self,
         registration_data: str,

@@ -72,6 +72,7 @@ from otpme.lib.backends.file.file import register_object_type as _register_objec
 from otpme.lib.backends.file.file import index_add
 from otpme.lib.backends.file.file import index_del
 from otpme.lib.backends.file.file import index_get
+from otpme.lib.backends.file.file import index_fix
 from otpme.lib.backends.file.file import get_data_dir
 from otpme.lib.backends.file.file import get_site_dir
 from otpme.lib.backends.file.file import get_object_dir

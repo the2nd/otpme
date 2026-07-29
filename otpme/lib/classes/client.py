@@ -2110,7 +2110,7 @@ class Client(OTPmeClientObject):
     @object_lock()
     @check_acls(['edit:oidc_backchannel_ca_cert'])
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["ca_cert"])
     def change_oidc_backchannel_ca_cert(
         self,
         ca_cert: str=None,

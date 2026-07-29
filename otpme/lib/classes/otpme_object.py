@@ -420,8 +420,8 @@ def register_config_parameters():
                                     object_types=object_types)
     # Whether commands on an object are recorded in its changelog. Valid for all
     # tree object types (incl. site/unit/token) and resolved with inheritance
-    # (object -> unit -> site). A site's 'force_changelog' (below) overrides
-    # these per-object settings.
+    # (object -> unit -> site). A site that wants to enforce its setting for all
+    # of its objects adds it to 'force_site_config_parameters' (below).
     # NOTE: we pass config.tree_object_types by reference. It is (possibly) still
     # empty here (this module registers before the classes register their types),
     # but register_object_type() appends to that same list in place, so it is
@@ -431,11 +431,39 @@ def register_config_parameters():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=config.tree_object_types)
-    # Site only: force changelog recording for all objects of the site,
-    # ignoring the per-object 'changelog' parameters.
-    config.register_config_parameter(name="force_changelog",
-                                    ctype=bool,
-                                    default_value=False,
+    # Site only: config parameters the site enforces for all of its objects.
+    # For each parameter listed here the site's own value overrides the value
+    # set on the object (or inherited from its unit). See
+    # OTPmeObject.get_config_parameter().
+    def force_site_config_parameters_setter(parameters, **kwargs):
+        if isinstance(parameters, str):
+            parameters = parameters.split(",")
+        _parameters = []
+        for x in parameters:
+            x = x.strip()
+            if not x:
+                continue
+            if x == "force_site_config_parameters":
+                msg = _("Parameter cannot force itself: {parameter}")
+                msg = msg.format(parameter=x)
+                raise ValueError(msg)
+            # Make sure we only accept registered parameters.
+            try:
+                para_data = config.get_config_parameter(x)
+            except NotRegistered:
+                msg = _("Unknown config parameter: {parameter}")
+                msg = msg.format(parameter=x)
+                raise ValueError(msg)
+            # A parameter the site itself cannot hold has no value to enforce.
+            if "site" not in para_data['object_types']:
+                msg = _("Config parameter not valid for sites: {parameter}")
+                msg = msg.format(parameter=x)
+                raise ValueError(msg)
+            _parameters.append(x)
+        return _parameters
+    config.register_config_parameter(name="force_site_config_parameters",
+                                    ctype=list,
+                                    setter=force_site_config_parameters_setter,
                                     object_types=['site'])
 
 def get_ldif(ldif, attributes=None, verify_acl_func=None,
@@ -2386,6 +2414,39 @@ class OTPmeObject(OTPmeBaseObject):
     #        valid_config_params.append(x)
     #    return valid_config_params
 
+    def _get_config_param_start_object(self, parameter):
+        """ Where the resolution of the given config parameter starts.
+
+        Normally this is the object itself (object -> unit -> site). But a
+        site can list config parameters in 'force_site_config_parameters'; for
+        those the resolution starts at the site, so the values configured on
+        the objects below it are ignored.
+        """
+        # The parameter that configures the mechanism cannot be enforced
+        # itself (that would recurse).
+        if parameter == "force_site_config_parameters":
+            return self
+        # A site's own values are used anyway, and a realm sits above the
+        # sites, so there is nothing to override.
+        if self.type in ["realm", "site"]:
+            return self
+        if not self.site_uuid:
+            return self
+        site_object = backend.get_object(uuid=self.site_uuid,
+                                        object_type="site",
+                                        run_policies=False)
+        if not site_object:
+            return self
+        # Read the site's config_params directly (not via
+        # get_config_parameter()) to keep this free of recursion.
+        try:
+            forced_params = site_object.config_params["force_site_config_parameters"]
+        except Exception:
+            return self
+        if not forced_params or parameter not in forced_params:
+            return self
+        return site_object
+
     @config_cache.cache_method()
     def get_config_parameter(
         self,
@@ -2435,8 +2496,13 @@ class OTPmeObject(OTPmeBaseObject):
         if not apply_getter:
             para_getter = None
 
+        # A site can enforce config parameters for all of its objects (see the
+        # 'force_site_config_parameters' parameter). For an enforced parameter
+        # the resolution starts at the site instead of at this object, so the
+        # site's value wins over the ones set on the object or on its units.
+        parent_object = self._get_config_param_start_object(parameter)
+
         value = None
-        parent_object = self
         while True:
             try:
                 value = parent_object.config_params[parameter]
@@ -2989,12 +3055,11 @@ class OTPmeObject(OTPmeBaseObject):
     def changelog_enabled(self):
         """ Whether commands on this object are recorded in the changelog.
 
-        A site's 'force_changelog' parameter (resolved via the inheritance chain
-        up to the site) forces recording on and overrides everything; otherwise
-        the 'changelog' parameter is resolved the same way, defaulting to True.
+        The 'changelog' parameter is resolved via the inheritance chain
+        (object -> unit -> site), defaulting to True. A site that wants to
+        enforce its own setting for all of its objects adds 'changelog' to its
+        'force_site_config_parameters'.
         """
-        if self.get_config_parameter("force_changelog"):
-            return True
         value = self.get_config_parameter("changelog")
         if value is None:
             return True
@@ -3025,7 +3090,8 @@ class OTPmeObject(OTPmeBaseObject):
             if comment:
                 line = "%s [%s]" % (line, comment)
             output.append(line)
-        return callback.ok("\n".join(output))
+        output = "\n".join(output)
+        return callback.ok(output, return_value=True)
 
     def _resolve_changelog_entry(self, entry_id):
         """ Map a display index to a changelog entry key (or None). """
@@ -4869,7 +4935,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @object_lock()
-    @check_acls(['add:dynamic_groups'])
+    @check_acls(['add:dynamic_group'])
     @audit_log()
     @object_changelog()
     def add_dynamic_group(
@@ -4906,12 +4972,19 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(object_type=self.type, object_name=self.name)
             return callback.error(msg)
 
+        group = backend.get_object(object_type="group",
+                                    name=group_name,
+                                    realm=config.realm)
+        if group:
+            msg = _("Cannot add OTPme group as dynamic group.")
+            return callback.error(msg)
+
         self.dynamic_groups.append(group_name)
 
         return self._cache(callback=callback)
 
     @object_lock()
-    @check_acls(['remove:dynamic_groups'])
+    @check_acls(['remove:dynamic_group'])
     @audit_log()
     @object_changelog()
     def remove_dynamic_group(
@@ -7593,7 +7666,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:secret'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["secret"])
     def change_secret(
         self,
         secret: str=None,
@@ -9912,7 +9985,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["value"])
     def set_config_param(
         self,
         parameter: str,
@@ -9954,6 +10027,8 @@ class OTPmeObject(OTPmeBaseObject):
             except Exception as e:
                 msg = str(e)
                 return callback.error(msg)
+        # Rember value for changelog.
+        changelog_value = value
         # Get value type.
         value_type = para_data['type']
         try:
@@ -9989,7 +10064,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if para_data.get('sensitive', False):
                     self.set_changelog(f"removed value from '{parameter}'")
                 else:
-                    self.set_changelog(f"removed value '{value}' from '{parameter}'")
+                    self.set_changelog(f"removed value '{changelog_value}' from '{parameter}'")
                 return self._cache(callback=callback)
             else:
                 try:
@@ -10111,7 +10186,7 @@ class OTPmeObject(OTPmeBaseObject):
         # append the actual value here, but never for sensitive parameters
         # (e.g. backup_repo_password) to keep secrets out of the changelog.
         if not para_data.get('sensitive', False):
-            self.set_changelog(f"set to '{value}'")
+            self.set_changelog(f"set to '{changelog_value}'")
         # Use _cache() (not _write()) so the change rides the running
         # transaction -- the object_changelog decorator appends its entry after
         # this method returns and relies on that deferred write to persist it.

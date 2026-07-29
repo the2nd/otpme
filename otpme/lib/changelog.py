@@ -32,11 +32,6 @@ IGNORE_ARGS = [
                 "verify_acls",
                 "changelog",
                 "no_audit_log",
-                # 'value' is free-form data (e.g. set_config_param's parameter
-                # value) and may be a secret like a repo password -- never dump
-                # it into the auto text. Methods that want it recorded do so
-                # explicitly (and masked when sensitive) via set_changelog().
-                "value",
                 ]
 
 # Thread-local recording context. Ensures exactly one changelog entry per
@@ -57,13 +52,18 @@ def set_pending_detail(text):
     if getattr(_ctx, "depth", 0) > 0:
         _ctx.detail = text
 
-def build_default_action(f, self, f_args, f_kwargs):
+def build_default_action(f, self, f_args, f_kwargs, ignore_args=None):
     """ Build the auto generated (immutable) changelog action text.
 
     Format: "<method> <arg1> <arg2> ...", e.g. "add_token user1/token1". The
     acting token and the object itself are stored/shown separately.
+
+    Arguments listed in ignore_args (per method, set via the decorator) are
+    left out (e.g. secrets and huge PEM blobs).
     """
     parts = []
+    if ignore_args is None:
+        ignore_args = []
     try:
         sig = inspect.signature(f)
         # Names of *args/**kwargs params (their values are containers/noise).
@@ -77,6 +77,8 @@ def build_default_action(f, self, f_args, f_kwargs):
             if name in var_params:
                 continue
             if name in IGNORE_ARGS:
+                continue
+            if name in ignore_args:
                 continue
             # Only include simple identifier-like values (names, paths, numbers).
             # Booleans are skipped: a bare "True"/"False" is meaningless without
@@ -96,7 +98,7 @@ def build_default_action(f, self, f_args, f_kwargs):
         action = "%s %s" % (action, " ".join(parts))
     return action
 
-def object_changelog():
+def object_changelog(ignore_args=None):
     """ Decorator to record a changelog entry for a top-level command.
 
     Place it as the innermost decorator (directly above the method) so it runs
@@ -107,6 +109,12 @@ def object_changelog():
         - action  : auto generated, immutable default text (this decorator).
         - detail  : immutable text the method set via self.set_changelog().
         - comment : editable text from the user's --changelog option.
+
+    ignore_args: method arguments that must not show up in the auto generated
+    action text (analogous to audit_log()). Use it for secrets (passwords,
+    private keys, shared secrets) and for values that are just noise (PEM
+    blobs). A method that still wants to record something about such an
+    argument can do so explicitly (and masked) via self.set_changelog().
     """
     def wrapper(f):
         @wraps(f)
@@ -148,9 +156,8 @@ def object_changelog():
             # inherited by non-tree objects like sessions).
             if self.type not in config.tree_object_types:
                 return result
-            # Respect the per-object/site changelog configuration (changelog /
-            # force_changelog parameters). Fail open: keep the audit trail if
-            # the config resolution errors out.
+            # Respect the per-object/site changelog configuration (changelog).
+            # Fail open: keep the audit trail if the config resolution errors out.
             try:
                 enabled = self.changelog_enabled()
             except Exception:
@@ -158,7 +165,8 @@ def object_changelog():
             if not enabled:
                 return result
             # Immutable default text.
-            action = build_default_action(f, self, f_args, f_kwargs)
+            action = build_default_action(f, self, f_args, f_kwargs,
+                                        ignore_args=ignore_args)
             # Immutable detail set by the method via self.set_changelog().
             detail = pending_detail
             # Editable comment from the user's --changelog option.

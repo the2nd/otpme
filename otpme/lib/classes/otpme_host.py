@@ -385,6 +385,7 @@ class OTPmeHost(OTPmeClientObject):
         **kwargs,
         ):
         """ Get authorized keys from all valid SSH tokens. """
+        from otpme.lib import ssh
         possible_tokens = {}
         if _caller == "API":
             authorized_keys = {}
@@ -514,7 +515,19 @@ class OTPmeHost(OTPmeClientObject):
                 if _caller == "API":
                     authorized_keys[token.uuid] = entry
                 else:
-                    key_str = f"ssh-{token.key_type} {token.ssh_public_key}"
+                    # The algo must be taken from the key (e.g. "ssh-dss",
+                    # "ecdsa-sha2-nistp256"), it cannot be built from our short
+                    # key type.
+                    try:
+                        key_algo = ssh.get_ssh_key_algo(token.ssh_public_key)
+                    except OTPmeException as e:
+                        log_msg = _("Ignoring SSH token with invalid public "
+                                    "key: {token_path}: {error}", log=True)[1]
+                        log_msg = log_msg.format(token_path=token.rel_path,
+                                                error=e)
+                        logger.warning(log_msg)
+                        continue
+                    key_str = f"{key_algo} {token.ssh_public_key}"
                     if token_options:
                         key_str = f"{token_options} {key_str}"
                     if not user_uuid:
@@ -714,7 +727,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key"])
     def change_public_key(
         self,
         public_key: Union[str,None]=None,
@@ -813,7 +826,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["cert_req"])
     def renew_cert(
         self,
         cert_req: str,
@@ -1010,7 +1023,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["cert", "cert_req", "public_key"])
     def join_realm(self,
         finish: bool=False,
         cert: Union[str,None]=None,

@@ -59,6 +59,8 @@ logger = config.logger
 
 default_callback = config.get_callback()
 
+DUMP_SCRIPTS = ['key_script.sh', 'agent_script.sh', 'login_script.sh']
+
 read_acls = []
 write_acls = []
 
@@ -1662,7 +1664,7 @@ def register_config():
                                 value=vlan_uuid,
                                 return_type="instance")
         if not result:
-            msg = _("Unknown VLAN: {uuid}")
+            msg = _("bUnknown VLAN: {uuid}")
             msg = msg.format(uuid=vlan_uuid)
             raise ValueError(msg)
         vlan_object = result[0]
@@ -2151,6 +2153,17 @@ def register_config():
                                     setter=force_fido2_rp_setter,
                                     default_value="realm",
                                     object_types=['site', 'unit', 'user'])
+    # Allow trash empty for non-admins?
+    object_types = [
+                    'site',
+                    'unit',
+                    'user',
+                    'token',
+                    ]
+    config.register_config_parameter(name="allow_non_admin_trash_emtpy",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -2678,7 +2691,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["site_cert"])
     def change_site_cert(
         self,
         site_cert: str=None,
@@ -2929,7 +2942,9 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["radius_cert",
+                                "radius_key",
+                                "radius_ca_cert"])
     def change_radius_cert(
         self,
         radius_cert: str=None,
@@ -2965,7 +2980,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['radius_key'])
-    @object_changelog()
+    @object_changelog(ignore_args=["radius_key"])
     def change_radius_key(
         self,
         radius_key: str=None,
@@ -2994,7 +3009,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["radius_ca_cert"])
     def change_radius_ca_cert(
         self,
         radius_ca_cert: str=None,
@@ -3023,7 +3038,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["sso_cert", "sso_key"])
     def change_sso_cert(
         self,
         sso_cert: str=None,
@@ -3053,7 +3068,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['sso_key'])
-    @object_changelog()
+    @object_changelog(ignore_args=["sso_key"])
     def change_sso_key(
         self,
         sso_key: str=None,
@@ -3080,7 +3095,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
-    @object_changelog()
+    @object_changelog(ignore_args=["secret"])
     def change_sso_secret(
         self,
         secret: str,
@@ -3107,7 +3122,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
-    @object_changelog()
+    @object_changelog(ignore_args=["secret"])
     def change_oidc_pairwise_secret(
         self,
         secret: str=None,
@@ -3168,7 +3183,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
-    @object_changelog()
+    @object_changelog(ignore_args=["secret"])
     def change_sso_csrf_secret(
         self,
         secret: str,
@@ -3195,7 +3210,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['cluster_key'])
-    @object_changelog()
+    @object_changelog(ignore_args=["cluster_key"])
     def change_cluster_key(
         self,
         cluster_key: str,
@@ -4569,6 +4584,8 @@ class Site(OTPmeObject):
         # Add "dump" ACLs for default scripts.
         acl = f"role:{realm_user_role.uuid}:dump"
         for script_name in os.listdir(config.script_dir):
+            if script_name not in DUMP_SCRIPTS:
+                continue
             _script = backend.search(object_type="script",
                                     attribute="name",
                                     value=script_name,
@@ -5194,7 +5211,7 @@ class Site(OTPmeObject):
     @check_acls(['add:fido2_ca_cert'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["ca_cert"])
     def add_fido2_ca_cert(
         self,
         ca_cert: str,

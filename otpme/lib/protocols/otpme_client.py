@@ -1231,7 +1231,7 @@ class OTPmeClient(OTPmeClientBase):
             msg = msg.format(error=e)
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
-            return
+            raise
         return jwt
 
     def scauth(self, command_dict):

@@ -164,10 +164,11 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.try_other_node = False
 
             if status:
+                if not self.block_access:
+                    log_msg = _("Share access denied: {response}", log=True)[1]
+                    log_msg = log_msg.format(response=response)
+                    self.logger.warning(log_msg)
                 self.block_access = True
-                log_msg = _("Share access denied: {response}", log=True)[1]
-                log_msg = log_msg.format(response=response)
-                self.logger.warning(log_msg)
                 continue
 
             # Nothing more to do for restore shares.

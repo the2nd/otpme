@@ -351,7 +351,8 @@ class YubikeypivToken(Token):
         self.key_type = "rsa"
         self.dot1x_secret = None
         self.support_dot1x = True
-        self.valid_key_types = [ "rsa", "dsa" ]
+        # Key types a PIV sign slot (the SSH key derives from it) can hold.
+        self.valid_key_types = [ "rsa", "ed25519", "ecdsa" ]
         self.auth_script_enabled = False
         self.allow_offline = False
         self.offline_expiry = 0
@@ -480,7 +481,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:sign_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key"])
     def change_sign_public_key(
         self,
         public_key: str,
@@ -520,7 +521,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:encrypt_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key"])
     def change_encrypt_public_key(
         self,
         public_key: str,
@@ -560,7 +561,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:ssh_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["public_key"])
     def change_ssh_public_key(
         self,
         public_key: str,
@@ -593,7 +594,23 @@ class YubikeypivToken(Token):
         if public_key == "":
             self.ssh_public_key = None
         else:
+            from otpme.lib import ssh
+            # Users usually paste a complete openssh line, but we store the
+            # bare key.
+            public_key = ssh.normalize_ssh_public_key(public_key)
+            # The key type is part of the key, so verify the key and take the
+            # type from it instead of relying on a separately set key_type.
+            try:
+                key_type = ssh.get_ssh_key_type(public_key)
+            except OTPmeException as e:
+                return callback.error(str(e))
+            if key_type not in self.valid_key_types:
+                msg = _("Unsupported key type: {key_type} (supported: {valid})")
+                msg = msg.format(key_type=key_type,
+                                valid=", ".join(self.valid_key_types))
+                return callback.error(msg)
             self.ssh_public_key = public_key
+            self.key_type = key_type
 
         return self._cache(callback=callback)
 
@@ -785,7 +802,11 @@ class YubikeypivToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog(ignore_args=["sign_public_key",
+                                "encrypt_public_key",
+                                "ssh_public_key",
+                                "dot1x_secret",
+                                "private_key_backup"])
     def deploy(
         self,
         sign_public_key: str,
@@ -834,8 +855,18 @@ class YubikeypivToken(Token):
         if private_key_backup:
             self.private_key_backup = private_key_backup
         if ssh_public_key:
+            from otpme.lib import ssh
+            ssh_public_key = ssh.normalize_ssh_public_key(ssh_public_key)
+            # Take the key type from the key itself. The client sends its own
+            # ssh_public_key_type, but only the key is authoritative (and old
+            # clients derived the type from the algo name, which is wrong for
+            # EC keys).
+            try:
+                key_type = ssh.get_ssh_key_type(ssh_public_key)
+            except OTPmeException as e:
+                return callback.error(str(e))
             self.ssh_public_key = ssh_public_key
-            self.key_type = ssh_public_key_type
+            self.key_type = key_type
         if dot1x_secret:
             self.dot1x_secret = dot1x_secret
         if serial:

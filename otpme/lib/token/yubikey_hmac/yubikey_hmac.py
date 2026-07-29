@@ -658,7 +658,7 @@ class YubikeyhmacToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['secret', 'hmac_challenge'])
-    @object_changelog()
+    @object_changelog(ignore_args=["secret", "hmac_challenge"])
     def deploy(
         self,
         smartcard_id: str,
