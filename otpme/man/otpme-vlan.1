@@ -9,7 +9,7 @@ otpme-vlan \- manage OTPme VLANs
 .B otpme-vlan
 manages VLAN objects in the OTPme system. A VLAN object is the assignable
 representation of a network VLAN. It is referenced by the
-.B vlan
+.B vlans
 config parameter of sites, units, hosts, devices, users and tokens, and the
 resulting value is returned as
 .B Tunnel\-Private\-Group\-Id
@@ -24,6 +24,12 @@ anybody into the server VLAN.
 VLANs are site local objects, but they can be assigned across sites by
 prefixing the site name (\fIsite\fB/\fIvlan\fR). This is needed when users
 are created on the master site only while each site runs its own VLANs.
+.PP
+An object can have one VLAN per site assigned, because an object may be used
+at more than one site. The site answering the RADIUS request returns its own
+VLAN. If none of the assigned VLANs belongs to it, no VLAN is returned,
+unless it lists the VLAN owning site under
+.BR use_vlans_from .
 .PP
 A cross site assignment additionally requires the VLAN owning site to list
 the assigning site under

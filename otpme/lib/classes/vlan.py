@@ -52,7 +52,7 @@ MAX_VLAN_ID = 4094
 read_acls = []
 
 # Permission to assign this VLAN to an object (e.g. a token or a host) via
-# the "vlan" config parameter. This is what makes VLAN assignment delegable
+# the "vlans" config parameter. This is what makes VLAN assignment delegable
 # per VLAN instead of realm wide.
 write_acls = ["assign"]
 
@@ -620,6 +620,11 @@ class Vlan(OTPmeObject):
 
                     'node'  : {
                         'untrusted'  : [
+                            # A site may hand out a VLAN of an other site
+                            # (see the "use_vlans_from" config parameter), so
+                            # nodes of other sites need the VLAN ID. Without
+                            # it they would send the VLAN name to the switch.
+                            "VLAN_ID",
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "EXTENSION_ATTRIBUTES",
@@ -662,7 +667,7 @@ class Vlan(OTPmeObject):
     @object_lock()
     @check_acls(['edit:vlan_id'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("change VLAN ID {vlan_id}")
     def change_vlan_id(
         self,
         vlan_id: Union[str,int,None]=None,
@@ -691,7 +696,7 @@ class Vlan(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         vlan_id: Union[str,int,None]=None,
@@ -725,7 +730,7 @@ class Vlan(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,

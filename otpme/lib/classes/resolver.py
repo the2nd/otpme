@@ -762,7 +762,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable sync units")
     def enable_sync_units(
         self,
         run_policies: bool=True,
@@ -792,7 +792,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable sync units")
     def disable_sync_units(
         self,
         run_policies: bool=True,
@@ -822,7 +822,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable deletions")
     def enable_deletions(
         self,
         run_policies: bool=True,
@@ -852,7 +852,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable deletions")
     def disable_deletions(
         self,
         run_policies: bool=True,
@@ -882,7 +882,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change key attribute of {object_type} to {key_attribute}")
     def change_key_attribute(
         self,
         object_type: str,
@@ -943,7 +943,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['run'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("run resolver")
     def run(
         self,
         object_types: Union[List,None]=None,
@@ -1898,7 +1898,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['sync_interval'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("set sync interval to {sync_interval}")
     def set_sync_interval(
         self,
         sync_interval: str,
@@ -1964,7 +1964,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['delete:objects'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete resolved objects")
     def delete_objects(
         self,
         object_types: List=None,
@@ -2054,7 +2054,7 @@ class Resolver(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         delete_objects: bool=False,

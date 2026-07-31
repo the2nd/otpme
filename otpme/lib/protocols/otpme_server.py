@@ -1310,6 +1310,8 @@ class OTPmeServer1(object):
                     self.logger.critical(log_msg)
             if verify_token.send_password:
                 clear_text_token_found = True
+            if verify_token.temp_password_hash:
+                clear_text_token_found = True
 
         # Get smartcard options.
         token_options = {}

@@ -460,7 +460,7 @@ class OtppushToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change push script {push_script}")
     def change_push_script(
         self,
         push_script: Union[str,None]=None,
@@ -489,7 +489,7 @@ class OtppushToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change push token {push_token}")
     def change_push_token(
         self,
         push_token: Union[str,None]=None,
@@ -540,7 +540,7 @@ class OtppushToken(Token):
     @check_acls(['edit:phone_number'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change phone number {phone_number}")
     def change_phone_number(
         self,
         phone_number: Union[str,None]=None,

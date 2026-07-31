@@ -1625,28 +1625,6 @@ class PamHandler(object):
         Try to authenticate user against OTPme realm with fallback to (cached)
         offline tokens.
         """
-        # Set HOME (used by key script started from agent on crypfs mount).
-        home_dir = self.get_home_dir(self.username)
-        os.environ['HOME'] = home_dir
-        self.pamh.env['HOME'] = home_dir
-        # Make sure we create a home dir if configured.
-        if self.create_home_directory:
-            if not os.path.exists(home_dir):
-                if self.home_skeleton:
-                    # Use skeleton for new home dir.
-                    shutil.copytree(self.home_skeleton, home_dir)
-                    filetools.set_fs_ownership(path=home_dir,
-                                            user=self.username,
-                                            group=True,
-                                            recursive=True)
-                    # Set permissions to 0o700.
-                    filetools.set_fs_permissions(path=home_dir, mode=0o700)
-                else:
-                    filetools.create_dir(path=home_dir,
-                                        user=self.username,
-                                        group=True,
-                                        mode=0o700)
-
         # Try to init OTPme.
         try:
             init_otpme(use_backend=False)
@@ -1671,6 +1649,29 @@ class PamHandler(object):
             self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_USER_UNKNOWN
+
+        # Set HOME (used by key script started from agent on crypfs mount).
+        home_dir = self.get_home_dir(self.username)
+        os.environ['HOME'] = home_dir
+        self.pamh.env['HOME'] = home_dir
+
+        # Make sure we create a home dir if configured.
+        if self.create_home_directory:
+            if not os.path.exists(home_dir):
+                if self.home_skeleton:
+                    # Use skeleton for new home dir.
+                    shutil.copytree(self.home_skeleton, home_dir)
+                    filetools.set_fs_ownership(path=home_dir,
+                                            user=self.username,
+                                            group=True,
+                                            recursive=True)
+                    # Set permissions to 0o700.
+                    filetools.set_fs_permissions(path=home_dir, mode=0o700)
+                else:
+                    filetools.create_dir(path=home_dir,
+                                        user=self.username,
+                                        group=True,
+                                        mode=0o700)
 
         # Set realm data to users environment.
         if config.realm:

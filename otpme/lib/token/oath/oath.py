@@ -143,7 +143,7 @@ class OathToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change mode to {new_mode}")
     def change_mode(
         self,
         new_mode: str,

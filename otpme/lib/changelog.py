@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 """ Per-object changelog handling. """
 import os
+import string
 import inspect
 import threading
 from functools import wraps
@@ -17,22 +18,6 @@ except Exception:
 from otpme.lib import config
 
 from otpme.lib.exceptions import *
-
-# Method arguments that are infrastructure/noise and must not end up in the
-# auto generated default text.
-IGNORE_ARGS = [
-                "verbose_level",
-                "force",
-                "callback",
-                "_caller",
-                "lock_timeout",
-                "run_policies",
-                "lock_reload_on_change",
-                "lock_wait_timeout",
-                "verify_acls",
-                "changelog",
-                "no_audit_log",
-                ]
 
 # Thread-local recording context. Ensures exactly one changelog entry per
 # top-level command: nested/internal decorated calls do not record their own
@@ -52,53 +37,62 @@ def set_pending_detail(text):
     if getattr(_ctx, "depth", 0) > 0:
         _ctx.detail = text
 
-def build_default_action(f, self, f_args, f_kwargs, ignore_args=None):
-    """ Build the auto generated (immutable) changelog action text.
+class ActionFormatter(string.Formatter):
+    """ Formatter that renders unset values as an empty string.
 
-    Format: "<method> <arg1> <arg2> ...", e.g. "add_token user1/token1". The
-    acting token and the object itself are stored/shown separately.
-
-    Arguments listed in ignore_args (per method, set via the decorator) are
-    left out (e.g. secrets and huge PEM blobs).
+    Many commands take optional arguments (e.g. force_group(group_name=None)).
+    Rendering them as "None" would be worse than leaving them out, so unknown
+    and unset placeholders vanish and the caller collapses the whitespace they
+    leave behind. Unset means None or False (some commands default their value
+    argument to False, e.g. client.change_login_url()). A bool flag has no
+    meaning in an action text anyway, its outcome belongs in set_changelog().
     """
-    parts = []
-    if ignore_args is None:
-        ignore_args = []
+    def get_value(self, key, args, kwargs):
+        try:
+            value = super().get_value(key, args, kwargs)
+        except (KeyError, IndexError):
+            return ""
+        if value is None or value is False:
+            return ""
+        return value
+
+action_formatter = ActionFormatter()
+
+def build_action(f, self, f_args, f_kwargs, text):
+    """ Build the (immutable) changelog action text of a command.
+
+    The text is written per method (see object_changelog()) and may reference
+    the method arguments (and the object itself via {self.xy}) as format
+    placeholders, e.g. "add token {token_path}" -> "add token user1/token1".
+    The acting token and the object are stored/shown separately.
+
+    Without a text we fall back to the method name. Placeholders are never
+    auto generated: which argument is meaningful (and which one is a secret)
+    is known by the method, not by us.
+    """
+    if not text:
+        return f.__name__
+    if "{" not in text:
+        return text
     try:
         sig = inspect.signature(f)
-        # Names of *args/**kwargs params (their values are containers/noise).
-        var_params = [p.name for p in sig.parameters.values()
-                    if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD)]
         bound = sig.bind_partial(self, *f_args, **f_kwargs)
         bound.apply_defaults()
-        for name, val in bound.arguments.items():
-            if name == "self":
-                continue
-            if name in var_params:
-                continue
-            if name in IGNORE_ARGS:
-                continue
-            if name in ignore_args:
-                continue
-            # Only include simple identifier-like values (names, paths, numbers).
-            # Booleans are skipped: a bare "True"/"False" is meaningless without
-            # its parameter name, and flag semantics belong in set_changelog().
-            # Complex values (dict/list/objects) would dump noise.
-            if isinstance(val, bool):
-                continue
-            if not isinstance(val, (str, int, float)):
-                continue
-            if val == "":
-                continue
-            parts.append(str(val))
+        format_args = dict(bound.arguments)
     except Exception:
-        parts = [str(a) for a in f_args]
-    action = f.__name__
-    if parts:
-        action = "%s %s" % (action, " ".join(parts))
+        format_args = dict(f_kwargs)
+        format_args['self'] = self
+    try:
+        action = action_formatter.vformat(text, (), format_args)
+    except Exception:
+        return f.__name__
+    # Collapse the whitespace unset placeholders left behind.
+    action = " ".join(action.split())
+    if not action:
+        return f.__name__
     return action
 
-def object_changelog(ignore_args=None):
+def object_changelog(text=None):
     """ Decorator to record a changelog entry for a top-level command.
 
     Place it as the innermost decorator (directly above the method) so it runs
@@ -106,15 +100,21 @@ def object_changelog(ignore_args=None):
     the same transaction commit as the command itself.
 
     Each entry has three parts:
-        - action  : auto generated, immutable default text (this decorator).
+        - action  : immutable text of this decorator (the command).
         - detail  : immutable text the method set via self.set_changelog().
         - comment : editable text from the user's --changelog option.
 
-    ignore_args: method arguments that must not show up in the auto generated
-    action text (analogous to audit_log()). Use it for secrets (passwords,
-    private keys, shared secrets) and for values that are just noise (PEM
-    blobs). A method that still wants to record something about such an
-    argument can do so explicitly (and masked) via self.set_changelog().
+    text: the immutable action text, written per method. It may reference the
+    method arguments as format placeholders, e.g.
+
+        @object_changelog("add token {token_path}")
+
+    Arguments must be referenced explicitly, so secrets (passwords, private
+    keys, shared secrets) and noise (PEM blobs) simply stay out of the text.
+    Placeholders that are unset (None) render as an empty string. An outcome
+    that depends on a branch within the method (e.g. share.remove_token with
+    or without --keep-share-key) is recorded by the method itself via
+    self.set_changelog().
     """
     def wrapper(f):
         @wraps(f)
@@ -164,9 +164,8 @@ def object_changelog(ignore_args=None):
                 enabled = True
             if not enabled:
                 return result
-            # Immutable default text.
-            action = build_default_action(f, self, f_args, f_kwargs,
-                                        ignore_args=ignore_args)
+            # Immutable action text (written per method).
+            action = build_action(f, self, f_args, f_kwargs, text)
             # Immutable detail set by the method via self.set_changelog().
             detail = pending_detail
             # Editable comment from the user's --changelog option.

@@ -762,7 +762,7 @@ class Script(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -792,7 +792,7 @@ class Script(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['script'])
-    @object_changelog(ignore_args=["script"])
+    @object_changelog("add")
     def add(
         self,
         script: str,
@@ -906,7 +906,7 @@ class Script(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("copy to {destination_script}")
     def copy(
         self,
         destination_script: str,
@@ -988,7 +988,7 @@ class Script(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

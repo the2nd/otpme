@@ -621,7 +621,7 @@ class Pool(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         verify_acls: bool=True,
@@ -642,7 +642,7 @@ class Pool(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,

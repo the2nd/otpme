@@ -626,7 +626,7 @@ class Policy(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         verbose_level: int=0,
@@ -657,7 +657,7 @@ class Policy(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -678,7 +678,7 @@ class Policy(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

@@ -797,7 +797,6 @@ class Unit(OTPmeObject):
                             "EXTENSION_ATTRIBUTES",
                             "OBJECT_CLASSES",
                             "ou",
-                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
@@ -1192,7 +1191,7 @@ class Unit(OTPmeObject):
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(self, verify_acls=True, inherit_acls=True,
         verbose_level=0, callback=default_callback, **kwargs):
         """ Add a unit. """
@@ -1272,7 +1271,7 @@ class Unit(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

@@ -545,7 +545,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change card type {card_type}")
     def change_card_type(
         self,
         card_type: Union[str,None]=None,
@@ -583,7 +583,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change key type to {key_type}")
     def change_key_type(
         self,
         key_type: str="rsa",
@@ -620,7 +620,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["ssh_public_key"])
+    @object_changelog("change SSH public key")
     def change_ssh_public_key(
         self,
         ssh_public_key: Union[str,None]=None,
@@ -853,7 +853,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change second factor token to {second_factor_token}")
     def change_2f_token(
         self,
         second_factor_token: str,
@@ -900,7 +900,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable second factor token")
     def enable_2f_token(
         self,
         force: bool=False,
@@ -947,7 +947,7 @@ class SshToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable second factor token")
     def disable_2f_token(
         self,
         force: bool=False,
@@ -982,7 +982,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['private_key', 'password'])
-    @object_changelog(ignore_args=["public_key", "private_key", "password"])
+    @object_changelog("deploy")
     def deploy(
         self,
         public_key: Union[str,None]=None,
@@ -1039,7 +1039,7 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change key password")
     def change_key_password(
         self,
         force: bool=False,

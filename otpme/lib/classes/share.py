@@ -1290,7 +1290,7 @@ class Share(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         home_share: bool=False,
@@ -1456,7 +1456,7 @@ class Share(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -1476,7 +1476,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:root_dir'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("set root directory to {root_dir}")
     def set_root_dir(
         self,
         root_dir,
@@ -1506,7 +1506,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:force_group'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("force group {group_name}")
     def force_group(
         self,
         group_name: str=None,
@@ -1547,7 +1547,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:force_create_mode'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("force create mode {create_mode}")
     def force_create_mode(
         self,
         create_mode,
@@ -1570,7 +1570,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:force_directory_mode'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("force directory mode {create_mode}")
     def force_directory_mode(
         self,
         create_mode,
@@ -1593,7 +1593,7 @@ class Share(OTPmeObject):
     @check_acls(['enable:read_only'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable read-only")
     def enable_ro(
         self,
         force: bool=False,
@@ -1636,7 +1636,7 @@ class Share(OTPmeObject):
     @check_acls(['enable:read_only'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable read-only")
     def disable_ro(
         self,
         force: bool=False,
@@ -1696,7 +1696,7 @@ class Share(OTPmeObject):
     @check_acls(['add:master_password_token'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add master password token {token_path}")
     def add_master_password_token(
         self,
         token_path: str,
@@ -1737,7 +1737,7 @@ class Share(OTPmeObject):
     @check_acls(['remove:master_password_token'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove master password token {token_path}")
     def remove_master_password_token(
         self,
         token_path: str,
@@ -1778,7 +1778,7 @@ class Share(OTPmeObject):
 
     @object_lock()
     @audit_log(ignore_args=['share_key'])
-    @object_changelog(ignore_args=["share_key"])
+    @object_changelog("add token {token_path}")
     def add_token(
         self,
         token_path: str,
@@ -1938,7 +1938,7 @@ class Share(OTPmeObject):
     @check_acls(['remove:token'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove token {token_path}")
     def remove_token(
         self,
         token_path: str,
@@ -2071,7 +2071,7 @@ class Share(OTPmeObject):
     @object_lock()
     @audit_log()
     @check_acls(['add:role'])
-    @object_changelog()
+    @object_changelog("add role {role_name}")
     def add_role(
         self,
         role_name: str=None,
@@ -2181,7 +2181,7 @@ class Share(OTPmeObject):
     @object_lock()
     @audit_log()
     @check_acls(['remove:role'])
-    @object_changelog()
+    @object_changelog("remove role {role_name}")
     def remove_role(
         self,
         role_name: str=None,
@@ -2289,7 +2289,7 @@ class Share(OTPmeObject):
     @check_acls(['add:share_key'])
     @object_lock()
     @audit_log(ignore_args=['share_key'])
-    @object_changelog(ignore_args=["share_key"])
+    @object_changelog("add share key for user {username}")
     def add_share_key(
         self,
         username: str,
@@ -2379,7 +2379,7 @@ class Share(OTPmeObject):
     @check_acls(['delete:share_key'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove share key of user {username}")
     def del_share_key(
         self,
         username: str,
@@ -2423,7 +2423,7 @@ class Share(OTPmeObject):
     @check_acls(['add:ppol'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add pool {pool_name}")
     def add_pool(
         self,
         pool_name: str,
@@ -2482,7 +2482,7 @@ class Share(OTPmeObject):
     @check_acls(['remove:ppol'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove pool {pool_name}")
     def remove_pool(
         self,
         pool_name: str,
@@ -2537,7 +2537,7 @@ class Share(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add group {group_name}")
     def add_group(
         self,
         group_name: str=None,
@@ -2674,7 +2674,7 @@ class Share(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove group {group_name}")
     def remove_group(
         self,
         group_name: str,
@@ -3053,7 +3053,7 @@ class Share(OTPmeObject):
     @check_acls(['limit_hosts'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("limit hosts")
     def limit_hosts(
         self,
         persist_mount: bool=None,
@@ -3094,7 +3094,7 @@ class Share(OTPmeObject):
     @check_acls(['unlimit_hosts'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("unlimit hosts")
     def unlimit_hosts(
         self,
         persist_mount: bool=None,
@@ -3297,7 +3297,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:add_script'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change add script {add_script}")
     def change_add_script(
         self,
         add_script: Union[str,None]=None,
@@ -3332,7 +3332,7 @@ class Share(OTPmeObject):
     @check_acls(['enable:mount_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable mount script")
     def enable_mount_script(
         self,
         run_policies: bool=True,
@@ -3378,7 +3378,7 @@ class Share(OTPmeObject):
     @check_acls(['disable:mount_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable mount script")
     def disable_mount_script(
         self,
         run_policies: bool=True,
@@ -3413,7 +3413,7 @@ class Share(OTPmeObject):
     @check_acls(['edit:mount_script'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change mount script {mount_script}")
     def change_mount_script(
         self,
         mount_script: Union[str,None]=None,

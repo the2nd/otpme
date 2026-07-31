@@ -4443,7 +4443,7 @@ class OTPmeClient1(OTPmeClientBase):
             except Exception as e:
                 log_msg = _("Error saving RSP: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
-                self.logger.critical(log_msg)
+                self.logger.warning(log_msg)
 
         # Save users SSH/GPG agent script to disk.
         if self.ssh_agent_script:

@@ -1346,7 +1346,7 @@ class AccessGroup(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add child group {group_name}")
     def add_child_group(
         self,
         group_name: str,
@@ -1439,7 +1439,7 @@ class AccessGroup(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove child group {group_name}")
     def remove_child_group(
         self,
         group_name: str,
@@ -1485,7 +1485,7 @@ class AccessGroup(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add child session group {group_name}")
     def add_child_session(
         self,
         group_name: str,
@@ -1546,7 +1546,7 @@ class AccessGroup(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove child session group {group_name}")
     def remove_child_session(
         self,
         group_name: str,
@@ -1591,7 +1591,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['edit:max_sessions'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change max sessions to {max_sessions}")
     def change_max_sessions(
         self,
         max_sessions: int=0,
@@ -1622,7 +1622,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['edit:relogin_timeout'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change relogin timeout to {relogin_timeout}")
     def change_relogin_timeout(
         self,
         relogin_timeout: str,
@@ -1658,7 +1658,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['edit:max_fail'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change max fail to {max_fail}")
     def change_max_fail(
         self,
         max_fail: int,
@@ -1689,7 +1689,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['edit:max_fail_reset'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change max fail reset time to {reset_time}")
     def change_max_fail_reset(
         self,
         reset_time: str,
@@ -1726,7 +1726,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['edit:session_timeout'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change session timeout to {timeout}")
     def change_session_timeout(
         self,
         timeout: str,
@@ -1766,7 +1766,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['edit:unused_session_timeout'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change unused session timeout to {unused_timeout}")
     def change_unused_session_timeout(
         self,
         unused_timeout: str,
@@ -1806,7 +1806,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['enable:sessions'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable sessions")
     def enable_sessions(
         self,
         run_policies: bool=True,
@@ -1837,7 +1837,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['disable:sessions'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable sessions")
     def disable_sessions(
         self,
         run_policies: bool=True,
@@ -1871,7 +1871,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['enable:timeout_pass_on'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable timeout pass on")
     def enable_timeout_pass_on(
         self,
         run_policies: bool=True,
@@ -1902,7 +1902,7 @@ class AccessGroup(OTPmeObject):
     @check_acls(['disable:timeout_pass_on'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable timeout pass on")
     def disable_timeout_pass_on(
         self,
         run_policies: bool=True,

@@ -435,7 +435,7 @@ class YubikeyhmacToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change validity time {validity_time}")
     def change_validity_time(
         self,
         run_policies: bool=True,
@@ -477,7 +477,7 @@ class YubikeyhmacToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change timedrift tolerance {timedrift_tolerance}")
     def change_timedrift_tolerance(
         self,
         run_policies: bool=True,
@@ -658,7 +658,7 @@ class YubikeyhmacToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['secret', 'hmac_challenge'])
-    @object_changelog(ignore_args=["secret", "hmac_challenge"])
+    @object_changelog("deploy")
     def deploy(
         self,
         smartcard_id: str,

@@ -922,7 +922,7 @@ class Scope(OTPmeObject):
     @object_lock(full_lock=True)
     @check_acls(['rename:object'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -1021,7 +1021,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add client {client_name}")
     def add_client(
         self,
         client_name: str=None,
@@ -1087,7 +1087,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove client {client_name}")
     def remove_client(
         self,
         client_name: str,
@@ -1130,7 +1130,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @check_acls(['edit:scope_id'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("change scope ID to {scope_id}")
     def change_scope_id(
         self,
         scope_id: str,
@@ -1146,7 +1146,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @check_acls(['enable:auto_member'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable auto member")
     def enable_auto_member(
         self,
         run_policies: bool=True,
@@ -1177,7 +1177,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @check_acls(['disable:auto_member'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable auto member")
     def disable_auto_member(
         self,
         run_policies: bool=True,
@@ -1218,7 +1218,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add group {group_name}")
     def add_group(
         self,
         group_name: str=None,
@@ -1272,7 +1272,7 @@ class Scope(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove group {group_name}")
     def remove_group(
         self,
         group_name: str,

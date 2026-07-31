@@ -300,7 +300,7 @@ class PasskeyToken(Token):
     @object_lock(full_lock=True)
     @audit_log(ignore_args=['registration_data'])
     @backend.transaction
-    @object_changelog(ignore_args=["registration_data"])
+    @object_changelog("deploy")
     def deploy(
         self,
         registration_data: str,

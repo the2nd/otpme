@@ -2241,6 +2241,10 @@ class CommandHandler(object):
             return self.send_command(daemon="mgmtd",
                                     command="reset_reauth",
                                     parse_command_syntax=False)
+        if subcommand == "do_reauth":
+            return self.send_command(daemon="mgmtd",
+                                    command="do_reauth",
+                                    parse_command_syntax=False)
         if subcommand == "test":
             from otpme.lib import test
             test.test()

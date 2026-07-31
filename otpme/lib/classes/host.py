@@ -1285,7 +1285,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable sync by login token")
     def enable_sync_by_login_token(
         self,
         run_policies: bool=True,
@@ -1313,7 +1313,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable sync by login token")
     def disable_sync_by_login_token(
         self,
         run_policies: bool=True,
@@ -1341,7 +1341,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add sync group {group_name}")
     def add_sync_group(
         self,
         group_name: str,
@@ -1386,7 +1386,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove sync group {group_name}")
     def remove_sync_group(
         self,
         group_name: str,
@@ -1431,7 +1431,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable sync groups")
     def enable_sync_groups(
         self,
         run_policies: bool=True,
@@ -1459,7 +1459,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable sync groups")
     def disable_sync_groups(
         self,
         run_policies: bool=True,

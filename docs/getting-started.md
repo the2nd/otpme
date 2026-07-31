@@ -1223,16 +1223,16 @@ otpme-vlan add guests 100
 otpme-vlan add printers
 ```
 
-To assign a VLAN during MAB or 802.1x authentication, set the `vlan`
+To assign a VLAN during MAB or 802.1x authentication, set the `vlans`
 config parameter. It can be set at different levels — the most specific
 match wins:
 
 ```bash
 # VLAN based on token authentication.
-otpme-token config joe/login vlan guests
+otpme-token config joe/login vlans guests
 # VLAN based on host or device.
-otpme-host config <yourhostname> vlan guests
-otpme-device config <devicename> vlan printers
+otpme-host config <yourhostname> vlans guests
+otpme-device config <devicename> vlans printers
 ```
 
 Assigning a VLAN requires the `assign` ACL on the VLAN object. That way you
@@ -1246,13 +1246,24 @@ otpme-vlan add_acl guests role helpdesk assign
 If your users live on the master site only while each site runs its own
 VLANs, prefix the site name. The site owning the VLAN has to accept
 assignments from the assigning site first — otherwise the VLAN is ignored
-when that site answers the RADIUS request:
+when that site answers the RADIUS request. Use `-a` to append a second
+site's VLAN to the object rather than replacing the existing value:
 
 ```bash
 # On the site owning the VLAN:
 otpme-site config berlin vlan_trusts <master_site>
-# On the master site:
-otpme-host config <yourhostname> vlan berlin/guests
+# On the master site, after the vlan_trusts change has synced
+# (run `otpme-tool sync` to trigger a manual sync):
+otpme-host config -a <yourhostname> vlans berlin/guests
+```
+
+The site that answers the RADIUS request uses its own site's VLAN. If you
+prefer to manage all VLANs centrally on the master site and have every
+other site reuse them, skip the per-site VLAN objects and point the remote
+sites at the master with `use_vlans_from` instead:
+
+```bash
+otpme-site config berlin use_vlans_from <master_site>
 ```
 
 ### 802.1x Authentication

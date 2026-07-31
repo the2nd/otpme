@@ -347,7 +347,7 @@ class ObjecttemplatesPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("set {object_type} template {object_name}")
     def set_template(self, object_type, object_name=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set object template. """

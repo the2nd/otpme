@@ -418,7 +418,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add server {server_uri}")
     def add_server(self, server_uri, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add LDAP server. """
@@ -445,7 +445,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove server {server_uri}")
     def del_server(self, server_uri, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete LDAP server. """
@@ -472,7 +472,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add {object_type} filter {ldap_filter}")
     def add_filter(self, object_type, ldap_filter, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add LDAP filter. """
@@ -503,7 +503,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove {object_type} filter {ldap_filter}")
     def del_filter(self, object_type, ldap_filter, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete LDAP filter. """
@@ -534,7 +534,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add {object_type} attribute mapping {src_attr} {dst_attr}")
     def add_attribute_mapping(self, object_type, src_attr, dst_attr=None,
         run_policies=True, _caller="API", callback=default_callback, **kwargs):
         """ Add LDAP attribute mapping. """
@@ -570,7 +570,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove {object_type} attribute mapping {src_attr}")
     def del_attribute_mapping(self, object_type, src_attr,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
@@ -609,7 +609,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change LDAP base to {ldap_base}")
     def change_ldap_base(self, ldap_base, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP base. """
@@ -632,7 +632,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change login DN to {login_dn}")
     def change_login_dn(self, login_dn, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login DN. """
@@ -656,7 +656,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['login_password'])
-    @object_changelog(ignore_args=["login_password"])
+    @object_changelog("change login password")
     def change_login_password(self, login_password=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login passowrd. """
@@ -682,7 +682,7 @@ class LdapResolver(Resolver):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['ca_data'])
-    @object_changelog(ignore_args=["ca_data"])
+    @object_changelog("change CA data")
     def change_ca_data(self, ca_data=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set the PEM CA bundle used to verify the LDAP server's TLS

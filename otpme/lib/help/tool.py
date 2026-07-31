@@ -565,6 +565,14 @@ cmd_help = {
                                 },
                 },
 
+    'do_reauth'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool do_reauth'),
+                    'cmd'   :   'do_reauth',
+                    '_help' :   {
+                                    'cmd'                   : _('Do manual auth_on_action reauth.'),
+                                },
+                },
+
     'reset_reauth'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool reset_reauth'),
                     'cmd'   :   'reset_reauth',

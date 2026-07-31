@@ -310,7 +310,7 @@ class U2fToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['registration_data'])
-    @object_changelog(ignore_args=["registration_data"])
+    @object_changelog("deploy")
     def deploy(
         self,
         registration_data: str,

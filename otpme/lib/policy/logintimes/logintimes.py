@@ -381,7 +381,7 @@ class LogintimesPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change login times to {login_times}")
     def change_login_times(self, login_times, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change login times. """

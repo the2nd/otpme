@@ -1606,27 +1606,46 @@ def register_config():
                                     setter=vlan_trusts_setter,
                                     getter=vlan_trusts_getter,
                                     object_types=['site'])
-    def vlan_setter(vlan, config_object=None, callback=JobCallback, **kwargs):
-        """ Resolve a VLAN name to the VLAN objects UUID.
-
-        Storing the UUID keeps assignments intact when a VLAN is renamed.
-        More importantly it moves the authorization to the VLAN itself:
-        assigning a VLAN requires the "assign" ACL on that VLAN, not just
-        permission to set config parameters on the object the VLAN is
-        assigned to. Otherwise anyone allowed to set config parameters
-        could put themselves into any VLAN of the network.
-
-        VLANs of other sites can be assigned (e.g. users created on the
-        master site only, while each site runs its own VLANs), so the VLAN
-        may be given as "<site>/<name>". VLAN names are uniq per site only.
-        A cross site assignment additionally requires the VLAN owning site
-        to list our site in its "vlan_trusts". The ACL alone would not do:
-        it is checked here, by the site making the assignment, against its
-        own copy of the VLAN. The check that actually binds runs when the
-        VLAN is resolved on the site serving the RADIUS request (see
-        AuthHandler.get_vlan()); this one just fails early.
-        """
-        from otpme.lib.classes.vlan import site_trusts_site_for_vlan
+    # Sites whose VLANs we use if none of our own VLANs is assigned.
+    def use_vlans_from_setter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        sites_uuids = []
+        for site_name in sites:
+            result = backend.search(object_type='site',
+                                    attribute="name",
+                                    value=site_name,
+                                    realm=config.realm,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown site: {site}")
+                msg = msg.format(site=site_name)
+                raise ValueError(msg)
+            site_uuid = result[0]
+            sites_uuids.append(site_uuid)
+        return sites_uuids
+    def use_vlans_from_getter(sites, callback=JobCallback, **kwargs):
+        if isinstance(sites, str):
+            sites = sites.split(",")
+        _sites = []
+        for site_uuid in sites:
+            result = backend.search(object_type='site',
+                                    attribute="uuid",
+                                    value=site_uuid,
+                                    return_type="name")
+            if not result:
+                _sites.append(site_uuid)
+                continue
+            site_name = result[0]
+            _sites.append(site_name)
+        return _sites
+    config.register_config_parameter(name="use_vlans_from",
+                                    ctype=list,
+                                    setter=use_vlans_from_setter,
+                                    getter=use_vlans_from_getter,
+                                    object_types=['site'])
+    def get_vlan_object(vlan):
+        """ Resolve a VLAN path to the VLAN object. """
         if "/" in vlan:
             vlan_site = vlan.split("/")[0]
             vlan_name = vlan.split("/")[1]
@@ -1643,37 +1662,103 @@ def register_config():
             msg = _("Unknown VLAN: {vlan}")
             msg = msg.format(vlan=vlan)
             raise ValueError(msg)
-        vlan_object = result[0]
-        if not vlan_object.verify_acl("assign"):
-            msg = _("You dont have permission to assign this VLAN: {vlan}")
-            msg = msg.format(vlan=vlan_object.oid)
-            raise PermissionDenied(msg)
-        if config_object is None:
-            assign_site_uuid = config.site_uuid
-        else:
-            assign_site_uuid = config_object.site_uuid
-        if not site_trusts_site_for_vlan(vlan_object.site_uuid,
-                                        assign_site_uuid):
-            msg = _("Site does not accept VLAN assignments from us: {vlan}")
-            msg = msg.format(vlan=vlan_object.oid)
-            raise PermissionDenied(msg)
-        return vlan_object.uuid
-    def vlan_getter(vlan_uuid, callback=JobCallback, **kwargs):
-        result = backend.search(object_type='vlan',
-                                attribute="uuid",
-                                value=vlan_uuid,
-                                return_type="instance")
-        if not result:
-            msg = _("bUnknown VLAN: {uuid}")
-            msg = msg.format(uuid=vlan_uuid)
-            raise ValueError(msg)
-        vlan_object = result[0]
-        vlan_path = f"{vlan_object.site}/{vlan_object.name}"
-        return vlan_path
-    config.register_config_parameter(name="vlan",
-                                    ctype=str,
-                                    setter=vlan_setter,
-                                    getter=vlan_getter,
+        return result[0]
+    def vlans_setter(vlans, config_object=None, append=False, delete=False,
+        callback=JobCallback, **kwargs):
+        """ Resolve VLAN names to the VLAN objects UUIDs.
+
+        Storing the UUID keeps assignments intact when a VLAN is renamed.
+        More importantly it moves the authorization to the VLAN itself:
+        assigning a VLAN requires the "assign" ACL on that VLAN, not just
+        permission to set config parameters on the object the VLAN is
+        assigned to. Otherwise anyone allowed to set config parameters
+        could put themselves into any VLAN of the network.
+
+        VLANs of other sites can be assigned (e.g. users created on the
+        master site only, while each site runs its own VLANs), so a VLAN
+        may be given as "<site>/<name>". VLAN names are uniq per site only.
+        A cross site assignment additionally requires the VLAN owning site
+        to list our site in its "vlan_trusts". The ACL alone would not do:
+        it is checked here, by the site making the assignment, against its
+        own copy of the VLAN. The check that actually binds runs when the
+        VLAN is resolved on the site serving the RADIUS request (see
+        AuthHandler.get_vlan()); this one just fails early.
+
+        One VLAN per site: which VLAN is used depends on the site serving
+        the RADIUS request (see AuthHandler.get_vlan()), so a second VLAN
+        of the same site would just make the assignment ambiguous.
+
+        On removal (delete) we only resolve the VLAN. The trust check is
+        about the VLAN owning sites consent to the assignment, so applying
+        it here would make an assignment unremovable as soon as that site
+        withdraws its trust.
+        """
+        from otpme.lib.classes.vlan import site_trusts_site_for_vlan
+        if isinstance(vlans, str):
+            vlans = vlans.split(",")
+        # On append the VLANs we already have count for the one per site
+        # rule too (without append they are replaced).
+        assigned_sites = {}
+        if append and config_object is not None:
+            try:
+                current_vlans = config_object.config_params['vlans']
+            except KeyError:
+                current_vlans = []
+            for vlan_uuid in current_vlans:
+                vlan_object = backend.get_object(object_type="vlan",
+                                                uuid=vlan_uuid)
+                if not vlan_object:
+                    continue
+                assigned_sites[vlan_object.site_uuid] = vlan_object.oid
+        vlan_uuids = []
+        for vlan in vlans:
+            vlan_object = get_vlan_object(vlan)
+            if not vlan_object.verify_acl("assign"):
+                msg = _("You dont have permission to assign this VLAN: {vlan}")
+                msg = msg.format(vlan=vlan_object.oid)
+                raise PermissionDenied(msg)
+            if not delete:
+                if config_object is None:
+                    assign_site_uuid = config.site_uuid
+                else:
+                    assign_site_uuid = config_object.site_uuid
+                if not site_trusts_site_for_vlan(vlan_object.site_uuid,
+                                                assign_site_uuid):
+                    msg = _("Site does not accept VLAN assignments from us: {vlan}")
+                    msg = msg.format(vlan=vlan_object.oid)
+                    raise PermissionDenied(msg)
+            try:
+                assigned_vlan = assigned_sites[vlan_object.site_uuid]
+            except KeyError:
+                pass
+            else:
+                msg = _("Site already has a VLAN assigned: {vlan}")
+                msg = msg.format(vlan=assigned_vlan)
+                raise OTPmeException(msg)
+            assigned_sites[vlan_object.site_uuid] = vlan_object.oid
+            vlan_uuids.append(vlan_object.uuid)
+        return vlan_uuids
+    def vlans_getter(vlan_uuids, callback=JobCallback, **kwargs):
+        if isinstance(vlan_uuids, str):
+            vlan_uuids = vlan_uuids.split(",")
+        vlan_paths = []
+        for vlan_uuid in vlan_uuids:
+            result = backend.search(object_type='vlan',
+                                    attribute="uuid",
+                                    value=vlan_uuid,
+                                    return_type="instance")
+            if not result:
+                # Show the unresolvable assignment instead of hiding it.
+                vlan_paths.append(vlan_uuid)
+                continue
+            vlan_object = result[0]
+            vlan_path = f"{vlan_object.site}/{vlan_object.name}"
+            vlan_paths.append(vlan_path)
+        return vlan_paths
+    config.register_config_parameter(name="vlans",
+                                    ctype=list,
+                                    setter=vlans_setter,
+                                    getter=vlans_getter,
                                     object_types=object_types)
     # Role devices tokens added by the SSO portal added to.
     object_types = [
@@ -2372,8 +2457,14 @@ class Site(OTPmeObject):
                             "SSO_FQDN",
                             "FIDO2_CA_CERTS",
                             "ou",
-                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
+                            # Whether this site accepts VLAN assignments from
+                            # an other site is checked by the site making the
+                            # assignment and again by the site serving the
+                            # RADIUS request (see site_trusts_site_for_vlan()).
+                            # Both may be sites this site does not trust, so
+                            # they need our trusts to check them.
+                            "CONFIG_PARAMS:vlan_trusts",
                             ],
                         },
                     }
@@ -2691,7 +2782,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["site_cert"])
+    @object_changelog("change site certificate")
     def change_site_cert(
         self,
         site_cert: str=None,
@@ -2718,7 +2809,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change address to {address}")
     def change_address(
         self,
         address: str,
@@ -2748,7 +2839,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change auth FQDN to {fqdn}")
     def change_auth_fqdn(
         self,
         fqdn: str,
@@ -2864,7 +2955,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change mgmt FQDN to {fqdn}")
     def change_mgmt_fqdn(
         self,
         fqdn: str,
@@ -2903,7 +2994,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change SSO FQDN to {fqdn}")
     def change_sso_fqdn(
         self,
         fqdn: str,
@@ -2942,9 +3033,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["radius_cert",
-                                "radius_key",
-                                "radius_ca_cert"])
+    @object_changelog("change RADIUS certificate")
     def change_radius_cert(
         self,
         radius_cert: str=None,
@@ -2980,7 +3069,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['radius_key'])
-    @object_changelog(ignore_args=["radius_key"])
+    @object_changelog("change RADIUS key")
     def change_radius_key(
         self,
         radius_key: str=None,
@@ -3009,7 +3098,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["radius_ca_cert"])
+    @object_changelog("change RADIUS CA certificate")
     def change_radius_ca_cert(
         self,
         radius_ca_cert: str=None,
@@ -3038,7 +3127,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["sso_cert", "sso_key"])
+    @object_changelog("change SSO certificate")
     def change_sso_cert(
         self,
         sso_cert: str=None,
@@ -3068,7 +3157,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['sso_key'])
-    @object_changelog(ignore_args=["sso_key"])
+    @object_changelog("change SSO key")
     def change_sso_key(
         self,
         sso_key: str=None,
@@ -3095,7 +3184,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
-    @object_changelog(ignore_args=["secret"])
+    @object_changelog("change SSO secret")
     def change_sso_secret(
         self,
         secret: str,
@@ -3122,7 +3211,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
-    @object_changelog(ignore_args=["secret"])
+    @object_changelog("change OIDC pairwise secret")
     def change_oidc_pairwise_secret(
         self,
         secret: str=None,
@@ -3183,7 +3272,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['secret'])
-    @object_changelog(ignore_args=["secret"])
+    @object_changelog("change SSO CSRF secret")
     def change_sso_csrf_secret(
         self,
         secret: str,
@@ -3210,7 +3299,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['cluster_key'])
-    @object_changelog(ignore_args=["cluster_key"])
+    @object_changelog("change cluster key")
     def change_cluster_key(
         self,
         cluster_key: str,
@@ -3237,7 +3326,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable authentication")
     def enable_auth(
         self,
         force: bool=False,
@@ -3282,7 +3371,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable authentication")
     def disable_auth(
         self,
         force: bool=False,
@@ -3327,7 +3416,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable synchronization")
     def enable_sync(
         self,
         force: bool=False,
@@ -3372,7 +3461,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable synchronization")
     def disable_sync(
         self,
         force: bool=False,
@@ -3415,7 +3504,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable OIDC")
     def enable_oidc(
         self,
         force: bool=False,
@@ -3482,7 +3571,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable OIDC")
     def disable_oidc(
         self,
         force: bool=False,
@@ -3535,7 +3624,7 @@ class Site(OTPmeObject):
 
     @check_acls(['renew:oidc_key'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("generate OIDC key {key_type}")
     def gen_oidc_key(
         self,
         key_type: str=None,
@@ -3638,7 +3727,7 @@ class Site(OTPmeObject):
 
     @check_acls(['revoke:oidc_key'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("revoke OIDC key {kid}")
     def revoke_oidc_key(
         self,
         kid: str,
@@ -3772,7 +3861,7 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("renew certificate")
     def renew_cert(
         self,
         valid: Union[int,None]=None,
@@ -3994,7 +4083,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add SSO host {host_name}")
     def add_sso_host(
         self,
         host_name: str,
@@ -4046,7 +4135,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add trusted site {site_name}")
     def add_trust(
         self,
         site_name: str,
@@ -4102,7 +4191,7 @@ class Site(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove trusted site {site_name}")
     def del_trust(
         self,
         site_name: str,
@@ -4157,7 +4246,7 @@ class Site(OTPmeObject):
     @run_pre_post_add_policies()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         node_name: str,
@@ -5211,7 +5300,7 @@ class Site(OTPmeObject):
     @check_acls(['add:fido2_ca_cert'])
     @object_lock()
     @audit_log()
-    @object_changelog(ignore_args=["ca_cert"])
+    @object_changelog("add FIDO2 CA certificate")
     def add_fido2_ca_cert(
         self,
         ca_cert: str,
@@ -5236,7 +5325,7 @@ class Site(OTPmeObject):
     @check_acls(['delete:fido2_ca_cert'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove FIDO2 CA certificate {subject}")
     def del_fido2_ca_cert(
         self,
         subject: str,
@@ -5268,7 +5357,7 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

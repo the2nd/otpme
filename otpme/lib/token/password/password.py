@@ -418,7 +418,7 @@ class PasswordToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change second factor token to {second_factor_token}")
     def change_2f_token(
         self,
         second_factor_token: str,
@@ -465,7 +465,7 @@ class PasswordToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable second factor token")
     def enable_2f_token(
         self,
         force: bool=False,
@@ -512,7 +512,7 @@ class PasswordToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable second factor token")
     def disable_2f_token(
         self,
         force: bool=False,
@@ -743,7 +743,7 @@ class PasswordToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['password'])
-    @object_changelog(ignore_args=["password"])
+    @object_changelog("add")
     def _add(
         self,
         password: Union[str,None]=None,

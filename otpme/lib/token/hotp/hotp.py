@@ -841,7 +841,7 @@ class HotpToken(OathToken):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['otp'])
-    @object_changelog(ignore_args=["otp"])
+    @object_changelog("resync")
     def resync(
         self,
         otp: Union[str,None]=None,
@@ -995,7 +995,7 @@ class HotpToken(OathToken):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change counter check range {counter_check_range}")
     def change_counter_check_range(
         self,
         run_policies: bool=True,
@@ -1042,7 +1042,7 @@ class HotpToken(OathToken):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['server_secret', 'pin'])
-    @object_changelog(ignore_args=["server_secret", "pin"])
+    @object_changelog("deploy")
     def deploy(
         self,
         server_secret: str,

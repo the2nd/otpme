@@ -626,18 +626,23 @@ Object types: site, unit
 
 ## VLAN
 
-**vlan (str)**  
-Name of the VLAN to assign. This is used for VLAN assignment during
-802.1x or MAB port authentication. The parameter can be set at various
-levels; the most specific match wins (e.g. a VLAN set on a token
-overrides the one set on the user or site).  
-The value must be the name of an existing VLAN object (see
+**vlans (list)**  
+Comma-separated list of VLANs to assign. This is used for VLAN
+assignment during 802.1x or MAB port authentication. The parameter can
+be set at various levels; the most specific match wins (e.g. the VLANs
+set on a token override the ones set on the user or site).  
+Each value must be the name of an existing VLAN object (see
 **otpme-vlan**(1)). Assigning a VLAN requires the **assign** ACL on the
 VLAN object, so VLAN assignment can be delegated per VLAN.  
 VLANs of other sites can be assigned as *site***/***vlan*, which is
 needed when users are created on the master site only while each site
 runs its own VLANs. A cross-site assignment additionally requires the
 VLAN owning site to list the assigning site under **vlan_trusts**.  
+At most one VLAN per site can be assigned, because which of them is used
+depends on the site answering the RADIUS request: that site returns its
+own VLAN. If none of the assigned VLANs belongs to it, no VLAN is
+returned at all, unless it lists the VLAN owning site under
+**use_vlans_from**.  
 What is sent to the switch as **Tunnel-Private-Group-Id** is the VLAN
 objects VLAN ID, or its name if no VLAN ID is set. The assignment is
 stored by UUID, so renaming a VLAN keeps existing assignments intact.  
@@ -653,6 +658,17 @@ RADIUS request, not only where the assignment is made. The **assign**
 ACL alone is not sufficient for cross-site assignments: it is checked by
 the site making the assignment, against its own copy of the VLAN.
 Own-site assignments are always trusted.  
+Object types: site
+
+**use_vlans_from (list)**  
+Comma-separated list of remote sites whose VLANs this site uses when an
+object has no VLAN of this site assigned (see **vlans**). Without an
+entry this site returns no VLAN in that case. Sites are tried in the
+configured order, so the first listed site that has a VLAN assigned
+wins.  
+This is the counterpart of **vlan_trusts**: the VLAN owning site decides
+who may assign its VLANs, this site decides whose VLANs it hands out to
+its own switches.  
 Object types: site
 
 ## SSO Portal

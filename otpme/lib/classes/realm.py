@@ -937,7 +937,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable authentication")
     def enable_auth(
         self,
         force: bool=False,
@@ -982,7 +982,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable authentication")
     def disable_auth(
         self,
         force: bool=False,
@@ -1031,7 +1031,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable synchronization")
     def enable_sync(
         self,
         force: bool=False,
@@ -1071,7 +1071,7 @@ class Realm(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable synchronization")
     def disable_sync(
         self,
         force: bool=False,

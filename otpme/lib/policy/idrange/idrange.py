@@ -332,7 +332,7 @@ class IdrangePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable ID check")
     def enable_id_check(self, callback=default_callback, **kwargs):
         """ Enable ID check. """
         if self.verify_new_id:
@@ -345,7 +345,7 @@ class IdrangePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable ID check")
     def disable_id_check(self, callback=default_callback, **kwargs):
         """ Disable ID check. """
         if not self.verify_new_id:
@@ -358,7 +358,7 @@ class IdrangePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable ID range recheck")
     def enable_id_range_recheck(self, callback=default_callback, **kwargs):
         """ Enable ID range re-check. """
         if self.recheck_id_ranges:
@@ -371,7 +371,7 @@ class IdrangePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable ID range recheck")
     def disable_id_range_recheck(self, callback=default_callback, **kwargs):
         """ Disable ID range re-check. """
         if not self.recheck_id_ranges:
@@ -727,7 +727,7 @@ class IdrangePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add ID range {id_range}")
     def add_id_range(self, id_range, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add ID range. """
@@ -781,7 +781,7 @@ class IdrangePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove ID range {id_range}")
     def del_id_range(self, id_range, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete ID range. """

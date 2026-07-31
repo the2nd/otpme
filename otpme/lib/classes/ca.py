@@ -925,7 +925,7 @@ class Ca(OTPmeObject):
     @check_acls(['edit:crl_validity'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("set CRL validity to {crl_validity}")
     def set_crl_validity(
         self,
         crl_validity: int,
@@ -943,7 +943,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["key", "cert_req"])
+    @object_changelog("create certificate {cn}")
     def create_cert(
         self,
         cn: str,
@@ -1032,7 +1032,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_ca_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["key", "cert_req"])
+    @object_changelog("create CA certificate {cn}")
     def create_ca_cert(
         self,
         cn: str,
@@ -1100,7 +1100,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_server_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["key", "cert_req"])
+    @object_changelog("create server certificate {cn}")
     def create_server_cert(
         self,
         cn: str,
@@ -1165,7 +1165,7 @@ class Ca(OTPmeObject):
     @check_acls(['create_client_cert'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["key", "cert_req"])
+    @object_changelog("create client certificate {cn}")
     def create_client_cert(
         self,
         cn: str,
@@ -1353,7 +1353,7 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("update CRL")
     def update_crl(
         self,
         sign_algo: Union[str,None]=None,
@@ -1450,7 +1450,7 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["cert"])
+    @object_changelog("revoke certificate")
     def revoke_cert(
         self,
         cert: str,

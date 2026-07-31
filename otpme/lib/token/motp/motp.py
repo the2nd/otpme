@@ -420,7 +420,7 @@ class MotpToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change validity time {validity_time}")
     def change_validity_time(
         self,
         run_policies: bool=True,
@@ -462,7 +462,7 @@ class MotpToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change timedrift tolerance {timedrift_tolerance}")
     def change_timedrift_tolerance(
         self,
         run_policies: bool=True,

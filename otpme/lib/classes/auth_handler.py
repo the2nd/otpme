@@ -96,41 +96,96 @@ class AuthHandler(object):
     def get_vlan(self, config_object):
         """ Get the VLAN to return in the rlm_python module.
 
-        The "vlan" config parameter stores the VLAN objects UUID, so read it
-        unresolved (the getter would give us the human readable path) and ask
-        the VLAN object for the value to put on the wire.
+        The "vlans" config parameter stores the VLAN objects UUIDs, so read
+        it unresolved (the getter would give us the human readable paths) and
+        ask the VLAN object for the value to put on the wire.
+
+        An object may have a VLAN of more than one site assigned (one per
+        site), because the object may be used at more than one site (e.g.
+        users created on the master site only, while each site runs its own
+        VLANs). We are the site serving this RADIUS request, so our own VLAN
+        is the one to use. Without one we return no VLAN at all, unless we
+        list the VLAN owning site in our "use_vlans_from" config parameter.
         """
+        vlans = config_object.get_config_parameter("vlans",
+                                                apply_getter=False)
+        if not vlans:
+            return
+        site_vlans = self.get_site_vlans(config_object, vlans)
+        if not site_vlans:
+            return
+        # Our own VLAN wins.
+        try:
+            vlan = site_vlans[config.site_uuid]
+        except KeyError:
+            pass
+        else:
+            return vlan.get_vlan()
+        # No VLAN of our own site: use the VLAN of a site we accept VLANs
+        # from (in the configured order).
+        own_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        use_vlans_from = None
+        if own_site:
+            use_vlans_from = own_site.get_config_parameter("use_vlans_from",
+                                                        apply_getter=False)
+        if not use_vlans_from:
+            log_msg = _("Ignoring VLANs assigned to {object_id}: none of our site.", log=True)[1]
+            log_msg = log_msg.format(object_id=config_object.oid)
+            self.logger.debug(log_msg)
+            return
+        for site_uuid in use_vlans_from:
+            try:
+                vlan = site_vlans[site_uuid]
+            except KeyError:
+                continue
+            return vlan.get_vlan()
+        log_msg = _("Ignoring VLANs assigned to {object_id}: no VLAN of our site or of a site we accept VLANs from.", log=True)[1]
+        log_msg = log_msg.format(object_id=config_object.oid)
+        self.logger.debug(log_msg)
+        return
+
+    def get_site_vlans(self, config_object, vlans):
+        """ Get the assigned VLANs (that we may use) by site UUID. """
         from otpme.lib.classes.vlan import site_trusts_site_for_vlan
-        vlan_uuid = config_object.get_config_parameter("vlan",
-                                                    apply_getter=False)
-        if not vlan_uuid:
-            return
-        vlan = backend.get_object(object_type="vlan", uuid=vlan_uuid)
-        if not vlan:
-            log_msg = _("Ignoring unknown VLAN assigned to {object_id}: {vlan_uuid}", log=True)[1]
-            log_msg = log_msg.format(object_id=config_object.oid,
-                                    vlan_uuid=vlan_uuid)
-            self.logger.warning(log_msg)
-            return
-        if not vlan.enabled:
-            log_msg = _("Ignoring disabled VLAN assigned to {object_id}: {vlan}", log=True)[1]
-            log_msg = log_msg.format(object_id=config_object.oid,
-                                    vlan=vlan.oid)
-            self.logger.warning(log_msg)
-            return
-        # A cross site assignment was authorized by the site that made it,
-        # against its own copy of the VLAN. We are the site serving this
-        # RADIUS request, so this is where the VLAN owning site gets to
-        # decide. Without this a site holding the users (e.g. the master
-        # site) could put them into any VLAN of our network.
-        if not site_trusts_site_for_vlan(vlan.site_uuid,
-                                        config_object.site_uuid):
-            log_msg = _("Ignoring VLAN assigned to {object_id} by untrusted site: {vlan}", log=True)[1]
-            log_msg = log_msg.format(object_id=config_object.oid,
-                                    vlan=vlan.oid)
-            self.logger.warning(log_msg)
-            return
-        return vlan.get_vlan()
+        site_vlans = {}
+        for vlan_uuid in vlans:
+            vlan = backend.get_object(object_type="vlan", uuid=vlan_uuid)
+            if not vlan:
+                log_msg = _("Ignoring unknown VLAN assigned to {object_id}: {vlan_uuid}", log=True)[1]
+                log_msg = log_msg.format(object_id=config_object.oid,
+                                        vlan_uuid=vlan_uuid)
+                self.logger.warning(log_msg)
+                continue
+            if not vlan.enabled:
+                log_msg = _("Ignoring disabled VLAN assigned to {object_id}: {vlan}", log=True)[1]
+                log_msg = log_msg.format(object_id=config_object.oid,
+                                        vlan=vlan.oid)
+                self.logger.warning(log_msg)
+                continue
+            # A cross site assignment was authorized by the site that made it,
+            # against its own copy of the VLAN. We are the site serving this
+            # RADIUS request, so this is where the VLAN owning site gets to
+            # decide. Without this a site holding the users (e.g. the master
+            # site) could put them into any VLAN of our network.
+            if not site_trusts_site_for_vlan(vlan.site_uuid,
+                                            config_object.site_uuid):
+                log_msg = _("Ignoring VLAN assigned to {object_id} by untrusted site: {vlan}", log=True)[1]
+                log_msg = log_msg.format(object_id=config_object.oid,
+                                        vlan=vlan.oid)
+                self.logger.warning(log_msg)
+                continue
+            if vlan.site_uuid in site_vlans:
+                # The setter enforces one VLAN per site, so this can only
+                # happen if the assignment was made before that rule or
+                # written by hand.
+                log_msg = _("Ignoring additional VLAN assigned to {object_id}: {vlan}", log=True)[1]
+                log_msg = log_msg.format(object_id=config_object.oid,
+                                        vlan=vlan.oid)
+                self.logger.warning(log_msg)
+                continue
+            site_vlans[vlan.site_uuid] = vlan
+        return site_vlans
 
     def verify_session(self, session, **kwargs):
         """ Try to verify session. """

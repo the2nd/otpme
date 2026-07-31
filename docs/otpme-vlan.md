@@ -10,8 +10,8 @@ otpme-vlan - manage OTPme VLANs
 
 **otpme-vlan** manages VLAN objects in the OTPme system. A VLAN object
 is the assignable representation of a network VLAN. It is referenced by
-the **vlan** config parameter of sites, units, hosts, devices, users and
-tokens, and the resulting value is returned as
+the **vlans** config parameter of sites, units, hosts, devices, users
+and tokens, and the resulting value is returned as
 **Tunnel-Private-Group-Id** during 802.1x or MAB port authentication.
 
 Assigning a VLAN requires the **assign** ACL on the VLAN object. This
@@ -22,6 +22,12 @@ server VLAN.
 VLANs are site local objects, but they can be assigned across sites by
 prefixing the site name (*site***/***vlan*). This is needed when users
 are created on the master site only while each site runs its own VLANs.
+
+An object can have one VLAN per site assigned, because an object may be
+used at more than one site. The site answering the RADIUS request
+returns its own VLAN. If none of the assigned VLANs belongs to it, no
+VLAN is returned, unless it lists the VLAN owning site under
+**use_vlans_from**.
 
 A cross site assignment additionally requires the VLAN owning site to
 list the assigning site under **vlan_trusts**. The **assign** ACL alone

@@ -1063,7 +1063,7 @@ class Node(OTPmeHost):
     @check_acls(['edit:vote_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change vote script {vote_script}")
     def change_vote_script(
         self,
         vote_script: Union[str,None]=None,
@@ -1096,7 +1096,7 @@ class Node(OTPmeHost):
     @check_acls(['enable:vote_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable vote script")
     def enable_vote_script(
         self,
         run_policies: bool=True,
@@ -1127,7 +1127,7 @@ class Node(OTPmeHost):
     @check_acls(['disable:vote_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable vote script")
     def disable_vote_script(
         self,
         run_policies: bool=True,

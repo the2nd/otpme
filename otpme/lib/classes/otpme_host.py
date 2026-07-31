@@ -543,7 +543,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable JOTP")
     def enable_jotp(
         self,
         run_policies: bool=True,
@@ -576,7 +576,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable JOTP")
     def disable_jotp(
         self,
         run_policies: bool=True,
@@ -604,7 +604,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable LOTP")
     def enable_lotp(
         self,
         run_policies: bool=True,
@@ -637,7 +637,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable LOTP")
     def disable_lotp(
         self,
         run_policies: bool=True,
@@ -665,7 +665,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable JOTP rejoin")
     def enable_jotp_rejoin(
         self,
         run_policies: bool=True,
@@ -698,7 +698,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable JOTP rejoin")
     def disable_jotp_rejoin(
         self,
         run_policies: bool=True,
@@ -727,7 +727,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["public_key"])
+    @object_changelog("change public key")
     def change_public_key(
         self,
         public_key: Union[str,None]=None,
@@ -768,7 +768,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("revoke certificate")
     def revoke_cert(
         self,
         run_policies: bool=True,
@@ -826,7 +826,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["cert_req"])
+    @object_changelog("renew certificate")
     def renew_cert(
         self,
         cert_req: str,
@@ -1023,7 +1023,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["cert", "cert_req", "public_key"])
+    @object_changelog("join realm")
     def join_realm(self,
         finish: bool=False,
         cert: Union[str,None]=None,
@@ -1122,7 +1122,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("leave realm")
     def leave_realm(
         self,
         keep_cert: bool=False,

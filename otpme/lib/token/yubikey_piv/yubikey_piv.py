@@ -481,7 +481,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:sign_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["public_key"])
+    @object_changelog("change sign public key")
     def change_sign_public_key(
         self,
         public_key: str,
@@ -521,7 +521,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:encrypt_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["public_key"])
+    @object_changelog("change encrypt public key")
     def change_encrypt_public_key(
         self,
         public_key: str,
@@ -561,7 +561,7 @@ class YubikeypivToken(Token):
     @check_acls(['edit:ssh_public_key'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["public_key"])
+    @object_changelog("change SSH public key")
     def change_ssh_public_key(
         self,
         public_key: str,
@@ -618,7 +618,7 @@ class YubikeypivToken(Token):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change key type to {key_type}")
     def change_key_type(
         self,
         key_type: str="rsa",
@@ -802,11 +802,7 @@ class YubikeypivToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog(ignore_args=["sign_public_key",
-                                "encrypt_public_key",
-                                "ssh_public_key",
-                                "dot1x_secret",
-                                "private_key_backup"])
+    @object_changelog("deploy")
     def deploy(
         self,
         sign_public_key: str,

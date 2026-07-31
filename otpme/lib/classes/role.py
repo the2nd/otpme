@@ -2009,7 +2009,7 @@ class Role(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -2033,7 +2033,7 @@ class Role(OTPmeObject):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         groups: Union[list,None]=None,
@@ -2114,7 +2114,7 @@ class Role(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

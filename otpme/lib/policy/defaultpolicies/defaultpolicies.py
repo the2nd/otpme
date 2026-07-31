@@ -301,7 +301,7 @@ class DefaultpoliciesPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add default policy {policy_name} for {object_type}")
     def add_default_policy(self, object_type, policy_name,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
@@ -355,7 +355,7 @@ class DefaultpoliciesPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove default policy {policy_name} of {object_type}")
     def remove_default_policy(self, object_type, policy_name,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):

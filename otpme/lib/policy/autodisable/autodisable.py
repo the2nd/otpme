@@ -391,7 +391,7 @@ class AutodisablePolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change auto disable to {auto_disable}")
     def _change_auto_disable(self, auto_disable, unused=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):

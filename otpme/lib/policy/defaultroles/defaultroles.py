@@ -319,7 +319,7 @@ class DefaultrolesPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add role {role_name}")
     def add_role(self, role_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default role. """
@@ -364,7 +364,7 @@ class DefaultrolesPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove role {role_name}")
     def remove_role(self, role_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Remove default role. """

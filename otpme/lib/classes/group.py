@@ -937,7 +937,7 @@ class Group(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add default group user {user_uuid}")
     def add_default_group_user(
         self,
         user_uuid: str,
@@ -961,7 +961,7 @@ class Group(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove default group user {user_uuid}")
     def remove_default_group_user(
         self,
         user_uuid: str,

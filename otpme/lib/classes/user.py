@@ -1707,7 +1707,6 @@ class User(OTPmeObject):
                             "uidNumber",
                             "givenName",
                             "sn",
-                            "CONFIG_PARAMS:admin_access_role",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             ]
                         },
@@ -2382,7 +2381,7 @@ class User(OTPmeObject):
         return callback.ok()
 
     @audit_log()
-    @object_changelog()
+    @object_changelog("move to {kwargs[new_unit]}")
     def move(self,
         *args,
         _caller: str="API",
@@ -2432,7 +2431,7 @@ class User(OTPmeObject):
     @check_acls(['add:photo'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add photo")
     def add_photo(
         self,
         image_data: str,
@@ -2481,7 +2480,7 @@ class User(OTPmeObject):
     @check_acls(['del:photo'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove photo")
     def del_photo(
         self,
         run_policies: bool=True,
@@ -2642,7 +2641,7 @@ class User(OTPmeObject):
     @object_lock()
     @check_acls(['edit:group'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("change group to {new_group}")
     def change_group(
         self,
         new_group: str,
@@ -2729,7 +2728,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["private_key"])
+    @object_changelog("change sign private key")
     def change_sign_private_key(
         self,
         private_key: str,
@@ -2749,7 +2748,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["private_key"])
+    @object_changelog("change encrypt private key")
     def change_encrypt_private_key(
         self,
         private_key: str,
@@ -2799,7 +2798,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["public_key"])
+    @object_changelog("change sign public key")
     def change_sign_public_key(
         self,
         public_key: str,
@@ -2828,7 +2827,7 @@ class User(OTPmeObject):
 
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["public_key"])
+    @object_changelog("change encrypt public key")
     def change_encrypt_public_key(
         self,
         public_key: str,
@@ -3041,7 +3040,7 @@ class User(OTPmeObject):
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["aes_key", "aes_key_enc"])
+    @object_changelog("generate {key_mode} keys")
     def gen_keys(
         self,
         key_mode: str="client",
@@ -3233,7 +3232,7 @@ class User(OTPmeObject):
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove keys")
     def del_keys(
         self,
         force: bool=False,
@@ -3350,7 +3349,7 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     @audit_log()
-    @object_changelog(ignore_args=["private_key", "aes_key", "aes_key_enc"])
+    @object_changelog("import sign key")
     def import_sign_key(
         self,
         private_key: str,
@@ -3385,7 +3384,7 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     @audit_log()
-    @object_changelog(ignore_args=["private_key", "aes_key", "aes_key_enc"])
+    @object_changelog("import encrypt key")
     def import_encrypt_key(
         self,
         private_key: str,
@@ -3464,7 +3463,7 @@ class User(OTPmeObject):
     @check_acls(['edit:private_key_pass'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change key password")
     def change_key_pass(
         self,
         run_policies: bool=True,
@@ -3530,7 +3529,7 @@ class User(OTPmeObject):
     @check_acls(['sign'])
     @object_lock()
     @audit_log()
-    @object_changelog(ignore_args=["data", "digest", "aes_key"])
+    @object_changelog("sign data")
     def sign_data(
         self,
         data: Union[str,None]=None,
@@ -4613,7 +4612,7 @@ class User(OTPmeObject):
     @check_acls(['unblock'])
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("unblock {access_group}")
     def unblock(
         self,
         access_group: Union[str,None]=None,
@@ -4671,7 +4670,7 @@ class User(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log(ignore_args=['deploy_data'])
-    @object_changelog(ignore_args=["deploy_data"])
+    @object_changelog("deploy token {token_name}")
     def deploy_token(
         self,
         token_name: str,
@@ -4852,7 +4851,7 @@ class User(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log(ignore_args=['password'])
-    @object_changelog(ignore_args=["password"])
+    @object_changelog("add token {token_name}")
     def add_token(
         self,
         token_name: Union[str,None]=None,
@@ -5118,7 +5117,7 @@ class User(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    @object_changelog()
+    @object_changelog("remove token {token_name}")
     def del_token(
         self,
         token_name: str,
@@ -5214,7 +5213,7 @@ class User(OTPmeObject):
     @check_acls(['enable:auto_mount'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable auto mount")
     def enable_auto_mount(
         self,
         run_policies: bool=True,
@@ -5243,7 +5242,7 @@ class User(OTPmeObject):
     @check_acls(['disable:auto_mount'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable auto mount")
     def disable_auto_mount(
         self,
         run_policies: bool=True,
@@ -5329,7 +5328,7 @@ class User(OTPmeObject):
     @check_acls(['enable:admin_access'], need_exact_acl=True)
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable admin access")
     def enable_admin_access(
         self,
         run_policies: bool=True,
@@ -5400,7 +5399,7 @@ class User(OTPmeObject):
     @check_acls(['disable:admin_access'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable admin access")
     def disable_admin_access(
         self,
         run_policies: bool=True,
@@ -5473,7 +5472,7 @@ class User(OTPmeObject):
     @check_acls(['enable:disabled_login'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable disabled login")
     def enable_disabled_login(
         self,
         run_policies: bool=True,
@@ -5505,7 +5504,7 @@ class User(OTPmeObject):
     @check_acls(['disable:disabled_login'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable disabled login")
     def disable_disabled_login(
         self,
         run_policies: bool=True,
@@ -5538,7 +5537,7 @@ class User(OTPmeObject):
     @check_acls(['enable:autosign'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable autosign")
     def enable_autosign(
         self,
         run_policies: bool=True,
@@ -5567,7 +5566,7 @@ class User(OTPmeObject):
     @check_acls(['disable:autosign'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable autosign")
     def disable_autosign(
         self,
         run_policies: bool=True,
@@ -5596,7 +5595,7 @@ class User(OTPmeObject):
     @check_acls(['enable:auth_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable auth script")
     def enable_auth_script(
         self,
         run_policies: bool=True,
@@ -5642,7 +5641,7 @@ class User(OTPmeObject):
     @check_acls(['disable:auth_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable auth script")
     def disable_auth_script(
         self,
         run_policies: bool=True,
@@ -5677,7 +5676,7 @@ class User(OTPmeObject):
     @check_acls(['enable:login_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable login script")
     def enable_login_script(
         self,
         run_policies: bool=True,
@@ -5721,7 +5720,7 @@ class User(OTPmeObject):
     @check_acls(['disable:login_script'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable login script")
     def disable_login_script(
         self,
         run_policies: bool=True,
@@ -5756,7 +5755,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change key script {key_script}")
     def change_key_script(
         self,
         key_script: Union[str,None]=None,
@@ -5792,7 +5791,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change agent script {agent_script}")
     def change_agent_script(
         self,
         agent_script: Union[str,None]=None,
@@ -5828,7 +5827,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change login script {login_script}")
     def change_login_script(
         self,
         login_script: Union[str,None]=None,
@@ -5864,7 +5863,7 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog()
+    @object_changelog("change auth script {auth_script}")
     def change_auth_script(
         self,
         auth_script: Union[str,None]=None,
@@ -6023,7 +6022,7 @@ class User(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -6081,7 +6080,7 @@ class User(OTPmeObject):
     @one_time_policy_run
     @run_pre_post_add_policies()
     @audit_log(ignore_args=['password'])
-    @object_changelog(ignore_args=["password"])
+    @object_changelog("add")
     def add(
         self,
         group: Union[str,None]=None,
@@ -6709,7 +6708,7 @@ class User(OTPmeObject):
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

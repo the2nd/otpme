@@ -494,7 +494,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add user ACL {acl}")
     def add_user_acl(self, acl, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add user ACL. """
@@ -530,7 +530,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove user ACL {acl}")
     def del_user_acl(self, acl, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Del token ACL. """
@@ -554,7 +554,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add token ACL {acl}")
     def add_token_acl(self, acl, **kwargs):
         """ Add token ACL. """
         return self._add_token_acl(acl, acl_type="token", **kwargs)
@@ -563,7 +563,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove token ACL {acl}")
     def del_token_acl(self, acl, **kwargs):
         """ Del token ACL. """
         return self._del_token_acl(acl, acl_type="token", **kwargs)
@@ -572,7 +572,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add creator ACL {acl}")
     def add_creator_acl(self, acl, **kwargs):
         """ Add token creator ACL. """
         return self._add_token_acl(acl, acl_type="creator", **kwargs)
@@ -581,7 +581,7 @@ class TokenaclsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove creator ACL {acl}")
     def del_creator_acl(self, acl, **kwargs):
         """ Del token creator ACL. """
         return self._del_token_acl(acl, acl_type="creator", **kwargs)

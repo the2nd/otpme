@@ -57,6 +57,7 @@ valid_commands = [
                 'change_user_default_group',
                 #'dump_index',
                 #'dump_object',
+                'do_reauth',
                 'reset_reauth',
                 'delete_object',
                 'get_share',
@@ -2687,7 +2688,24 @@ class OTPmeMgmtP1(OTPmeServer1):
             config.last_reauth.pop(config.auth_token.uuid)
         except KeyError:
             pass
-        return self.build_response(True, None)
+        message = _("Preauth reset.")
+        return self.build_response(True, message)
+
+    def _cmd_do_reauth(self, subcommand, command_args):
+        try:
+            status, \
+            response = self.start_job(name="do_reauth",
+                                target_method=self.do_reauth,
+                                command_args=command_args,
+                                process=False,
+                                thread=True)
+        except Exception as e:
+            #config.raise_exception()
+            message = _("Error running command: {command}: {error}")
+            message = message.format(command=subcommand, error=e)
+            status = False
+            return self.build_response(status, message)
+        return self.build_response(True, response)
 
     def _cmd_change_user_default_group(self, subcommand, command_args):
         return self.change_user_default_group(command_args)
@@ -2815,6 +2833,24 @@ class OTPmeMgmtP1(OTPmeServer1):
             response = response.format(error=e)
             status = False
         return self.build_response(status, response)
+
+    def do_reauth(self, callback=default_callback, **kwargs):
+        from otpme.lib import stuff
+        msg = _("You need to re-authenticate for this action.")
+        callback.send(msg)
+        # Verify auth token.
+        challenge = stuff.gen_secret(32)
+        try:
+            callback.auth_jwt(reason="authonaction",
+                            challenge=challenge)
+        except Exception as e:
+            if config.auth_token.uuid in config.last_reauth:
+                config.last_reauth.pop(config.auth_token.uuid)
+            msg = _("Authentication failed.")
+            return callback.error(msg)
+        # Set last re-auth time.
+        config.last_reauth[config.auth_token.uuid] = time.time()
+        return callback.ok()
 
     def dump_index(self, subcommand, command_args):
         if not self.is_admin:

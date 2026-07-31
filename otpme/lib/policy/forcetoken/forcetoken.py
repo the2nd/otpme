@@ -291,7 +291,7 @@ class ForcetokenPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change force token types to {token_types}")
     def change_force_token_types(self, token_types, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed forced token types. """
@@ -321,7 +321,7 @@ class ForcetokenPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change force pass types to {pass_types}")
     def change_force_pass_types(self, pass_types, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed pass types. """

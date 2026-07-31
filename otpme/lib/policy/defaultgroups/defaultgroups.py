@@ -351,7 +351,7 @@ class DefaultgroupsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change default group to {group_name}")
     def change_default_group(self, group_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default group. """
@@ -400,7 +400,7 @@ class DefaultgroupsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add group {group_name}")
     def add_group(self, group_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default group. """
@@ -445,7 +445,7 @@ class DefaultgroupsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove group {group_name}")
     def remove_group(self, group_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Remove default group. """

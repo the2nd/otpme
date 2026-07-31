@@ -523,16 +523,36 @@ class OTPmeFS(fuse.Operations):
             break
         return status, response_code, response, binary_data
 
-    def check_no_such_file_cache(self, path):
+    def check_connection(self):
+        """ Make sure the share is mounted.
+
+        The share is mounted lazily with the first filesystem operation (see
+        send()). Settings we get with the mount response (e.g. restore share,
+        block size, max filename length) are needed before we can map a
+        plaintext path to its encrypted counterpart. So make sure we are
+        connected/mounted before using them.
+        """
+        if self.fsd_conn:
+            return
+        # Any command will do. statfs() is cheap and works for regular and
+        # restore shares.
+        self.statfs("/")
+
+    def in_no_such_file_cache(self, path):
+        """ Check if the given path failed with ENOENT a moment ago. """
         global no_such_file_cache
         try:
             cache_time = no_such_file_cache[path]
         except KeyError:
-            pass
-        else:
-            cache_age = time.time() - cache_time
-            if cache_age < 2:
-                raise OSError(errno.ENOENT, _("No such file or directory"))
+            return False
+        cache_age = time.time() - cache_time
+        if cache_age < 2:
+            return True
+        return False
+
+    def add_no_such_file_cache(self, path):
+        """ Remember that the given path failed with ENOENT. """
+        global no_such_file_cache
         no_such_file_cache[path] = time.time()
 
     def check_no_such_data_cache(self, path):
@@ -676,7 +696,7 @@ class OTPmeFS(fuse.Operations):
             if config.debug_enabled:
                 self.logger.debug(f"getattr failed for path: {path}")
             if response_code == errno.ENOENT:
-                self.check_no_such_file_cache(path)
+                self.add_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
         block_size = response['st_blksize']
         blocks = response['st_blocks']
@@ -810,7 +830,7 @@ class OTPmeFS(fuse.Operations):
             if config.debug_enabled:
                 self.logger.debug(f"access failed for path: {path}")
             if response_code == errno.ENOENT:
-                self.check_no_such_file_cache(path)
+                self.add_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
         if config.debug_enabled:
             self.logger.debug(f"access successful for path: {path}")
@@ -853,7 +873,7 @@ class OTPmeFS(fuse.Operations):
             if config.debug_enabled:
                 self.logger.debug(f"readlink failed for path: {path}")
             if response_code == errno.ENOENT:
-                self.check_no_such_file_cache(path)
+                self.add_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
         if config.debug_enabled:
             self.logger.debug(f"readlink successful for path: {path}")
@@ -1126,6 +1146,8 @@ class OTPmeFS(fuse.Operations):
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"getxattr failed for path: {path}")
+            if response_code == errno.ENOENT:
+                self.add_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
         if config.debug_enabled:
             self.logger.debug(f"getxattr successful for path: {path}")
@@ -1354,6 +1376,10 @@ class EncryptedFS(OTPmeFS):
         return '/' + '/'.join(parts) if parts else '/'
 
     def _map_plain_to_enc(self, plain_path: str, use_diriv_cache=False) -> str:
+        # Mapping depends on mount settings (e.g. self.restore_share). Without
+        # an established connection they are still at their defaults which
+        # would result in a wrong (e.g. encrypted snapshot dir) path.
+        self.check_connection()
         comps = self._split_components(plain_path)
         enc_parts = []
         enc_dir = '/'
@@ -1731,6 +1757,10 @@ class EncryptedFS(OTPmeFS):
 
     def readlink(self, path: str, use_diriv_cache: bool=True) -> str:
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        # A retry with a re-read diriv only makes sense if we did not already
+        # know that the encrypted path is missing. This must be checked before
+        # the request because the failing request adds the path to the cache.
+        known_missing = self.in_no_such_file_cache(enc)
         try:
             result = super().readlink(enc)
         except Exception as e:
@@ -1738,7 +1768,8 @@ class EncryptedFS(OTPmeFS):
                 raise
             if not use_diriv_cache:
                 raise
-            self.check_no_such_file_cache(enc)
+            if known_missing:
+                raise
             return self.readlink(path, use_diriv_cache=False)
         enc_dir_path = os.path.dirname(enc) if path != '/' else '/'
         link_clear = self._from_fs_name(enc_dir_path, result)
@@ -1746,6 +1777,7 @@ class EncryptedFS(OTPmeFS):
 
     def access(self, path: str, amode: int, use_diriv_cache: bool=True) -> int:
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        known_missing = self.in_no_such_file_cache(enc)
         try:
             return super().access(enc, amode)
         except Exception as e:
@@ -1753,12 +1785,14 @@ class EncryptedFS(OTPmeFS):
                 raise
             if not use_diriv_cache:
                 raise
-            self.check_no_such_file_cache(enc)
+            if known_missing:
+                raise
             return self.access(path, amode, use_diriv_cache=False)
 
     def getattr(self, path: str, fh: Optional[int] = None, use_diriv_cache: bool=True):
         global filesize_cache
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        known_missing = self.in_no_such_file_cache(enc)
         try:
             result = super().getattr(enc, fh)
         except Exception as e:
@@ -1766,7 +1800,8 @@ class EncryptedFS(OTPmeFS):
                 raise
             if not use_diriv_cache:
                 raise
-            self.check_no_such_file_cache(enc)
+            if known_missing:
+                raise
             return self.getattr(path, fh, use_diriv_cache=False)
 
         if stat.S_ISDIR(result['st_mode']) or stat.S_ISLNK(result['st_mode']):
@@ -2212,16 +2247,19 @@ class EncryptedFS(OTPmeFS):
     def getxattr(self, path: str, name: str, position: int = 0, use_diriv_cache: bool=True) -> bytes:
         """Get extended attributes (including POSIX ACLs) from encrypted filesystem"""
         enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        known_missing = self.in_no_such_file_cache(enc)
         try:
             return super().getxattr(enc, name, position)
         except Exception as e:
-            if e.errno != errno.ENOENT:
-                raise
             if e.errno == errno.ENODATA:
                 self.check_no_such_data_cache(enc)
+                raise
+            if e.errno != errno.ENOENT:
+                raise
             if not use_diriv_cache:
                 raise
-            self.check_no_such_file_cache(enc)
+            if known_missing:
+                raise
             return self.getxattr(path, name, position, use_diriv_cache=False)
 
     def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0, use_diriv_cache: bool=True) -> int:

@@ -288,7 +288,7 @@ class DefaultunitsPolicy(Policy):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("set default unit for {object_type} {unit_path}")
     def set_default_unit(self, object_type, unit_path=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set default unit. """

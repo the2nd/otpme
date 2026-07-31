@@ -743,7 +743,7 @@ class Dictionary(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("clear dictionary")
     def clear(
         self,
         _caller: str="API",
@@ -759,7 +759,7 @@ class Dictionary(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add words")
     def add_words(
         self,
         word_list: List,
@@ -799,7 +799,7 @@ class Dictionary(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -852,7 +852,7 @@ class Dictionary(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("delete")
     def delete(
         self,
         force: bool=False,

@@ -561,7 +561,7 @@ class OTPmeDevice(OTPmeObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change MAC address to {mac_address}")
     def change_mac(
         self,
         mac_address: str,
@@ -684,7 +684,7 @@ class Device(OTPmeDevice):
     @backend.transaction
     @run_pre_post_add_policies()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add")
     def add(
         self,
         callback: JobCallback=default_callback,
@@ -768,7 +768,7 @@ class Device(OTPmeDevice):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_name}")
     def rename(
         self,
         new_name: str,

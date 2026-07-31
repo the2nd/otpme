@@ -3014,7 +3014,7 @@ class OTPmeObject(OTPmeBaseObject):
         persisted within the running transaction, so a changelog change bumps
         the object checksum and triggers a resync.
 
-            action  : immutable auto generated default text.
+            action  : immutable command text of the object_changelog decorator.
             detail  : immutable text set by the method via set_changelog().
             comment : editable text from the user's --changelog option.
         """
@@ -3117,7 +3117,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Set/change the editable comment of a changelog entry.
 
         Only the 'comment' part (originally set via --changelog) can be edited.
-        The auto generated 'action' and the method 'detail' are immutable.
+        The command 'action' and the method 'detail' are immutable.
         """
         entry_key = self._resolve_changelog_entry(entry_id)
         if entry_key is None:
@@ -3363,7 +3363,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:extension'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add extension {extension}")
     def add_extension(
         self,
         extension: str,
@@ -3433,7 +3433,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:extension'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove extension {extension}")
     def remove_extension(
         self,
         extension: str,
@@ -3872,7 +3872,7 @@ class OTPmeObject(OTPmeBaseObject):
     @cli.check_rapi_opts()
     @check_acls(['add:role'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("add role {role_name}")
     def add_role(
         self,
         role_name: str=None,
@@ -3961,7 +3961,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['remove:role'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove role {role_name}")
     def remove_role(
         self,
         role_name: str,
@@ -4040,7 +4040,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['add:token'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add token {token_path}")
     def add_token(
         self,
         token_path: str,
@@ -4331,7 +4331,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['remove:token'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove token {token_path}")
     def remove_token(
         self,
         token_path: str,
@@ -4441,7 +4441,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add host {host_name}")
     def add_host(
         self,
         host_name: str=None,
@@ -4493,7 +4493,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove host {host_name}")
     def remove_host(
         self,
         host_name: str,
@@ -4599,7 +4599,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("add device {device_name}")
     def add_device(
         self,
         device_name: str=None,
@@ -4651,7 +4651,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove device {device_name}")
     def remove_device(
         self,
         device_name: str,
@@ -4937,7 +4937,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['add:dynamic_group'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("add dynamic group {group_name}")
     def add_dynamic_group(
         self,
         group_name: str,
@@ -4986,7 +4986,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @check_acls(['remove:dynamic_group'])
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove dynamic group {group_name}")
     def remove_dynamic_group(
         self,
         group_name: str,
@@ -5027,7 +5027,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['assign:policy'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add policy {policy_name}")
     def add_policy(
         self,
         policy_name: str,
@@ -5153,7 +5153,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:policy'], need_exact_acl=True)
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove policy {policy_name}")
     def remove_policy(
         self,
         policy_name: str,
@@ -5977,7 +5977,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add attribute {attribute} {value}")
     def add_attribute(
         self,
         attribute: str,
@@ -6061,7 +6061,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("modify attribute {attribute} from {old_value} to {new_value}")
     def modify_attribute(
         self,
         attribute: str,
@@ -6139,7 +6139,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove attribute {attribute} {value}")
     def del_attribute(
         self,
         attribute: str,
@@ -6191,7 +6191,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         try:
-            extension.del_attribute(self, attribute, value,
+            result = extension.del_attribute(self, attribute, value,
                                     ignore_ro=ignore_ro,
                                     ignore_missing=ignore_missing,
                                     verbose_level=verbose_level,
@@ -6204,6 +6204,9 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Unable to delete attribute: {attribute}: {exception}")
             msg = msg.format(attribute=attribute, exception=e)
             return callback.error(msg)
+
+        if not result:
+            return callback.error()
 
         return self._cache(callback=callback)
 
@@ -6246,7 +6249,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:object_class'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add object class {object_class}")
     def add_object_class(
         self,
         object_class: str,
@@ -6302,7 +6305,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['delete:object_class'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove object class {object_class}")
     def del_object_class(
         self,
         object_class: bool=False,
@@ -6471,7 +6474,7 @@ class OTPmeObject(OTPmeBaseObject):
         ldif = get_ldif(ldif=self.ldif, text=text,
                         verify_acl_func=verify_acl_func,
                         **kwargs)
-        return callback.ok(ldif)
+        return callback.ok(ldif, return_value=True)
 
     def get_object_classes(
         self,
@@ -6490,7 +6493,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_special_user()
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("enable")
     def enable(
         self,
         force: bool=False,
@@ -6545,7 +6548,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['disable:object'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("disable")
     def disable(
         self,
         force: bool=False,
@@ -7615,7 +7618,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("change auto disable to {auto_disable}")
     def change_auto_disable(
         self,
         auto_disable: Union[str, int],
@@ -7666,7 +7669,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:secret'])
     @object_lock(full_lock=True)
     @audit_log()
-    @object_changelog(ignore_args=["secret"])
+    @object_changelog("change secret")
     def change_secret(
         self,
         secret: str=None,
@@ -7838,7 +7841,7 @@ class OTPmeObject(OTPmeBaseObject):
     # locks longer than needed and slows down other jobs while moving.
     #@backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("move to {new_unit}")
     def move(
         self,
         new_unit: str,
@@ -8384,7 +8387,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['add:signature'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("add signature")
     def add_sign(
         self,
         signature: object,
@@ -8481,7 +8484,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['delete:signature'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove signature {username}")
     def del_sign(
         self,
         username: Union[str,None]=None,
@@ -8870,7 +8873,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:description'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change description")
     def change_description(
         self,
         description: str=None,
@@ -8911,7 +8914,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['edit:info'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("change info")
     def change_info(
         self,
         info: str=None,
@@ -9415,7 +9418,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog()
+    @object_changelog("rename to {new_oid}")
     def _rename(
         self,
         new_oid: oid.OTPmeOid,
@@ -9599,7 +9602,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:orphans'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove orphan ACLs")
     def remove_orphan_acls(
         self,
         force: bool=False,
@@ -9648,7 +9651,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:orphans'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove orphan policies")
     def remove_orphan_policies(
         self,
         force: bool=False,
@@ -9698,7 +9701,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['remove:orphans'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove orphan signatures")
     def remove_orphan_signatures(
         self,
         force: bool=False,
@@ -9868,7 +9871,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['remove:orphans'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("remove orphan objects")
     def remove_orphans(
         self,
         force: bool=False,
@@ -9985,7 +9988,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @audit_log()
-    @object_changelog(ignore_args=["value"])
+    @object_changelog("set config parameter {parameter}")
     def set_config_param(
         self,
         parameter: str,
@@ -10044,7 +10047,11 @@ class OTPmeObject(OTPmeBaseObject):
             if value:
                 try:
                     if para_setter:
-                        value = para_setter(value)
+                        # The setter runs on removal too (we store resolved
+                        # values, e.g. UUIDs). It gets the delete flag because
+                        # some checks only make sense when assigning a value,
+                        # and must not make an existing value unremovable.
+                        value = para_setter(value, delete=True)
                         # If the parameter value type is list we get list and
                         # need to use the first value.
                         if value_type == list:
@@ -10106,6 +10113,7 @@ class OTPmeObject(OTPmeBaseObject):
             # Try to get the default value.
             try:
                 value = para_data['default']
+                changelog_value = value
             except KeyError:
                 pass
             else:
@@ -10125,6 +10133,7 @@ class OTPmeObject(OTPmeBaseObject):
             if default_genner:
                 try:
                     value = default_genner(config_object=self, callback=callback)
+                    changelog_value = value
                 except Exception as e:
                     msg = _("Failed to generate default value: {e}")
                     msg = msg.format(e=e)
@@ -10132,10 +10141,15 @@ class OTPmeObject(OTPmeBaseObject):
         if value is None:
             msg = _("Cannot determine default value.")
             return callback.error(msg)
-        # Resolve value.
+        # Resolve value. The setter gets the append flag because a list
+        # parameter may need to validate the new values against the ones we
+        # already have (e.g. only one VLAN per site).
         if para_setter:
             try:
-                value = para_setter(value, config_object=self, callback=callback)
+                value = para_setter(value,
+                                config_object=self,
+                                append=append,
+                                callback=callback)
             except Exception as e:
                 msg = _("Failed to set config parameter: {parameter}: {e}")
                 msg = msg.format(parameter=parameter, e=e)
@@ -10181,12 +10195,15 @@ class OTPmeObject(OTPmeBaseObject):
 
         config_cache.invalidate()
 
-        # Record the change in the object changelog. The auto text only names
-        # the parameter (its 'value' arg is ignored, see changelog.IGNORE_ARGS);
-        # append the actual value here, but never for sensitive parameters
-        # (e.g. backup_repo_password) to keep secrets out of the changelog.
+        # Record the change in the object changelog. The action text only names
+        # the parameter (see the object_changelog decorator); append the actual
+        # value here, but never for sensitive parameters (e.g.
+        # backup_repo_password) to keep secrets out of the changelog.
         if not para_data.get('sensitive', False):
-            self.set_changelog(f"set to '{changelog_value}'")
+            if append:
+                self.set_changelog(f"add '{changelog_value}'")
+            else:
+                self.set_changelog(f"set to '{changelog_value}'")
         # Use _cache() (not _write()) so the change rides the running
         # transaction -- the object_changelog decorator appends its entry after
         # this method returns and relies on that deferred write to persist it.
@@ -10531,7 +10548,7 @@ class OTPmeClientObject(OTPmeObject):
     @check_acls(['limit_logins'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("limit logins")
     def limit_logins(
         self,
         run_policies: bool=True,
@@ -10559,7 +10576,7 @@ class OTPmeClientObject(OTPmeObject):
     @check_acls(['unlimit_logins'])
     @object_lock()
     @audit_log()
-    @object_changelog()
+    @object_changelog("unlimit logins")
     def unlimit_logins(
         self,
         run_policies: bool=True,
