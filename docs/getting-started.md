@@ -1192,9 +1192,9 @@ added to:
 otpme-site config <site> hosts_accessgroup lan
 ```
 
-### MAB for Network Devices (IP Phones etc.)
+### MAB for Network Devices (Printers etc.)
 
-For non-host devices such as IP phones or printers, use the `otpme-device`
+For non-host devices such as printers, use the `otpme-device`
 command instead. You can also add devices to roles and roles to the access
 group:
 
@@ -1223,14 +1223,14 @@ otpme-vlan add guests 100
 otpme-vlan add printers
 ```
 
-To assign a VLAN during MAB or 802.1x authentication, set the `vlans`
-config parameter. It can be set at different levels — the most specific
-match wins:
+To assign a VLAN, set the `vlans` config parameter. Where you set it
+depends on the authentication method — for 802.1x it must be set on the
+token, for MAB on the host or device:
 
 ```bash
-# VLAN based on token authentication.
+# 802.1x: VLAN based on the authenticating token.
 otpme-token config joe/login vlans guests
-# VLAN based on host or device.
+# MAB: VLAN based on the host or device.
 otpme-host config <yourhostname> vlans guests
 otpme-device config <devicename> vlans printers
 ```
