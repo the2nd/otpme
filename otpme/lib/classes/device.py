@@ -655,6 +655,7 @@ class Device(OTPmeDevice):
                     'node'  : {
                         'untrusted'  : [
                             "MAC_ADDRESS",
+                            "CONFIG_PARAMS:vlans",
                             ]
                         },
                     }

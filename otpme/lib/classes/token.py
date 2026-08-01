@@ -1272,6 +1272,7 @@ class Token(OTPmeObject):
                             "DESTINATION_TOKEN",
                             "DYNAMIC_GROUPS",
                             "CONFIG_PARAMS:allow_temp_passwords",
+                            "CONFIG_PARAMS:vlans",
                             ]
                         },
                     }

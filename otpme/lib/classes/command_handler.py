@@ -5554,7 +5554,14 @@ class CommandHandler(object):
             msg = msg.format(e=e)
             raise OTPmeException(msg)
 
-        table = PrettyTable(["user", "login token", "host", "ip", "connect time", "login time", "session"],
+        table = PrettyTable(["user",
+                            "login token",
+                            "host",
+                            "ip",
+                            "connect time",
+                            "login time",
+                            "session",
+                            'version'],
                             header_style="title",
                             vrules=NONE,
                             hrules=HEADER)
@@ -5576,6 +5583,7 @@ class CommandHandler(object):
                 login_token = entry.get("login_token")
                 login_time = entry.get("login_time")
                 session = entry.get("session")
+                version = entry.get("version")
                 if login_time is None:
                     login_time_str = "-"
                 else:
@@ -5587,7 +5595,14 @@ class CommandHandler(object):
                 else:
                     connect_time_str = datetime.datetime.fromtimestamp(
                         connect_time).strftime("%Y-%m-%d %H:%M:%S")
-                table.add_row([user, login_token, host, ip, connect_time_str, login_time_str, session])
+                table.add_row([user,
+                            login_token,
+                            host,
+                            ip,
+                            connect_time_str,
+                            login_time_str,
+                            session,
+                            version])
 
         return table.get_string()
 

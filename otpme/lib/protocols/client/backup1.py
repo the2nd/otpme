@@ -48,11 +48,6 @@ def enc_path():
                 path_comp.pop(0)
                 if self.backup_home_dir:
                     path_comp.insert(0, self.backup_home_dir)
-                # FIXME: whats the reason for this?
-                #if len(path_comp) > 99:
-                #    path = "/" + "/".join(path_comp)
-                #else:
-                #    path = "/".join(path_comp)
                 path = "/".join(path_comp)
                 path = self.backup_client.encrypt_rel_path(path)
                 path = path.split("/")
@@ -76,6 +71,7 @@ class OTPmeBackupP1(OTPmeFsClient1):
             self.backup_client = BackupClient(key=backup_key)
         else:
             self.backup_client = None
+        self.snapshot_dir_command = False
 
     def send(self, command, command_args, binary_data=None):
         status, \
@@ -860,7 +856,15 @@ class OTPmeBackupP1(OTPmeFsClient1):
                 if x == "..":
                     readdir_result.append(x)
                     continue
-                if path != "/":
+                if path == "/":
+                    # Filter out snapshots the home share UUID dir
+                    # is not in.
+                    if self.backup_home_dir:
+                        x_snap_dir = os.path.join("/", x)
+                        x_snap_result = self.getattr(x_snap_dir)[0]
+                        if x_snap_result == 2:
+                            continue
+                else:
                     if len(path_comp) > 2:
                         x_path = path_comp[2:]
                         x_path.append(x)

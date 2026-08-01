@@ -80,10 +80,9 @@ def get(debug=False, print_devices=False):
 
 class Yubikey(object):
     """ Class to access yubikey tokens """
+    type = "yubikey"
     otpme_auth_types = []
     def __init__(self, autodetect=True, debug=False):
-        # Set smartcard type
-        self.type = "yubikey"
         # Will be set by OTPmeClient() when doing preauth_check
         self.options = {}
 

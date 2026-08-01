@@ -157,5 +157,6 @@ class YubikeyHotpServerHandler(object):
 
 class Yubikeyhotp(Yubikey):
     """ Class for yubikey HOTP tokens. """
+    type = "yubikey_hotp"
     # Set supported auth types
     otpme_auth_types = [ "yubikey_hotp" ]

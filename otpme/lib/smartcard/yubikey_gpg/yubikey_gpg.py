@@ -153,5 +153,6 @@ class YubikeygpgServerHandler(object):
 
 class Yubikeygpg(Yubikey):
     """ Class for yubikey HMAC tokens. """
+    type = "yubikey_gpg"
     # Set supported auth types
     otpme_auth_types = [ "yubikey_gpg" ]

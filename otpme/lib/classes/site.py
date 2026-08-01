@@ -1567,82 +1567,110 @@ def register_config():
                     'user',
                     'token',
                     ]
-    # VLAN trusts. Sites this site accepts VLAN assignments from.
+    # VLAN trusts. Which VLANs we hand out for objects of which site.
+    def get_site_uuid(site_name):
+        """ Resolve a site name to its UUID. """
+        result = backend.search(object_type='site',
+                                attribute="name",
+                                value=site_name,
+                                realm=config.realm,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown site: {site}")
+            msg = msg.format(site=site_name)
+            raise ValueError(msg)
+        return result[0]
     def vlan_trusts_setter(sites, callback=JobCallback, **kwargs):
+        """ Resolve VLAN trusts to UUIDs.
+
+        The VLAN we hand out ends up on a switch port of our own network,
+        no matter which site owns the VLAN object. So we are the site that
+        decides, and this is the only place where it is decided (see
+        site_allows_vlan()).
+
+        An entry is "<site>[:<vlan_site>[/<vlan>]]", where <site> is the
+        site of the object the VLAN is assigned to, and the rest limits
+        the VLANs it may get. What is left out means "all":
+
+            munich                      all VLANs, whoever owns them
+            munich:berlin               all VLANs of site berlin
+            munich:berlin/clients       the VLAN "clients" of site berlin
+            munich:munich/printers      the VLAN "printers" of site munich
+        """
         if isinstance(sites, str):
             sites = sites.split(",")
         sites_uuids = []
-        for site_name in sites:
-            result = backend.search(object_type='site',
-                                    attribute="name",
-                                    value=site_name,
-                                    realm=config.realm,
-                                    return_type="uuid")
-            if not result:
-                msg = _("Unknown site: {site}")
-                msg = msg.format(site=site_name)
-                raise ValueError(msg)
-            site_uuid = result[0]
-            sites_uuids.append(site_uuid)
+        for entry in sites:
+            vlan_site = None
+            if ":" in entry:
+                site_name, vlan_site = entry.split(":", 1)
+            else:
+                site_name = entry
+            site_uuid = get_site_uuid(site_name)
+            if vlan_site is None:
+                sites_uuids.append(site_uuid)
+                continue
+            if "/" not in vlan_site:
+                vlan_trust = f"{site_uuid}:{get_site_uuid(vlan_site)}"
+                sites_uuids.append(vlan_trust)
+                continue
+            vlan_object = get_vlan_object(vlan_site)
+            # The VLANs site is stored too: it keeps the entry readable
+            # when the VLAN itself is gone.
+            vlan_trust = f"{site_uuid}:{vlan_object.site_uuid}/{vlan_object.uuid}"
+            sites_uuids.append(vlan_trust)
         return sites_uuids
+    def get_site_name(site_uuid):
+        """ Resolve a site UUID to its name. """
+        result = backend.search(object_type='site',
+                                attribute="uuid",
+                                value=site_uuid,
+                                return_type="name")
+        if not result:
+            return None
+        return result[0]
     def vlan_trusts_getter(sites, callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
         _sites = []
-        for site_uuid in sites:
-            result = backend.search(object_type='site',
+        for entry in sites:
+            vlan_site_uuid = None
+            vlan_uuid = None
+            if ":" in entry:
+                site_uuid, vlan_site_uuid = entry.split(":", 1)
+                if "/" in vlan_site_uuid:
+                    vlan_site_uuid, vlan_uuid = vlan_site_uuid.split("/", 1)
+            else:
+                site_uuid = entry
+            site_name = get_site_name(site_uuid)
+            if site_name is None:
+                # Show the unresolvable trust instead of hiding it.
+                _sites.append(entry)
+                continue
+            if vlan_site_uuid is None:
+                _sites.append(site_name)
+                continue
+            vlan_site_name = get_site_name(vlan_site_uuid)
+            if vlan_site_name is None:
+                _sites.append(entry)
+                continue
+            if vlan_uuid is None:
+                _sites.append(f"{site_name}:{vlan_site_name}")
+                continue
+            result = backend.search(object_type='vlan',
                                     attribute="uuid",
-                                    value=site_uuid,
-                                    return_type="name")
+                                    value=vlan_uuid,
+                                    return_type="instance")
             if not result:
-                msg = _("Unknown site: {uuid}")
-                msg = msg.format(uuid=site_uuid)
-                raise ValueError(msg)
-            site_name = result[0]
-            _sites.append(site_name)
+                _sites.append(entry)
+                continue
+            vlan_object = result[0]
+            _sites.append(f"{site_name}:{vlan_site_name}/{vlan_object.name}")
         return _sites
     config.register_config_parameter(name="vlan_trusts",
                                     ctype=list,
                                     setter=vlan_trusts_setter,
                                     getter=vlan_trusts_getter,
-                                    object_types=['site'])
-    # Sites whose VLANs we use if none of our own VLANs is assigned.
-    def use_vlans_from_setter(sites, callback=JobCallback, **kwargs):
-        if isinstance(sites, str):
-            sites = sites.split(",")
-        sites_uuids = []
-        for site_name in sites:
-            result = backend.search(object_type='site',
-                                    attribute="name",
-                                    value=site_name,
-                                    realm=config.realm,
-                                    return_type="uuid")
-            if not result:
-                msg = _("Unknown site: {site}")
-                msg = msg.format(site=site_name)
-                raise ValueError(msg)
-            site_uuid = result[0]
-            sites_uuids.append(site_uuid)
-        return sites_uuids
-    def use_vlans_from_getter(sites, callback=JobCallback, **kwargs):
-        if isinstance(sites, str):
-            sites = sites.split(",")
-        _sites = []
-        for site_uuid in sites:
-            result = backend.search(object_type='site',
-                                    attribute="uuid",
-                                    value=site_uuid,
-                                    return_type="name")
-            if not result:
-                _sites.append(site_uuid)
-                continue
-            site_name = result[0]
-            _sites.append(site_name)
-        return _sites
-    config.register_config_parameter(name="use_vlans_from",
-                                    ctype=list,
-                                    setter=use_vlans_from_setter,
-                                    getter=use_vlans_from_getter,
                                     object_types=['site'])
     def get_vlan_object(vlan):
         """ Resolve a VLAN path to the VLAN object. """
@@ -1663,7 +1691,7 @@ def register_config():
             msg = msg.format(vlan=vlan)
             raise ValueError(msg)
         return result[0]
-    def vlans_setter(vlans, config_object=None, append=False, delete=False,
+    def vlans_setter(vlans, config_object=None, append=False,
         callback=JobCallback, **kwargs):
         """ Resolve VLAN names to the VLAN objects UUIDs.
 
@@ -1677,23 +1705,16 @@ def register_config():
         VLANs of other sites can be assigned (e.g. users created on the
         master site only, while each site runs its own VLANs), so a VLAN
         may be given as "<site>/<name>". VLAN names are uniq per site only.
-        A cross site assignment additionally requires the VLAN owning site
-        to list our site in its "vlan_trusts". The ACL alone would not do:
-        it is checked here, by the site making the assignment, against its
-        own copy of the VLAN. The check that actually binds runs when the
-        VLAN is resolved on the site serving the RADIUS request (see
-        AuthHandler.get_vlan()); this one just fails early.
+
+        Whether an assignment is honoured is decided by the site serving
+        the RADIUS request, via its "vlan_trusts" (see site_allows_vlan()).
+        We cannot check that here: we do not know which site will answer,
+        and the ACL we do check is one our own site controls.
 
         One VLAN per site: which VLAN is used depends on the site serving
         the RADIUS request (see AuthHandler.get_vlan()), so a second VLAN
         of the same site would just make the assignment ambiguous.
-
-        On removal (delete) we only resolve the VLAN. The trust check is
-        about the VLAN owning sites consent to the assignment, so applying
-        it here would make an assignment unremovable as soon as that site
-        withdraws its trust.
         """
-        from otpme.lib.classes.vlan import site_trusts_site_for_vlan
         if isinstance(vlans, str):
             vlans = vlans.split(",")
         # On append the VLANs we already have count for the one per site
@@ -1717,16 +1738,6 @@ def register_config():
                 msg = _("You dont have permission to assign this VLAN: {vlan}")
                 msg = msg.format(vlan=vlan_object.oid)
                 raise PermissionDenied(msg)
-            if not delete:
-                if config_object is None:
-                    assign_site_uuid = config.site_uuid
-                else:
-                    assign_site_uuid = config_object.site_uuid
-                if not site_trusts_site_for_vlan(vlan_object.site_uuid,
-                                                assign_site_uuid):
-                    msg = _("Site does not accept VLAN assignments from us: {vlan}")
-                    msg = msg.format(vlan=vlan_object.oid)
-                    raise PermissionDenied(msg)
             try:
                 assigned_vlan = assigned_sites[vlan_object.site_uuid]
             except KeyError:
@@ -2245,10 +2256,42 @@ def register_config():
                     'user',
                     'token',
                     ]
-    config.register_config_parameter(name="allow_non_admin_trash_emtpy",
+    config.register_config_parameter(name="allow_non_admin_trash_empty",
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Preferred master node.
+    def perferred_node_setter(node, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='node',
+                                attribute="name",
+                                value=node,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown node: {node}")
+            msg = msg.format(node=node)
+            raise ValueError(msg)
+        node = result[0]
+        return node.uuid
+    def preferred_node_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='node',
+                                attribute="uuid",
+                                value=uuid,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown node: {uuid}")
+            msg = msg.format(uuid=uuid)
+            raise ValueError(msg)
+        node = result[0]
+        return node.name
+    config.register_config_parameter(name="preferred_master_node",
+                                    ctype=str,
+                                    setter=perferred_node_setter,
+                                    getter=preferred_node_getter,
+                                    object_types=['site'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -2458,13 +2501,6 @@ class Site(OTPmeObject):
                             "FIDO2_CA_CERTS",
                             "ou",
                             "CONFIG_PARAMS:allow_temp_passwords",
-                            # Whether this site accepts VLAN assignments from
-                            # an other site is checked by the site making the
-                            # assignment and again by the site serving the
-                            # RADIUS request (see site_trusts_site_for_vlan()).
-                            # Both may be sites this site does not trust, so
-                            # they need our trusts to check them.
-                            "CONFIG_PARAMS:vlan_trusts",
                             ],
                         },
                     }

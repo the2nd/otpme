@@ -39,9 +39,10 @@ def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
         if sc_types:
             search_smartcard = False
             for sc_type in sc_types:
-                if sc_type in smartcard.otpme_auth_types:
-                    search_smartcard = True
-                    break
+                if sc_type not in smartcard.otpme_auth_types:
+                    continue
+                search_smartcard = True
+                break
         if not search_smartcard:
             smartcard = None
             continue

@@ -446,30 +446,63 @@ def get_recursive_default_acls(**kwargs):
     acls += config.get_recursive_default_acls("vlan")
     return acls
 
-def site_trusts_site_for_vlan(vlan_site_uuid, site_uuid):
-    """ Does the site owning a VLAN accept VLAN assignments made by the
-    given site?
+def get_vlan_trusts(site_uuid, object_site_uuid):
+    """ Get our VLAN trusts that apply to objects of the given site.
 
-    Assigning a VLAN needs the "assign" ACL on the VLAN. But that ACL is
-    checked by whichever site processes the assignment, against its own
-    copy of the VLAN. For a cross site assignment that means the assigning
-    site checks a rule it also controls, which is not consent. So the site
-    owning the VLAN declares the sites it accepts assignments from via its
-    "vlan_trusts" config parameter.
+    Returns them in the configured order, as (vlan_site_uuid, vlan_uuid)
+    tuples, where None means "any".
     """
-    if vlan_site_uuid == site_uuid:
-        return True
-    vlan_site = backend.get_object(object_type="site", uuid=vlan_site_uuid)
-    if not vlan_site:
-        return False
+    site = backend.get_object(object_type="site", uuid=site_uuid)
+    if not site:
+        return []
     try:
-        trusts = vlan_site.get_config_parameter("vlan_trusts",
-                                                apply_getter=False)
+        trusts = site.get_config_parameter("vlan_trusts", apply_getter=False)
     except Exception:
         trusts = None
     if not trusts:
-        return False
-    return site_uuid in trusts
+        return []
+    vlan_trusts = []
+    for entry in trusts:
+        trust_vlan_site_uuid = None
+        trust_vlan_uuid = None
+        if ":" in entry:
+            trust_site_uuid, trust_vlan_site_uuid = entry.split(":", 1)
+            if "/" in trust_vlan_site_uuid:
+                trust_vlan_site_uuid, trust_vlan_uuid = \
+                                    trust_vlan_site_uuid.split("/", 1)
+        else:
+            trust_site_uuid = entry
+        if trust_site_uuid != object_site_uuid:
+            continue
+        vlan_trusts.append((trust_vlan_site_uuid, trust_vlan_uuid))
+    return vlan_trusts
+
+def site_allows_vlan(site_uuid, object_site_uuid, vlan_site_uuid, vlan_uuid):
+    """ May we hand out the given VLAN for an object of the given site?
+
+    The VLAN we hand out is switched in the network of the site serving
+    the RADIUS request, whichever site owns the VLAN object. So that site,
+    and only that site, decides, via its "vlan_trusts" config parameter.
+    Without this a site holding the users (e.g. the master site) could put
+    them into any VLAN of our network. Assigning a VLAN also needs the
+    "assign" ACL on it, but that ACL is checked by the site making the
+    assignment, against its own copy of the VLAN, so it is not our consent.
+
+    Our own VLANs assigned to our own objects need no entry.
+    """
+    if object_site_uuid == site_uuid and vlan_site_uuid == site_uuid:
+        return True
+    for trust_vlan_site_uuid, trust_vlan_uuid in get_vlan_trusts(site_uuid,
+                                                        object_site_uuid):
+        if trust_vlan_site_uuid is None:
+            return True
+        if trust_vlan_site_uuid != vlan_site_uuid:
+            continue
+        if trust_vlan_uuid is None:
+            return True
+        if trust_vlan_uuid == vlan_uuid:
+            return True
+    return False
 
 def check_vlan_id(vlan_id):
     """ Make sure the given VLAN ID is a valid 802.1Q tag. """
@@ -621,7 +654,7 @@ class Vlan(OTPmeObject):
                     'node'  : {
                         'untrusted'  : [
                             # A site may hand out a VLAN of an other site
-                            # (see the "use_vlans_from" config parameter), so
+                            # (see the "vlan_trusts" config parameter), so
                             # nodes of other sites need the VLAN ID. Without
                             # it they would send the VLAN name to the switch.
                             "VLAN_ID",

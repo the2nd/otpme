@@ -14,17 +14,17 @@ node FQDN and address. You can always migrate to a fully functional setup later.
 ### DNS records for a production setup
 
 When using OTPme with real hosts and clients, the following DNS records are
-required. The example uses the realm `otpme.org`, site `muenchen` and a
+required. The example uses the realm `otpme.org`, site `munich` and a
 floating cluster IP `192.168.1.100`:
 
 ```
-$ORIGIN _tcp.muenchen.otpme.org.
-_otpme-join    SRV 10 1 2024 login.muenchen.otpme.org.
-_otpme-login   SRV 10 1 2020 login.muenchen.otpme.org.
+$ORIGIN _tcp.munich.otpme.org.
+_otpme-join    SRV 10 1 2024 login.munich.otpme.org.
+_otpme-login   SRV 10 1 2020 login.munich.otpme.org.
 _otpme-realm   TXT "otpme.org"
-_otpme-site    TXT "muenchen"
+_otpme-site    TXT "munich"
 
-$ORIGIN muenchen.otpme.org.
+$ORIGIN munich.otpme.org.
 login          A   192.168.1.100
 node1          A   192.168.1.1
 node2          A   192.168.1.2
@@ -38,17 +38,17 @@ For load-balanced authentication and login requests across multiple nodes, set
 an auth FQDN for the site and add a round-robin DNS record for it:
 
 ```bash
-otpme-site auth_fqdn muenchen auth.muenchen.otpme.org
+otpme-site auth_fqdn munich auth.munich.otpme.org
 ```
 
 ```
-$ORIGIN muenchen.otpme.org.
+$ORIGIN munich.otpme.org.
 auth    A   192.168.1.1
         A   192.168.1.2
 ```
 
 If you only have one site you can use the realm domain directly for all records
-(e.g. `auth.otpme.org` instead of `auth.muenchen.otpme.org`).
+(e.g. `auth.otpme.org` instead of `auth.munich.otpme.org`).
 
 ## 1. Initialize a Realm
 
@@ -72,7 +72,7 @@ otpme-realm init \
     --node-key-len 4096 \
     --dicts english,en-top10000,common-passwords,us-female,us-male,us-surnames,abbreviations-it \
     --id-ranges "uidNumber:s:70000-80000,gidNumber:s:70000-80000" \
-    otpme.org muenchen login.otpme.org 192.168.1.100
+    otpme.org munich login.otpme.org 192.168.1.100
 ```
 
 | Option | Description |
@@ -1249,21 +1249,21 @@ assignments from the assigning site first — otherwise the VLAN is ignored
 when that site answers the RADIUS request. Use `-a` to append a second
 site's VLAN to the object rather than replacing the existing value:
 
+`vlan_trusts` accepts entries in the following forms:
+
+| Entry | Meaning |
+|-------|---------|
+| `berlin` | Objects of site `berlin` may get any VLAN. |
+| `berlin:munich` | Objects of site `berlin` may get any VLAN of `munich`. |
+| `berlin:munich/home` | Objects of site `berlin` may get only the VLAN `home` of `munich`. |
+| `berlin:berlin/clients` | Objects of site `berlin` may get only the VLAN `clients` of `berlin`, which `munich` then switches in its own network. |
+
 ```bash
 # On the site owning the VLAN:
-otpme-site config berlin vlan_trusts <master_site>
-# On the master site, after the vlan_trusts change has synced
+otpme-site config munich vlan_trusts berlin
+# On the assigning site, after the vlan_trusts change has synced
 # (run `otpme-tool sync` to trigger a manual sync):
-otpme-host config -a <yourhostname> vlans berlin/guests
-```
-
-The site that answers the RADIUS request uses its own site's VLAN. If you
-prefer to manage all VLANs centrally on the master site and have every
-other site reuse them, skip the per-site VLAN objects and point the remote
-sites at the master with `use_vlans_from` instead:
-
-```bash
-otpme-site config berlin use_vlans_from <master_site>
+otpme-host config -a <yourhostname> vlans munich/guests
 ```
 
 ### 802.1x Authentication

@@ -124,15 +124,16 @@ site certificate whose SAN is *\<site\>.\<realm\>*, so one
 > Values: **auto** - perform dot1x authentication only when the default
 > gateway is unreachable (ICMP ping must be allowed); **force** - always
 > perform dot1x authentication on login (restarts the network
-> connection). The option **dot1x_token_type** must also be set.
+> connection). The option **dot1x_token_types** must also be set.
 
 **dot1x_connection=***name*  
 Name of the Network Manager connection to use for 802.1x port
 authentication. Defaults to **dot1x-lan**.
 
-**dot1x_token_type=***type*  
-Token type used to generate the OTP for 802.1x port authentication.
-Currently supported types: **yubikey_piv** and **password**.
+**dot1x_token_types=***type*  
+Comma separated list of Token types used to generate the OTP for 802.1x
+port authentication. Currently supported types: **yubikey_piv** and
+**password**.
 
 **dot1x_timeout=***seconds*  
 Number of seconds to wait for the 802.1x port authentication to

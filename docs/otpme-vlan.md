@@ -25,17 +25,18 @@ are created on the master site only while each site runs its own VLANs.
 
 An object can have one VLAN per site assigned, because an object may be
 used at more than one site. The site answering the RADIUS request
-returns its own VLAN. If none of the assigned VLANs belongs to it, no
-VLAN is returned, unless it lists the VLAN owning site under
-**use_vlans_from**.
+returns its own VLAN. If none of the assigned VLANs belongs to it, it
+returns the first one its **vlan_trusts** allow, in the order of those
+entries.
 
-A cross site assignment additionally requires the VLAN owning site to
-list the assigning site under **vlan_trusts**. The **assign** ACL alone
-is not enough here, because it is checked by the site making the
-assignment against its own copy of the VLAN. The trust check is enforced
-again when the VLAN is resolved, on the site that answers the RADIUS
-request, so a site holding the users cannot put them into a VLAN of a
-network that did not agree.
+A cross site assignment is honoured only if the site answering the
+RADIUS request lists it under **vlan_trusts**, as
+*site*\[**:***vlan_site*\[**/***vlan*\]\] (see **otpme**(7)). The VLAN
+is switched in that site's network, whichever site owns the VLAN object,
+so that site decides. The **assign** ACL alone is not enough here,
+because it is checked by the site making the assignment against its own
+copy of the VLAN, so a site holding the users cannot put them into a
+VLAN of a network that did not agree.
 
 A VLAN object carries an optional VLAN ID. If a VLAN ID is set it is
 sent to the switch. Without a VLAN ID the VLAN name is sent instead,
@@ -195,11 +196,14 @@ Change the VLAN ID
 **otpme-vlan add_acl guests role netadmins assign**  
 Allow the role "netadmins" to assign this VLAN
 
-**otpme-token config joe/login vlan guests**  
+**otpme-token config joe/login vlans guests**  
 Assign the VLAN to a token
 
-**otpme-host config myhost vlan berlin/guests**  
+**otpme-host config myhost vlans berlin/guests**  
 Assign a VLAN of another site to a host
+
+**otpme-site config berlin vlan_trusts master:berlin/guests**  
+Allow objects of the site "master" to get the VLAN "guests" of berlin
 
 # FILES
 

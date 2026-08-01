@@ -308,5 +308,6 @@ class YubikeyHmacServerHandler(object):
 
 class Yubikeyhmac(Yubikey):
     """ Class for yubikey HMAC tokens. """
+    type = "yubikey_hmac"
     # Set supported auth types
     otpme_auth_types = [ "yubikey_hmac" ]

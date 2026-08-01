@@ -456,6 +456,7 @@ class OTPmeAgent(UnixDaemon):
 
     def check_idled(self, login_pid, login_user, realm, site):
         """ Wait for events from idled. """
+        from otpme import __version__
         log_msg = _("Connecting to idled: {login_user}", log=True)[1]
         log_msg = log_msg.format(login_user=login_user)
         self.logger.debug(log_msg)
@@ -508,6 +509,7 @@ class OTPmeAgent(UnixDaemon):
                                 'login_token'   : login_token,
                                 'login_time'    : login_time,
                                 'session_uuid'  : session_uuid,
+                                'version'       : __version__,
                                 }
                 try:
                     status, \

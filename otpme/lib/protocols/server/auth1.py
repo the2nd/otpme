@@ -879,6 +879,11 @@ class OTPmeAuthP1(OTPmeServer1):
             sso_challenge = command_args['sso_challenge']
         except Exception:
             sso_challenge = None
+        try:
+            dot1x_auth = command_args['dot1x_auth']
+        except Exception:
+            dot1x_auth = False
+
         # Get audit logger.
         audit_logger = config.audit_logger
         if command == "token_verify":
@@ -961,7 +966,8 @@ class OTPmeAuthP1(OTPmeServer1):
             if command == "token_verify":
                 if x_token.pass_type != "static":
                     if x_token.pass_type != "otp":
-                        continue
+                        if not x_token.support_dot1x:
+                            continue
             if command == "token_verify_mschap":
                 if not x_token.mschap_enabled:
                     continue
@@ -970,16 +976,28 @@ class OTPmeAuthP1(OTPmeServer1):
                     continue
                 if x_token.token_type == "passkey" and not fido2_passkeys_allowed:
                     continue
+            if dot1x_auth:
+                if not x_token.support_dot1x:
+                    continue
             if jwt_access_group:
                 if not jwt_ag.is_assigned_token(x_token.uuid):
                     continue
-            try:
-                verify_status = x_token.verify(**token_verify_parms)
-            except Exception as e:
-                log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
-                log_msg = log_msg.format(token_name=x_token.name, error=e)
-                self.logger.critical(log_msg)
-                continue
+            if dot1x_auth:
+                try:
+                    verify_status = x_token.verify_dot1x(**token_verify_parms)
+                except Exception as e:
+                    log_msg = _("Verification (dot1x) of token '{token_name}' returned error: {error}", log=True)[1]
+                    log_msg = log_msg.format(token_name=x_token.name, error=e)
+                    self.logger.critical(log_msg)
+                    continue
+            else:
+                try:
+                    verify_status = x_token.verify(**token_verify_parms)
+                except Exception as e:
+                    log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                    log_msg = log_msg.format(token_name=x_token.name, error=e)
+                    self.logger.critical(log_msg)
+                    continue
 
             # MSCHAP tokens return a (status, nt_key, nt_hash) tuple; all
             # other verify() dispatchers return a scalar. Unwrap the tuple
@@ -1182,14 +1200,18 @@ class OTPmeAuthP1(OTPmeServer1):
                                             run_policies=True,
                                             _no_func_cache=True)
             if not auth_ag:
-                message, log_msg = _("Unable to get accessgroup from client: {client}: {acccess_group}", log=True)
-                log_msg = log_msg.format(client=auth_client.name, acccess_group=auth_client.acccess_group)
+                message, log_msg = _("Unable to get accessgroup from client: {client}: {access_group}", log=True)
+                log_msg = log_msg.format(client=auth_client.name, access_group=auth_client.access_group)
                 self.logger.critical(log_msg)
                 message = message.format(client=client, client_ip=client_ip)
                 status = status_codes.ERR
                 return self.build_response(status, message)
             # Set JWT accessgroup.
             verify_args['jwt_access_group'] = f"{auth_ag.site}/{auth_ag.name}"
+            # Set dot1x auth.
+            if auth_client.dot1x_auth:
+                verify_args['dot1x_auth'] = True
+            access_group = auth_client.access_group
 
         # Send verify request.
         if auth_type == "mschap":

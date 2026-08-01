@@ -69936,9 +69936,9 @@ msgstr "Esecuzione dello stato dell'agente ssh fallita: {e}"
 
 #. AI-generated
 #: otpme/lib/pam.py:893 build/lib/otpme/lib/pam.py:893 otpme/lib/pam.py:903
-msgid "Please add PAM module config parameter <dot1x_token_type>"
+msgid "Please add PAM module config parameter <dot1x_token_types>"
 msgstr ""
-"Aggiungere il parametro di configurazione del modulo PAM <dot1x_token_type>"
+"Aggiungere il parametro di configurazione del modulo PAM <dot1x_token_types>"
 
 #. AI-generated
 #: otpme/lib/pam.py:917 build/lib/otpme/lib/pam.py:917 otpme/lib/pam.py:927

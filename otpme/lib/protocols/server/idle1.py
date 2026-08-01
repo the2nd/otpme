@@ -120,7 +120,11 @@ class OTPmeIdleP1(OTPmeServer1):
                 session_uuid = command_args['session_uuid']
             except Exception:
                 session_uuid = None
-            return self._handle_wait(username, login_token, login_time, session_uuid)
+            try:
+                version = command_args['version']
+            except Exception:
+                version = None
+            return self._handle_wait(username, login_token, login_time, session_uuid, version)
 
         if command == "who":
             return self._handle_who(username)
@@ -151,7 +155,7 @@ class OTPmeIdleP1(OTPmeServer1):
         self.dispatcher.publish(username, event)
         return self.build_response(True, "ok")
 
-    def _handle_wait(self, username, login_token, login_time, session_uuid):
+    def _handle_wait(self, username, login_token, login_time, session_uuid, version):
         """ Long-poll: subscribe the calling agent to its user's queue
         and block until an event arrives. On timeout we loop silently
         (no keepalive frame). Returns one matching event per call; the
@@ -185,6 +189,7 @@ class OTPmeIdleP1(OTPmeServer1):
                         'login_token'   : login_token,
                         'client_ip'     : self.client,
                         'session'       : self.session,
+                        'version'       : version,
                         }
             self.q = self.dispatcher.subscribe(username, host, login_data=login_data)
             self.subscribed_username = username

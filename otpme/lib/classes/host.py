@@ -1103,6 +1103,8 @@ class Host(OTPmeHost, OTPmeDevice):
                             "JOIN_TOKEN",
                             "JOIN_TOKEN_CACHE",
                             "DYNAMIC_GROUPS",
+                            "MAC_ADDRESS",
+                            "CONFIG_PARAMS:vlans",
                             ]
                         },
                     }

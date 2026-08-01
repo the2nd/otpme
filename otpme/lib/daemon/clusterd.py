@@ -1056,6 +1056,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.online_nodes = []
         self.min_written_nodes = 3
         self.processed_journal_entries = {}
+        self.preferred_master_node_set = False
         self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
                                                     random_name=False,
                                                     init=False)
@@ -2558,9 +2559,24 @@ class ClusterDaemon(OTPmeDaemon):
                 current_master_node = multiprocessing.master_node['master']
             except KeyError:
                 current_master_node = None
+
+            is_preferred_master_node = False
+            if config.one_node_setup:
+                self.preferred_master_node_set = True
+            else:
+                own_site = backend.get_object(uuid=config.site_uuid)
+                preferred_master_node = own_site.get_config_parameter("preferred_master_node")
+                if preferred_master_node == self.host_name:
+                    is_preferred_master_node = True
+
             if current_master_node == new_master_node:
-                time.sleep(quorum_check_interval)
-                continue
+                if is_preferred_master_node:
+                    if self.preferred_master_node_set:
+                        time.sleep(quorum_check_interval)
+                        continue
+                else:
+                    time.sleep(quorum_check_interval)
+                    continue
 
             while True:
                 cluster_journal_files = self.get_cluster_in_journal()
@@ -2569,6 +2585,35 @@ class ClusterDaemon(OTPmeDaemon):
                 log_msg = _("Waiting for cluster in-journal to be processed...", log=True)[1]
                 self.logger.info(log_msg)
                 time.sleep(1)
+
+            # Handle preferred master node.
+            if is_preferred_master_node and not self.preferred_master_node_set and config.cluster_status:
+                if new_master_node != self.host_name:
+                    while True:
+                        # Get connection to new master node.
+                        try:
+                            clusterd_conn = self.get_clusterd_connection(new_master_node)
+                        except Exception as e:
+                            log_msg = _("Failed to get master node connection: {node}: {error}", log=True)[1]
+                            log_msg = log_msg.format(node=new_master_node, error=e)
+                            self.logger.warning(log_msg)
+                            time.sleep(1)
+                            continue
+                        # Try to set master failover status.
+                        try:
+                            clusterd_conn.start_master_failover()
+                        except Exception as e:
+                            log_msg = _("Failed to set master failover status: {node}: {error}", log=True)[1]
+                            log_msg = log_msg.format(node=new_master_node, error=e)
+                            self.logger.warning(log_msg)
+                            time.sleep(1)
+                            continue
+                        finally:
+                            clusterd_conn.close()
+                        break
+                    config.touch_node_sync_file()
+                    new_master_node = self.do_master_node_election()
+                    self.preferred_master_node_set = True
 
             try:
                 self.switch_master_node(current_master_node, new_master_node)

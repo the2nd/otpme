@@ -66,12 +66,30 @@ logger = config.logger
 # tunnel to outer). Keyed by (calling_station_id, username) so a
 # supplicant that spoofs another user's MAC but authenticates with its
 # own credentials cannot inherit the other user's VLAN in post_auth.
+# Written by set_vlan_cache() on every successful auth, which also drops
+# the entry when no VLAN is assigned anymore.
 # Bounded growth: one entry per (MAC, user) pair that successfully
 # authenticated; eviction/TTL is a separate hardening lift.
 _vlan_cache = {}
 client_cache = {}
 
 register_module("otpme.lib.protocols.otpme_client")
+
+def set_vlan_cache(calling_station_id, username, vlan):
+    """ Remember the VLAN for post_auth() (inner tunnel to outer).
+
+    Must be called on every successful auth, with vlan=None too: without
+    dropping the entry post_auth() would keep adding the VLAN of an
+    earlier request to the Access-Accept, and the switch would never fall
+    back to the VLAN configured on the port.
+    """
+    if not calling_station_id or not username:
+        return
+    cache_key = (calling_station_id, username)
+    if vlan:
+        _vlan_cache[cache_key] = vlan
+        return
+    _vlan_cache.pop(cache_key, None)
 
 def get_client(nasid, client_ip):
     client_key = f"{nasid}{client_ip}"
@@ -424,9 +442,10 @@ def authenticate(authData):
                                                         ('Tunnel-Medium-Type', '6'),     # IEEE-802
                                                         ('Tunnel-Private-Group-Id', vlan),  # VLAN-ID
                                                     )
-                    if calling_station_id and username:
-                        _vlan_cache[(calling_station_id, username)] = vlan
-
+                # Cache VLAN for post_auth, keyed on the authenticated user
+                # so a different supplicant on the same MAC cannot inherit
+                # this VLAN.
+                set_vlan_cache(calling_station_id, username, vlan)
 
                 # Build configTuple for rlm_python.
                 config_tuple = (
@@ -586,11 +605,10 @@ def authenticate(authData):
                                                         ('Tunnel-Medium-Type', '6'),     # IEEE-802
                                                         ('Tunnel-Private-Group-Id', vlan),  # VLAN-ID
                                                     )
-                    # Cache VLAN for post_auth, keyed on the authenticated
-                    # user so a different supplicant on the same MAC cannot
-                    # inherit this VLAN.
-                    if calling_station_id and username:
-                        _vlan_cache[(calling_station_id, username)] = vlan
+                # Cache VLAN for post_auth, keyed on the authenticated user
+                # so a different supplicant on the same MAC cannot inherit
+                # this VLAN.
+                set_vlan_cache(calling_station_id, username, vlan)
 
                 log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
                 #log(radiusd.L_DBG, log_msg)

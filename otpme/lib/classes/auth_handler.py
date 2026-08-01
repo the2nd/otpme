@@ -104,9 +104,10 @@ class AuthHandler(object):
         site), because the object may be used at more than one site (e.g.
         users created on the master site only, while each site runs its own
         VLANs). We are the site serving this RADIUS request, so our own VLAN
-        is the one to use. Without one we return no VLAN at all, unless we
-        list the VLAN owning site in our "use_vlans_from" config parameter.
+        is the one to use. Which of the others we may hand out, and in which
+        order we try them, is decided by our "vlan_trusts" config parameter.
         """
+        from otpme.lib.classes.vlan import get_vlan_trusts
         vlans = config_object.get_config_parameter("vlans",
                                                 apply_getter=False)
         if not vlans:
@@ -121,33 +122,26 @@ class AuthHandler(object):
             pass
         else:
             return vlan.get_vlan()
-        # No VLAN of our own site: use the VLAN of a site we accept VLANs
-        # from (in the configured order).
-        own_site = backend.get_object(object_type="site",
-                                    uuid=config.site_uuid)
-        use_vlans_from = None
-        if own_site:
-            use_vlans_from = own_site.get_config_parameter("use_vlans_from",
-                                                        apply_getter=False)
-        if not use_vlans_from:
-            log_msg = _("Ignoring VLANs assigned to {object_id}: none of our site.", log=True)[1]
-            log_msg = log_msg.format(object_id=config_object.oid)
-            self.logger.debug(log_msg)
-            return
-        for site_uuid in use_vlans_from:
-            try:
-                vlan = site_vlans[site_uuid]
-            except KeyError:
-                continue
-            return vlan.get_vlan()
-        log_msg = _("Ignoring VLANs assigned to {object_id}: no VLAN of our site or of a site we accept VLANs from.", log=True)[1]
+        # No VLAN of our own site: the order of our trusts decides which of
+        # the remaining ones we hand out.
+        for trust_vlan_site_uuid, trust_vlan_uuid in get_vlan_trusts(config.site_uuid,
+                                                        config_object.site_uuid):
+            for vlan in site_vlans.values():
+                if trust_vlan_site_uuid is not None:
+                    if trust_vlan_site_uuid != vlan.site_uuid:
+                        continue
+                    if trust_vlan_uuid is not None:
+                        if trust_vlan_uuid != vlan.uuid:
+                            continue
+                return vlan.get_vlan()
+        log_msg = _("Ignoring VLANs assigned to {object_id}: none of our site and none we hand out for its site.", log=True)[1]
         log_msg = log_msg.format(object_id=config_object.oid)
         self.logger.debug(log_msg)
         return
 
     def get_site_vlans(self, config_object, vlans):
         """ Get the assigned VLANs (that we may use) by site UUID. """
-        from otpme.lib.classes.vlan import site_trusts_site_for_vlan
+        from otpme.lib.classes.vlan import site_allows_vlan
         site_vlans = {}
         for vlan_uuid in vlans:
             vlan = backend.get_object(object_type="vlan", uuid=vlan_uuid)
@@ -163,13 +157,14 @@ class AuthHandler(object):
                                         vlan=vlan.oid)
                 self.logger.warning(log_msg)
                 continue
-            # A cross site assignment was authorized by the site that made it,
-            # against its own copy of the VLAN. We are the site serving this
-            # RADIUS request, so this is where the VLAN owning site gets to
-            # decide. Without this a site holding the users (e.g. the master
-            # site) could put them into any VLAN of our network.
-            if not site_trusts_site_for_vlan(vlan.site_uuid,
-                                            config_object.site_uuid):
+            # The VLAN is switched in our network, so we are the site that
+            # decides whether we hand it out for an object of that site.
+            # Without this a site holding the users (e.g. the master site)
+            # could put them into any VLAN of our network.
+            if not site_allows_vlan(config.site_uuid,
+                                    config_object.site_uuid,
+                                    vlan.site_uuid,
+                                    vlan.uuid):
                 log_msg = _("Ignoring VLAN assigned to {object_id} by untrusted site: {vlan}", log=True)[1]
                 log_msg = log_msg.format(object_id=config_object.oid,
                                         vlan=vlan.oid)
@@ -2005,6 +2000,11 @@ class AuthHandler(object):
 
         if self.auth_failed:
             return
+
+        # Get vlan on dot1x auth.
+        if self.auth_client and self.auth_client.dot1x_auth:
+            if self.auth_token.support_dot1x:
+                self.vlan = self.get_vlan(self.auth_token)
 
         self.auth_status = True
         if self.realm_login:

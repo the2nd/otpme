@@ -84,7 +84,7 @@ class PamHandler(object):
         self.smartcard = None
         self.do_dot1x = False
         self.dot1x_timeout = 10
-        self.dot1x_token_type = None
+        self.dot1x_token_types = []
         self.dot1x_connection = "dot1x-lan"
         self.failed_message = "Login failed"
         self.auth_message = ""
@@ -234,8 +234,8 @@ class PamHandler(object):
                     self.logger.warning(log_msg)
             if arg == "dot1x_connection":
                 self.dot1x_connection = val
-            if arg == "dot1x_token_type":
-                self.dot1x_token_type = val
+            if arg == "dot1x_token_types":
+                self.dot1x_token_types = val.split(",")
             if arg == "use_smartcard":
                 if val.lower() == "true":
                     self.use_smartcard = True
@@ -899,8 +899,8 @@ class PamHandler(object):
         """ Do 802.1x port authentication. """
         if not self.do_dot1x:
             return
-        if not self.dot1x_token_type:
-            msg = _("Please add PAM module config parameter <dot1x_token_type>")
+        if not self.dot1x_token_types:
+            msg = _("Please add PAM module config parameter <dot1x_token_types>")
             self.logger.critical(msg)
             return
         # If connection link is down, do nothing (e.g. wlan or offline auth)..
@@ -910,29 +910,34 @@ class PamHandler(object):
         if self.do_dot1x == "auto" or force_auth is False:
             if stuff.network_up():
                 return
-        # Get smartcard password.
+        # Check if dot1x smartcard auth can be done.
         supported_smartcards = config.get_supported_smartcards()
-        if self.dot1x_token_type in supported_smartcards:
-            password = self.get_password(prompt="Smartcard password: ")
+        dot1x_smartcard_types = []
+        for token_type in self.dot1x_token_types:
+            if token_type in supported_smartcards:
+                dot1x_smartcard_types.append(token_type)
+        if dot1x_smartcard_types:
             try:
-                smartcard = detect_smartcard(sc_types=[self.dot1x_token_type])
+                smartcard = detect_smartcard(sc_types=dot1x_smartcard_types)
             except Exception as e:
                 msg = _("Error detecting smartcard: {error}")
                 msg = msg.format(error=e)
                 raise OTPmeException(msg) from e
             # Get smartcard handler.
             try:
-                smartcard_client_handler = config.get_smartcard_handler(self.dot1x_token_type)[0]
+                smartcard_client_handler = config.get_smartcard_handler(smartcard.type)[0]
             except NotRegistered:
                 msg = _("Invalid smartcard type: {sc_type}")
-                msg = msg.format(sc_type=self.dot1x_token_type)
+                msg = msg.format(sc_type=smartcard.type)
                 self.logger.critical(msg)
                 return
-            smartcard_client_handler = smartcard_client_handler(sc_type=self.dot1x_token_type,
+            # Get smartcard password.
+            smartcard_client_handler = smartcard_client_handler(sc_type=smartcard.type,
                                                             token_rel_path=f"{self.username}/1dox-dummy",
                                                             message_method=self.send_pam_message,
                                                             error_message_method=self.send_pam_error)
             # Gen OTP via smartcard.
+            password = self.get_password(prompt="Smartcard password: ")
             dot1x_pass = smartcard_client_handler.handle_dot1x(smartcard=smartcard,
                                                         password=password)
         else:

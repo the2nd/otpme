@@ -2521,7 +2521,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 if config.auth_token.is_admin():
                     full = True
                 else:
-                    allow_trash_empty = config.auth_token.get_config_parameter("allow_non_admin_trash_emtpy")
+                    allow_trash_empty = config.auth_token.get_config_parameter("allow_non_admin_trash_empty")
                     if not allow_trash_empty:
                         status = False
                         response = _("You need to be admin to run this command.")

@@ -471,6 +471,23 @@ parameter cannot enforce itself. Further values can be added with **-a**
 and removed individually with **-d**.  
 Object types: site
 
+**changelog (bool, default: true)**  
+Whether commands executed against this object are recorded in the
+object's changelog. Resolved via the inheritance chain (object → unit →
+site). Disable to skip changelog bookkeeping for high-churn objects.
+Sites that want to force their own setting on every child add
+**changelog** to **force_site_config_parameters**.  
+Object types: all tree objects
+
+**allow_non_admin_trash_empty (bool, default: true)**  
+Whether non-admin tokens may run **otpme-trash empty**. If enabled, the
+caller can only empty the trash entries created by their own token (the
+command is silently scoped to **--auth-token** = the caller). If
+disabled, the command is rejected for non-admin tokens and only admins
+may empty the trash. Resolved from the calling token's inheritance
+chain.  
+Object types: site, unit, user, token
+
 ## Key Backup
 
 **private_key_backup_key (str)**  
@@ -636,39 +653,40 @@ Each value must be the name of an existing VLAN object (see
 VLAN object, so VLAN assignment can be delegated per VLAN.  
 VLANs of other sites can be assigned as *site***/***vlan*, which is
 needed when users are created on the master site only while each site
-runs its own VLANs. A cross-site assignment additionally requires the
-VLAN owning site to list the assigning site under **vlan_trusts**.  
+runs its own VLANs. Whether such an assignment is honoured is decided by
+the site answering the RADIUS request, via its **vlan_trusts**.  
 At most one VLAN per site can be assigned, because which of them is used
 depends on the site answering the RADIUS request: that site returns its
-own VLAN. If none of the assigned VLANs belongs to it, no VLAN is
-returned at all, unless it lists the VLAN owning site under
-**use_vlans_from**.  
+own VLAN. If none of the assigned VLANs belongs to it, it returns the
+first one its **vlan_trusts** allow, in the order of those entries;
+without a matching entry no VLAN is returned at all.  
 What is sent to the switch as **Tunnel-Private-Group-Id** is the VLAN
 objects VLAN ID, or its name if no VLAN ID is set. The assignment is
 stored by UUID, so renaming a VLAN keeps existing assignments intact.  
 Object types: site, unit, host, device, user, token
 
 **vlan_trusts (list)**  
-Comma-separated list of remote sites this site accepts VLAN assignments
-from. Without an entry, a VLAN of this site assigned to an object of a
-remote site is ignored when this site answers the RADIUS request, and no
-VLAN is returned.  
-This is enforced where the VLAN is resolved, on the site serving the
-RADIUS request, not only where the assignment is made. The **assign**
-ACL alone is not sufficient for cross-site assignments: it is checked by
-the site making the assignment, against its own copy of the VLAN.
-Own-site assignments are always trusted.  
-Object types: site
-
-**use_vlans_from (list)**  
-Comma-separated list of remote sites whose VLANs this site uses when an
-object has no VLAN of this site assigned (see **vlans**). Without an
-entry this site returns no VLAN in that case. Sites are tried in the
-configured order, so the first listed site that has a VLAN assigned
-wins.  
-This is the counterpart of **vlan_trusts**: the VLAN owning site decides
-who may assign its VLANs, this site decides whose VLANs it hands out to
-its own switches.  
+Comma-separated list of VLANs this site hands out for objects of other
+sites. The VLAN ends up on a switch port of this site's network,
+whichever site owns the VLAN object, so this site decides, and this is
+the only place where it is decided. Without a matching entry the
+assignment is ignored when this site answers the RADIUS request.  
+An entry is *site*\[**:***vlan_site*\[**/***vlan*\]\], where *site* is
+the site of the object the VLAN is assigned to. What is left out means
+"all", e.g. on site **berlin**:  
+**munich** — objects of munich may get any VLAN.  
+**munich:berlin** — any VLAN of berlin.  
+**munich:berlin/home** — only the VLAN **home** of berlin.  
+**munich:munich/clients** — only the VLAN **clients** of munich, which
+berlin then switches in its own network.  
+**berlin:munich/clients** — berlin's own objects may get that VLAN of
+munich.  
+VLANs of this site assigned to objects of this site need no entry. If an
+object has VLANs of several sites assigned, this site's own VLAN wins;
+otherwise the order of the entries decides. The **assign** ACL on the
+VLAN object is not a substitute: it is checked by the site making the
+assignment, against its own copy of the VLAN, so it is not this site's
+consent.  
 Object types: site
 
 ## SSO Portal
@@ -749,6 +767,15 @@ Per-username rate limit on the SSO portal /login POST endpoint. Targets
 account brute-force regardless of source IP; works alongside authd's
 auto_disable policy. NAT-safe because the key is the submitted
 username.  
+Object types: site
+
+**sso_rate_limit_settings (str, default: 60/minute)**  
+Per-user rate limit on every authenticated **/settings/\*** and
+credential-change endpoint of the SSO portal (token registration,
+password/PIN change, etc.). Keyed on the logged-in username, so multiple
+tabs or a runaway poll loop from one user cannot burn a shared IP
+bucket. Accepts the standard Flask-Limiter syntax (e.g. **60/minute**,
+**600/hour**).  
 Object types: site
 
 **httpd_ssl_socket_uri (str, default: tcp://\[::\]:443)**  
@@ -924,6 +951,15 @@ ordinary OTPme hosts on the site to query active sessions of the users
 that are logged in there. Defense-in-depth: enable only when needed.  
 Object types: site
 
+**preferred_master_node (str)**  
+Name of the node that **clusterd** should elect as master for this site
+whenever it is up and the cluster has quorum. If the current master is a
+different node, clusterd triggers a controlled failover to hand the
+master role to the preferred node. Applied once per clusterd lifetime
+(i.e. after a daemon restart the switch runs again if needed). Leave
+unset to let the normal election pick any eligible node.  
+Object types: site
+
 ## Connection Limits
 
 Per-daemon ceilings on the number of concurrent client connections
@@ -1045,6 +1081,9 @@ Cap for dictionary names.
 
 **max_device_name_len (int, default: 64)**  
 Cap for device names.
+
+**max_vlan_name_len (int, default: 64)**  
+Cap for VLAN names.
 
 ## Backup
 

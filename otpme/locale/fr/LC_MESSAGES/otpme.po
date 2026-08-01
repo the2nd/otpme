@@ -70255,10 +70255,10 @@ msgstr "Échec de l'exécution du statut de l'agent ssh : {e}"
 
 #. AI-generated
 #: otpme/lib/pam.py:893 build/lib/otpme/lib/pam.py:893 otpme/lib/pam.py:903
-msgid "Please add PAM module config parameter <dot1x_token_type>"
+msgid "Please add PAM module config parameter <dot1x_token_types>"
 msgstr ""
 "Veuillez ajouter le paramètre de configuration du module PAM "
-"<dot1x_token_type>"
+"<dot1x_token_types>"
 
 #. AI-generated
 #: otpme/lib/pam.py:917 build/lib/otpme/lib/pam.py:917 otpme/lib/pam.py:927
