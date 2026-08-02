@@ -15,7 +15,7 @@ manages node pools in the OTPme system. A pool defines which nodes are used for 
 Create a new pool.
 .TP
 .B del \fIpool\fR
-Delete a pool.
+Delete a pool. Asks for confirmation according to the confirmation policy, and warns about shares that use the pool.
 .TP
 .B show \fR[\fIpool\fR]
 Display pool information.

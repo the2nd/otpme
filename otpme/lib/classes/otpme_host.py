@@ -771,14 +771,26 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("revoke certificate")
     def revoke_cert(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Revoke our certificate. """
+        """ Revoke our certificate.
+
+        Callers that revoke as part of another operation (renew, leave,
+        delete) must pass force=True: they either asked already or run
+        without a callback the user could answer on.
+        """
         if self.cert is None:
             return callback.error("Host does not have a certificate.")
+        msg = _("Revoke certificate of {object_type} '{object_name}'? "
+                "It cannot connect to the realm until it is joined "
+                "again.: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -898,10 +910,12 @@ class OTPmeHost(OTPmeClientObject):
             msg = msg.format(error=e)
             return callback.error(msg)
 
-        # Revoke old cert.
+        # Revoke old cert. Renewing is what the caller asked for, so do
+        # not ask again for the revocation it implies.
         if self.cert:
             try:
-                self.revoke_cert(verify_acls=False,
+                self.revoke_cert(force=True,
+                                verify_acls=False,
                                 callback=callback,
                                 _caller=_caller)
             except CertAlreadyRevoked:
@@ -1145,10 +1159,11 @@ class OTPmeHost(OTPmeClientObject):
             except Exception as e:
                 return callback.error()
 
-        # Revoke host cert.
+        # Revoke host cert. Leaving the realm is the confirmed action.
         if not keep_cert and self.cert:
             try:
-                self.revoke_cert(verify_acls=False,
+                self.revoke_cert(force=True,
+                                verify_acls=False,
                                 callback=callback)
             except CertAlreadyRevoked:
                 pass
@@ -1309,10 +1324,11 @@ class OTPmeHost(OTPmeClientObject):
             msg = "Cannot delete master node."
             return callback.error(msg)
 
-        # Revoke host cert.
+        # Revoke host cert. The delete is already confirmed.
         if self.cert:
             try:
-                self.revoke_cert(verify_acls=False,
+                self.revoke_cert(force=True,
+                                verify_acls=False,
                                 callback=callback)
             except CertAlreadyRevoked:
                 pass

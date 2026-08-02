@@ -630,6 +630,19 @@ Access group that new hosts are automatically added to when they are
 created. This is useful for MAC Authentication Bypass (MAB) port
 authentication, where hosts need to be assigned to an access group upon
 registration. The value must be the name of an existing access group.  
+Setting this parameter requires the **add:host** ACL on that access
+group, because the hosts are added to it without a further permission
+check.  
+Object types: site, unit
+
+**hosts_role (str)**  
+Role that new hosts are automatically added to when they are created.
+The value must be the name of an existing role, given as
+*site***/***role* to use a role of another site (e.g. roles kept on the
+master site only). Without a site the role is looked up on the local
+site.  
+Setting this parameter requires the **add:host** ACL on that role,
+because the hosts are added to it without a further permission check.  
 Object types: site, unit
 
 ## Devices
@@ -639,6 +652,19 @@ Access group that new devices are automatically added to when they are
 created. This is useful for MAC Authentication Bypass (MAB) of network
 devices such as IP phones or printers. The value must be the name of an
 existing access group.  
+Setting this parameter requires the **add:device** ACL on that access
+group, because the devices are added to it without a further permission
+check.  
+Object types: site, unit
+
+**devices_role (str)**  
+Role that new devices are automatically added to when they are created.
+The value must be the name of an existing role, given as
+*site***/***role* to use a role of another site. Without a site the role
+is looked up on the local site.  
+Setting this parameter requires the **add:device** ACL on that role,
+because the devices are added to it without a further permission
+check.  
 Object types: site, unit
 
 ## VLAN

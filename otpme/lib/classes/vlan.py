@@ -763,6 +763,56 @@ class Vlan(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog("delete")
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Delete VLAN. """
+        if not self.exists():
+            msg = _("VLAN does not exist.")
+            return callback.error(msg)
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = f"delete:{self.type}"
+                if not parent_object.verify_acl(del_acl):
+                    msg = _("Permission denied: {vlan_name}")
+                    msg = msg.format(vlan_name=self.name)
+                    return callback.error(msg, exception=PermissionDenied)
+
+        if run_policies:
+            try:
+                self.run_policies("delete", callback=callback, _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        # Assignments live in the "vlans" config parameter of the assigned
+        # objects, which is not indexed, so we cannot list them here.
+        msg = _("Objects the VLAN is assigned to will keep an unresolvable "
+                "assignment.")
+        if not self.ask_delete_confirmation(force=force,
+                                            exception=msg,
+                                            callback=callback):
+            return callback.abort()
+
+        # Delete object using parent class.
+        return super().delete(verbose_level=verbose_level,
+                            force=force,
+                            callback=callback,
+                            **kwargs)
+
+    @object_lock(full_lock=True)
+    @backend.transaction
+    @audit_log()
     @object_changelog("rename to {new_name}")
     def rename(
         self,

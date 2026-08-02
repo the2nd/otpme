@@ -143,7 +143,11 @@ def get_default_config():
 def cleanup():
     global Session
     if Session:
-        Session.remove()
+        # Best effort, see postgres.cleanup() for the rationale.
+        try:
+            Session.remove()
+        except Exception:
+            pass
 
 def atfork():
     # https://docs.sqlalchemy.org/en/20/core/pooling.html#using-connection-pools-with-multiprocessing-or-os-fork

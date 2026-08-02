@@ -10,12 +10,14 @@ try:
 except Exception:
     pass
 
-#from otpme.lib import backend
+from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
 from otpme.lib.classes.device import get_acls
 from otpme.lib.classes.device import get_value_acls
+from otpme.lib.classes.role import get_roles as _get_roles
 
 from otpme.lib.exceptions import *
 
@@ -24,6 +26,8 @@ table_headers = [
                 "unit",
                 "status",
                 "mac",
+                "roles",
+                "accessgroups",
                 "policies",
                 "inherit",
                 "description",
@@ -65,7 +69,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, device_order, device_data, acls, object_type=None,
-    limit=None, max_policies=5, output_fields=None, acl_checker=None, **kwargs):
+    limit=None, max_roles=5, max_policies=5, output_fields=None,
+    acl_checker=None, **kwargs):
     """ Build table rows for devices. """
     if output_fields is None:
         output_fields = []
@@ -74,6 +79,7 @@ def row_getter(realm, site, device_order, device_data, acls, object_type=None,
         if len(device_order) == 1:
             limit = 30
     if limit is not None:
+        max_roles = limit
         max_policies = limit
     for device_uuid in device_order:
         row = []
@@ -132,6 +138,118 @@ def row_getter(realm, site, device_order, device_data, acls, object_type=None,
         if "mac" in output_fields:
             if check_acl("view:mac_address"):
                 row.append(mac_address)
+            else:
+                row.append("-")
+        # The accessgroups a device gets access by depend on its roles,
+        # so both columns share the role lookup.
+        get_roles = False
+        show_roles = False
+        if "roles" in output_fields:
+            if check_acl("view:roles"):
+                get_roles = True
+                show_roles = True
+        show_ags = False
+        if "accessgroups" in output_fields:
+            if check_acl("view:accessgroups"):
+                get_roles = True
+                show_ags = True
+        device_roles = []
+        all_device_roles = []
+        if get_roles:
+            device_roles = backend.search(object_type="role",
+                                        attribute="device",
+                                        value=device_uuid,
+                                        return_type="uuid")
+            all_device_roles = list(device_roles)
+            for uuid in device_roles:
+                parent_roles = _get_roles(role_uuid=uuid,
+                                        parent=True,
+                                        recursive=True,
+                                        return_type="uuid")
+                for x in parent_roles:
+                    if x in all_device_roles:
+                        continue
+                    all_device_roles.append(x)
+        # Roles.
+        if "roles" in output_fields:
+            if show_roles:
+                member_roles = []
+                roles_result = {}
+                if device_roles:
+                    return_attrs = ['rel_path', 'site', 'enabled']
+                    roles_result = backend.search(object_type="role",
+                                                attribute="uuid",
+                                                values=device_roles,
+                                                order_by="rel_path",
+                                                return_attributes=return_attrs)
+                roles_count = len(roles_result)
+                for role_uuid in roles_result:
+                    role_site = roles_result[role_uuid]['site']
+                    role_rel_path = roles_result[role_uuid]['rel_path']
+                    try:
+                        role_enabled = roles_result[role_uuid]['enabled'][0]
+                    except Exception:
+                        role_enabled = False
+                    role_status_string = ""
+                    if not role_enabled:
+                        role_status_string = " (D)"
+                    role_string = f"{role_rel_path} ({role_site}) {role_status_string}"
+                    member_roles.append(role_string)
+                    if len(member_roles) == max_roles:
+                        if roles_count > max_roles:
+                            msg = _("({processed_roles} of {roles_count} roles total)")
+                            msg = msg.format(processed_roles=len(member_roles),
+                                            roles_count=roles_count)
+                            member_roles.append(msg)
+                        break
+                row.append("\n".join(member_roles))
+            else:
+                row.append("-")
+        # Accessgroups.
+        if "accessgroups" in output_fields:
+            if show_ags:
+                # A device is granted access by the accessgroups it is a
+                # member of and by the ones its roles are in (see
+                # AccessGroup.is_assigned_device()). The latter are shown
+                # in brackets.
+                return_attrs = ['name', 'site', 'enabled']
+                device_ags = backend.search(object_type="accessgroup",
+                                        attribute="device",
+                                        value=device_uuid,
+                                        return_attributes=return_attrs)
+                role_ags = {}
+                if all_device_roles:
+                    role_ags = backend.search(object_type="accessgroup",
+                                            attribute="role",
+                                            values=all_device_roles,
+                                            return_attributes=return_attrs)
+                ag_strings = []
+                all_ags = list(device_ags)
+                for ag_uuid in role_ags:
+                    if ag_uuid in device_ags:
+                        continue
+                    all_ags.append(ag_uuid)
+                for ag_uuid in all_ags:
+                    if ag_uuid in device_ags:
+                        ag_data = device_ags
+                    else:
+                        ag_data = role_ags
+                    ag_name = ag_data[ag_uuid]['name']
+                    ag_site = ag_data[ag_uuid]['site']
+                    try:
+                        ag_enabled = ag_data[ag_uuid]['enabled'][0]
+                    except Exception:
+                        ag_enabled = False
+                    if ag_site == config.site:
+                        ag_string = ag_name
+                    else:
+                        ag_string = f"{ag_site}/{ag_name}"
+                    if not ag_enabled:
+                        ag_string = f"{ag_string} (D)"
+                    if ag_uuid not in device_ags:
+                        ag_string = f"({ag_string})"
+                    ag_strings.append(ag_string)
+                row.append("\n".join(ag_strings))
             else:
                 row.append("-")
         # Policies.

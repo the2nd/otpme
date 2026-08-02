@@ -31,8 +31,24 @@ permissions for new directories and files. Use **--crypt** to enable
 encryption, **--restore** to add a restore share and **--restore-token**
 for encrypted restore shares.
 
-**del *share***  
-Delete a share.
+**del \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
+Delete a share. Asks for confirmation according to the confirmation
+policy, and warns about assigned tokens and roles. For an encrypted
+share it also warns that the share keys are deleted with it, so its data
+can then only be decrypted by someone in possession of the master
+password. Online hosts are told to unmount the share.
+
+**--share-notify**  
+Send unmount notification to all online hosts.
+
+**--no-share-notify**  
+Do not send unmount notification to all online hosts.
+
+**--persist-mount**  
+Also remove persisted share mounts on hosts.
+
+**--no-persist-mount**  
+Keep persisted share mounts on hosts (transient unmount only).
 
 **show \[*share*\]**  
 Display share information.

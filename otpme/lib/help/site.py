@@ -490,15 +490,6 @@ cmd_help = {
                                 },
                 },
 
-    'revoke_cert'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site revoke_cert {site}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Revoke site\'s certificate'),
-                                },
-                },
-
-
     'renew_cert'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site renew_cert {site}'),
                     'cmd'   :   '<|object|>',

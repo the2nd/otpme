@@ -10,12 +10,14 @@ try:
 except Exception:
     pass
 
+from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
 from otpme.lib.classes.host import get_acls
 from otpme.lib.classes.host import get_value_acls
+from otpme.lib.classes.role import get_roles as _get_roles
 
 from otpme.lib.exceptions import *
 
@@ -25,6 +27,7 @@ table_headers = [
                 "status",
                 "roles",
                 "tokens",
+                "accessgroups",
                 "sync_users",
                 "sync_groups",
                 "logins",
@@ -225,6 +228,67 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
         else:
             if token_access:
                 row.append("")
+            else:
+                row.append("-")
+        # Accessgroups.
+        if "accessgroups" in output_fields:
+            if check_acl("view:accessgroups"):
+                # A host is granted access by the accessgroups it is a
+                # member of and by the ones its roles are in (see
+                # AccessGroup.is_assigned_host()). The latter are shown
+                # in brackets.
+                host_roles = backend.search(object_type="role",
+                                            attribute="host",
+                                            value=host_uuid,
+                                            return_type="uuid")
+                all_host_roles = list(host_roles)
+                for uuid in host_roles:
+                    parent_roles = _get_roles(role_uuid=uuid,
+                                            parent=True,
+                                            recursive=True,
+                                            return_type="uuid")
+                    for x in parent_roles:
+                        if x in all_host_roles:
+                            continue
+                        all_host_roles.append(x)
+                return_attrs = ['name', 'site', 'enabled']
+                host_ags = backend.search(object_type="accessgroup",
+                                        attribute="host",
+                                        value=host_uuid,
+                                        return_attributes=return_attrs)
+                role_ags = {}
+                if all_host_roles:
+                    role_ags = backend.search(object_type="accessgroup",
+                                            attribute="role",
+                                            values=all_host_roles,
+                                            return_attributes=return_attrs)
+                ag_strings = []
+                all_ags = list(host_ags)
+                for ag_uuid in role_ags:
+                    if ag_uuid in host_ags:
+                        continue
+                    all_ags.append(ag_uuid)
+                for ag_uuid in all_ags:
+                    if ag_uuid in host_ags:
+                        ag_data = host_ags
+                    else:
+                        ag_data = role_ags
+                    ag_name = ag_data[ag_uuid]['name']
+                    ag_site = ag_data[ag_uuid]['site']
+                    try:
+                        ag_enabled = ag_data[ag_uuid]['enabled'][0]
+                    except Exception:
+                        ag_enabled = False
+                    if ag_site == config.site:
+                        ag_string = ag_name
+                    else:
+                        ag_string = f"{ag_site}/{ag_name}"
+                    if not ag_enabled:
+                        ag_string = f"{ag_string} (D)"
+                    if ag_uuid not in host_ags:
+                        ag_string = f"({ag_string})"
+                    ag_strings.append(ag_string)
+                row.append("\n".join(ag_strings))
             else:
                 row.append("-")
         # Sync users.

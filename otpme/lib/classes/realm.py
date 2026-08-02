@@ -1670,7 +1670,7 @@ class Realm(OTPmeObject):
             return callback.error(msg, exception=PermissionDenied)
 
         # Run parent class stuff e.g. add lock.
-        result = self._prepare_add(verify_acl=False, callback=callback, **kwargs)
+        result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
 

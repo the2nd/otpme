@@ -19,7 +19,8 @@ which nodes are used for a share.
 Create a new pool.
 
 **del *pool***  
-Delete a pool.
+Delete a pool. Asks for confirmation according to the confirmation
+policy, and warns about shares that use the pool.
 
 **show \[*pool*\]**  
 Display pool information.

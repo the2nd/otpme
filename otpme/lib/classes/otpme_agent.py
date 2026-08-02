@@ -465,7 +465,7 @@ class OTPmeAgent(UnixDaemon):
             try:
                 idled_conn = connections.get(daemon="idled", realm=realm, site=site,
                                             connect_timeout=self.connect_timeout,
-                                            timeout=0, endpoint=False, encrypt_session=False,
+                                            timeout=60, endpoint=False, encrypt_session=False,
                                             use_agent=False, autoconnect=True,
                                             auto_auth=False, auto_preauth=False)
             except Exception as e:
@@ -473,6 +473,9 @@ class OTPmeAgent(UnixDaemon):
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
                 time.sleep(1)
+                continue
+
+            if not idled_conn:
                 continue
 
             # Send wait command.
@@ -528,7 +531,6 @@ class OTPmeAgent(UnixDaemon):
                     log_msg = _("Error send wait command: {e}")
                     log_msg = log_msg.format(e=e)
                     self.logger.warning(log_msg)
-                    idled_conn = None
                     time.sleep(1)
                     break
 

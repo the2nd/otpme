@@ -642,6 +642,63 @@ class Pool(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
+    @object_changelog("delete")
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Delete pool. """
+        if not self.exists():
+            msg = _("Pool does not exist.")
+            return callback.error(msg)
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = f"delete:{self.type}"
+                if not parent_object.verify_acl(del_acl):
+                    msg = _("Permission denied: {pool_name}")
+                    msg = msg.format(pool_name=self.name)
+                    return callback.error(msg, exception=PermissionDenied)
+
+        if run_policies:
+            try:
+                self.run_policies("delete", callback=callback, _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        exception_parts = []
+        share_list = backend.search(object_type="share",
+                                    attribute="pool",
+                                    value=self.uuid,
+                                    realm=config.realm,
+                                    return_type="name")
+        if share_list:
+            msg = _("Pool '{pool_name}' is used by shares: {share_list}")
+            exception_parts.append(msg.format(pool_name=self.name,
+                                            share_list=", ".join(share_list)))
+        exception = chr(10).join(exception_parts) if exception_parts else None
+        if not self.ask_delete_confirmation(force=force,
+                                            exception=exception,
+                                            callback=callback):
+            return callback.abort()
+
+        # Delete object using parent class.
+        return super().delete(verbose_level=verbose_level,
+                            force=force,
+                            callback=callback,
+                            **kwargs)
+
+    @object_lock(full_lock=True)
+    @backend.transaction
+    @audit_log()
     @object_changelog("rename to {new_name}")
     def rename(
         self,

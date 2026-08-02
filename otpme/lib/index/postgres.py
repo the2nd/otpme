@@ -200,7 +200,17 @@ def get_default_config():
 def cleanup():
     global Session
     if Session:
-        Session.remove()
+        # Best effort: cleanup() runs from the SIGTERM handler too, which
+        # may interrupt a session operation that is already in progress
+        # (e.g. a query waiting for a connection). Closing the session
+        # from within it makes SQLAlchemy raise IllegalStateChangeError,
+        # and that exception would leave the signal handler before it
+        # gets to exit the process. We are shutting down, so a session
+        # left behind does not matter.
+        try:
+            Session.remove()
+        except Exception:
+            pass
     Session = None
 
 def atfork():

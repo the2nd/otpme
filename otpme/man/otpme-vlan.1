@@ -54,7 +54,7 @@ switches configured with named VLANs (e.g. Cisco) expect.
 Create a new VLAN, optionally with a VLAN ID.
 .TP
 .B del \fIvlan\fR
-Delete a VLAN.
+Delete a VLAN. Asks for confirmation according to the confirmation policy. Objects the VLAN is assigned to keep an unresolvable assignment, they are not listed because the assignments live in their \fBvlans\fR config parameter.
 .TP
 .B show \fR[\fIvlan\fR]
 Display VLAN information.

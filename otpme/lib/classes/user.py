@@ -5065,7 +5065,11 @@ class User(OTPmeObject):
             msg = "Trying to preserve token config parameters..."
             callback.send(msg)
             for para_name in cur_token.config_params:
-                new_token.config_params[para_name] = cur_token.config_params[para_name]
+                para_val = cur_token.get_config_parameter(para_name)
+                new_token.set_config_param(parameter=para_name,
+                                            value=para_val,
+                                            verify_acls=False,
+                                            callback=callback)
 
             new_token.acl_inheritance_enabled = cur_token.acl_inheritance_enabled
             if new_token.allow_offline is not None:

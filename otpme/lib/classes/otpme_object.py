@@ -4496,24 +4496,34 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("remove host {host_name}")
     def remove_host(
         self,
-        host_name: str,
+        host_name: str=None,
+        host_uuid: str=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Removes a host from this object. """
+        """ Removes a host from this object.
+
+        The host may be given by UUID, which is what callers that hold a
+        host of another site need: the name lookup is limited to our own
+        site, but e.g. a role of the master site may hold hosts of any
+        site.
+        """
         if self.hosts is None:
             msg = _("Object does not support hosts.")
             raise OTPmeException(msg)
 
-        host = backend.get_object(object_type="host",
-                                realm=config.realm,
-                                site=self.site,
-                                name=host_name)
+        if host_uuid:
+            host = backend.get_object(object_type="host", uuid=host_uuid)
+        else:
+            host = backend.get_object(object_type="host",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=host_name)
         if not host:
             msg = _("Host does not exist: {host_name}")
-            msg = msg.format(host_name=host_name)
+            msg = msg.format(host_name=host_name or host_uuid)
             return callback.error(msg)
 
         if host.uuid not in self.hosts:
@@ -4654,24 +4664,35 @@ class OTPmeObject(OTPmeBaseObject):
     @object_changelog("remove device {device_name}")
     def remove_device(
         self,
-        device_name: str,
+        device_name: str=None,
+        device_uuid: str=None,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Removes a device from this object. """
+        """ Removes a device from this object.
+
+        The device may be given by UUID, which is what callers that hold
+        a device of another site need: the name lookup is limited to our
+        own site, but e.g. a role of the master site may hold devices of
+        any site.
+        """
         if self.devices is None:
             msg = _("Object does not support devices.")
             raise OTPmeException(msg)
 
-        device = backend.get_object(object_type="device",
-                                realm=config.realm,
-                                site=self.site,
-                                name=device_name)
+        if device_uuid:
+            device = backend.get_object(object_type="device",
+                                        uuid=device_uuid)
+        else:
+            device = backend.get_object(object_type="device",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=device_name)
         if not device:
             msg = _("Host does not exist: {device_name}")
-            msg = msg.format(device_name=device_name)
+            msg = msg.format(device_name=device_name or device_uuid)
             return callback.error(msg)
 
         if device.uuid not in self.devices:

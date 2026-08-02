@@ -226,12 +226,26 @@ class OTPmeServer1(object):
         """ Handle signals """
         if _signal != 15:
             return
+        # We run in whatever the process was doing when the signal
+        # arrived, so every step here may hit an object in a state it
+        # does not expect. Keep going anyway: an exception escaping the
+        # handler would surface in the interrupted code instead of
+        # exiting the process.
         # Close our connection.
-        self.connection.close()
+        try:
+            self.connection.close()
+        except Exception:
+            pass
         # Handle multiprocessing cleanup().
-        multiprocessing.cleanup()
+        try:
+            multiprocessing.cleanup()
+        except Exception:
+            pass
         # Call protocol handler close().
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
         os._exit(0)
 
     @property

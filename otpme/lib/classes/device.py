@@ -56,6 +56,8 @@ read_value_acls = {
                     "view"      : [
                                     "mac_address",
                                     "policy",
+                                    "roles",
+                                    "accessgroups",
                                 ],
             }
 
@@ -628,6 +630,42 @@ class OTPmeDevice(OTPmeObject):
 class Device(OTPmeDevice):
     """ Class that implements OTPme device object. """
     commands = commands
+
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        result = backend.search(object_type="accessgroup",
+                                attribute="device",
+                                value=object_uuid,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        file_content['accessgroups'] = result
+        result = backend.search(object_type="role",
+                                attribute="device",
+                                value=object_uuid,
+                                realm=config.realm,
+                                return_type="uuid")
+        file_content['roles'] = result
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        for object_type in ['accessgroups', 'roles']:
+            try:
+                uuids = object_data[object_type]
+            except KeyError:
+                continue
+            for uuid in uuids:
+                x = backend.get_object(uuid=uuid)
+                if not x:
+                    continue
+                x.add_device(device_name=object_id.name,
+                            device_uuid=object_uuid,
+                            verify_acls=False,
+                            changelog=False,
+                            callback=callback)
+                x._write(callback=callback)
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,
@@ -711,11 +749,29 @@ class Device(OTPmeDevice):
                                     return_type="instance")
             if result:
                 ag = result[0]
-                ag.add_device(self.name, verify_acl=False, callback=callback)
+                ag.add_device(device_name=self.name,
+                            verify_acls=False,
+                            callback=callback)
                 ag._cache(callback=callback)
             else:
                 msg = _("Unknown accessgroup: {ag}")
                 msg = msg.format(ag=device_ag)
+                callback.error(msg)
+        # Check for default role. We hold the roles UUID, so resolve it
+        # without the getter (which gives us "<site>/<name>").
+        device_role = self.get_config_parameter("devices_role",
+                                                apply_getter=False)
+        if device_role:
+            role = backend.get_object(object_type="role", uuid=device_role)
+            if role:
+                role.add_device(device_name=self.name,
+                                device_uuid=self.uuid,
+                                verify_acls=False,
+                                callback=callback)
+                role._cache(callback=callback)
+            else:
+                msg = _("Unknown role: {role}")
+                msg = msg.format(role=device_role)
                 callback.error(msg)
         return add_result
 
@@ -742,8 +798,23 @@ class Device(OTPmeDevice):
                                 site=config.site,
                                 return_type="instance")
         for ag in result:
-            ag.remove_device(self.name, verify_acl=False, callback=callback)
+            ag.remove_device(device_name=self.name,
+                            verify_acls=False,
+                            callback=callback)
             ag._cache(callback=callback)
+
+        # Check for default role.
+        result = backend.search(object_type="role",
+                                attribute="device",
+                                value=self.uuid,
+                                realm=config.realm,
+                                return_type="instance")
+        for role in result:
+            role.remove_device(device_name=self.name,
+                                device_uuid=self.uuid,
+                                verify_acls=False,
+                                callback=callback)
+            role._cache(callback=callback)
 
         # Get parent object to check ACLs.
         parent_object = self.get_parent_object()

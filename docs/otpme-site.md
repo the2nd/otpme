@@ -98,9 +98,6 @@ Dump site private key to stdout. Use **-p** to encrypt with passphrase.
 **dump_ca_chain *site***  
 Dump site certificate chain to stdout.
 
-**revoke_cert *site***  
-Revoke site certificate.
-
 **renew_cert *site***  
 Renew site certificate.
 

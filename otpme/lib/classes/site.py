@@ -600,14 +600,6 @@ commands = {
                     },
                 },
             },
-    'revoke_cert'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'revoke_cert',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'renew_cert'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -1504,6 +1496,13 @@ def register_config():
                                     object_types=['site'])
     # Hosts accessgroup.
     def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
+        """ Resolve the hosts accessgroup to its UUID.
+
+        Every host added below us is added to this accessgroup, and that
+        happens without an ACL check (Host.add()). So the permission to
+        add hosts to it must be checked here, or setting this parameter
+        would be a way to add hosts to any accessgroup.
+        """
         result = backend.search(object_type='accessgroup',
                                 attribute="name",
                                 value=ag,
@@ -1513,6 +1512,11 @@ def register_config():
             msg = msg.format(ag=ag)
             raise ValueError(msg)
         ag = result[0]
+        if not ag.verify_acl("add:host"):
+            msg = _("You dont have permission to add hosts to this "
+                    "accessgroup: {ag}")
+            msg = msg.format(ag=ag.oid)
+            raise PermissionDenied(msg)
         return ag.uuid
     def hosts_ag_getter(uuid, callback=JobCallback, **kwargs):
         result = backend.search(object_type='accessgroup',
@@ -1532,6 +1536,13 @@ def register_config():
                                     object_types=['site', 'unit'])
     # Devices accessgroup.
     def device_ag_setter(ag, callback=JobCallback, **kwargs):
+        """ Resolve the devices accessgroup to its UUID.
+
+        Every device added below us is added to this accessgroup, and
+        that happens without an ACL check (Device.add()). So the
+        permission to add devices to it must be checked here, or setting
+        this parameter would be a way to add devices to any accessgroup.
+        """
         result = backend.search(object_type='accessgroup',
                                 attribute="name",
                                 value=ag,
@@ -1541,6 +1552,11 @@ def register_config():
             msg = msg.format(ag=ag)
             raise ValueError(msg)
         ag = result[0]
+        if not ag.verify_acl("add:device"):
+            msg = _("You dont have permission to add devices to this "
+                    "accessgroup: {ag}")
+            msg = msg.format(ag=ag.oid)
+            raise PermissionDenied(msg)
         return ag.uuid
     def device_ag_getter(uuid, callback=JobCallback, **kwargs):
         result = backend.search(object_type='accessgroup',
@@ -1557,6 +1573,82 @@ def register_config():
                                     ctype=str,
                                     setter=device_ag_setter,
                                     getter=device_ag_getter,
+                                    object_types=['site', 'unit'])
+    # Default roles for new hosts/devices.
+    def get_role_object(role):
+        """ Resolve a role path to the role object.
+
+        Roles are often kept on the master site only, so the role may be
+        given as "<site>/<name>". Role names are uniq per site only.
+        """
+        if "/" in role:
+            role_site = role.split("/")[0]
+            role_name = role.split("/")[1]
+        else:
+            role_site = config.site
+            role_name = role
+        result = backend.search(object_type='role',
+                                attribute="name",
+                                value=role_name,
+                                realm=config.realm,
+                                site=role_site,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown role: {role}")
+            msg = msg.format(role=role)
+            raise ValueError(msg)
+        return result[0]
+    def role_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='role',
+                                attribute="uuid",
+                                value=uuid,
+                                return_type="instance")
+        if not result:
+            # Show the unresolvable role instead of hiding it.
+            return uuid
+        role = result[0]
+        return f"{role.site}/{role.name}"
+    # Hosts role.
+    def hosts_role_setter(role, callback=JobCallback, **kwargs):
+        """ Resolve the hosts role to its UUID.
+
+        Every host added below us is added to this role, and that happens
+        without an ACL check (Host.add()). So the permission to add hosts
+        to it must be checked here, or setting this parameter would be a
+        way to add hosts to any role.
+        """
+        role = get_role_object(role)
+        if not role.verify_acl("add:host"):
+            msg = _("You dont have permission to add hosts to this "
+                    "role: {role}")
+            msg = msg.format(role=role.oid)
+            raise PermissionDenied(msg)
+        return role.uuid
+    config.register_config_parameter(name="hosts_role",
+                                    ctype=str,
+                                    setter=hosts_role_setter,
+                                    getter=role_getter,
+                                    object_types=['site', 'unit'])
+    # Devices role.
+    def devices_role_setter(role, callback=JobCallback, **kwargs):
+        """ Resolve the devices role to its UUID.
+
+        Every device added below us is added to this role, and that
+        happens without an ACL check (Device.add()). So the permission to
+        add devices to it must be checked here, or setting this parameter
+        would be a way to add devices to any role.
+        """
+        role = get_role_object(role)
+        if not role.verify_acl("add:device"):
+            msg = _("You dont have permission to add devices to this "
+                    "role: {role}")
+            msg = msg.format(role=role.oid)
+            raise PermissionDenied(msg)
+        return role.uuid
+    config.register_config_parameter(name="devices_role",
+                                    ctype=str,
+                                    setter=devices_role_setter,
+                                    getter=role_getter,
                                     object_types=['site', 'unit'])
     # VLAN.
     object_types = [
@@ -3224,6 +3316,7 @@ class Site(OTPmeObject):
     def change_sso_secret(
         self,
         secret: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3240,6 +3333,11 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
+        msg = _("Change SSO secret of site '{name}'? "
+                "All existing SSO sessions become invalid.: ")
+        msg = msg.format(name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         self.sso_secret = secret
         return self._cache(callback=callback)
 
@@ -3312,6 +3410,7 @@ class Site(OTPmeObject):
     def change_sso_csrf_secret(
         self,
         secret: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3328,6 +3427,11 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
+        msg = _("Change SSO CSRF secret of site '{name}'? "
+                "Forms opened in the SSO portal have to be reloaded.: ")
+        msg = msg.format(name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         self.sso_csrf_secret = secret
         return self._cache(callback=callback)
 
@@ -3339,6 +3443,7 @@ class Site(OTPmeObject):
     def change_cluster_key(
         self,
         cluster_key: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3355,6 +3460,12 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
+        msg = _("Change cluster key of site '{name}'? "
+                "Nodes that do not get the new key drop out of the "
+                "cluster.: ")
+        msg = msg.format(name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         self.cluster_key = cluster_key
         return self._cache(callback=callback)
 

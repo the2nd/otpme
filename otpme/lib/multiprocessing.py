@@ -263,7 +263,12 @@ def cleanup(keep_queues=False):
     # Get ID.
     pid = os.getpid()
     _index = config.get_index_module()
-    _index.cleanup()
+    try:
+        _index.cleanup()
+    except Exception as e:
+        log_msg = _("Index cleanup failed: {pid}: {e}", log=True)[1]
+        log_msg = log_msg.format(pid=pid, e=e)
+        logger.critical(log_msg)
     try:
         connections.cleanup()
     except Exception as e:

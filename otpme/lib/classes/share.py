@@ -348,6 +348,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -894,6 +895,7 @@ def register():
     register_commands("share", commands)
     # Register index attributes.
     config.register_index_attribute("share")
+    config.register_index_attribute("pool")
     config.register_index_attribute("root_dir")
     config.register_recursive_default_acl("site", "+share")
     config.register_default_acl("unit", "+share")
@@ -1410,8 +1412,9 @@ class Share(OTPmeObject):
             msg = _("Failed to run share add script: {add_script}: {e}")
             msg = msg.format(add_script=self.add_script, e=e)
             return callback.error(msg)
-        # Check if root dir exists.
-        if not self.set_root_dir(root_dir, callback=callback):
+        # Check if root dir exists. The share is being created, there is
+        # no old root dir to ask about.
+        if not self.set_root_dir(root_dir, force=True, callback=callback):
             return callback.error()
         self.home_share = home_share
         self.encrypted = encrypted
@@ -1480,6 +1483,7 @@ class Share(OTPmeObject):
     def set_root_dir(
         self,
         root_dir,
+        force: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1499,6 +1503,14 @@ class Share(OTPmeObject):
             msg = _("No such file or directory: {root_dir}")
             msg = msg.format(root_dir=root_dir)
             return callback.error(msg)
+        msg = _("Change root dir of share '{share_name}' from '{old_dir}' to "
+                "'{new_dir}'? The data below the old one is not served "
+                "anymore.: ")
+        msg = msg.format(share_name=self.name,
+                        old_dir=self.root_dir,
+                        new_dir=root_dir)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         self.root_dir = root_dir
         self.update_index('root_dir', self.root_dir)
         return self._cache(callback=callback)
@@ -1741,6 +1753,7 @@ class Share(OTPmeObject):
     def remove_master_password_token(
         self,
         token_path: str,
+        force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1771,6 +1784,17 @@ class Share(OTPmeObject):
             msg = _("Token not assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        if len(self.master_password_tokens) == 1:
+            msg = _("'{token_path}' is the last master password token of "
+                    "share '{share_name}'. Without one the share cannot be "
+                    "mounted with the master password anymore.: ")
+        else:
+            msg = _("Remove master password token '{token_path}' from share "
+                    "'{share_name}'?: ")
+        msg = msg.format(token_path=token_path, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.master_password_tokens.remove(token_uuid)
 
@@ -2004,7 +2028,10 @@ class Share(OTPmeObject):
                     else:
                         keep_share_key = False
                 if not keep_share_key:
+                    # Removing the token is the confirmed action, the
+                    # share key goes with it.
                     self.del_share_key(username=token_user.name,
+                                        force=True,
                                         callback=callback,
                                         verify_acls=False)
                     self.set_changelog("removed share key")
@@ -2383,6 +2410,7 @@ class Share(OTPmeObject):
     def del_share_key(
         self,
         username: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2415,6 +2443,13 @@ class Share(OTPmeObject):
                 msg = _("Error running policies: {error}")
                 msg = msg.format(error=e)
                 return callback.error(msg)
+
+        msg = _("Remove share key of user '{username}' from share "
+                "'{share_name}'? The user cannot decrypt the shares data "
+                "anymore.: ")
+        msg = msg.format(username=username, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.share_keys.pop(user_uuid)
 
@@ -3666,6 +3701,156 @@ class Share(OTPmeObject):
             callback.post_methods.append(post_method)
 
         return result
+
+    def _get_share_unmount_data(self, persist_mount: bool=None):
+        """ Build the share_unmount notification data per user.
+
+        Everything is resolved right away instead of in the post method
+        the notification is sent from: the caller deletes the share, and
+        after that its tokens, nodes and hosts cannot be resolved
+        anymore.
+        """
+        share_tokens = self.get_tokens(return_type="rel_path",
+                                    include_roles=True)
+        if not share_tokens:
+            return {}
+        share_nodes = self.get_nodes(include_pools=True,
+                                    return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+        node_fqdns = [node.fqdn for node in share_nodes]
+        share_hosts = []
+        if self.limit_by_hosts:
+            share_hosts = self.get_hosts(include_groups=True,
+                                        include_roles=True,
+                                        return_type="name")
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+        share_id = self.share_id
+        user_shares = {}
+        already_processed = []
+        for token_path in share_tokens:
+            username = token_path.split("/")[0]
+            if username == ADMIN_USER:
+                continue
+            if token_path in already_processed:
+                continue
+            try:
+                x_shares = user_shares[username]
+            except KeyError:
+                x_shares = {}
+            try:
+                tokens = x_shares[share_id]['tokens']
+            except KeyError:
+                tokens = []
+            tokens.append(token_path)
+            x_shares[share_id] = {
+                'name': self.name,
+                'site': self.site,
+                'nodes': list(node_fqdns),
+                'limit_hosts': self.limit_by_hosts,
+                'hosts': list(share_hosts),
+                'encrypted': self.encrypted,
+                'tokens': tokens,
+                'persist': persist_mount,
+            }
+            user_shares[username] = x_shares
+            already_processed.append(token_path)
+        return user_shares
+
+    @object_lock(full_lock=True)
+    @backend.transaction
+    @audit_log()
+    @object_changelog("delete")
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Delete share. """
+        if not self.exists():
+            msg = _("Share does not exist.")
+            return callback.error(msg)
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = f"delete:{self.type}"
+                if not parent_object.verify_acl(del_acl):
+                    msg = _("Permission denied: {share_name}")
+                    msg = msg.format(share_name=self.name)
+                    return callback.error(msg, exception=PermissionDenied)
+
+        if run_policies:
+            try:
+                self.run_policies("delete", callback=callback, _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        exception_parts = []
+        if self.encrypted:
+            # The per user share keys live on the share object and are
+            # gone with it. The data on disk stays encrypted, so without
+            # the master password there is no way back.
+            msg = _("Share '{share_name}' is encrypted. The share keys are "
+                    "deleted with it, so its data can only be decrypted by "
+                    "someone in possession of the master password.")
+            exception_parts.append(msg.format(share_name=self.name))
+        if self.tokens:
+            msg = _("Share '{share_name}' has assigned tokens: {token_list}")
+            token_list = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        values=self.tokens,
+                                        return_type="rel_path")
+            exception_parts.append(msg.format(share_name=self.name,
+                                            token_list=", ".join(token_list)))
+        if self.roles:
+            msg = _("Share '{share_name}' has assigned roles: {role_list}")
+            role_list = backend.search(object_type="role",
+                                        attribute="uuid",
+                                        values=self.roles,
+                                        return_type="name")
+            exception_parts.append(msg.format(share_name=self.name,
+                                            role_list=", ".join(role_list)))
+        exception = chr(10).join(exception_parts) if exception_parts else None
+        if not self.ask_delete_confirmation(force=force,
+                                            exception=exception,
+                                            callback=callback):
+            return callback.abort()
+
+        # Tell the clients to unmount. The data is collected before the
+        # delete because afterwards there is nothing left to resolve it
+        # from, the notification itself is sent by the post method.
+        if share_notifications is None:
+            share_notifications = self.get_share_notifications()
+        if share_notifications:
+            user_shares = self._get_share_unmount_data(persist_mount=persist_mount)
+            if user_shares:
+                def post_method():
+                    for username in user_shares:
+                        notify(username=username,
+                                event_type="share_unmount",
+                                data=user_shares[username])
+                callback.post_methods.append(post_method)
+
+        # Delete object using parent class.
+        return super().delete(verbose_level=verbose_level,
+                            force=force,
+                            callback=callback,
+                            **kwargs)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show share config. """

@@ -73,10 +73,14 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share del {share}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share del [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete share.'),
+                                    '--share-notify'        : _('Send unmount notification to all online hosts.'),
+                                    '--no-share-notify'     : _('Dont send unmount notification to all online hosts.'),
+                                    '--persist-mount'       : _('Also remove persisted share mount on hosts.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 

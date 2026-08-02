@@ -746,11 +746,16 @@ class Dictionary(OTPmeObject):
     @object_changelog("clear dictionary")
     def clear(
         self,
+        force: bool=False,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Remove all dictionary data. """
+        msg = _("Remove all {word_count} words from dictionary '{name}'?: ")
+        msg = msg.format(word_count=len(self.dictionary), name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         self.dictionary = {}
         self.update_dict_size()
         return self._cache(callback=callback)

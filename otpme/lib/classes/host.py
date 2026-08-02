@@ -55,6 +55,7 @@ read_value_acls = {
                                 "sync_users",
                                 "sync_groups",
                                 "dynamic_groups",
+                                "accessgroups",
                             ],
             }
 
@@ -1015,21 +1016,31 @@ class Host(OTPmeHost, OTPmeDevice):
                                 site=config.site,
                                 return_type="uuid")
         file_content['accessgroups'] = result
+        result = backend.search(object_type="role",
+                                attribute="host",
+                                value=object_uuid,
+                                realm=config.realm,
+                                return_type="uuid")
+        file_content['roles'] = result
         return file_content
 
     @classmethod
     def restore_object_data(cls, object_id, object_uuid, object_data, callback):
-        try:
-            ags = object_data['accessgroups']
-        except KeyError:
-            return
-        for uuid in ags:
-            ag = backend.get_object(uuid=uuid)
-            ag.add_host(object_id.name,
-                        verify_acl=False,
-                        changelog=False,
-                        callback=callback)
-            ag._write(callback=callback)
+        for object_type in ['accessgroups', 'roles']:
+            try:
+                uuids = object_data[object_type]
+            except KeyError:
+                continue
+            for uuid in uuids:
+                x = backend.get_object(uuid=uuid)
+                if not x:
+                    continue
+                x.add_host(host_name=object_id.name,
+                            host_uuid=object_uuid,
+                            verify_acls=False,
+                            changelog=False,
+                            callback=callback)
+                x._write(callback=callback)
 
     def __init__(
         self,
@@ -1559,11 +1570,28 @@ class Host(OTPmeHost, OTPmeDevice):
                                     return_type="instance")
             if result:
                 ag = result[0]
-                ag.add_host(self.name, verify_acl=False, callback=callback)
+                ag.add_host(host_name=self.name,
+                            verify_acls=False,
+                            callback=callback)
                 ag._cache(callback=callback)
             else:
                 msg = _("Unknown accessgroup: {ag}")
                 msg = msg.format(ag=host_ag)
+                callback.error(msg)
+        # Check for default role. We hold the roles UUID, so resolve it
+        # without the getter (which gives us "<site>/<name>").
+        host_role = self.get_config_parameter("hosts_role", apply_getter=False)
+        if host_role:
+            role = backend.get_object(object_type="role", uuid=host_role)
+            if role:
+                role.add_host(host_name=self.name,
+                            host_uuid=self.uuid,
+                            verify_acls=False,
+                            callback=callback)
+                role._cache(callback=callback)
+            else:
+                msg = _("Unknown role: {role}")
+                msg = msg.format(role=host_role)
                 callback.error(msg)
         return add_result
 
@@ -1583,8 +1611,22 @@ class Host(OTPmeHost, OTPmeDevice):
                                 site=config.site,
                                 return_type="instance")
         for ag in result:
-            ag.remove_host(self.name, verify_acl=False, callback=callback)
+            ag.remove_host(host_name=self.name,
+                            verify_acls=False,
+                            callback=callback)
             ag._cache(callback=callback)
+        # Check for default role.
+        result = backend.search(object_type="role",
+                                attribute="host",
+                                value=self.uuid,
+                                realm=config.realm,
+                                return_type="instance")
+        for role in result:
+            role.remove_host(host_name=self.name,
+                            host_uuid=self.uuid,
+                            verify_acls=False,
+                            callback=callback)
+            role._cache(callback=callback)
         return super().delete(callback=callback, **kwargs)
 
     def show_config( self, callback: JobCallback=default_callback, **kwargs):

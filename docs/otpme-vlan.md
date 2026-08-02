@@ -50,7 +50,10 @@ which is what switches configured with named VLANs (e.g. Cisco) expect.
 Create a new VLAN, optionally with a VLAN ID.
 
 **del *vlan***  
-Delete a VLAN.
+Delete a VLAN. Asks for confirmation according to the confirmation
+policy. Objects the VLAN is assigned to keep an unresolvable assignment,
+they are not listed because the assignments live in their **vlans**
+config parameter.
 
 **show \[*vlan*\]**  
 Display VLAN information.
