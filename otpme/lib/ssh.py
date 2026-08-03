@@ -617,8 +617,7 @@ def update_authorized_keys():
         try:
             key_algo = get_ssh_key_algo(verify_token.ssh_public_key)
         except OTPmeException as e:
-            log_msg = _("Ignoring SSH token with invalid public key: "
-                        "{token_path}: {error}", log=True)[1]
+            log_msg = _("Ignoring SSH token with invalid public key: {token_path}: {error}", log=True)[1]
             log_msg = log_msg.format(token_path=token.rel_path, error=e)
             logger.warning(log_msg)
             continue

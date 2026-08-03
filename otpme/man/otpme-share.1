@@ -10,11 +10,35 @@ otpme-share \- manage OTPme file shares
 manages file shares in the OTPme system. A share provides access to a directory tree and can optionally be encrypted.
 .PP
 Shares support two types of scripts: An \fBadd script\fR (default: add_share.sh) is automatically executed when a share is created to set up the share directory structure. A \fBmount script\fR (default: mount_share.sh) can be configured to run each time a user mounts the share. Scripts are executed as the OTPme system user and group. The default scripts for new shares can be configured via the \fBdefault_share_add_script\fR and \fBdefault_share_mount_script\fR config parameters at site or unit level.
+.SH HOME SHARES
+A normal share hands out its root directory to everybody. A \fBhome share\fR hands out \fIshare_root\fB/\fIhome_dir\fR instead, so every user gets their own directory and sees nothing else. The directory is created on the first mount, owned by the user and by default with mode 0700 (see \fBhome_share_permissions\fR).
+.PP
+Two naming schemes are available, chosen when the share is created:
+.RS
+.TP
+.B \-\-home\-share
+The directory is named after the user UUID. Renaming a user keeps the directory.
+.TP
+.B \-\-home\-share\-uid
+The directory is named after the user name (uid), which is what one expects below e.g. /home. Implies \fB\-\-home\-share\fR.
+.RE
+.PP
+A \fBroot mount token\fR gets no home dir and mounts \fIshare_root\fR itself, so it reaches the home dirs of all users (see \fBadd_root_mount_token\fR).
+.PP
+Home shares can be encrypted. Every home dir is then encrypted on its own, with a share key per user, which is why an encrypted home share has no root mount token.
 .SH COMMANDS
 .SS Share Management
 .TP
-.B add \fR[\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] \fIshare\fR
+.B add \fR[\fB\-\-home\-share\fR] [\fB\-\-home\-share\-uid\fR] [\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] \fIshare\fR
 Create a new share. Use \fB\-\-force\-group\fR to set forced group, \fB\-\-force\-directory\-mode\fR and \fB\-\-force\-create\-mode\fR to set permissions for new directories and files. Use \fB\-\-crypt\fR to enable encryption, \fB\-\-restore\fR to add a restore share and \fB\-\-restore\-token\fR for encrypted restore shares.
+.RS
+.TP
+.B \-\-home\-share
+Create a home share (see \fBHOME SHARES\fR above). Each user gets their own subdirectory, named after the user UUID.
+.TP
+.B \-\-home\-share\-uid
+Create a home share whose subdirectories are named after the user name (uid) instead of the user UUID. Implies \fB\-\-home\-share\fR.
+.RE
 .TP
 .B del \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Delete a share. Asks for confirmation according to the confirmation policy, and warns about assigned tokens and roles. For an encrypted share it also warns that the share keys are deleted with it, so its data can then only be decrypted by someone in possession of the master password. Online hosts are told to unmount the share.
@@ -94,6 +118,9 @@ Set file creation mode.
 .TP
 .B force_directory_mode \fIshare\fR \fImode\fR
 Set directory creation mode.
+.TP
+.B home_share_permissions \fIshare\fR \fImode\fR
+Mode the per user directories of a home share are created with, in python format (e.g. \fB0o750\fR). The default \fB0o700\fR keeps the users out of each others home dirs.
 .TP
 .B enable_ro \fIshare\fR
 Make share read-only.
@@ -226,6 +253,15 @@ Allow a token to mount the share with master password.
 .TP
 .B remove_master_password_token \fIshare\fR \fItoken_path\fR
 Remove a master password token from the share.
+.SS Root Mount Token
+.PP
+A root mount token gets no home dir, it mounts \fIshare_root\fR itself and thus reaches the home dirs of all users (see \fBHOME SHARES\fR above). Only available for unencrypted home shares.
+.TP
+.B add_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+Let a token mount the share root of a home share. The share root the token gets changes, so the token is told to mount again, like with \fBadd_token\fR.
+.TP
+.B remove_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
+Remove a root mount token from the share. The token is told to unmount, like with \fBremove_token\fR.
 .SS Pool and Node Management
 .TP
 .B add_pool \fIshare\fR \fIpool\fR
@@ -387,6 +423,15 @@ Add a token to the share
 .TP
 .B otpme-share add_pool myshare europe
 Add a pool to the share
+.TP
+.B otpme-share add \-\-home\-share\-uid homes
+Create a home share, each user gets \fI<share_root>/<username>\fR
+.TP
+.B otpme-share home_share_permissions homes 0o750
+Let the home dirs group be readable
+.TP
+.B otpme-share add_root_mount_token homes backup/login
+Let the token "backup/login" mount the share root and reach all home dirs
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),

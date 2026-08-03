@@ -2736,8 +2736,7 @@ class OTPmeSsoP1(OTPmeServer1):
             token._write(callback=callback)
         except Exception as e:
             action = "enable" if enable else "disable"
-            log_msg = _("Failed to {action} device token '{token}' for user "
-                        "'{user_name}': {e}", log=True)[1]
+            log_msg = _("Failed to {action} device token '{token}' for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(action=action, token=token_name,
                                     user_name=user.name, e=e)
             self.logger.warning(log_msg)
@@ -2846,8 +2845,7 @@ class OTPmeSsoP1(OTPmeServer1):
             token._write(callback=callback)
         except Exception as e:
             action = "enable" if enable else "disable"
-            log_msg = _("Failed to {action} passkey '{token}' for user "
-                        "'{user_name}': {e}", log=True)[1]
+            log_msg = _("Failed to {action} passkey '{token}' for user '{user_name}': {e}", log=True)[1]
             log_msg = log_msg.format(action=action, token=token_name,
                                     user_name=user.name, e=e)
             self.logger.warning(log_msg)

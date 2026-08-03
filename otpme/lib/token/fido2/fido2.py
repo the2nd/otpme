@@ -562,7 +562,8 @@ class Fido2Token(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            msg = _("Token verififcation failed: Already used token counter")
+            msg = _("Token verififcation failed: Already used token counter: {counter} vs. {last_counter}")
+            msg = msg.format(counter=counter, last_counter=last_counter)
             return callback.error(msg)
         else:
             self._add_token_counter(token_counter=counter)
@@ -609,7 +610,8 @@ class Fido2Token(Token):
         if counter == 0 and last_counter <= 0:
             pass
         elif counter <= last_counter:
-            log_msg = _("Token verififcation failed: Already used token counter", log=True)[1]
+            log_msg = _("Token verififcation failed: Already used token counter: {counter} vs. {last_counter}", log=True)[1]
+            log_msg = log_msg.format(counter=counter, last_counter=last_counter)
             logger.warning(log_msg)
             return False
         else:

@@ -88,6 +88,5 @@ def run(script_uuid, options, auth_type, auth_user, auth_token, auth_group=None,
             return False
 
     # This point should never be reached.
-    msg = _("WARNING: You may have hit a BUG in auth_script.run(). "
-                        "Authorization via script failed.")
+    msg = _("WARNING: You may have hit a BUG in auth_script.run(). Authorization via script failed.")
     raise OTPmeException(msg)

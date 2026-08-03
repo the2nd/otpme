@@ -55,11 +55,12 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--home-share] [--restore <restore_share>] [--restore-token <token>] share}'),
-                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --home-share :home_share=True: --restore :restore_share: --restore-token :restore_token: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--home-share] [--home-share-uid] [--restore <restore_share>] [--restore-token <token>] share}'),
+                    'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --home-share :home_share=True: --home-share-uid :home_share_uid=True: --restore :restore_share: --restore-token :restore_token: <|object|>',
                     '_help' :   {
                                     'cmd'                           : _('Add new share.'),
-                                    '--home-share'                  : _('Add home share.'),
+                                    '--home-share'                  : _('Add home share (subdirs are user UUID named.).'),
+                                    '--home-share-uid'              : _('Add home share. (subdirs are user uid named.)'),
                                     '--force-group <group>'         : _('Force group.'),
                                     '--force-create-mode <mode>'    : _('Force create mode.'),
                                     '--force-directory-mode <mode>' : _('Force directory mode.'),
@@ -160,6 +161,14 @@ cmd_help = {
                     'cmd'   :   '<|object|> <create_mode>',
                     '_help' :   {
                                     'cmd'                   : _('Set share directory create mode.'),
+                                },
+                },
+
+    'home_share_permissions'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share home_share_permissions {share} {permissions}'),
+                    'cmd'   :   '<|object|> <permissions>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set mode the home share subdirs are created with (e.g. 0o750).'),
                                 },
                 },
 
@@ -486,6 +495,30 @@ cmd_help = {
                     'cmd'   :   '<|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove master password token from share.'),
+                                },
+                },
+
+    'add_root_mount_token'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share add_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Let token mount the share root of a home share (access to all home dirs).'),
+                                    '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
+                                    '--persist-mount'       : _('Persist new share mount on hosts.'),
+                                    '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
+                                },
+                },
+
+    'remove_root_mount_token'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share remove_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
+                    'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove root mount token from share.'),
+                                    '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
+                                    '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
+                                    '--persist-mount'       : _('Also remove persisted share mount on hosts.'),
+                                    '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
                                 },
                 },
 

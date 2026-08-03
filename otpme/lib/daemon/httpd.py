@@ -66,8 +66,7 @@ class HttpDaemon(OTPmeDaemon):
                 child.terminate()
                 child.join(timeout=35)
                 if child.is_alive():
-                    log_msg = _("gunicorn ({label}) did not exit gracefully "
-                                "within 35s; sending SIGKILL", log=True)[1]
+                    log_msg = _("gunicorn ({label}) did not exit gracefully within 35s; sending SIGKILL", log=True)[1]
                     log_msg = log_msg.format(label=label)
                     self.logger.warning(log_msg)
                     child.kill()
@@ -304,8 +303,7 @@ class HttpDaemon(OTPmeDaemon):
             except Exception as e:
                 # A failed spawn must NOT block the SSO gunicorn. The
                 # CA publisher is auxiliary; log and continue.
-                log_msg = _("Failed to start plain-HTTP CA publisher on "
-                            "{uri}: {error}", log=True)[1]
+                log_msg = _("Failed to start plain-HTTP CA publisher on {uri}: {error}", log=True)[1]
                 log_msg = log_msg.format(uri=http_socket_uri, error=e)
                 self.logger.warning(log_msg, exc_info=True)
                 self.gunicorn_child = None
@@ -339,8 +337,7 @@ class HttpDaemon(OTPmeDaemon):
         try:
             check_ssl_cert_key(own_site.sso_cert, own_site.sso_key)
         except Exception as e:
-            log_msg = _("Cert reload aborted: new SSO cert/key do "
-                        "not match: {error}", log=True)[1]
+            log_msg = _("Cert reload aborted: new SSO cert/key do not match: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
             return False
@@ -349,8 +346,7 @@ class HttpDaemon(OTPmeDaemon):
             _cert = SSLCert(key=own_site.sso_key)
             encrypted_key = _cert.encrypt_key(passphrase=self.key_pass)
         except Exception as e:
-            log_msg = _("Cert reload aborted: failed to re-encrypt key: "
-                        "{error}", log=True)[1]
+            log_msg = _("Cert reload aborted: failed to re-encrypt key: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg, exc_info=True)
             return False
@@ -377,15 +373,13 @@ class HttpDaemon(OTPmeDaemon):
         try:
             os.kill(self.gunicorn_ssl_child.pid, signal.SIGHUP)
         except Exception as e:
-            log_msg = _("Cert reload: failed to SIGHUP gunicorn "
-                        "(pid={pid}): {error}", log=True)[1]
+            log_msg = _("Cert reload: failed to SIGHUP gunicorn (pid={pid}): {error}", log=True)[1]
             log_msg = log_msg.format(pid=getattr(self.gunicorn_ssl_child,
                                                   'pid', '?'), error=e)
             self.logger.warning(log_msg, exc_info=True)
             return False
 
-        log_msg = _("SSO cert reloaded; gunicorn SIGHUP'd for "
-                    "graceful worker rotation.", log=True)[1]
+        log_msg = _("SSO cert reloaded; gunicorn SIGHUP'd for graceful worker rotation.", log=True)[1]
         self.logger.info(log_msg)
         return True
 
@@ -461,8 +455,7 @@ class HttpDaemon(OTPmeDaemon):
                     try:
                         self._reload_cert()
                     except Exception as e:
-                        log_msg = _("Cert reload raised unexpectedly: "
-                                    "{error}", log=True)[1]
+                        log_msg = _("Cert reload raised unexpectedly: {error}", log=True)[1]
                         log_msg = log_msg.format(error=e)
                         self.logger.critical(log_msg, exc_info=True)
                     self.comm_handler.send("controld", command="reload_done")

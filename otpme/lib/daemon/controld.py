@@ -1418,8 +1418,7 @@ class ControlDaemon(UnixDaemon):
         count = 0
         while daemon.is_alive():
             if count == terminate_wait:
-                log_msg = _("Child daemon '{daemon} ({pid})' ignored SIGTERM "
-                        "command. Sending SIGKILL.", log=True)[1]
+                log_msg = _("Child daemon '{daemon} ({pid})' ignored SIGTERM command. Sending SIGKILL.", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
                 self.logger.warning(log_msg)
                 try:

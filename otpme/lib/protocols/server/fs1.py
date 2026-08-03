@@ -76,6 +76,12 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.mounted = False
         # Share is home share.
         self.home_share = False
+        # Home share subdir attribute is uid.
+        self.home_share_uid = False
+        # Mode home share subdirs are created with.
+        self.home_share_permissions = "0o700"
+        # Mount the share root instead of a home dir.
+        self.root_mount = False
         # Home share encryption data.
         self.home_share_enc_data = None
         # Share is readonly.
@@ -110,6 +116,8 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.shutdown = False
         # Share settings handler thread.
         self.share_handler_thread = None
+        # Auth token UUID. Needs to be cached because of handle_share_setttings() runs as user.
+        self.auth_token_uuid = None
         # Call parent class init.
         OTPmeFsServer1.__init__(self, **kwargs)
 
@@ -150,7 +158,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status, \
                 response = hostd_conn.check_share_access(share_uuid=self.share_uuid,
                                                         host_uuid=self.peer.uuid,
-                                                        token_uuid=config.auth_token.uuid)
+                                                        token_uuid=self.auth_token_uuid)
             except Exception as e:
                 log_msg = _("Share access check failed: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -170,6 +178,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     self.logger.warning(log_msg)
                 self.block_access = True
                 continue
+
+            self.block_access = False
 
             # Nothing more to do for restore shares.
             if self.restore_share:
@@ -216,6 +226,10 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.username = config.auth_token.owner
                 self.authenticated = True
 
+        if not self.auth_token_uuid:
+            if config.auth_token:
+                self.auth_token_uuid = config.auth_token.uuid
+
         if not self.authenticated:
             message, log_msg = _("Please authenticate.", log=True)
             self.logger.warning(log_msg)
@@ -227,10 +241,11 @@ class OTPmeFsP1(OTPmeFsServer1):
             if self.try_other_node:
                 multiprocessing.cleanup(keep_queues=True)
                 os._exit(0)
+            status = status_codes.PERMISSION_DENIED
             message, log_msg = _("Permission denied.", log=True)
             self.logger.warning(log_msg)
             response = {'try_other_node':self.try_other_node, 'message':message}
-            return self.build_response(False, response)
+            return self.build_response(status, response)
 
         if self.mounted and self.root:
             try:
@@ -313,6 +328,11 @@ class OTPmeFsP1(OTPmeFsServer1):
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
             self.home_share = share.home_share
+            self.home_share_uid = share.home_share_uid
+            self.home_share_permissions = share.home_share_permissions
+            # A root mount token gets no home dir, it mounts the share
+            # root and thus reaches the home dirs of all users.
+            self.root_mount = share.is_root_mount_token(config.auth_token.uuid)
             self.encrypted = share.encrypted
             if share.restore_share:
                 self.restore_share = True
@@ -327,8 +347,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                     return self.build_response(status, response)
                 if share.limit_by_hosts:
                     if not share.is_assigned_host(host_uuid=self.peer.uuid,
-                                                        include_groups=True,
-                                                        include_roles=True):
+                                                    include_groups=True,
+                                                    include_roles=True):
                         status = status_codes.PERMISSION_DENIED
                         message, log_msg = _("No share permissions for this host: {share}", log=True)
                         message = message.format(share=self.share)
@@ -336,7 +356,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
-                if not share.is_assigned_token(token_uuid=config.auth_token.uuid):
+                if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
+                and not self.root_mount:
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
                     message = message.format(share=self.share)
@@ -388,13 +409,16 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
-                user_uuid = None
-                if self.home_share:
-                    user_uuid = config.auth_user.uuid
+                home_dir_val = None
+                if self.home_share and not self.root_mount:
+                    if self.home_share_uid:
+                        home_dir_val = config.auth_user.name
+                    else:
+                        home_dir_val = config.auth_user.uuid
                 repo_id = f"share/{restore_share.site}/{restore_share.name}"
                 try:
                     self.backupd_conn = self.get_backupd_conn(host=host,
-                                                            home_dir=user_uuid,
+                                                            home_dir=home_dir_val,
                                                             backup_key=backup_key)
                 except Exception:
                     status = status_codes.BACKUP_CONNECTION_BROKEN
@@ -508,8 +532,12 @@ class OTPmeFsP1(OTPmeFsServer1):
                         return self.build_response(status, response)
             else:
                 root_dir = share.root_dir
-                if self.home_share:
-                    root_dir = os.path.join(root_dir, config.auth_user.uuid)
+                if self.home_share and not self.root_mount:
+                    if self.home_share_uid:
+                        home_dir_val = config.auth_user.name
+                    else:
+                        home_dir_val = config.auth_user.uuid
+                    root_dir = os.path.join(root_dir, home_dir_val)
                 if not os.path.exists(share.root_dir):
                     status = status_codes.UNKNOWN_OBJECT
                     message, log_msg = _("Unknown share root dir: {share}: {root_dir}", log=True)
@@ -530,6 +558,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
+                and not self.root_mount \
                 and not share.is_master_password_token(config.auth_token.uuid):
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
@@ -538,7 +567,9 @@ class OTPmeFsP1(OTPmeFsServer1):
                     self.logger.warning(log_msg)
                     response = {'try_other_node':False, 'message':message}
                     return self.build_response(status, response)
-                if self.home_share:
+                # A root mount has no home dir to init or create, it
+                # gets the share root as it is.
+                if self.home_share and not self.root_mount:
                     if self.encrypted:
                         if not self.home_share_enc_data:
                             try:
@@ -553,7 +584,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                             filetools.create_dir(path=root_dir,
                                                 user=config.auth_user.name,
                                                 group=True,
-                                                mode=0o700)
+                                                mode=int(self.home_share_permissions, 0))
                         except Exception as e:
                             status = status_codes.ERR
                             message, log_msg = _("Failed to create home share dir: {e}", log=True)

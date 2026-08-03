@@ -6423,8 +6423,7 @@ class CommandHandler(object):
                 password = stdin.split("\0")[0]
                 new_password = stdin.split("\0")[1]
             except Exception:
-                msg =(_("Input format for --stdin-pass is: "
-                        "old_pass\0new_pass"))
+                msg =(_("Input format for --stdin-pass is: old_pass\x00new_pass"))
                 raise OTPmeException(msg) from None
 
             if key_mode == "server":

@@ -521,8 +521,7 @@ class OTPmeHost(OTPmeClientObject):
                     try:
                         key_algo = ssh.get_ssh_key_algo(token.ssh_public_key)
                     except OTPmeException as e:
-                        log_msg = _("Ignoring SSH token with invalid public "
-                                    "key: {token_path}: {error}", log=True)[1]
+                        log_msg = _("Ignoring SSH token with invalid public key: {token_path}: {error}", log=True)[1]
                         log_msg = log_msg.format(token_path=token.rel_path,
                                                 error=e)
                         logger.warning(log_msg)
@@ -785,9 +784,7 @@ class OTPmeHost(OTPmeClientObject):
         """
         if self.cert is None:
             return callback.error("Host does not have a certificate.")
-        msg = _("Revoke certificate of {object_type} '{object_name}'? "
-                "It cannot connect to the realm until it is joined "
-                "again.: ")
+        msg = _("Revoke certificate of {object_type} '{object_name}'? It cannot connect to the realm until it is joined again.: ")
         msg = msg.format(object_type=self.type, object_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()

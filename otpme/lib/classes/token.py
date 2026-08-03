@@ -2575,8 +2575,7 @@ class Token(OTPmeObject):
         self.mschap_enabled = True
 
         if not quiet:
-            callback.send(_("You have to set the token password after enabling "
-                            "MSCHAP authentication."))
+            callback.send(_("You have to set the token password after enabling MSCHAP authentication."))
 
         return self._cache(callback=callback)
 
@@ -2938,13 +2937,11 @@ class Token(OTPmeObject):
         """ Disable session keeping for this token. """
         # Check if token supports session keeping.
         if self.keep_session == None:
-            return callback.error(_("Session keeping not supported by this "
-                                    "token."))
+            return callback.error(_("Session keeping not supported by this token."))
 
         # Check if session keeping is already disabled.
         if not self.keep_session:
-            return callback.error(_("Session keeping is already disabled for "
-                                    "this token."))
+            return callback.error(_("Session keeping is already disabled for this token."))
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2996,8 +2993,7 @@ class Token(OTPmeObject):
             return callback.error(_("No auth script set."))
         # Check if auth_script is already enabled
         if self.auth_script_enabled:
-            return callback.error(_("Authorization script already enabled for "
-                                    "this token."))
+            return callback.error(_("Authorization script already enabled for this token."))
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3027,8 +3023,7 @@ class Token(OTPmeObject):
         """ Disable token auth script. """
         # Check if auth_script is already disabled.
         if not self.auth_script_enabled:
-            return callback.error(_("Authorization script already disabled for "
-                                    "this token."))
+            return callback.error(_("Authorization script already disabled for this token."))
         if run_policies:
             try:
                 self.run_policies("modify",

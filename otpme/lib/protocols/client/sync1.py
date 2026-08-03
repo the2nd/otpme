@@ -1053,8 +1053,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         _drain_results(timeout=0)
                         lost = target_pushed - results_seen
                         if lost > 0:
-                            log_msg = _("Lost {n} sync object(s): all "
-                                        "workers exited unexpectedly.", log=True)[1]
+                            log_msg = _("Lost {n} sync object(s): all workers exited unexpectedly.", log=True)[1]
                             log_msg = log_msg.format(n=lost)
                             self.logger.critical(log_msg)
                         return False
@@ -1275,7 +1274,6 @@ class OTPmeSyncP1(OTPmeClient1):
                         _backend_mod.instance_cache_read_times.clear()
                         _cache_mod.clear(cache_type=_cache_mod.PROCESS_CACHE,
                                         keep_modified=True,
-                                        update_clear_time=False,
                                         quiet=True)
                     except Exception:
                         pass
@@ -1288,6 +1286,7 @@ class OTPmeSyncP1(OTPmeClient1):
         own_realm, own_site, sync_older_objects):
         """ Process one sync object. Returns one of: "added",
         "updated", "skipped", "failed". """
+        # FIXME: this may be a cache bug. We need to investigate this without cache.clear().
         # Clear caches on add to prevent cached false negatives (e.g. parent object not found by UUID).
         cache.clear()
         # Make sure parent object exists on our site.

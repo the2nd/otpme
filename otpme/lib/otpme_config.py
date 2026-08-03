@@ -636,7 +636,6 @@ class OTPmeConfig(object):
         self.register_config_var("reload_file_path", str, None)
         self.register_config_var("audit_log_spool_dir", str, None)
         self.register_config_var("node_sync_file", str, None)
-        self.register_config_var("cache_clear_file", str, None)
         self.register_config_var("node_joined_file", str, None)
         self.register_config_var("realm_data_file_path", str, None)
         self.register_config_var("sync_status_file_path", str, None)
@@ -1206,7 +1205,6 @@ class OTPmeConfig(object):
         self.sync_dir = os.path.join(self.spool_dir, "sync")
         self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
-        self.cache_clear_file = os.path.join(self.spool_dir, "cache_clear")
         self.audit_log_spool_dir = os.path.join(self.spool_dir, "audit_log")
         self.node_joined_file = os.path.join(self.spool_dir, "new_node")
         self.realm_data_file_path = os.path.join(self.cache_dir, "realm-data.json")
@@ -2299,8 +2297,7 @@ class OTPmeConfig(object):
         #import inspect
         #for i in range(0, len(inspect.stack())):
         #    print(inspect.stack()[i][3])
-        msg = _("WARNING!!!!! Raising exceptions is enabled (-dee). "
-            "This exception would not occur in normal operation mode!")
+        msg = _("WARNING!!!!! Raising exceptions is enabled (-dee). This exception would not occur in normal operation mode!")
         error_message(msg)
         now = datetime.datetime.now()
         now = now.strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]
@@ -2867,9 +2864,7 @@ class OTPmeConfig(object):
         if self._db_pass is not None:
             return self._db_pass
         if not os.path.exists(self.db_pass_file):
-            msg = _("DB password file missing: {f}. Re-run "
-                    "`otpme-tool index init` or create the file "
-                    "manually (mode 0640, owner {u}:{g}).")
+            msg = _("DB password file missing: {f}. Re-run `otpme-tool index init` or create the file manually (mode 0640, owner {u}:{g}).")
             msg = msg.format(f=self.db_pass_file,
                              u=self.user,
                              g=self.group)

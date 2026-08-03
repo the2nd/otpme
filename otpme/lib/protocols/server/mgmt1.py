@@ -1337,7 +1337,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                         _backend_mod.instance_cache_read_times.clear()
                         _cache_mod.clear(cache_type=_cache_mod.PROCESS_CACHE,
                                         keep_modified=True,
-                                        update_clear_time=False,
                                         quiet=True)
                     except Exception:
                         pass
@@ -2893,7 +2892,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except KeyError:
             self.use_cached_objects = False
         if not self.use_cached_objects:
-            cache.clear(keep_func_caches=True, update_clear_time=False)
+            cache.clear(object_type=object_type, keep_func_caches=True)
 
         # Try to get object identifier from command.
         try:

@@ -1449,8 +1449,7 @@ class OfflineToken(object):
                     self.enc_key = result['key']
                     self.enc_salt = result['salt']
                 if not self.enc_key:
-                    msg = (_("Encryption of offline token required "
-                        "but got no key to encrypt!"))
+                    msg = (_("Encryption of offline token required but got no key to encrypt!"))
                     raise OTPmeException(msg)
                 # Set encryption stuff AFTER running self.derive_key()!
                 offline_enc_parameters = json.encode(self.offline_enc_parameters,

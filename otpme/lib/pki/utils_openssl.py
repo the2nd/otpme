@@ -33,8 +33,7 @@ def check_pyopenssl_version():
     #from otpme.lib.messages import message
     from otpme.lib.messages import error_message
     if OpenSSL.__version__.startswith('0.15'):
-        error_message(_("WARNING: You are probably using a pyopenssl version "
-                    "that leads to poor performance at the module load stage."))
+        error_message(_("WARNING: You are probably using a pyopenssl version that leads to poor performance at the module load stage."))
         error_message(_("WARNING: see https://github.com/pyca/pyopenssl/issues/137"))
 
 

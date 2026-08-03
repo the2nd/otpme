@@ -797,8 +797,7 @@ class Vlan(OTPmeObject):
 
         # Assignments live in the "vlans" config parameter of the assigned
         # objects, which is not indexed, so we cannot list them here.
-        msg = _("Objects the VLAN is assigned to will keep an unresolvable "
-                "assignment.")
+        msg = _("Objects the VLAN is assigned to will keep an unresolvable assignment.")
         if not self.ask_delete_confirmation(force=force,
                                             exception=msg,
                                             callback=callback):

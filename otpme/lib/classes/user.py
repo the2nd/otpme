@@ -5304,8 +5304,7 @@ class User(OTPmeObject):
         except Exception:
             role_path = None
         if not role_path:
-            msg = _("Admin access is not available: "
-                    "admin_access_role is not configured.")
+            msg = _("Admin access is not available: admin_access_role is not configured.")
             return None, msg
         if "/" in role_path:
             role_site, role_name = role_path.split("/", 1)

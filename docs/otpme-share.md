@@ -20,16 +20,49 @@ default scripts for new shares can be configured via the
 **default_share_add_script** and **default_share_mount_script** config
 parameters at site or unit level.
 
+# HOME SHARES
+
+A normal share hands out its root directory to everybody. A **home
+share** hands out *share_root***/***home_dir* instead, so every user
+gets their own directory and sees nothing else. The directory is created
+on the first mount, owned by the user and by default with mode 0700 (see
+**home_share_permissions**).
+
+Two naming schemes are available, chosen when the share is created:
+
+> **--home-share**  
+> The directory is named after the user UUID. Renaming a user keeps the
+> directory.
+>
+> **--home-share-uid**  
+> The directory is named after the user name (uid), which is what one
+> expects below e.g. /home. Implies **--home-share**.
+
+A **root mount token** gets no home dir and mounts *share_root* itself,
+so it reaches the home dirs of all users (see **add_root_mount_token**).
+
+Home shares can be encrypted. Every home dir is then encrypted on its
+own, with a share key per user, which is why an encrypted home share has
+no root mount token.
+
 # COMMANDS
 
 ## Share Management
 
-**add \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--key-len** *len*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] *share***  
+**add \[**--home-share**\] \[**--home-share-uid**\] \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--key-len** *len*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] *share***  
 Create a new share. Use **--force-group** to set forced group,
 **--force-directory-mode** and **--force-create-mode** to set
 permissions for new directories and files. Use **--crypt** to enable
 encryption, **--restore** to add a restore share and **--restore-token**
 for encrypted restore shares.
+
+**--home-share**  
+Create a home share (see **HOME SHARES** above). Each user gets their
+own subdirectory, named after the user UUID.
+
+**--home-share-uid**  
+Create a home share whose subdirectories are named after the user name
+(uid) instead of the user UUID. Implies **--home-share**.
 
 **del \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Delete a share. Asks for confirmation according to the confirmation
@@ -109,6 +142,11 @@ Set file creation mode.
 
 **force_directory_mode *share* *mode***  
 Set directory creation mode.
+
+**home_share_permissions *share* *mode***  
+Mode the per user directories of a home share are created with, in
+python format (e.g. **0o750**). The default **0o700** keeps the users
+out of each others home dirs.
 
 **enable_ro *share***  
 Make share read-only.
@@ -244,6 +282,21 @@ Allow a token to mount the share with master password.
 
 **remove_master_password_token *share* *token_path***  
 Remove a master password token from the share.
+
+## Root Mount Token
+
+A root mount token gets no home dir, it mounts *share_root* itself and
+thus reaches the home dirs of all users (see **HOME SHARES** above).
+Only available for unencrypted home shares.
+
+**add_root_mount_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+Let a token mount the share root of a home share. The share root the
+token gets changes, so the token is told to mount again, like with
+**add_token**.
+
+**remove_root_mount_token \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *token_path***  
+Remove a root mount token from the share. The token is told to unmount,
+like with **remove_token**.
 
 ## Pool and Node Management
 
@@ -416,6 +469,16 @@ Add a token to the share
 
 **otpme-share add_pool myshare europe**  
 Add a pool to the share
+
+**otpme-share add --home-share-uid homes**  
+Create a home share, each user gets *\<share_root\>/\<username\>*
+
+**otpme-share home_share_permissions homes 0o750**  
+Let the home dirs group be readable
+
+**otpme-share add_root_mount_token homes backup/login**  
+Let the token "backup/login" mount the share root and reach all home
+dirs
 
 # SEE ALSO
 

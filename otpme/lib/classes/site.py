@@ -1463,8 +1463,7 @@ def register_config():
             if not parsed:
                 raise ValueError("empty limit expression")
         except Exception as err:
-            msg = _("Invalid rate-limit '{value}': {err} "
-                    "(expected e.g. '10/minute').")
+            msg = _("Invalid rate-limit '{value}': {err} (expected e.g. '10/minute').")
             msg = msg.format(value=value, err=err)
             raise ValueError(msg) from err
         return value
@@ -1513,8 +1512,7 @@ def register_config():
             raise ValueError(msg)
         ag = result[0]
         if not ag.verify_acl("add:host"):
-            msg = _("You dont have permission to add hosts to this "
-                    "accessgroup: {ag}")
+            msg = _("You dont have permission to add hosts to this accessgroup: {ag}")
             msg = msg.format(ag=ag.oid)
             raise PermissionDenied(msg)
         return ag.uuid
@@ -1553,8 +1551,7 @@ def register_config():
             raise ValueError(msg)
         ag = result[0]
         if not ag.verify_acl("add:device"):
-            msg = _("You dont have permission to add devices to this "
-                    "accessgroup: {ag}")
+            msg = _("You dont have permission to add devices to this accessgroup: {ag}")
             msg = msg.format(ag=ag.oid)
             raise PermissionDenied(msg)
         return ag.uuid
@@ -1619,8 +1616,7 @@ def register_config():
         """
         role = get_role_object(role)
         if not role.verify_acl("add:host"):
-            msg = _("You dont have permission to add hosts to this "
-                    "role: {role}")
+            msg = _("You dont have permission to add hosts to this role: {role}")
             msg = msg.format(role=role.oid)
             raise PermissionDenied(msg)
         return role.uuid
@@ -1640,8 +1636,7 @@ def register_config():
         """
         role = get_role_object(role)
         if not role.verify_acl("add:device"):
-            msg = _("You dont have permission to add devices to this "
-                    "role: {role}")
+            msg = _("You dont have permission to add devices to this role: {role}")
             msg = msg.format(role=role.oid)
             raise PermissionDenied(msg)
         return role.uuid
@@ -3333,8 +3328,7 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        msg = _("Change SSO secret of site '{name}'? "
-                "All existing SSO sessions become invalid.: ")
+        msg = _("Change SSO secret of site '{name}'? All existing SSO sessions become invalid.: ")
         msg = msg.format(name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -3376,9 +3370,7 @@ class Site(OTPmeObject):
             except Exception:
                 return callback.error()
         if not force:
-            msg = _("Rotate OIDC pairwise secret for site '{name}'? "
-                    "All existing pairwise 'sub' values on RPs will "
-                    "change.: ")
+            msg = _("Rotate OIDC pairwise secret for site '{name}'? All existing pairwise 'sub' values on RPs will change.: ")
             msg = msg.format(name=self.name)
             if not self.ask_change_confirmation(msg, force=force,
                                                 callback=callback):
@@ -3427,8 +3419,7 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        msg = _("Change SSO CSRF secret of site '{name}'? "
-                "Forms opened in the SSO portal have to be reloaded.: ")
+        msg = _("Change SSO CSRF secret of site '{name}'? Forms opened in the SSO portal have to be reloaded.: ")
         msg = msg.format(name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -3460,9 +3451,7 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        msg = _("Change cluster key of site '{name}'? "
-                "Nodes that do not get the new key drop out of the "
-                "cluster.: ")
+        msg = _("Change cluster key of site '{name}'? Nodes that do not get the new key drop out of the cluster.: ")
         msg = msg.format(name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -3899,8 +3888,7 @@ class Site(OTPmeObject):
         was_active = k.get("otpme_status") == "active"
 
         if not force:
-            msg = _("Revoke OIDC key '{kid}'? "
-                    "All tokens signed by this key will be invalidated.: ")
+            msg = _("Revoke OIDC key '{kid}'? All tokens signed by this key will be invalidated.: ")
             msg = msg.format(kid=kid)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
                 return callback.abort()

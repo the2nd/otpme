@@ -1137,8 +1137,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     try:
         search_regex.encode("ascii")
     except UnicodeEncodeError:
-        msg = _("Search regex must contain ASCII characters only: "
-                "{search_regex}")
+        msg = _("Search regex must contain ASCII characters only: {search_regex}")
         msg = msg.format(search_regex=search_regex)
         raise OTPmeException(msg) from None
 

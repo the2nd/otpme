@@ -83,12 +83,15 @@ read_value_acls = {
                                     "force_group",
                                     "force_create_mode",
                                     "force_directory_mode",
-                                    "master_password_token",
+                                    "home_share_permissions",
+                                    "master_password_tokens",
                                     "master_password_hash_params",
+                                    "root_mount_tokens",
                                     "add_script",
                                     "mount_script",
                                     "mount_script_enabled",
                                     "limit_hosts",
+                                    "home_share",
                                 ],
             }
 
@@ -102,6 +105,7 @@ write_value_acls = {
                                     "group",
                                     "share_key",
                                     "master_password_token",
+                                    "root_mount_token",
                                 ],
                     "delete"       : [
                                     "share_key",
@@ -114,6 +118,7 @@ write_value_acls = {
                                     "pool",
                                     "group",
                                     "master_password_token",
+                                    "root_mount_token",
                                 ],
                     "enable"    : [
                                     "read_only",
@@ -130,6 +135,7 @@ write_value_acls = {
                                     "force_group",
                                     "force_create_mode",
                                     "force_directory_mode",
+                                    "home_share_permissions",
                                     "add_script",
                                 ],
             }
@@ -143,12 +149,12 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'home_share', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'home_share', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -262,6 +268,15 @@ commands = {
                 'exists'    : {
                     'method'            : 'force_create_mode',
                     'args'              : ['create_mode'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'home_share_permissions'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_home_share_permissions',
+                    'args'              : ['permissions'],
                     'job_type'          : 'process',
                     },
                 },
@@ -438,6 +453,26 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_master_password_token',
                     'args'              : ['token_path'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_root_mount_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_root_mount_token',
+                    'args'              : ['token_path'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_root_mount_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_root_mount_token',
+                    'args'              : ['token_path'],
+                    'oargs'             : ['share_notifications', 'persist_mount'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1067,6 +1102,7 @@ class Share(OTPmeObject):
         # Share root dir
         self.root_dir = None
         self.home_share = False
+        self.home_share_uid = False
         self.encrypted = False
         self.block_size = 4096
 
@@ -1076,6 +1112,9 @@ class Share(OTPmeObject):
         self.read_only = False
         self.create_mode = "0o000"
         self.directory_mode = "0o000"
+        # Mode the per user directories of a home share are created with.
+        # The default keeps the users out of each others home dirs.
+        self.home_share_permissions = "0o700"
         self.force_group_uuid = None
 
         self.limit_by_hosts = False
@@ -1143,6 +1182,11 @@ class Share(OTPmeObject):
                                                         'type'      : bool,
                                                         'required'  : False,
                                                     },
+                        'HOME_SHARE_UID'            : {
+                                                        'var_name'  : 'home_share_uid',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
                         'ENCRYPTED'                 : {
                                                         'var_name'  : 'encrypted',
                                                         'type'      : bool,
@@ -1176,6 +1220,12 @@ class Share(OTPmeObject):
                                                         'force_type': True,
                                                         'required'  : False,
                                                     },
+                        'HOME_SHARE_PERMISSIONS'    : {
+                                                        'var_name'  : 'home_share_permissions',
+                                                        'type'      : str,
+                                                        'force_type': True,
+                                                        'required'  : False,
+                                                    },
                         'MASTER_PASSWORD_TOKENS'    : {
                                                         'var_name'  : 'master_password_tokens',
                                                         'type'      : list,
@@ -1184,6 +1234,11 @@ class Share(OTPmeObject):
                         'MASTER_PASSWORD_HASH_PARAMS': {
                                                         'var_name'  : 'master_password_hash_params',
                                                         'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+                        'ROOT_MOUNT_TOKENS'         : {
+                                                        'var_name'  : 'root_mount_tokens',
+                                                        'type'      : list,
                                                         'required'  : False,
                                                     },
                         'SHARE_KEYS'                : {
@@ -1296,6 +1351,7 @@ class Share(OTPmeObject):
     def add(
         self,
         home_share: bool=False,
+        home_share_uid: bool=False,
         force_group: str=None,
         force_create_mode: str=None,
         force_directory_mode: str=None,
@@ -1310,6 +1366,8 @@ class Share(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        if home_share_uid and not home_share:
+            home_share = True
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
@@ -1360,6 +1418,8 @@ class Share(OTPmeObject):
                     return callback.error(msg)
             self.restore_share = share.uuid
             self.home_share = share.home_share
+            self.home_share_uid = share.home_share_uid
+            self.home_share_permissions = share.home_share_permissions
             self.encrypted = share.encrypted
             if share.force_group_uuid:
                 self.force_group(group_uuid=share.force_group_uuid,
@@ -1417,6 +1477,7 @@ class Share(OTPmeObject):
         if not self.set_root_dir(root_dir, force=True, callback=callback):
             return callback.error()
         self.home_share = home_share
+        self.home_share_uid = home_share_uid
         self.encrypted = encrypted
         self.add_index('encrypted', self.encrypted)
         if self.encrypted:
@@ -1503,9 +1564,7 @@ class Share(OTPmeObject):
             msg = _("No such file or directory: {root_dir}")
             msg = msg.format(root_dir=root_dir)
             return callback.error(msg)
-        msg = _("Change root dir of share '{share_name}' from '{old_dir}' to "
-                "'{new_dir}'? The data below the old one is not served "
-                "anymore.: ")
+        msg = _("Change root dir of share '{share_name}' from '{old_dir}' to '{new_dir}'? The data below the old one is not served anymore.: ")
         msg = msg.format(share_name=self.name,
                         old_dir=self.root_dir,
                         new_dir=root_dir)
@@ -1600,6 +1659,47 @@ class Share(OTPmeObject):
             return callback.error(msg)
         self.directory_mode = create_mode
         self.update_index('directory_mode', create_mode)
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:home_share_permissions'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("home share permissions {permissions}")
+    def set_home_share_permissions(
+        self,
+        permissions,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Set the mode the home share subdirs are created with.
+
+        The default 0o700 keeps the users out of each others home dirs.
+        Loosen it to let e.g. a forced group reach them through the file
+        system (a root mount token reaches them through the share, see
+        add_root_mount_token()).
+        """
+        if not self.home_share:
+            msg = _("Share is not a home share.")
+            return callback.error(msg)
+        if self.home_share_permissions == permissions:
+            msg = _("Home share permissions already set to: {permissions}")
+            msg = msg.format(permissions=self.home_share_permissions)
+            return callback.error(msg)
+        if not permissions.startswith("0o"):
+            msg = _("Invalid mode. Use python format, e.g. 0o700")
+            return callback.error(msg)
+        try:
+            mode = int(permissions, 0)
+        except ValueError:
+            msg = _("Invalid mode. Use python format, e.g. 0o700")
+            return callback.error(msg)
+        if mode < 0 or mode > 0o7777:
+            msg = _("Mode out of range: {permissions}")
+            msg = msg.format(permissions=permissions)
+            return callback.error(msg)
+        self.home_share_permissions = permissions
         return self._cache(callback=callback)
 
     @check_acls(['enable:read_only'])
@@ -1786,12 +1886,9 @@ class Share(OTPmeObject):
             return callback.error(msg)
 
         if len(self.master_password_tokens) == 1:
-            msg = _("'{token_path}' is the last master password token of "
-                    "share '{share_name}'. Without one the share cannot be "
-                    "mounted with the master password anymore.: ")
+            msg = _("'{token_path}' is the last master password token of share '{share_name}'. Without one the share cannot be mounted with the master password anymore.: ")
         else:
-            msg = _("Remove master password token '{token_path}' from share "
-                    "'{share_name}'?: ")
+            msg = _("Remove master password token '{token_path}' from share '{share_name}'?: ")
         msg = msg.format(token_path=token_path, share_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -1799,6 +1896,181 @@ class Share(OTPmeObject):
         self.master_password_tokens.remove(token_uuid)
 
         return self._write(callback=callback)
+
+    def is_root_mount_token(
+        self,
+        token_uuid: str,
+        **kwargs,
+        ):
+        """ Check if the token mounts the share root instead of a home dir. """
+        if token_uuid in self.root_mount_tokens:
+            return True
+        return False
+
+    def _notify_share_token(self, event_type, token_path,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
+        callback: JobCallback=default_callback):
+        """ Send a share_mount/share_unmount event for a single token.
+
+        Same payload add_token()/remove_token() build: the client needs
+        the nodes to connect to and the tokens the event is meant for.
+        """
+        username = token_path.split("/")[0]
+        if username == ADMIN_USER:
+            return
+        if persist_mount is None:
+            persist_mount = not bool(self.restore_share)
+
+        def post_method():
+            share_nodes = self.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=self.realm,
+                                            site=self.site,
+                                            return_type="instance")
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+
+            share_hosts = []
+            if self.limit_by_hosts:
+                share_hosts = self.get_hosts(include_groups=True,
+                                            include_roles=True,
+                                            return_type="name")
+            shares = {}
+            share_id = self.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = self.name
+            shares[share_id]['site'] = self.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['limit_hosts'] = self.limit_by_hosts
+            shares[share_id]['hosts'] = share_hosts
+            shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['tokens'] = [token_path]
+            shares[share_id]['persist'] = persist_mount
+
+            # Send notification to idled.
+            notify(username=username, event_type=event_type, data=shares)
+
+        if share_notifications is None:
+            share_notifications = self.get_share_notifications()
+
+        if share_notifications:
+            callback.post_methods.append(post_method)
+
+    @check_acls(['add:root_mount_token'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("add root mount token {token_path}")
+    def add_root_mount_token(
+        self,
+        token_path: str,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add token that mounts the share root instead of a home dir.
+
+        A home share hands out "<share_root>/<home dir>" to its users.
+        A root mount token gets no home dir, so it mounts the share root
+        and reaches the home dirs of all users.
+        """
+        if not "/" in token_path:
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        if not self.home_share:
+            msg = _("Share is not a home share. Its tokens already mount the share root.")
+            return callback.error(msg)
+
+        if self.encrypted:
+            msg = _("Share is encrypted. Every home dir has its own encryption, so a root mount could not read them.")
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown token: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid in self.root_mount_tokens:
+            msg = _("Token already assigned to share: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        self.root_mount_tokens.append(token_uuid)
+
+        result = self._write(callback=callback)
+        if not result:
+            return result
+
+        # The token gets a different share root from now on, so let it
+        # mount again.
+        self._notify_share_token("share_mount", token_path,
+                                persist_mount=persist_mount,
+                                share_notifications=share_notifications,
+                                callback=callback)
+        return result
+
+    @check_acls(['remove:root_mount_token'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("remove root mount token {token_path}")
+    def remove_root_mount_token(
+        self,
+        token_path: str,
+        persist_mount: bool=None,
+        share_notifications: bool=None,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove token that mounts the share root instead of a home dir. """
+        if not "/" in token_path:
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown token: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid not in self.root_mount_tokens:
+            msg = _("Token not assigned to share: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        self.root_mount_tokens.remove(token_uuid)
+
+        result = self._write(callback=callback)
+        if not result:
+            return result
+
+        # The share root the token has mounted is not its own anymore.
+        self._notify_share_token("share_unmount", token_path,
+                                persist_mount=persist_mount,
+                                share_notifications=share_notifications,
+                                callback=callback)
+        return result
 
     @object_lock()
     @audit_log(ignore_args=['share_key'])
@@ -1934,7 +2206,6 @@ class Share(OTPmeObject):
                 share_hosts = self.get_hosts(include_groups=True,
                                             include_roles=True,
                                             return_type="name")
-
             shares = {}
             share_id = self.share_id
             shares[share_id] = {}
@@ -1957,7 +2228,6 @@ class Share(OTPmeObject):
             callback.post_methods.append(post_method)
 
         return result
-
 
     @check_acls(['remove:token'])
     @object_lock()
@@ -2444,9 +2714,7 @@ class Share(OTPmeObject):
                 msg = msg.format(error=e)
                 return callback.error(msg)
 
-        msg = _("Remove share key of user '{username}' from share "
-                "'{share_name}'? The user cannot decrypt the shares data "
-                "anymore.: ")
+        msg = _("Remove share key of user '{username}' from share '{share_name}'? The user cannot decrypt the shares data anymore.: ")
         msg = msg.format(username=username, share_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -2851,6 +3119,7 @@ class Share(OTPmeObject):
                 ('nodes', 'node', None),
                 ('pools', 'pool', None),
                 ('master_password_tokens', 'token', None),
+                ('root_mount_tokens', 'token', None),
                 ('share_keys', 'user', None, 'dict_keys'),
                 ]
         return super().remove_orphans(force=force,
@@ -3178,6 +3447,13 @@ class Share(OTPmeObject):
         share_tokens = self.get_tokens(skip_disabled=True,
                                        include_roles=True,
                                        return_type="rel_path")
+        if self.root_mount_tokens:
+            result = backend.search(object_type="token",
+                                    attribute="uuid",
+                                    values=self.root_mount_tokens,
+                                    return_type="rel_path")
+            if result:
+                share_tokens += result
         if not share_tokens:
             return
         share_nodes = self.get_nodes(include_pools=True,
@@ -3805,9 +4081,7 @@ class Share(OTPmeObject):
             # The per user share keys live on the share object and are
             # gone with it. The data on disk stays encrypted, so without
             # the master password there is no way back.
-            msg = _("Share '{share_name}' is encrypted. The share keys are "
-                    "deleted with it, so its data can only be decrypted by "
-                    "someone in possession of the master password.")
+            msg = _("Share '{share_name}' is encrypted. The share keys are deleted with it, so its data can only be decrypted by someone in possession of the master password.")
             exception_parts.append(msg.format(share_name=self.name))
         if self.tokens:
             msg = _("Share '{share_name}' has assigned tokens: {token_list}")
@@ -3939,12 +4213,21 @@ class Share(OTPmeObject):
 
         master_password_tokens_list = []
         if self.master_password_tokens:
-            if self.verify_acl("view:master_password_token"):
+            if self.verify_acl("view:master_password_tokens"):
                 master_password_tokens_list = backend.search(object_type="token",
                                                             attribute="uuid",
                                                             values=self.master_password_tokens,
                                                             return_type="rel_path")
             master_password_tokens_list.sort()
+
+        root_mount_tokens_list = []
+        if self.root_mount_tokens:
+            if self.verify_acl("view:root_mount_tokens"):
+                root_mount_tokens_list = backend.search(object_type="token",
+                                                        attribute="uuid",
+                                                        values=self.root_mount_tokens,
+                                                        return_type="rel_path")
+            root_mount_tokens_list.sort()
 
         if self.verify_acl("view:groups") \
         or self.verify_acl("add:group") \
@@ -3973,6 +4256,16 @@ class Share(OTPmeObject):
         lines.append(f'POOLS="{",".join(pool_list)}"')
         lines.append(f'GROUPS="{",".join(group_list)}"')
 
+        if self.verify_acl("view:home_share"):
+            lines.append(f'HOME_SHARE="{self.home_share}"')
+        else:
+            lines.append('HOME_SHARE=""')
+
+        if self.verify_acl("view:home_share"):
+            lines.append(f'HOME_SHARE_UID="{self.home_share_uid}"')
+        else:
+            lines.append('HOME_SHARE_UID=""')
+
         if self.verify_acl("view:force_group"):
             group = None
             if self.force_group_uuid:
@@ -3993,6 +4286,11 @@ class Share(OTPmeObject):
         else:
             lines.append('DIRECTORY_MODE=""')
 
+        if self.verify_acl("view:home_share_permissions"):
+            lines.append(f'HOME_SHARE_PERMISSIONS="{self.home_share_permissions}"')
+        else:
+            lines.append('HOME_SHARE_PERMISSIONS=""')
+
         if self.verify_acl("view:root_dir") \
         or self.verify_acl("edit:root_dir"):
             lines.append(f'ROOT_DIR="{self.root_dir}"')
@@ -4008,6 +4306,11 @@ class Share(OTPmeObject):
             lines.append(f'MASTER_PASSWORD_HASH_PARAMS="{self.master_password_hash_params}"')
         else:
             lines.append('MASTER_PASSWORD_HASH_PARAMS=""')
+
+        if self.verify_acl("view:root_mount_tokens"):
+            lines.append(f'ROOT_MOUNT_TOKENS="{",".join(root_mount_tokens_list)}"')
+        else:
+            lines.append('ROOT_MOUNT_TOKENS=""')
 
         if self.verify_acl("view:add_script"):
             add_script = None

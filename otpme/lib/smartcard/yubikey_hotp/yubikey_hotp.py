@@ -148,8 +148,7 @@ class YubikeyHotpClientHandler(object):
         except Exception:
             pass
 
-        ask = cli.user_input(_("Please re-plug your yubikey now and "
-                            "press RETURN."))
+        ask = cli.user_input(_("Please re-plug your yubikey now and press RETURN."))
         return deploy_args
 
 class YubikeyHotpServerHandler(object):

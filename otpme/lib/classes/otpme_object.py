@@ -6759,11 +6759,13 @@ class OTPmeObject(OTPmeBaseObject):
         auth_token: Union[OTPmeBaseObject,None]=None,
         ):
         """ Check if current user is authorized by the given ACL """
-        # Site admins should not have access to realm, site or admin token
-        # without ACL check.
+        # Site admins should not have access to realm, site, nodes
+        # or admin token without ACL check.
         if self.type == "realm":
             check_admin_role = False
         if self.type == "site":
+            check_admin_role = False
+        if self.type == "node":
             check_admin_role = False
         if self.uuid == config.admin_token_uuid:
             check_admin_role = False
@@ -9832,6 +9834,24 @@ class OTPmeObject(OTPmeBaseObject):
                         orphans.append(x_uuid)
         return orphans
 
+    def del_index_refs(self, uuids):
+        """ Drop index entries that point at the given (orphan) UUIDs.
+
+        Goes by value, not by key: the index key is not always the object
+        type (child groups are indexed as "child_group", sync users as
+        "sync_user"), and the same UUID can be indexed under more than one
+        key. The referenced objects are gone, so no index entry may point
+        at them anymore.
+        """
+        uuid_set = set(uuids)
+        if not uuid_set:
+            return
+        for key in list(self.index):
+            for value in list(self.index[key]):
+                if value not in uuid_set:
+                    continue
+                self.del_index(key, value)
+
     def remove_orphan_refs(self, attr, object_type, paired_dicts=None,
         kind="list", orphans=None, verbose_level=0, callback=default_callback):
         """ Remove orphan UUIDs from self.<attr>. See get_orphan_refs() for the
@@ -9887,6 +9907,9 @@ class OTPmeObject(OTPmeBaseObject):
                         if x_uuid in orphan_set:
                             x_list.remove(x_uuid)
                             object_changed = True
+        if object_changed:
+            # The removed UUIDs must not stay searchable.
+            self.del_index_refs(orphan_set)
         return object_changed
 
     @check_acls(['remove:orphans'])
@@ -10246,7 +10269,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(parameter=parameter)
                 return callback.error(msg)
             if not self.verify_acl(f'view:config:{parameter}'):
-                msg = "<hidden>"
+                msg = _("Permission denied.")
                 return callback.error(msg)
         if run_policies:
             try:
@@ -10273,7 +10296,7 @@ class OTPmeObject(OTPmeBaseObject):
         config_params = {}
         for para in sorted(self.config_params):
             if not self.verify_acl(f'view:config:{para}'):
-                config_params[para] = "<hidden>"
+                #config_params[para] = "<hidden>"
                 continue
             try:
                 para_data = config.get_config_parameter(para)

@@ -889,8 +889,7 @@ def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
                 if print_messages:
                     if wait_msg_sent > 0:
                         message_method("\n")
-                    msg = _("PID {proc_pid} ({proc_name}) NOT terminated by signal {signal} "
-                            "after {timeout} seconds.")
+                    msg = _("PID {proc_pid} ({proc_name}) NOT terminated by signal {signal} after {timeout} seconds.")
                     msg = msg.format(proc_pid=proc.pid, proc_name=proc_name, signal=signal, timeout=timeout)
                     message_method(msg)
                 break

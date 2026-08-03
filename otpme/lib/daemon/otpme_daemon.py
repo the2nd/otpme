@@ -106,8 +106,7 @@ class OTPmeDaemon(object):
             from otpme.lib.humanize import units
             config.max_decompressed_size = units.size2int(value)
         except Exception as e:
-            log_msg = _("Failed to load max_decompressed_size from config: "
-                        "{error}", log=True)[1]
+            log_msg = _("Failed to load max_decompressed_size from config: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
 

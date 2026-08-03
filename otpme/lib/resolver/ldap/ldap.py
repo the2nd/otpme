@@ -764,12 +764,7 @@ class LdapResolver(Resolver):
                 tls_config = ldap3.Tls(validate=ssl.CERT_REQUIRED,
                                        ca_certs_data=self.ca_data)
             else:
-                warn_msg, log_msg = _("WARNING: LDAP resolver connecting to "
-                                      "{server_uri} without server certificate "
-                                      "verification (no ca_data configured). "
-                                      "An on-path attacker could intercept "
-                                      "credentials and inject forged objects. "
-                                      "Configure ca_data on this resolver.",
+                warn_msg, log_msg = _("WARNING: LDAP resolver connecting to {server_uri} without server certificate verification (no ca_data configured). An on-path attacker could intercept credentials and inject forged objects. Configure ca_data on this resolver.",
                                       log=True)
                 warn_msg = warn_msg.format(server_uri=server_uri)
                 log_msg = log_msg.format(server_uri=server_uri)

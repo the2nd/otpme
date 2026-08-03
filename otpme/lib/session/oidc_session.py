@@ -468,8 +468,7 @@ class OIDCSession(Session):
                 # raises during dispatch) is diagnosable.
                 try:
                     from otpme.lib.classes.session import logger
-                    log_msg = _("OIDC backchannel logout dispatch raised "
-                                "unexpectedly for session '{sid}': {err}",
+                    log_msg = _("OIDC backchannel logout dispatch raised unexpectedly for session '{sid}': {err}",
                                 log=True)[1]
                     log_msg = log_msg.format(sid=self.session_id, err=e)
                     logger.warning(log_msg, exc_info=True)
@@ -511,8 +510,7 @@ class OIDCSession(Session):
         except Exception as e:
             from otpme.lib.classes.session import logger
             try:
-                log_msg = _("OIDC backchannel logout token build failed "
-                            "for {uri}: {err}", log=True)[1]
+                log_msg = _("OIDC backchannel logout token build failed for {uri}: {err}", log=True)[1]
                 log_msg = log_msg.format(uri=uri, err=e)
                 logger.warning(log_msg, exc_info=True)
             except Exception:

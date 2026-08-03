@@ -67,6 +67,5 @@ def run(script_uuid, options, share_name, share_root, force_group=None,
         return False
 
     # This point should never be reached.
-    msg = _("WARNING: You may have hit a BUG in share_script.run(). "
-                        "Authorization via script failed.")
+    msg = _("WARNING: You may have hit a BUG in share_script.run(). Authorization via script failed.")
     raise OTPmeException(msg)

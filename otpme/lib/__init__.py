@@ -344,6 +344,5 @@ def init_otpme(use_backend=None, load_host_data=True):
     if not config.realm:
         if config.tool_name != f"{config.my_name.lower()}-realm" \
         and config.tool_name != f"{config.my_name.lower()}-tool":
-            error_message(_("We do not have a realm. You must first init the "
-                            "realm."))
+            error_message(_("We do not have a realm. You must first init the realm."))
             sys.exit(1)

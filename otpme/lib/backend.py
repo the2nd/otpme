@@ -330,7 +330,7 @@ def write_config(
         _transaction = get_transaction()
         if _transaction is None:
             # Make sure object is outdated in caches.
-            outdate_object(object_id)
+            outdate_object(object_id, cache_type="all")
 
     return write_status
 

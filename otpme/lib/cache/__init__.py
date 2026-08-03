@@ -16,12 +16,10 @@ except Exception:
 from otpme.lib import re
 from otpme.lib import config
 from otpme.lib import locking
-from otpme.lib import filetools
 from otpme.lib import multiprocessing
 from otpme.lib.cache.lru import LRUCache
 from otpme.lib.pickle import PickleHandler
 from otpme.lib.cache.funccache import FuncCache
-from otpme.lib.multiprocessing import register_atfork_method
 
 from otpme.lib.exceptions import *
 
@@ -35,7 +33,6 @@ LIST_CACHE_LOCK_TYPE = "cache.list"
 default_callback = config.get_callback()
 
 last_checksum_test = {}
-last_process_cache_clear_time = {}
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
@@ -60,11 +57,6 @@ def register():
     multiprocessing.register_shared_dict("function_cache_clear_trigger")
     # Register cache modules.
     _register_modules(modules)
-
-def reset_last_process_cache_clear_time():
-    global last_process_cache_clear_time
-    last_process_cache_clear_time = {}
-register_atfork_method(reset_last_process_cache_clear_time)
 
 # All modified (cached) instances.
 modified_objects = {}
@@ -110,10 +102,6 @@ unit_members_cache = FuncCache(name="unit_members",
 object_list_cache = FuncCache(name="object_list_cache",
                             default_cache="default",
                             clear_on_object_types=config.tree_object_types)
-assigned_host_cache = FuncCache(name="assigned_host",
-                            shared=True,
-                            default_cache="default",
-                            clear_on_object_types=['host', 'role', 'group', 'accessgroup'])
 assigned_role_cache = FuncCache(name="assigned_role",
                             shared=True,
                             default_cache="default",
@@ -121,11 +109,15 @@ assigned_role_cache = FuncCache(name="assigned_role",
 assigned_device_cache = FuncCache(name="assigned_device",
                             shared=True,
                             default_cache="default",
-                            clear_on_object_types=['device', 'role', 'accessgroup'])
+                            clear_on_object_types=['device', 'role', 'group', 'accessgroup', 'share'])
+assigned_host_cache = FuncCache(name="assigned_host",
+                            shared=True,
+                            default_cache="default",
+                            clear_on_object_types=['host', 'role', 'group', 'accessgroup', 'share'])
 assigned_token_cache = FuncCache(name="assigned_token",
                             shared=True,
                             default_cache="default",
-                            clear_on_object_types=['token', 'role', 'accessgroup'])
+                            clear_on_object_types=config.tree_object_types)
 user_tokens_cache = FuncCache(name="user_tokens",
                             shared=True,
                             default_cache="default",
@@ -340,21 +332,6 @@ def init():
             supported_acls_cache,
             ]
 
-def set_cache_clear_time(object_type, clear_time):
-    global last_process_cache_clear_time
-    cache_clear_file = f"{config.cache_clear_file}.{object_type}"
-    if not os.path.exists(cache_clear_file):
-        filetools.touch(cache_clear_file)
-    last_process_cache_clear_time[object_type] = clear_time
-    os.utime(cache_clear_file, (clear_time, clear_time))
-
-def get_cache_clear_time(object_type):
-    cache_clear_file = f"{config.cache_clear_file}.{object_type}"
-    if not os.path.exists(cache_clear_file):
-        return
-    clear_time = os.path.getmtime(cache_clear_file)
-    return clear_time
-
 # Shared cache uses pickle and pickle is to slow!!!!!    
 def add_instance(instance, skip_shared_cache=True, invalidate=True):
     """ Update instance caches. """
@@ -382,7 +359,9 @@ def add_instance(instance, skip_shared_cache=True, invalidate=True):
         ## Clear object cache.
         #instance_cache.invalidate(object_type)
         # Clear search cache.
+        index_cache.invalidate()
         search_cache.invalidate()
+        index_search_cache.invalidate()
         if object_type in config.tree_object_types:
             # Clear ldif cache.
             ldif_cache.invalidate()
@@ -452,7 +431,6 @@ def get_instance(object_id, cache_type=None):
     from otpme.lib import config
     from otpme.lib import backend
     global last_checksum_test
-    global last_process_cache_clear_time
     if not config.cache_enabled:
         return
     logger = config.logger
@@ -475,16 +453,6 @@ def get_instance(object_id, cache_type=None):
     # Try to get instance cache entry.
     cache_entry = None
     if check_process_cache:
-        clear_time = get_cache_clear_time(object_id.object_type)
-        try:
-            last_clear_time = last_process_cache_clear_time[object_id.object_type]
-        except KeyError:
-            last_clear_time = None
-        if last_clear_time is None:
-            last_clear_time = clear_time
-        if last_clear_time != clear_time:
-            clear(object_id=object_id, cache_type=PROCESS_CACHE, update_clear_time=False)
-            last_process_cache_clear_time[object_id.object_type] = clear_time
         try:
             cache_entry = process_cache[read_oid]
             _cache_type = PROCESS_CACHE
@@ -795,8 +763,8 @@ def flush(commit=True, callback=default_callback, quiet=True):
             logger.debug(log_msg)
         x.invalidate()
 
-def clear(object_id=None, cache_type=None, keep_func_caches=False,
-    keep_modified=True, update_clear_time=True, quiet=True):
+def clear(object_id=None, object_type=None, cache_type=None, keep_func_caches=False,
+    keep_modified=True, quiet=True):
     """ Clear caches. """
     from otpme.lib import oid
     from otpme.lib import config
@@ -807,9 +775,10 @@ def clear(object_id=None, cache_type=None, keep_func_caches=False,
         logger.debug(log_msg)
 
     # Flush caches.
-    object_type = None
-    if object_id:
-        object_type = object_id.object_type
+    if object_type is None:
+        if object_id:
+            object_type = object_id.object_type
+
     if not keep_func_caches:
         for x in caches:
             if object_type:
@@ -830,16 +799,6 @@ def clear(object_id=None, cache_type=None, keep_func_caches=False,
                         ]
     if cache_type is not None:
         clear_cache_types = [cache_type]
-
-    if PROCESS_CACHE in clear_cache_types:
-        if update_clear_time:
-            clear_time = time.time()
-            if object_type is None:
-                object_types = config.object_types
-            else:
-                object_types = [object_type]
-            for x_type in object_types:
-                set_cache_clear_time(x_type, clear_time)
 
     if object_id is None:
         if ACL_CACHE in clear_cache_types:

@@ -1252,8 +1252,7 @@ class OTPmeClient(OTPmeClientBase):
                 raise OTPmeException(msg) from e
 
         if not self.smartcard:
-            msg = (_("Smartcard authentication requested but no smartcard "
-                    "found."))
+            msg = (_("Smartcard authentication requested but no smartcard found."))
             raise OTPmeException(msg)
 
         if smartcard_type not in self.smartcard.otpme_auth_types:
@@ -2388,13 +2387,11 @@ class OTPmeClient1(OTPmeClientBase):
         self.logout = logout
 
         if (self.login or self.logout) and self.use_agent:
-            msg = (_("Realm login/logout are not possible when using agent "
-                    "connection."))
+            msg = (_("Realm login/logout are not possible when using agent connection."))
             raise OTPmeException(msg)
 
         if (self.login or self.logout) and not self.daemon == "authd":
-            msg = (_("Realm login/logout only possible when connecting "
-                    "to authd."))
+            msg = (_("Realm login/logout only possible when connecting to authd."))
             raise OTPmeException(msg)
 
         if self.login and not self.username:
@@ -2556,8 +2553,7 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = msg.format(error=e)
                 raise OTPmeException(msg) from e
         else:
-            raise AuthFailed(_("In non-interactive mode 'password' or "
-                            "'password_method' is required."))
+            raise AuthFailed(_("In non-interactive mode 'password' or 'password_method' is required."))
         if not password and not null_ok:
             raise AuthFailed(_("Got empty password."))
         return password
@@ -3033,8 +3029,7 @@ class OTPmeClient1(OTPmeClientBase):
             try:
                 ecdh_server_pub_pem = self.preauth_response['ecdh_server_pub']
             except Exception:
-                msg = (_("Malformed preauth response: Missing server ECDH "
-                        "public key."))
+                msg = (_("Malformed preauth response: Missing server ECDH public key."))
                 raise OTPmeException(msg) from None
 
         # Set realm/site we are connected to.
@@ -4352,8 +4347,7 @@ class OTPmeClient1(OTPmeClientBase):
             session_unused_timeout = self.auth_response['unused_timeout']
         except Exception:
             self.cleanup()
-            msg = (_("Malformed auth response: Missing unused "
-                    "session timeout"))
+            msg = (_("Malformed auth response: Missing unused session timeout"))
             raise OTPmeException(msg) from None
         if config.debug_level(DEBUG_SLOT) > 0:
             log_msg = _("Got session unused timeout from auth response: {session_unused_timeout}", log=True)[1]

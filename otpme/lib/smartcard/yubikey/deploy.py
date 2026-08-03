@@ -85,8 +85,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     pre_check_failed = False
 
     if stuff.get_pid(name='gpg-agent', user=system_user):
-        error_message(_("Found a running gpg-agent. Please stop all gpg-agents "
-                        "before continuing."))
+        error_message(_("Found a running gpg-agent. Please stop all gpg-agents before continuing."))
         pre_check_failed = True
 
     if os.path.exists(gpg_dir):
@@ -443,16 +442,12 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         msg = msg.format(gpg_backup_file=gpg_backup_file)
         message(msg)
         message("")
-        message(_("Please copy the backup file of your GPG keys to a secure "
-                "(offline) medium NOW !!!!!!"))
-        message(_("If you lose this file or forget the password your keys are "
-                "lost !!!!"))
+        message(_("Please copy the backup file of your GPG keys to a secure (offline) medium NOW !!!!!!"))
+        message(_("If you lose this file or forget the password your keys are lost !!!!"))
         if new_password == gpg_passphrase:
-            message(_("Note: The backup file is secured with your token "
-                    "password."))
+            message(_("Note: The backup file is secured with your token password."))
         else:
-            message(_("Note: The backup file is secured with the password you "
-                    "entered before."))
+            message(_("Note: The backup file is secured with the password you entered before."))
 
     # Cleanup GPG stuff
     cleanup()

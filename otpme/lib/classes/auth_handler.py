@@ -2162,8 +2162,7 @@ class AuthHandler(object):
                 # we just hang an OIDCSession off the existing
                 # parent. ``session`` (constructed above) is dropped.
                 if not self.auth_session:
-                    log_msg = _("OIDC /authorize without parent SSO session "
-                                "for user '{user}' -- nothing to attach to.",
+                    log_msg = _("OIDC /authorize without parent SSO session for user '{user}' -- nothing to attach to.",
                                 log=True)[1]
                     log_msg = log_msg.format(user=self.user.name)
                     self.logger.warning(log_msg)
