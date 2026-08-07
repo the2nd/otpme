@@ -2599,7 +2599,9 @@ class ClusterDaemon(OTPmeDaemon):
 
             # Handle preferred master node.
             if is_preferred_master_node and not self.preferred_master_node_set and config.cluster_status:
-                if new_master_node != self.host_name:
+                if new_master_node == self.host_name:
+                    self.preferred_master_node_set = True
+                else:
                     while True:
                         # Get connection to new master node.
                         try:
