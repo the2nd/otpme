@@ -98,10 +98,11 @@ def register_cluster_journal():
                             drop=True,
                             perms=0o770)
 
-def check_cluster_status():
-    if config.master_failover:
-        msg = _("Ongoing master failover.")
-        raise OTPmeException(msg)
+def check_cluster_status(skip_master_failover=False):
+    if not skip_master_failover:
+        if config.master_failover:
+            msg = _("Ongoing master failover.")
+            raise OTPmeException(msg)
     if not config.cluster_quorum:
         msg = _("No cluster quorum.")
         raise OTPmeException(msg)
@@ -1468,6 +1469,11 @@ class ClusterDaemon(OTPmeDaemon):
             multiprocessing.member_nodes.pop(node_name)
         except KeyError:
             pass
+        else:
+            # Gone, so the LDAP load balancer must stop sending to it.
+            # Its own health check would notice as well, this only
+            # keeps it from trying in the first place.
+            self.reload_haproxy()
         if self.node_conn:
             if self.node_conn.connected:
                 self.node_conn.close()
@@ -1839,9 +1845,14 @@ class ClusterDaemon(OTPmeDaemon):
         member_nodes_count = len(multiprocessing.member_nodes) + 1
         if member_nodes_count < required_votes:
             config.cluster_status = False
+            # Stop ldapd.
+            self.stop_ldapd()
         else:
             if os.path.exists(config.node_sync_file):
-                config.cluster_status = True
+                if not config.cluster_status:
+                    config.cluster_status = True
+                    # Start ldapd.
+                    self.start_ldapd()
 
         return current_votes, required_votes, quorum
 
@@ -3129,6 +3140,8 @@ class ClusterDaemon(OTPmeDaemon):
             log_msg = _("Node joined the cluster: {node}", log=True)[1]
             log_msg = log_msg.format(node=node_name)
             self.logger.info(log_msg)
+            # A node the LDAP load balancer can send requests to now.
+            self.reload_haproxy()
 
     def start_node_sessions_connection(self, node_name):
         try:
@@ -4316,6 +4329,28 @@ class ClusterDaemon(OTPmeDaemon):
 
     def stop_idled(self):
         send_daemon_command(daemon="idled", command="stop")
+
+    def start_ldapd(self):
+        send_daemon_command(daemon="ldapd", command="start")
+
+    def stop_ldapd(self):
+        send_daemon_command(daemon="ldapd", command="stop")
+
+    def reload_haproxy(self):
+        """ Tell controld that the member nodes changed.
+
+        controld runs the load balancer, because it holds the floating
+        IP it listens on and has the privileges for its port. It does
+        nothing when it is not the master.
+        """
+        if not config.start_haproxy:
+            return
+        try:
+            self.comm_handler.send("controld", command="reload_haproxy")
+        except Exception as e:
+            log_msg = _("Failed to send haproxy reload: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
     def start_freeradius(self):
         from otpme.lib.freeradius.utils import start

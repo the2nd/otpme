@@ -87,6 +87,7 @@ read_value_acls = {
                                     "master_password_tokens",
                                     "master_password_hash_params",
                                     "root_mount_tokens",
+                                    "no_mount_tokens",
                                     "add_script",
                                     "mount_script",
                                     "mount_script_enabled",
@@ -106,6 +107,7 @@ write_value_acls = {
                                     "share_key",
                                     "master_password_token",
                                     "root_mount_token",
+                                    "no_mount_token",
                                 ],
                     "delete"       : [
                                     "share_key",
@@ -119,6 +121,7 @@ write_value_acls = {
                                     "group",
                                     "master_password_token",
                                     "root_mount_token",
+                                    "no_mount_token",
                                 ],
                     "enable"    : [
                                     "read_only",
@@ -473,6 +476,25 @@ commands = {
                     'method'            : 'remove_root_mount_token',
                     'args'              : ['token_path'],
                     'oargs'             : ['share_notifications', 'persist_mount'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_no_mount_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_no_mount_token',
+                    'args'              : ['token_path'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_no_mount_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_no_mount_token',
+                    'args'              : ['token_path'],
+                    'oargs'             : ['keep_share_key'],
                     'job_type'          : 'process',
                     },
                 },
@@ -932,6 +954,8 @@ def register():
     config.register_index_attribute("share")
     config.register_index_attribute("pool")
     config.register_index_attribute("root_dir")
+    config.register_index_attribute("root_mount_token")
+    config.register_index_attribute("no_mount_token")
     config.register_recursive_default_acl("site", "+share")
     config.register_default_acl("unit", "+share")
     config.register_recursive_default_acl("unit", "+share")
@@ -1238,6 +1262,11 @@ class Share(OTPmeObject):
                                                     },
                         'ROOT_MOUNT_TOKENS'         : {
                                                         'var_name'  : 'root_mount_tokens',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+                        'NO_MOUNT_TOKENS'           : {
+                                                        'var_name'  : 'no_mount_tokens',
                                                         'type'      : list,
                                                         'required'  : False,
                                                     },
@@ -2012,8 +2041,14 @@ class Share(OTPmeObject):
 
         self.root_mount_tokens.append(token_uuid)
 
+        # Update index.
+        self.add_index('root_mount_token', token_uuid)
+
         result = self._write(callback=callback)
         if not result:
+            return result
+
+        if not self.enabled:
             return result
 
         # The token gets a different share root from now on, so let it
@@ -2060,6 +2095,8 @@ class Share(OTPmeObject):
             return callback.error(msg)
 
         self.root_mount_tokens.remove(token_uuid)
+        # Update index.
+        self.del_index('root_mount_token', token_uuid)
 
         result = self._write(callback=callback)
         if not result:
@@ -2071,6 +2108,235 @@ class Share(OTPmeObject):
                                 share_notifications=share_notifications,
                                 callback=callback)
         return result
+
+    def filter_mount_tokens(self, token_paths):
+        """ Drop the tokens that do not get the share mounted.
+
+        A no mount token may mount the share, it just does not get it
+        mounted by itself, so it gets no share_mount event (see
+        add_no_mount_token()). It stays in the unmount events: it may
+        have mounted the share by hand.
+        """
+        if not self.no_mount_tokens:
+            return token_paths
+        no_mount_paths = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        values=self.no_mount_tokens,
+                                        return_type="rel_path")
+        return [x for x in token_paths if x not in no_mount_paths]
+
+    def is_no_mount_token(
+        self,
+        token_uuid: str,
+        **kwargs,
+        ):
+        """ Check if the token does not get the share mounted by itself. """
+        if token_uuid in self.no_mount_tokens:
+            return True
+        return False
+
+    def get_share_tokens(self):
+        """ All tokens assigned to the share, mounting or not.
+
+        A users share key has to stay as long as any of their tokens is
+        still on the share, no matter whether it may mount it.
+        """
+        return list(self.tokens) + list(self.no_mount_tokens)
+
+    @check_acls(['add:no_mount_token'])
+    @object_lock()
+    @audit_log(ignore_args=['share_key'])
+    @object_changelog("add no mount token {token_path}")
+    def add_no_mount_token(
+        self,
+        token_path: str,
+        share_key: str=None,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add token that does not get the share mounted automatically.
+
+        Everything add_token() does, including handing the user a share
+        key, except that the share is not mounted for this token at
+        login and it gets no share_mount event. Mounting it by hand
+        with otpme-mount keeps working (see filter_mount_tokens()).
+        """
+        if not "/" in token_path:
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown token: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid in self.no_mount_tokens:
+            msg = _("Token already assigned to share: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        token_user = token_path.split("/")[0]
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=token_user,
+                                realm=config.realm,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown user: {token_user}")
+            msg = msg.format(token_user=token_user)
+            return callback.error(msg)
+        user = result[0]
+
+        if not config.auth_user or not config.auth_user.is_admin():
+            if self.force_group_uuid is not None:
+                group = backend.get_object(uuid=self.force_group_uuid)
+                group_users = group.get_token_users(include_roles=True,
+                                                skip_disabled=True,
+                                                return_type="name")
+                if user.name not in group_users:
+                    msg = _("Force group enabled and user not in group: {group_name}")
+                    msg = msg.format(group_name=group.name)
+                    return callback.error(msg)
+
+        if self.encrypted and not self.home_share:
+            if self.restore_share:
+                result = backend.search(object_type="share",
+                                        attribute="uuid",
+                                        value=self.restore_share,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="instance")
+                if not result:
+                    msg = _("Unknown share: {restore_share}")
+                    msg = msg.format(restore_share=self.restore_share)
+                    return callback.error(msg)
+                share = result[0]
+                share_key = share.get_share_key(username=token_user)
+                if not share_key:
+                    msg = _("No share key available for user: {user}")
+                    msg = msg.format(user=token_user)
+                    return callback.error(msg)
+            else:
+                existing_key = self.get_share_key(username=user.name)
+                if not existing_key and not share_key:
+                    auth_user = config.auth_user
+                    auth_user_share_key = self.get_share_key(username=auth_user.name)
+                    if not auth_user_share_key:
+                        msg = _("You dont have a share key for share: {share_name}")
+                        msg = msg.format(share_name=self.name)
+                        return callback.error(msg)
+                    msg = _("Sending request to re-encrypt share key for user: {user_name}")
+                    msg = msg.format(user_name=user.name)
+                    callback.send(msg)
+                    key_mode = auth_user.key_mode
+                    share_key = callback.reencrypt_share_key(share_user=user.name,
+                                                            share_key=auth_user_share_key,
+                                                            key_mode=key_mode)
+                    if not share_key:
+                        msg = _("Failed to receive share key from client.")
+                        return callback.error(msg)
+            if share_key:
+                self.add_share_key(username=user.name,
+                                    share_key=share_key,
+                                    callback=callback,
+                                    verify_acls=False)
+
+        self.no_mount_tokens.append(token_uuid)
+
+        # Update index.
+        self.add_index('no_mount_token', token_uuid)
+
+        return self._write(callback=callback)
+
+    @check_acls(['remove:no_mount_token'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("remove no mount token {token_path}")
+    def remove_no_mount_token(
+        self,
+        token_path: str,
+        keep_share_key: bool=None,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove token that does not get the share mounted automatically.
+
+        Drops the users share key with it, like remove_token() does.
+        """
+        if not "/" in token_path:
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown token: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid not in self.no_mount_tokens:
+            msg = _("Token not assigned to share: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+
+        self.no_mount_tokens.remove(token_uuid)
+        # Update index.
+        self.del_index('no_mount_token', token_uuid)
+
+        if self.encrypted:
+            token_user = token_path.split("/")[0]
+            token_user = backend.get_object(object_type="user",
+                                            name=token_user,
+                                            realm=config.realm)
+            share_tokens = self.get_share_tokens()
+            user_tokens = token_user.get_tokens()
+            other_token_assigned = False
+            for x_uuid in user_tokens:
+                if x_uuid not in share_tokens:
+                    continue
+                other_token_assigned = backend.get_object(uuid=x_uuid)
+                break
+            if other_token_assigned:
+                msg = _("Not removing share key because of other assigned token: {token}")
+                msg = msg.format(token=other_token_assigned)
+                callback.send(msg)
+                self.set_changelog("kept share key (other token still assigned)")
+            else:
+                if keep_share_key is None:
+                    if self.home_share:
+                        keep_share_key = True
+                        msg = _("Not removing share key of home share.")
+                        callback.send(msg)
+                    else:
+                        keep_share_key = False
+                if not keep_share_key:
+                    # Removing the token is the confirmed action, the
+                    # share key goes with it.
+                    self.del_share_key(username=token_user.name,
+                                        force=True,
+                                        callback=callback,
+                                        verify_acls=False)
+                    self.set_changelog("removed share key")
+                elif self.home_share:
+                    self.set_changelog("kept share key (home share)")
+                else:
+                    self.set_changelog("kept share key")
+
+        return self._write(callback=callback)
 
     @object_lock()
     @audit_log(ignore_args=['share_key'])
@@ -2180,6 +2446,9 @@ class Share(OTPmeObject):
         if not result:
             return result
 
+        if not self.enabled:
+            return result
+
         username = token_path.split("/")[0]
         if username == ADMIN_USER:
             return result
@@ -2277,10 +2546,11 @@ class Share(OTPmeObject):
             token_user = backend.get_object(object_type="user",
                                             name=token_user,
                                             realm=config.realm)
+            share_tokens = self.get_share_tokens()
             user_tokens = token_user.get_tokens()
             other_token_assigned = False
             for x_uuid in user_tokens:
-                if x_uuid not in self.tokens:
+                if x_uuid not in share_tokens:
                     continue
                 other_token_assigned = backend.get_object(uuid=x_uuid)
                 break
@@ -2314,6 +2584,9 @@ class Share(OTPmeObject):
         if username == ADMIN_USER:
             return result
 
+        # No check for a disabled share here: this sends share_unmount,
+        # and taking a mount away stays right even for a share that is
+        # switched off.
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
 
@@ -2392,6 +2665,9 @@ class Share(OTPmeObject):
         if not result:
             return result
 
+        if not self.enabled:
+            return result
+
         if role_name:
             role_uuid = self.get_role_uuid(role_name, callback=callback)
         elif not role_uuid:
@@ -2403,6 +2679,7 @@ class Share(OTPmeObject):
 
         role_tokens = role.get_tokens(return_type="rel_path",
                                         include_roles=True)
+        role_tokens = self.filter_mount_tokens(role_tokens)
         if not role_tokens:
             return result
 
@@ -2891,6 +3168,9 @@ class Share(OTPmeObject):
         if not result:
             return result
 
+        if not self.enabled:
+            return result
+
         if not self.limit_by_hosts:
             return result
 
@@ -2971,6 +3251,7 @@ class Share(OTPmeObject):
 
         if share_notifications:
             callback.post_methods.append(post_method)
+
         return result
 
     @check_acls(['remove:group'])
@@ -3098,6 +3379,7 @@ class Share(OTPmeObject):
 
         if share_notifications:
             callback.post_methods.append(post_method)
+
         return result
 
     def remove_orphans(
@@ -3120,6 +3402,7 @@ class Share(OTPmeObject):
                 ('pools', 'pool', None),
                 ('master_password_tokens', 'token', None),
                 ('root_mount_tokens', 'token', None),
+                ('no_mount_tokens', 'token', None),
                 ('share_keys', 'user', None, 'dict_keys'),
                 ]
         return super().remove_orphans(force=force,
@@ -3434,6 +3717,11 @@ class Share(OTPmeObject):
                                             share_notifications=share_notifications)
         return result
 
+    # The events that can grant access. A disabled share must not send
+    # them: nobody is to mount it. The revoking ones stay allowed even
+    # then, they can only ever take a mount away.
+    GRANTING_EVENTS = ("share_mount", "share_add_host")
+
     def _notify_share_metadata_change(self, event_type, callback,
                                       host: str=None,
                                       persist_mount: bool=None,
@@ -3444,6 +3732,9 @@ class Share(OTPmeObject):
         based on the direction of the change: ``share_unmount`` when
         the operation can revoke access (limit_hosts) and
         ``share_mount`` when it can grant access (unlimit_hosts). """
+        if not self.enabled:
+            if event_type in self.GRANTING_EVENTS:
+                return
         share_tokens = self.get_tokens(skip_disabled=True,
                                        include_roles=True,
                                        return_type="rel_path")
@@ -3454,6 +3745,8 @@ class Share(OTPmeObject):
                                     return_type="rel_path")
             if result:
                 share_tokens += result
+        if event_type == "share_mount":
+            share_tokens = self.filter_mount_tokens(share_tokens)
         if not share_tokens:
             return
         share_nodes = self.get_nodes(include_pools=True,
@@ -3816,6 +4109,7 @@ class Share(OTPmeObject):
 
         share_tokens = self.get_tokens(return_type="rel_path",
                                     include_roles=True)
+        share_tokens = self.filter_mount_tokens(share_tokens)
         if not share_tokens:
             return result
 
@@ -3906,6 +4200,11 @@ class Share(OTPmeObject):
 
         share_tokens = self.get_tokens(return_type="rel_path",
                                     include_roles=True)
+        if self.no_mount_tokens:
+            share_tokens += backend.search(object_type="token",
+                                        attribute="uuid",
+                                        values=self.no_mount_tokens,
+                                        return_type="rel_path")
         if not share_tokens:
             return result
 
@@ -4229,6 +4528,15 @@ class Share(OTPmeObject):
                                                         return_type="rel_path")
             root_mount_tokens_list.sort()
 
+        no_mount_tokens_list = []
+        if self.no_mount_tokens:
+            if self.verify_acl("view:no_mount_tokens"):
+                no_mount_tokens_list = backend.search(object_type="token",
+                                                    attribute="uuid",
+                                                    values=self.no_mount_tokens,
+                                                    return_type="rel_path")
+            no_mount_tokens_list.sort()
+
         if self.verify_acl("view:groups") \
         or self.verify_acl("add:group") \
         or self.verify_acl("remove:group"):
@@ -4311,6 +4619,11 @@ class Share(OTPmeObject):
             lines.append(f'ROOT_MOUNT_TOKENS="{",".join(root_mount_tokens_list)}"')
         else:
             lines.append('ROOT_MOUNT_TOKENS=""')
+
+        if self.verify_acl("view:no_mount_tokens"):
+            lines.append(f'NO_MOUNT_TOKENS="{",".join(no_mount_tokens_list)}"')
+        else:
+            lines.append('NO_MOUNT_TOKENS=""')
 
         if self.verify_acl("view:add_script"):
             add_script = None

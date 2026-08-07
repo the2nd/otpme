@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import time
+import errno
 import socket
 import ipaddress
 import subprocess
 import netifaces
 import dns.resolver
-from subprocess import PIPE
-from subprocess import Popen
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -333,6 +333,135 @@ def check_for_ip(address):
             msg = msg.format(address=address, interface=iface)
             raise AddressAlreadyAssigned(msg)
 
+# Address flags the kernel reports per assigned address. A fresh IPv6
+# address is TENTATIVE until duplicate address detection is through, and
+# DADFAILED means DAD found it on the network already.
+IFA_F_DADFAILED = 0x08
+IFA_F_TENTATIVE = 0x40
+
+def get_address_family(address):
+    """ Get the socket address family of an IP address. """
+    _address = ipaddress.ip_address(address)
+    if _address.version == 6:
+        return socket.AF_INET6
+    return socket.AF_INET
+
+def get_prefixlen(netmask, address):
+    """ Get the prefix length of a netmask.
+
+    get_interfaces() hands out IPv4 netmasks in dotted-quad form and IPv6
+    ones as a prefix length, netlink wants a number for both.
+    """
+    _address = ipaddress.ip_address(address)
+    if _address.version == 6:
+        return int(netmask)
+    return ipaddress.ip_network(f"0.0.0.0/{netmask}").prefixlen
+
+def get_address_info(address):
+    """ Get interface, prefix length and flags of an assigned address.
+
+    Returns (None, None, None) if no interface holds the address.
+    """
+    from pyroute2 import IPRoute
+    try:
+        family = get_address_family(address)
+    except (ValueError, TypeError):
+        return None, None, None
+    address = str(ipaddress.ip_address(address))
+    with IPRoute() as ipr:
+        for x_addr in ipr.get_addr(family=family):
+            # IFA_LOCAL is the one that matters on point-to-point
+            # interfaces, where IFA_ADDRESS holds the peer. IPv6 only
+            # ever sets IFA_ADDRESS.
+            x_address = x_addr.get_attr('IFA_LOCAL')
+            if not x_address:
+                x_address = x_addr.get_attr('IFA_ADDRESS')
+            if x_address != address:
+                continue
+            x_flags = x_addr.get_attr('IFA_FLAGS')
+            if x_flags is None:
+                x_flags = x_addr['flags']
+            x_links = ipr.get_links(x_addr['index'])
+            if not x_links:
+                continue
+            x_interface = x_links[0].get_attr('IFLA_IFNAME')
+            return x_interface, x_addr['prefixlen'], x_flags
+    return None, None, None
+
+def get_interface_index(interface):
+    """ Get the kernel index of an interface. """
+    from pyroute2 import IPRoute
+    with IPRoute() as ipr:
+        index = ipr.link_lookup(ifname=interface)
+    if not index:
+        msg = _("No such interface: {interface}")
+        msg = msg.format(interface=interface)
+        raise OTPmeException(msg)
+    return index[0]
+
+def add_address(address, prefixlen, interface):
+    """ Add an address to an interface.
+
+    netlink answers with an errno, so "we hold it already" is telling
+    itself apart from a real failure without us having to read error
+    messages of the "ip" command.
+    """
+    from pyroute2 import IPRoute
+    from pyroute2 import NetlinkError
+    index = get_interface_index(interface)
+    try:
+        with IPRoute() as ipr:
+            ipr.addr('add', index=index,
+                    address=address,
+                    prefixlen=prefixlen)
+    except NetlinkError as e:
+        if e.code == errno.EEXIST:
+            msg = _("Address '{ip}' already assigned to interface '{interface}'.")
+            msg = msg.format(ip=address, interface=interface)
+            raise AddressAlreadyAssigned(msg) from e
+        msg = _("Error adding address '{ip}/{prefixlen}' to interface '{interface}': {error}")
+        msg = msg.format(ip=address, prefixlen=prefixlen, interface=interface, error=os.strerror(e.code))
+        raise OTPmeException(msg) from e
+
+def del_address(address, prefixlen, interface):
+    """ Remove an address from an interface. """
+    from pyroute2 import IPRoute
+    from pyroute2 import NetlinkError
+    index = get_interface_index(interface)
+    try:
+        with IPRoute() as ipr:
+            ipr.addr('del', index=index,
+                    address=address,
+                    prefixlen=prefixlen)
+    except NetlinkError as e:
+        if e.code == errno.EADDRNOTAVAIL:
+            # Gone, which is what we wanted.
+            return
+        msg = _("Error removing address '{ip}/{prefixlen}' from interface '{interface}': {error}")
+        msg = msg.format(ip=address, prefixlen=prefixlen, interface=interface, error=os.strerror(e.code))
+        raise OTPmeException(msg) from e
+
+def wait_for_dad(address, timeout=10):
+    """ Wait for IPv6 duplicate address detection to finish.
+
+    Until it is, the address is TENTATIVE and bind() on it fails with
+    EADDRNOTAVAIL, which is how a listener started right after the
+    address was added dies at once.
+    """
+    start_time = time.time()
+    while True:
+        interface, prefixlen, flags = get_address_info(address)
+        if flags is not None:
+            if flags & IFA_F_DADFAILED:
+                msg = _("Duplicate address detection failed for '{ip}': another host holds it.")
+                msg = msg.format(ip=address)
+                raise AddressAlreadyInUse(msg)
+            if not flags & IFA_F_TENTATIVE:
+                return True
+        if time.time() - start_time >= timeout:
+            return False
+        time.sleep(0.1)
+
 def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=False):
     """ Configure floating IP. """
     floating_ip = address
@@ -341,6 +470,17 @@ def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=Fal
     _floating_ip = ipaddress.ip_address(floating_ip)
     # Family-aware host route fallback.
     floating_ip_netmask = "128" if _floating_ip.version == 6 else "255.255.255.255"
+
+    # Whether we already hold the address does not depend on us having
+    # to search for its interface, so check it either way. With
+    # floating_ip_iface configured this used to be skipped, and adding
+    # the address then failed with an error nobody could tell apart from
+    # a real one.
+    assigned_interface = get_address_info(floating_ip)[0]
+    if assigned_interface:
+        msg = _("Floating IP '{floating_ip}' already assigned to interface '{interface}'.")
+        msg = msg.format(floating_ip=floating_ip, interface=assigned_interface)
+        raise AddressAlreadyAssigned(msg)
 
     if not interface:
         for iface in interfaces:
@@ -355,11 +495,6 @@ def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=Fal
                 # Skip mismatched address families.
                 if _interface_iface.version != _floating_ip.version:
                     continue
-
-                if _interface_iface.ip == _floating_ip:
-                    msg = _("Floating IP '{floating_ip}' already assigned to interface '{interface}'.")
-                    msg = msg.format(floating_ip=floating_ip, interface=iface)
-                    raise AddressAlreadyAssigned(msg)
 
                 if _floating_ip in _interface_iface.network:
                     interface = iface
@@ -392,28 +527,15 @@ def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=Fal
     log_msg = log_msg.format(ip=floating_ip, netmask=floating_ip_netmask, interface=floating_interface)
     config.logger.info(log_msg)
 
-    ip_netmask = f"{floating_ip}/{floating_ip_netmask}"
-    ifup_command = [
-                    "ip",
-                    "addr",
-                    "add",
-                    "dev",
-                    floating_interface,
-                    ip_netmask,
-                    ]
+    prefixlen = get_prefixlen(floating_ip_netmask, floating_ip)
+    add_address(floating_ip, prefixlen, floating_interface)
 
-    log_msg = _("Running: {command}", log=True)[1]
-    log_msg = log_msg.format(command=' '.join(ifup_command))
-    config.logger.debug(log_msg)
-
-    pipe = Popen(ifup_command, stdout=PIPE, stderr=PIPE, shell=False)
-    script_stdout, script_stderr = pipe.communicate()
-    script_returncode = pipe.returncode
-
-    if script_returncode != 0:
-        msg = _("Error adding address '{ip}/{netmask}' to interface '{interface}': {error}")
-        msg = msg.format(ip=floating_ip, netmask=floating_ip_netmask, interface=floating_interface, error=script_stderr)
-        raise OTPmeException(msg)
+    # Whoever listens on the floating IP next would be told the address
+    # does not exist while DAD is still running.
+    if not wait_for_dad(floating_ip):
+        log_msg = _("Duplicate address detection for '{ip}' is still not through.", log=True)[1]
+        log_msg = log_msg.format(ip=floating_ip)
+        config.logger.warning(log_msg)
 
     if gratuitous_arp:
         log_msg = _("Sending gratuitous ARP for floating IP: {ip} ({interface})", log=True)[1]
@@ -428,57 +550,16 @@ def configure_floating_ip(address, interface=None, gratuitous_arp=True, ping=Fal
 def deconfigure_floating_ip(address):
     """ Deconfigure floating IP. """
     floating_ip = address
-    floating_interface = None
-    floating_ip_netmask = None
-    interfaces = get_interfaces()
+    floating_interface, prefixlen, flags = get_address_info(floating_ip)
 
-    try:
-        target = ipaddress.ip_address(floating_ip)
-    except (ValueError, TypeError):
-        target = None
+    if not floating_interface:
+        return
 
-    for iface in interfaces:
-        for x in interfaces[iface]:
-            ip = x[0]
-            netmask = x[1]
-            try:
-                cur = ipaddress.ip_address(ip)
-            except (ValueError, TypeError):
-                continue
-            if target is not None and cur == target:
-                floating_interface = iface
-                floating_ip_netmask = netmask
-                break
-        if floating_interface:
-            break
+    log_msg = _("Deconfiguring floating interface '{interface}'", log=True)[1]
+    log_msg = log_msg.format(interface=floating_interface)
+    config.logger.debug(log_msg)
 
-    if floating_interface:
-        log_msg = _("Deconfiguring floating interface '{interface}'", log=True)[1]
-        log_msg = log_msg.format(interface=floating_interface)
-        config.logger.debug(log_msg)
+    del_address(floating_ip, prefixlen, floating_interface)
 
-        ip_netmask = f"{floating_ip}/{floating_ip_netmask}"
-        ifdown_command = [
-                            "ip",
-                            "addr",
-                            "del",
-                            "dev",
-                            floating_interface,
-                            ip_netmask,
-                        ]
-
-        log_msg = _("Running: {command}", log=True)[1]
-        log_msg = log_msg.format(command=' '.join(ifdown_command))
-        config.logger.debug(log_msg)
-
-        pipe = Popen(ifdown_command, stdout=PIPE, stderr=PIPE, shell=False)
-        script_stdout, script_stderr = pipe.communicate()
-        script_returncode = pipe.returncode
-
-        if script_returncode != 0:
-            msg = _("Error removing address '{ip}/{netmask}' from interface '{interface}': {error}")
-            msg = msg.format(ip=floating_ip, netmask=floating_ip_netmask, interface=floating_interface, error=script_stderr)
-            raise OTPmeException(msg)
-
-        log_msg = _("Floating IP address deconfigured successful.", log=True)[1]
-        config.logger.debug(log_msg)
+    log_msg = _("Floating IP address deconfigured successful.", log=True)[1]
+    config.logger.debug(log_msg)

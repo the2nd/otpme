@@ -67,6 +67,22 @@ OBJECT_LOCK_TYPE = "object"
 logger = config.logger
 default_callback = config.get_callback()
 
+# Default value of the "ldif_whitelist_attributes" site config parameter:
+# LDIF attributes every authenticated user may read, without needing a
+# "view:attribute:<attr>" ACL. These are the ones an LDAP client needs to
+# find and identify an object at all.
+LDIF_WHITELIST_ATTRIBUTES = [
+                    'dn',
+                    'objectClass',
+                    'uid',
+                    'cn',
+                    'displayName',
+                    'entryUUID',
+                    'l',
+                    'mail',
+                    'mailLocalAddress',
+                    ]
+
 # Global ACLs that are valid for every OTPme object.
 global_read_acls = [
                     "view_public",
@@ -465,6 +481,80 @@ def register_config_parameters():
                                     ctype=list,
                                     setter=force_site_config_parameters_setter,
                                     object_types=['site'])
+    # LDIF attributes that are readable without a "view:attribute:<attr>"
+    # ACL. Set on the requesting token it wins over the site's value (see
+    # get_ldif_whitelist_attributes()). admin_only because it hands out
+    # attributes of objects other than the one it is set on, so an ACL on
+    # that object says nothing about whether the value is acceptable.
+    def ldif_whitelist_attributes_setter(attributes, **kwargs):
+        if isinstance(attributes, str):
+            attributes = attributes.split(",")
+        _attributes = []
+        for x in attributes:
+            x = x.strip()
+            if not x:
+                continue
+            if x in _attributes:
+                continue
+            _attributes.append(x)
+        return _attributes
+    config.register_config_parameter(name="ldif_whitelist_attributes",
+                                    ctype=list,
+                                    setter=ldif_whitelist_attributes_setter,
+                                    default_value=LDIF_WHITELIST_ATTRIBUTES,
+                                    admin_only=True,
+                                    object_types=['site', 'token'])
+
+def get_ldif_whitelist_attributes(auth_token=None):
+    """ Get the LDIF attributes that are readable without an ACL.
+
+    Comes from the "ldif_whitelist_attributes" config parameter. A value
+    on the requesting token itself wins, so a token can be given a
+    narrower (or wider) view than the rest of the site. Without one we
+    fall back to our own site: the site answering the LDAP request
+    decides which attributes of its objects it hands out without a
+    "view:attribute" ACL.
+
+    Callers that do not run with config.auth_token set (e.g. ldapd,
+    which keeps the bound token per connection) pass it explicitly.
+    The built-in list applies while neither is reachable.
+    """
+    if auth_token is None:
+        auth_token = config.auth_token
+    if auth_token:
+        try:
+            whitelist = auth_token.get_config_parameter("ldif_whitelist_attributes",
+                                                        recursive=False)
+        except Exception:
+            whitelist = None
+        if whitelist is not None:
+            return whitelist
+    if not config.site_uuid:
+        return LDIF_WHITELIST_ATTRIBUTES
+    my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    if not my_site:
+        return LDIF_WHITELIST_ATTRIBUTES
+    try:
+        whitelist = my_site.get_config_parameter("ldif_whitelist_attributes")
+    except Exception:
+        return LDIF_WHITELIST_ATTRIBUTES
+    if whitelist is None:
+        return LDIF_WHITELIST_ATTRIBUTES
+    return whitelist
+
+def get_ldif_whitelist_id(auth_token=None, whitelist=None):
+    """ Get a stable ID of the LDIF whitelist currently in effect.
+
+    Belongs into the key of every cache that holds ACL filtered LDIF
+    data. Without it a changed "ldif_whitelist_attributes" would keep
+    handing out entries that were built with the old list.
+
+    Callers that resolved the whitelist already pass it in, so we do not
+    look it up twice.
+    """
+    if whitelist is None:
+        whitelist = get_ldif_whitelist_attributes(auth_token=auth_token)
+    return ",".join(sorted(whitelist))
 
 def get_ldif(ldif, attributes=None, verify_acl_func=None,
     fake_dc=None, auth_token=None, text=False, **kwargs):
@@ -494,6 +584,10 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
                 dn_parts.insert(-realm_len, dc)
                 _dn = ",".join(dn_parts)
 
+    whitelist_attributes = []
+    if verify_acl_func:
+        whitelist_attributes = get_ldif_whitelist_attributes(auth_token=auth_token)
+
     for x in _attrs:
         a = x[0]
         v = x[1]
@@ -502,7 +596,7 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
                 continue
         add_attribute = True
         if verify_acl_func:
-            if a not in config.ldif_whitelist_attributes:
+            if a not in whitelist_attributes:
                 add_attribute = False
                 attribute_acl = f"view:attribute:{a}"
                 if verify_acl_func(attribute_acl, auth_token=auth_token):

@@ -2226,9 +2226,9 @@ class OTPmeClient1(OTPmeClientBase):
     def __init__(self, daemon, connection, use_smartcard="auto", use_ssh_agent=None,
         start_ssh_agent=None, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
-        need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
-        jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
-        login_interface="tty", logout=False, reneg=False, session_uuid=None,
+        authorize_host=True, need_ssh_key_pass=False, aes_pass=None, client=None,
+        username=None, jwt_method=None, rsp=None, srp=None, slp=None, login=False,
+        unlock=False, login_interface="tty", logout=False, reneg=False, session_uuid=None,
         add_agent_acl=False, agent_acls=None, add_agent_session=None,
         save_offline_token=None, add_login_session=None, mount_shares=False,
         offline_token=None, login_session_id=None, cache_login_tokens=False,
@@ -2301,6 +2301,8 @@ class OTPmeClient1(OTPmeClientBase):
         self.ecdh_curve = "SECP384R1"
         # ECDH handler to generage RSP.
         self.rsp_ecdh_key = None
+        # Send pam auth to authd.
+        self.authorize_host = authorize_host
 
         # Try to load encryption module.
         try:
@@ -2652,6 +2654,7 @@ class OTPmeClient1(OTPmeClientBase):
                             #use_agent=self.use_agent,
                             use_dns=self.connection.use_dns,
                             endpoint=self.endpoint,
+                            authorize_host=self.authorize_host,
                             #handle_response=self.handle_response,
                             handle_user_auth=self.handle_user_auth,
                             handle_host_auth=self.handle_host_auth,
@@ -2745,6 +2748,8 @@ class OTPmeClient1(OTPmeClientBase):
         preauth_args['client'] = self.client
         # Set if redirect is wanted.
         preauth_args['redirect'] = self.follow_redirect
+        # Send pam auth to node.
+        preauth_args['authorize_host'] = self.authorize_host
 
         # Add cluster key.
         if config.cluster_key:
@@ -3545,6 +3550,7 @@ class OTPmeClient1(OTPmeClientBase):
                 command = "status"
 
         command_args['username'] = self.username
+        command_args['authorize_host'] = self.authorize_host
         # Send given command to server.
         try:
             status, \

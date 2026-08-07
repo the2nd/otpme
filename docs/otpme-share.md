@@ -298,6 +298,30 @@ token gets changes, so the token is told to mount again, like with
 Remove a root mount token from the share. The token is told to unmount,
 like with **remove_token**.
 
+## No Mount Token
+
+A no mount token is assigned to the share like a normal token - its user
+gets a share key and it may mount the share - but it does not get the
+share mounted **automatically**. It is left out when the shares are
+mounted at login, and it gets no **share_mount** notification. Mounting
+by hand with **otpme-mount** *share_site***/***share_name* keeps
+working.
+
+Unmount notifications still reach these tokens: they may have mounted
+the share by hand, and a disabled share or a revoked permission has to
+unmount there too.
+
+**add_no_mount_token *share* *token_path***  
+Add a token that does not get the share mounted automatically. Handles
+the share key like **add_token**, so an encrypted share asks the client
+to re-encrypt the key for the tokens user. No mount notification is
+sent, there is nothing to mount.
+
+**remove_no_mount_token \[**--keep-share-key**\|**--remove-share-key**\] *share* *token_path***  
+Remove a no mount token from the share. The users share key is removed
+with it, unless another of their tokens is still assigned to the share
+or **--keep-share-key** is given.
+
 ## Pool and Node Management
 
 **add_pool *share* *pool***  

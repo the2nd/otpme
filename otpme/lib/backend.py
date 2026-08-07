@@ -43,6 +43,29 @@ locking.register_lock_type(SYNC_MAP_LOCK_TYPE, module=__file__)
 instance_cache_read_times = {}
 multiprocessing.register_shared_dict("sync_map")
 multiprocessing.register_shared_list("sync_map_cache_clear_queue")
+# The objects ldapd has to drop from its caches. See outdate_ldap_object().
+# Cleared on start: the times in it are monotonic, which starts over
+# after a reboot.
+multiprocessing.register_shared_dict("ldap_outdated_objects", clear=True)
+# Search results the ldapd processes share, so what one of them looked
+# up the others do not have to. Written and read in otpme/lib/ldap/server.py,
+# registered here because outdate_ldap_object() has to throw it away.
+multiprocessing.register_shared_dict("ldap_shared_queries", clear=True)
+# The search bases the ldapd processes resolved. Same reason, see
+# LDIFTreeEntry.lookup().
+multiprocessing.register_shared_dict("ldap_shared_lookups", clear=True)
+
+# Counts every object we put into the dict above. Readers only have to
+# read this one key to know whether there is anything to do for them.
+LDAP_OUTDATED_COUNTER_KEY = "cache_clear_counter"
+# Up to which time we removed entries of the dict. A reader that fell
+# behind further than this cannot know what it missed.
+LDAP_OUTDATED_PRUNED_KEY = "cache_clear_pruned"
+# How long an entry has to stay in the dict. Way above the moment to
+# moment lag of a busy ldapd, it looks once per request.
+LDAP_OUTDATED_MAX_AGE = 900
+# Cleaning up reads the whole dict, so we only do it every N changes.
+LDAP_OUTDATED_PRUNE_EVERY = 250
 
 default_callback = config.get_callback()
 
@@ -421,7 +444,175 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     # Make sure we notify ldapd about changed objects (e.g. clear ldap search cache).
     if config.daemon_mode:
         if config.get_ldap_settings(object_type):
-            config.ldap_cache_clear = True
+            outdate_ldap_object(object_id)
+
+def outdate_ldap_object(object_id: oid.OTPmeOid):
+    """ Tell ldapd to drop this object from its caches.
+
+    Those caches hold the rendered LDIF of every object it handed out,
+    so they are big and expensive to build. Naming the object that
+    changed keeps all the other ones alive: telling ldapd to clear
+    everything makes it run cold again, which costs about twice the CPU
+    per request until it is warm.
+
+    We must not take the entries out after handing them over. With more
+    than one ldapd process the first one to look would take them away
+    from all the others, which is why a shared flag does not work here.
+    """
+    read_oid = object_id.read_oid
+    # The shared search results are keyed by the search, not by object,
+    # so there is no telling which of them the changed object belongs
+    # to. Unlike the caches inside a process this one is shared, so
+    # clearing it here reaches every ldapd at once.
+    try:
+        multiprocessing.ldap_shared_queries.clear()
+    except Exception as e:
+        log_msg = _("Failed to clear shared LDAP queries: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+    # A resolved DN points at the directory an object lives in, so a
+    # renamed or deleted one has to take its entry with it.
+    outdate_ldap_lookup(object_id)
+    try:
+        outdated_objects = multiprocessing.ldap_outdated_objects
+        # The object first, the counter last: whoever sees the new
+        # counter has to find the object in the dict already. Keyed by
+        # the hash of the OID, not the OID itself: memcached refuses a
+        # key over 250 bytes or one with a space in it, and an object
+        # name may well have one. The OID goes into the value, our
+        # readers need it to find what to drop.
+        outdated_objects[stuff.gen_sha256(read_oid)] = {
+                                            'oid'   : read_oid,
+                                            'time'  : time.monotonic(),
+                                            }
+        try:
+            counter = outdated_objects[LDAP_OUTDATED_COUNTER_KEY]
+        except KeyError:
+            counter = 0
+        counter += 1
+        if counter % LDAP_OUTDATED_PRUNE_EVERY == 0:
+            prune_ldap_outdated_objects(outdated_objects)
+        outdated_objects[LDAP_OUTDATED_COUNTER_KEY] = counter
+    except Exception as e:
+        # Nothing to fall back to: without the shared dict ldapd cannot
+        # read anything either. Its caches notice on their own, they
+        # verify the checksum of an entry once it gets old enough.
+        log_msg = _("Failed to outdate LDAP object: {oid}: {error}", log=True)[1]
+        log_msg = log_msg.format(oid=read_oid, error=e)
+        config.logger.critical(log_msg)
+
+def get_ldap_lookup_key(object_dn):
+    """ Get the key a resolved DN is stored under.
+
+    Hashed: a DN comes from the client, so there is no telling how long
+    it is or what it has in it, and memcached refuses keys over 250
+    bytes. ldapd builds the same key, see get_shared_lookup_key().
+    """
+    return stuff.gen_sha256(object_dn)
+
+def outdate_ldap_lookup(object_id: oid.OTPmeOid):
+    """ Drop what ldapd knows about the DN of this object.
+
+    ldapd caches by the DN without the client part (see
+    split_client_dn()), so one key covers the object no matter which
+    client asked for it.
+    """
+    try:
+        shared_lookups = multiprocessing.ldap_shared_lookups
+    except Exception as e:
+        log_msg = _("Failed to get shared LDAP lookups: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+        return
+    try:
+        object_dn = object_id.dn
+    except Exception:
+        object_dn = None
+    if not object_dn:
+        # realm, site and unit have no DN attribute mapped to anything,
+        # so we cannot name their entry. They hardly ever change, so
+        # taking the whole thing is good enough.
+        try:
+            shared_lookups.clear()
+        except Exception as e:
+            log_msg = _("Failed to clear shared LDAP lookups: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            config.logger.warning(log_msg)
+        return
+    try:
+        shared_lookups.pop(get_ldap_lookup_key(object_dn))
+    except KeyError:
+        pass
+    except Exception as e:
+        log_msg = _("Failed to drop shared LDAP lookup: {oid}: {error}", log=True)[1]
+        log_msg = log_msg.format(oid=object_id.read_oid, error=e)
+        config.logger.warning(log_msg)
+
+def prune_ldap_outdated_objects(outdated_objects):
+    """ Remove the entries no reader can need anymore.
+
+    Readers that fell behind further than what we remove here cannot
+    know what they missed, so we tell them how far we cleaned up and
+    they throw away everything.
+    """
+    min_time = time.monotonic() - LDAP_OUTDATED_MAX_AGE
+    pruned = None
+    for x_key, x_value in outdated_objects.dict().items():
+        if x_key == LDAP_OUTDATED_COUNTER_KEY:
+            continue
+        if x_key == LDAP_OUTDATED_PRUNED_KEY:
+            continue
+        try:
+            x_time = x_value['time']
+        except (TypeError, KeyError):
+            continue
+        if x_time is None or x_time >= min_time:
+            continue
+        try:
+            outdated_objects.pop(x_key)
+        except KeyError:
+            continue
+        if pruned is None or x_time > pruned:
+            pruned = x_time
+    if pruned is None:
+        return
+    try:
+        old_pruned = outdated_objects[LDAP_OUTDATED_PRUNED_KEY]
+    except KeyError:
+        old_pruned = None
+    if old_pruned is not None and old_pruned >= pruned:
+        return
+    outdated_objects[LDAP_OUTDATED_PRUNED_KEY] = pruned
+
+def get_ldap_outdated_counter():
+    """ Get the number of objects that were outdated so far.
+
+    One key, so this is a single roundtrip. ldapd asks for it once per
+    request and only reads the objects when the number changed.
+    """
+    try:
+        return multiprocessing.ldap_outdated_objects[LDAP_OUTDATED_COUNTER_KEY]
+    except KeyError:
+        return 0
+    except Exception:
+        return None
+
+def get_ldap_outdated_objects():
+    """ Get the outdated objects and how far the dict was cleaned up.
+
+    Returns them by OID: the dict is keyed by its hash, so the OID
+    itself comes out of the value, see outdate_ldap_object().
+    """
+    shared_objects = multiprocessing.ldap_outdated_objects.dict()
+    shared_objects.pop(LDAP_OUTDATED_COUNTER_KEY, None)
+    pruned = shared_objects.pop(LDAP_OUTDATED_PRUNED_KEY, None)
+    outdated_objects = {}
+    for x_value in shared_objects.values():
+        try:
+            outdated_objects[x_value['oid']] = x_value['time']
+        except (TypeError, KeyError):
+            continue
+    return outdated_objects, pruned
 
 @match_typing
 def import_config(

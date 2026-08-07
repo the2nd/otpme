@@ -133,6 +133,11 @@ class OTPmeServer1(object):
             self.require_cluster_status = True
 
         try:
+            self.process_on_master_failover
+        except Exception:
+            self.process_on_master_failover = False
+
+        try:
             self.allow_sotp_reuse
         except Exception:
             self.allow_sotp_reuse = False
@@ -140,6 +145,9 @@ class OTPmeServer1(object):
             self.check_peer_disabled
         except Exception:
             self.check_peer_disabled = True
+
+        # Authorize host?
+        self.authorize_host = True
 
         self.session_reneg = False
 
@@ -450,7 +458,10 @@ class OTPmeServer1(object):
         return response
 
     def check_cluster_status(self):
-        check_cluster_status()
+        skip_master_failover = False
+        if self.process_on_master_failover:
+            skip_master_failover = True
+        check_cluster_status(skip_master_failover=skip_master_failover)
 
     def handle_start_stop(method):
         """ Handle calling of _start_processing()/_stop_processing(). """
@@ -1048,6 +1059,11 @@ class OTPmeServer1(object):
             need_token = preauth_args['need_token']
         except Exception:
             need_token = False
+        # Check if this is a pam login.
+        try:
+            self.authorize_host = preauth_args['authorize_host']
+        except Exception:
+            pass
         # Build preauth response.
         try:
             preauth_response = self.build_preauth_response(challenge=challenge,
@@ -1607,6 +1623,9 @@ class OTPmeServer1(object):
         if not login:
             return valid_tokens
 
+        if not self.authorize_host:
+            return valid_tokens
+
         if not self.peer.logins_limited:
             return valid_tokens
 
@@ -1888,6 +1907,12 @@ class OTPmeServer1(object):
         except KeyError:
             ssh_auth_key = None
 
+        # Authorize host?
+        try:
+            self.authorize_host = command_args.pop('authorize_host')
+        except Exception:
+            pass
+
         # Set auth_mode.
         auth_mode = "auto"
         try:
@@ -2014,6 +2039,7 @@ class OTPmeServer1(object):
                                         peer=self.peer,
                                         realm_login=realm_login,
                                         realm_logout=realm_logout,
+                                        authorize_host=self.authorize_host,
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
                                         host_type=login_host_type,
@@ -2056,6 +2082,7 @@ class OTPmeServer1(object):
                                         peer=self.peer,
                                         realm_login=realm_login,
                                         realm_logout=realm_logout,
+                                        authorize_host=self.authorize_host,
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
                                         user_token=user_token,

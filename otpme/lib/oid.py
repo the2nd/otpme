@@ -575,6 +575,67 @@ class OTPmeOid(object):
     def replace(self, s, r):
         return self.__str__().replace(s, r)
 
+    @property
+    def dn(self):
+        """ Object ldap DN. """
+        from otpme.lib.extensions import utils
+        if not self.full_oid:
+            msg = _("Cannot build DN without full OID.")
+            raise OTPmeException(msg)
+        try:
+            dn_attribute = config.dn_attributes[self.object_type]
+        except Exception:
+            return
+
+        dn_attr = utils.get_dn_attribute(self.object_type, dn_attribute)
+        if dn_attr:
+            # Get DN attribute value
+            dn_attr_val = getattr(self, dn_attr)
+        else:
+            # Realm, site and unit have no attribute mapping: the value
+            # of their DN attribute is not taken from an attribute of
+            # the object, it is made up. Kept in step with
+            # gen_attribute_value() of the base extension.
+            if self.object_type == "realm":
+                dn_attr_val = self.name.split(".")[0]
+            elif self.object_type in ("site", "unit"):
+                dn_attr_val = self.name
+            else:
+                return
+        if not dn_attr_val:
+            return
+
+        # Domain context.
+        dc = None
+        # Site OU.
+        sou = None
+        # Object OU's.
+        ous = None
+
+        if self.object_type == "realm":
+            dc = re.sub(r'[\.]', ',dc=', ".".join(self.name.split(".")[1:]))
+        else:
+            dc = re.sub(r'[\.]', ',dc=', self.realm)
+        dc = re.sub('^', 'dc=', dc)
+
+        if self.object_type != "site" and self.site:
+            sou = re.sub('^', 'ou=', self.site)
+        if self.unit:
+            ous = reversed(self.unit.split("/"))
+            ous = "/".join(ous)
+            ous = re.sub('[/]', ',ou=', ous)
+            ous = re.sub('^', 'ou=', ous)
+
+        dn = f"{dn_attribute}={dn_attr_val}"
+        if ous:
+            dn = f"{dn},{ous}"
+        if sou:
+            dn = f"{dn},{sou}"
+
+        dn = f"{dn},{dc}"
+
+        return dn
+
     def verify(self):
         """ Verify OID. """
         # Make sure we have a valid name.

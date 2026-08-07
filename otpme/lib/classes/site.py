@@ -991,6 +991,16 @@ SSO_USER_ROLE = "SSO_USER"
 
 TEMPLATES_UNIT = "templates"
 
+def register_ldap_object():
+    """ Register LDAP object settings.
+
+    A site carries an "ou=" entry of its own, so it shows up in LDAP
+    like any other object. Registering it is also what makes
+    backend.outdate_object() tell ldapd that one changed.
+    """
+    config.register_ldap_object(object_type="site",
+                                scopes=['one', 'base', 'sub'])
+
 def register():
     register_dn()
     register_oid()
@@ -998,6 +1008,7 @@ def register():
     register_config()
     register_backend()
     register_sync_settings()
+    register_ldap_object()
     register_templates_unit()
     register_commands("site", commands)
     register_module("otpme.lib.classes.data_objects.rsa_key")
@@ -2247,6 +2258,34 @@ def register_config():
     config.register_config_parameter(name="authd_workers",
                                     ctype=int,
                                     default_value=16,
+                                    object_types=['site', 'unit', 'node'])
+    # Processes ldapd answers LDAP requests with. One process cannot use
+    # more than one core, so this is what lets a node put more of them to
+    # work. They share the port via SO_REUSEPORT, but each of them holds
+    # its own LDIF caches, so raising this costs memory and makes every
+    # single process see fewer requests to keep its caches warm with.
+    config.register_config_parameter(name="ldapd_processes",
+                                    ctype=int,
+                                    default_value=1,
+                                    object_types=['site', 'unit', 'node'])
+    # Whether the ldapd processes hand what they looked up to each
+    # other: the results of their searches and the search bases they
+    # resolved. Turning it off leaves every process with its own caches,
+    # which is what to compare against when the shared ones are under
+    # suspicion.
+    config.register_config_parameter(name="ldap_shared_cache",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=['site', 'unit', 'node'])
+    # Seconds a cached search result and a resolved search base stay
+    # good for. It is not what keeps them correct -- a changed object
+    # drops its entries right away -- so this only bounds how long an
+    # entry nobody touched sits around, and it is the expiry of the
+    # redis keys, so nobody has to clean up after a process that went
+    # away.
+    config.register_config_parameter(name="ldap_shared_cache_time",
+                                    ctype=int,
+                                    default_value=3600,
                                     object_types=['site', 'unit', 'node'])
     # Start this number of httpd workers.
     config.register_config_parameter(name="httpd_ssl_workers",
@@ -4549,6 +4588,13 @@ class Site(OTPmeObject):
         if "interactive" not in config.ignore_policy_tags:
             config.ignore_policy_tags.append("interactive")
 
+        if not config.realm_init:
+            master_site = self.get_master_site()
+            if config.site != master_site.name:
+                msg = _("Only master site can add new sites: {master_site}")
+                msg = msg.format(master_site=master_site.name)
+                return callback.error(msg)
+
         if not site_address:
             # Try to get site address from DNS.
             result = net.query_dns(site_fqdn)
@@ -4601,7 +4647,7 @@ class Site(OTPmeObject):
         self.user_role_uuid = stuff.gen_uuid()
         # Add site REALM_USER role to REALM_USERS_GROUP.
         if not config.realm_init:
-            master_site = self.get_master_site()
+            #master_site = self.get_master_site()
             if self.uuid != master_site.uuid:
                 realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
                 realm_users_group.add_role(role_uuid=self.user_role_uuid,

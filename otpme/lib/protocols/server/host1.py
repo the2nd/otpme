@@ -867,9 +867,10 @@ class OTPmeHostP1(OTPmeServer1):
             if not share.is_assigned_token(token_uuid=token_uuid):
                 if not share.is_master_password_token(token_uuid=token_uuid):
                     if not share.is_root_mount_token(token_uuid=token_uuid):
-                        status = True
-                        message = {'message':"Share access denied.", 'try_other_node':False}
-                        return self.build_response(status, message, encrypt=False)
+                        if not share.is_no_mount_token(token_uuid=token_uuid):
+                            status = True
+                            message = {'message':"Share access denied.", 'try_other_node':False}
+                            return self.build_response(status, message, encrypt=False)
             # Check host limitations.
             if share.limit_by_hosts:
                 if not share.is_assigned_host(host_uuid=host_uuid,

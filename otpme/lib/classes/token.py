@@ -1687,7 +1687,9 @@ class Token(OTPmeObject):
         **kwargs,
         ):
         search_attrs = {
-                        'token' : {'value':self.uuid},
+                        'token'             : {'or_values':[self.uuid]},
+                        'root_mount_token'  : {'or_values':[self.uuid]},
+                        'no_mount_token'    : {'or_values':[self.uuid]},
                     }
         token_shares = backend.search(object_type="share",
                                     attributes=search_attrs,
@@ -1716,7 +1718,7 @@ class Token(OTPmeObject):
             elif return_type == "path":
                 result.append(share.share_id)
             else:
-                msg = _("Invalid resturn type: {return_type}")
+                msg = _("Invalid return type: {return_type}")
                 msg = msg.format(return_type=return_type)
                 if _caller == "API":
                     raise OTPmeException(msg)
@@ -3962,19 +3964,29 @@ class Token(OTPmeObject):
             return True
         return False
 
-    def _shares_data_for_notify(self, persist_mount: bool=True):
+    def _shares_data_for_notify(self, persist_mount: bool=True,
+        skip_disabled: bool=False, skip_no_mount: bool=False):
         """ Build the per-share notify dict for every share this token
         reaches (directly or via roles). Returns {} if the token isn't
         wired to any share.
 
-        skip_disabled=False so a share that was disabled while still
-        mounted on the agent still shows up in the unmount payload --
-        we don't want a missed share.disable notification to leave
-        stale mounts behind. """
-        token_shares = self.get_shares(skip_disabled=False,
+        skip_disabled: leave out disabled shares. Set it for mount
+        notifications only. An unmount has to reach them, a share may
+        have been disabled while still mounted on the agent, and a
+        missed share.disable notification would leave a stale mount
+        behind.
+
+        skip_no_mount: leave out the shares this token does not get
+        mounted by itself (see Share.add_no_mount_token()). Set it for
+        mount notifications only: an unmount has to reach them too,
+        they may have been mounted by hand. """
+        token_shares = self.get_shares(skip_disabled=skip_disabled,
                                        return_type="instance")
         shares_data = {}
         for share in token_shares:
+            if skip_no_mount:
+                if share.is_no_mount_token(self.uuid):
+                    continue
             share_nodes = share.get_nodes(include_pools=True,
                                           return_type="instance")
             if not share_nodes:
@@ -4028,7 +4040,9 @@ class Token(OTPmeObject):
             return result
         if persist_mount is None:
             persist_mount = True
-        shares_data = self._shares_data_for_notify(persist_mount=persist_mount)
+        shares_data = self._shares_data_for_notify(persist_mount=persist_mount,
+                                                    skip_disabled=True,
+                                                    skip_no_mount=True)
         if shares_data:
             owner = self.owner
             def post_method():

@@ -16,10 +16,18 @@ from otpme.lib import otpme_acl
 logger = config.logger
 default_callback = config.get_callback()
 
-def get_extension(extension):
+extension_cache = {}
+
+def get_extension(ext):
     """ Get OTPme extension class. """
     import importlib
-    module_path = f"otpme.lib.extensions.{extension}.{extension}"
+    try:
+        extension = extension_cache[ext]
+    except KeyError:
+        pass
+    else:
+        return extension
+    module_path = f"otpme.lib.extensions.{ext}.{ext}"
     try:
         # import extension module
         extension_module = importlib.import_module(module_path)
@@ -28,9 +36,19 @@ def get_extension(extension):
     except Exception as e:
         config.raise_exception()
         msg = _("Error loading extension '{}': {}")
-        msg = msg.format(extension, e)
+        msg = msg.format(ext, e)
         raise Exception(msg) from e
+    extension_cache[ext] = extension
     return extension
+
+def get_dn_attribute(object_type, attribute):
+    for i in config.extensions:
+        e = get_extension(i)
+        dn_attribute = e.get_dn_attribute(object_type, attribute)
+        if not dn_attribute:
+            continue
+        break
+    return dn_attribute
 
 def get_acls(object_type):
     """ Get valid ACLs for the given object type. """

@@ -173,8 +173,8 @@ class OTPmeFsP1(OTPmeFsServer1):
 
             if status:
                 if not self.block_access:
-                    log_msg = _("Share access denied: {response}", log=True)[1]
-                    log_msg = log_msg.format(response=response)
+                    log_msg = _("Share access denied: {share}: {response}", log=True)[1]
+                    log_msg = log_msg.format(share=self.share, response=response)
                     self.logger.warning(log_msg)
                 self.block_access = True
                 continue
@@ -357,6 +357,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
+                and not share.is_no_mount_token(token_uuid=config.auth_token.uuid) \
                 and not self.root_mount:
                     status = status_codes.PERMISSION_DENIED
                     message, log_msg = _("No share permissions: {share}", log=True)
@@ -558,6 +559,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                 if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
+                and not share.is_no_mount_token(token_uuid=config.auth_token.uuid) \
                 and not self.root_mount \
                 and not share.is_master_password_token(config.auth_token.uuid):
                     status = status_codes.PERMISSION_DENIED

@@ -1569,6 +1569,7 @@ class PamHandler(object):
                                 unlock=self.unlock,
                                 sync_token_data=True,
                                 mount_shares=True,
+                                pam_auth=True,
                                 need_ssh_key_pass=need_ssh_key_pass,
                                 add_agent_acl=add_agent_acl,
                                 timeout=self.connection_timeout,

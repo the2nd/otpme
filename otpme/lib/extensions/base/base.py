@@ -21,8 +21,6 @@ default_callback = config.get_callback()
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.extensions.ldif_handler"]
 
-WHITELIST_ATTRIBUTES = ['dn', 'objectClass', 'uid', 'cn', 'displayName', 'entryUUID']
-
 def register():
     #register_backend()
     config.register_extension(EXTENSION_NAME)
@@ -32,8 +30,6 @@ def register():
     config.register_default_extension("user", EXTENSION_NAME)
     config.register_default_extension("group", EXTENSION_NAME)
     config.register_default_extension("role", EXTENSION_NAME)
-    config.register_config_var("ldif_whitelist_attributes",
-                                list, WHITELIST_ATTRIBUTES)
 
 #def register_backend():
 #    # Register index attributes.

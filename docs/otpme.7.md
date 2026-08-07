@@ -479,6 +479,51 @@ Sites that want to force their own setting on every child add
 **changelog** to **force_site_config_parameters**.  
 Object types: all tree objects
 
+**ldap_verify_acls (bool, default: true)**  
+Whether **otpme-ldapd** verifies the ACLs of the objects it hands out.
+With ACL verification an attribute is only returned to a token that
+holds the **view:attribute:***attr* ACL on the object, unless the
+attribute is whitelisted (see **ldif_whitelist_attributes**). Disable it
+to let a token read every attribute of every object it can find - e.g.
+for a service account that syncs the directory.  
+Resolved through the inheritance chain of the requesting token (token →
+user → unit → site), so it can be turned off for a single token without
+opening up the whole site. For admin tokens ACLs are never verified.  
+Can only be changed by an admin.  
+Object types: site, unit, user, token
+
+**ldap_on_request_attributes (list, default: jpegPhoto)**  
+Comma-separated list of LDIF attributes **otpme-ldapd** only returns
+when the search asked for them by name. A search that requests all
+attributes gets everything but these.  
+This keeps bulky attributes out of searches that do not need them: a
+client that asks for all attributes on every query (SOGo does that on
+each address book search) would otherwise pull the photo of every hit
+over the wire and into the LDAP caches. **RFC 4522** allows a server to
+hold attributes back on a wildcard request.  
+Resolved through the inheritance chain of the requesting token (token →
+user → unit → site), so a client that really needs the photos with every
+search can be exempted by setting an empty list on its token. Attribute
+names are matched case insensitively. Further values can be added with
+**-a** and removed individually with **-d**.  
+Object types: site, unit, user, token
+
+**ldif_whitelist_attributes (list, default: dn, objectClass, uid, cn, displayName, entryUUID, l, mail, mailLocalAddress)**  
+Comma-separated list of LDIF attributes that are handed out without a
+**view:attribute:***attr* ACL. Every other attribute is only returned to
+a token that holds that ACL on the object.  
+A value set on the requesting token itself wins, so a single token can
+be given a narrower or wider view than the rest of the site. Without one
+the list is read from the site answering the LDAP request (see
+**otpme-ldapd**), not from the site of the object, and applies to all of
+its objects.  
+The default is the set an LDAP client needs to find and identify an
+object at all. Shorten it to hide e.g. the mail address, extend it to
+publish further attributes to every authenticated user. Further values
+can be added with **-a** and removed individually with **-d**.  
+Can only be changed by an admin.  
+Object types: site, token
+
 **allow_non_admin_trash_empty (bool, default: true)**  
 Whether non-admin tokens may run **otpme-trash empty**. If enabled, the
 caller can only empty the trash entries created by their own token (the
@@ -954,6 +999,36 @@ Object types: site, unit, share, user, token
 Number of preforked **authd** worker processes. Increase on busy nodes
 to handle more concurrent authentication requests. The most specific
 match wins (node overrides unit overrides site).  
+Object types: site, unit, node
+
+**ldapd_processes (int, default: 1)**  
+Number of worker processes **ldapd** answers LDAP requests with. A
+single process cannot use more than one core, so raise this on nodes
+that bottleneck on ldapd CPU. Workers share the listen port via
+SO_REUSEPORT. Each worker keeps its own LDIF caches, so raising the
+count costs memory and gives every single worker fewer requests to keep
+its caches warm with — see also **ldap_shared_cache**. The most specific
+match wins (node overrides unit overrides site).  
+Object types: site, unit, node
+
+**ldap_shared_cache (bool, default: true)**  
+Whether the **ldapd** worker processes share their lookup results with
+each other (search results and resolved search bases). Turning it off
+leaves every worker with its own private caches — useful as a comparison
+baseline when the shared caches are under suspicion. Only meaningful
+when **ldapd_processes** is greater than 1. The most specific match wins
+(node overrides unit overrides site).  
+Object types: site, unit, node
+
+**ldap_shared_cache_time (int, default: 3600)**  
+Seconds a cached search result and a resolved search base stay valid in
+the **ldapd** caches, and the expiry of the corresponding cache keys, so
+nothing has to be cleaned up after a worker that went away. This is not
+what keeps the caches correct: a changed object drops its entries
+immediately. The value only bounds how long an entry nobody touched sits
+around, so lowering it costs hit rate without buying correctness.
+Applies to the shared caches as well as the per-worker ones. The most
+specific match wins (node overrides unit overrides site).  
 Object types: site, unit, node
 
 **httpd_ssl_workers (int, default: 8)**  

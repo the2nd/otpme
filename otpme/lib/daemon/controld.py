@@ -220,18 +220,6 @@ def register():
                             getx=site_init_getter,
                             setx=site_init_setter)
     config.register_config_var("_site_init", None, False)
-    # Register ldap cache clear property.
-    def ldap_cache_clear_getter(self):
-        try:
-            return config._ldap_cache_clear.value
-        except AttributeError:
-            return False
-    def ldap_cache_clear_setter(self, new_status):
-        config._ldap_cache_clear.value = new_status
-    config.register_property(name="ldap_cache_clear",
-                            getx=ldap_cache_clear_getter,
-                            setx=ldap_cache_clear_setter)
-    config.register_config_var("_ldap_cache_clear", None, False)
     # Register sync status stuff.
     def sync_status_getter(self):
         from otpme.lib.multiprocessing import sync_status
@@ -410,12 +398,6 @@ class ControlDaemon(UnixDaemon):
             log_msg = _("Failed to close shared bool: {name}", log=True)[1]
             log_msg = log_msg.format(name=config._site_init.name)
             self.logger.critical(log_msg)
-        try:
-            config._ldap_cache_clear.close()
-        except Exception as e:
-            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
-            log_msg = log_msg.format(name=config._ldap_cache_clear.name)
-            self.logger.critical(log_msg)
         #try:
         #    multiprocessing.cluster_lock_event.unlink()
         #except Exception as e:
@@ -470,9 +452,56 @@ class ControlDaemon(UnixDaemon):
         finally:
             # Remember address we configured.
             self.floating_address = address
+        # The load balancer lives on the address, and binding its port
+        # takes the privileges we have and the other daemons do not.
+        if config.start_haproxy:
+            self.start_haproxy()
+
+    def start_haproxy(self):
+        """ Start the LDAP load balancer. """
+        from otpme.lib.haproxy.utils import start
+        try:
+            start()
+        except AlreadyRunning:
+            return
+        except Exception as e:
+            log_msg = _("Failed to start haproxy: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        else:
+            log_msg = _("Started haproxy.", log=True)[1]
+            self.logger.info(log_msg)
+
+    def stop_haproxy(self):
+        """ Stop the LDAP load balancer. """
+        from otpme.lib.haproxy.utils import stop
+        try:
+            stop()
+        except Exception as e:
+            log_msg = _("Failed to stop haproxy: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        else:
+            log_msg = _("Stopped haproxy.", log=True)[1]
+            self.logger.info(log_msg)
+
+    def reload_haproxy(self):
+        """ Let the load balancer pick up a changed member node list. """
+        from otpme.lib.haproxy.utils import reload
+        try:
+            reload()
+        except NotRunning:
+            return
+        except Exception as e:
+            log_msg = _("Failed to reload haproxy: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
     def deconfigure_floating_ip(self, address=None):
         """ Deconfigure floating IP. """
+        # It listens on the address we are about to give up.
+        if config.start_haproxy:
+            self.stop_haproxy()
         if address is None and self.floating_address is not None:
             address = self.floating_address
         if not address:
@@ -504,7 +533,6 @@ class ControlDaemon(UnixDaemon):
             self.daemons = [
                     'hostd',
                     'mgmtd',
-                    'ldapd',
                     'joind',
                     'scriptd',
                     'syncd',
@@ -515,6 +543,7 @@ class ControlDaemon(UnixDaemon):
                     'fsd',
                     'backupd',
                     #'idled',
+                    #'ldapd',
                     ]
 
             # Set child daemons.
@@ -522,7 +551,6 @@ class ControlDaemon(UnixDaemon):
             child_daemons["authd"] = {}
             child_daemons["hostd"] = {}
             child_daemons["joind"] = {}
-            child_daemons["ldapd"] = {}
             child_daemons["httpd"] = {}
             child_daemons["mgmtd"] = {}
             child_daemons["syncd"] = {}
@@ -530,6 +558,7 @@ class ControlDaemon(UnixDaemon):
             child_daemons["ssod"] = {}
             child_daemons["clusterd"] = {}
             child_daemons["backupd"] = {}
+            #child_daemons["ldapd"] = {}
             #child_daemons["idled"] = {}
 
         if config.host_data['type'] == "host":
@@ -696,14 +725,6 @@ class ControlDaemon(UnixDaemon):
         try:
             config._site_init = multiprocessing.get_bool(site_init,
                                                         random_name=False)
-        except Exception as e:
-            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
-        ldap_cache_clear = "ldap-cache-clear"
-        try:
-            config._ldap_cache_clear = multiprocessing.get_bool(ldap_cache_clear,
-                                                            random_name=False)
         except Exception as e:
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -968,6 +989,11 @@ class ControlDaemon(UnixDaemon):
                 self.deconfigure_floating_ip()
                 self.comm_handler.send(sender, command="ip_deconfigured")
                 #self.need_restart = True
+            elif command == "reload_haproxy":
+                # A member node came or went, so the balancer has to
+                # learn about it.
+                if config.start_haproxy:
+                    self.reload_haproxy()
             elif command == "reload":
                 try:
                     daemon_name = data['daemon']

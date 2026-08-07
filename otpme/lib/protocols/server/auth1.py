@@ -212,6 +212,8 @@ class OTPmeAuthP1(OTPmeServer1):
         self.require_master_node = False
         # We need a clean cluster status.
         self.require_cluster_status = True
+        # Authd can continue to process request on master failover.
+        self.process_on_master_failover = True
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 

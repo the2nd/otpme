@@ -2662,9 +2662,14 @@ class CommandHandler(object):
             node = command_args['node']
         except Exception:
             node = None
+        try:
+            authorize_host = command_args['authorize_host']
+        except Exception:
+            authorize_host = True
 
         result = self.login(username=username,
                         password=self.user_password,
+                        authorize_host=authorize_host,
                         node=node)
 
         return result
@@ -5471,7 +5476,7 @@ class CommandHandler(object):
         return result
 
     def login(self, username=None, password=None, node=None,
-        start_otpme_agent=True, **kwargs):
+        authorize_host=True, start_otpme_agent=True, **kwargs):
         """ Do realm login. """
         from otpme.lib.classes.login_handler import LoginHandler
         self.init(use_backend=False)
@@ -5502,6 +5507,7 @@ class CommandHandler(object):
                                 node=node,
                                 interactive=True,
                                 use_dns=config.use_dns,
+                                authorize_host=authorize_host,
                                 #cache_login_tokens=True,
                                 start_otpme_agent=False,
                                 login_session_id=login_session_id,
@@ -7545,8 +7551,8 @@ class CommandHandler(object):
                                             socket_uri=socket_uri)
         except Exception as e:
             msg, log_msg = _("Failed to get node connection: {node_name}: {e}", log=True)
-            msg = msg.format(e=e)
-            log_msg = log_msg.format(e=e)
+            msg = msg.format(node_name=node_name, e=e)
+            log_msg = log_msg.format(node_name=node_name, e=e)
             self.logger.warning(log_msg)
             raise OTPmeException(msg) from e
         try:

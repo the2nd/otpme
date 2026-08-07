@@ -74205,7 +74205,7 @@ msgstr "Vérification des jetons dot1x..."
 #: build/lib/otpme/lib/classes/token.py:1640 otpme/lib/classes/role.py:1283
 #: otpme/lib/classes/token.py:1715
 #, python-brace-format
-msgid "Invalid resturn type: {return_type}"
+msgid "Invalid return type: {return_type}"
 msgstr "Type de retour invalide : {return_type}"
 
 #. AI-generated

@@ -45,15 +45,16 @@ class LoginHandler(object):
         return agent_conn
 
     def login(self, realm=None, site=None, username=None, password=None,
-        send_password="auto", login_interface="tty", use_smartcard=False,
-        start_ssh_agent=False, use_ssh_agent="auto", password_method=None,
-        ssh_agent_method=None, need_ssh_key_pass=False, change_user=False,
-        endpoint=True, unlock=False, interactive=False, add_agent_session=None,
-        add_login_session=True, check_login_status=True, cache_login_tokens=False,
-        sync_token_data=False, auth_only=False, start_otpme_agent=True, jwt_auth=False,
-        jwt_method=None, message_method=None, error_message_method=None, connect_timeout=3,
-        timeout=None, node=None, save_offline_token=None, offline_key_derivation_func=None,
-        offline_token=None, request_token=None, mount_shares=False, offline_key_func_opts=None,
+        authorize_host=True, send_password="auto", login_interface="tty",
+        use_smartcard=False, start_ssh_agent=False, use_ssh_agent="auto",
+        password_method=None, ssh_agent_method=None, need_ssh_key_pass=False,
+        change_user=False, endpoint=True, unlock=False, interactive=False,
+        add_agent_session=None, add_login_session=True, check_login_status=True,
+        cache_login_tokens=False, sync_token_data=False, auth_only=False,
+        start_otpme_agent=True, jwt_auth=False, jwt_method=None, message_method=None,
+        error_message_method=None, connect_timeout=3, timeout=None, node=None,
+        save_offline_token=None, offline_key_derivation_func=None, offline_token=None,
+        request_token=None, mount_shares=False, offline_key_func_opts=None,
         check_offline_pass_strength=False, offline_iterations_by_score=None, login_session_id=None,
         add_agent_acl=False, cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):
         """ Send realm login request. """
@@ -127,6 +128,7 @@ class LoginHandler(object):
                                     otpme_agent_user=otpme_agent_user,
                                     request_jwt=False, verify_jwt=False,
                                     autoconnect=True, auto_auth=False,
+                                    authorize_host=authorize_host,
                                     jwt_auth=jwt_auth,
                                     add_agent_acl=add_agent_acl, unlock=unlock,
                                     add_agent_session=add_agent_session,

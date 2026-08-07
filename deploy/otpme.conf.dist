@@ -19,6 +19,27 @@ RADIUS_MAX_SPARE_SERVERS="16"
 # Network interface the floating IP is assigned to.
 #FLOATING_IP_IFACE="eth0"
 
+# Spread LDAP requests over the ldapd of all member nodes. Needs haproxy
+# installed. It runs on the node holding the floating IP and is started
+# and stopped along with it, so it follows a master node failover. With
+# a single node it simply forwards to the local ldapd, no extra setup.
+# Clients keep reaching ldapd directly on its own port as well.
+START_HAPROXY="True"
+# Path to haproxy binary.
+#HAPROXY_BIN="/usr/sbin/haproxy"
+# Port on the floating IP clients connect to. 636 is where they look for
+# LDAPS, which is what dovecot and SOGo want to be pointed at.
+#HAPROXY_PORT="636"
+# Connections haproxy accepts at once.
+#HAPROXY_MAXCONN="4096"
+# How often a member node is checked for being up.
+#HAPROXY_CHECK_INTERVAL="5s"
+#HAPROXY_CONNECT_TIMEOUT="5s"
+# Generous on purpose: dovecot keeps its LDAP connection open between
+# logins, and cutting an idle one only makes it reconnect.
+#HAPROXY_CLIENT_TIMEOUT="1h"
+#HAPROXY_SERVER_TIMEOUT="1h"
+
 # Enable use of mgmtd socket (--socket) by default. This makes sense on nodes only.
 USE_MGMTD_SOCKET="False"
 
@@ -257,9 +278,6 @@ HANDLE_FILES_DIRS="True"
 
 # Configure which pinentry to use. The default is otpme-pinentry.
 PINENTRY="/usr/bin/pinentry"
-
-# LDAP verify ACLs.
-LDAP_VERIFY_ACLS="False"
 
 # Hash type used to derive encryption key for offline tokens from passsword.
 OFFLINE_TOKEN_HASH_TYPE="Argon2_i"

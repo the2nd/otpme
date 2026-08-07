@@ -264,6 +264,7 @@ class Session(OTPmeLockObject):
         token: Union[str,None]=None,
         client: Union[str,None]=None,
         client_ip: Union[str,None]=None,
+        authorize_host: Union[bool,None]=None,
         slp: Union[str,None]=None,
         ):
         """ Init. """
@@ -345,6 +346,12 @@ class Session(OTPmeLockObject):
             self.client_ip = client_ip
         else:
             self.client_ip = ""
+
+        # Set authorize_host.
+        if authorize_host is not None:
+            self.authorize_host = authorize_host
+        else:
+            self.authorize_host = None
 
         # Try to resolve user UUID.
         result = backend.search(object_type="user",
@@ -632,6 +639,7 @@ class Session(OTPmeLockObject):
         self.object_config['ACCESS_GROUP_UUID'] = self.access_group_uuid
         self.object_config['CLIENT'] = self.client
         self.object_config['CLIENT_IP'] = self.client_ip
+        self.object_config['AUTHORIZE_HOST'] = self.authorize_host
         self.object_config['AUTH_TOKEN'] = self.auth_token
         self.object_config['SESSION_TIMEOUT'] = self.timeout
         self.object_config['UNUSED_SESSION_TIMEOUT'] = self.unused_timeout
@@ -701,6 +709,7 @@ class Session(OTPmeLockObject):
         self.access_group_uuid = self.get_config_parameter('ACCESS_GROUP_UUID')
         self.client = self.get_config_parameter('CLIENT')
         self.client_ip = self.get_config_parameter('CLIENT_IP')
+        self.authorize_host = self.get_config_parameter('AUTHORIZE_HOST')
         self.auth_token = self.get_config_parameter('AUTH_TOKEN')
         self.timeout = self.get_config_parameter('SESSION_TIMEOUT')
         self.unused_timeout = self.get_config_parameter('UNUSED_SESSION_TIMEOUT')

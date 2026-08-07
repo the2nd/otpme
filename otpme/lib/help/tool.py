@@ -421,11 +421,12 @@ cmd_help = {
 
 
     'login'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool login [--node {node}] [username]'),
-                    'cmd'   :   '--node :node: [username]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool login [--node {node}] [--no-authorize-host] [username]'),
+                    'cmd'   :   '--node :node: --no-authorize-host :authorize_host=False: [username]',
                     '_help' :   {
                                     'cmd'                   : _('login to OTPme realm'),
                                     '--node <node>'         : _('Send login request to given node.'),
+                                    '--no-authorize-nost'   : _('Tell node not to authorize host on login.'),
                                 },
                 },
 

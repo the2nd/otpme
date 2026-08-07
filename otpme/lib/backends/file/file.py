@@ -1069,7 +1069,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     object_type=None, object_types=None, verify_acls=None, return_acls=None,
     return_raw_acls=False, max_results=0, size_limit=0,
     template=None, return_query_count=False,
-    session=None, _debug=False, **kwargs):
+    session=None, **kwargs):
     """ Search index. """
     # Import modules here to speedup import time.
     if attributes is None:
@@ -2228,7 +2228,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
 #    object_type=None, object_types=None, verify_acls=None, return_acls=None,
 #    return_raw_acls=False, max_results=0, size_limit=0,
 #    template=None, return_query_count=False,
-#    session=None, _debug=False, **kwargs):
+#    session=None, **kwargs):
 #    """ Search index. """
 #    # Import modules here to speedup import time.
 #    if attributes is None:

@@ -262,6 +262,17 @@ Let a token mount the share root of a home share. The share root the token gets 
 .TP
 .B remove_root_mount_token \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fItoken_path\fR
 Remove a root mount token from the share. The token is told to unmount, like with \fBremove_token\fR.
+.SS No Mount Token
+.PP
+A no mount token is assigned to the share like a normal token \- its user gets a share key and it may mount the share \- but it does not get the share mounted \fBautomatically\fR. It is left out when the shares are mounted at login, and it gets no \fBshare_mount\fR notification. Mounting by hand with \fBotpme\-mount\fR \fIshare_site\fB/\fIshare_name\fR keeps working.
+.PP
+Unmount notifications still reach these tokens: they may have mounted the share by hand, and a disabled share or a revoked permission has to unmount there too.
+.TP
+.B add_no_mount_token \fIshare\fR \fItoken_path\fR
+Add a token that does not get the share mounted automatically. Handles the share key like \fBadd_token\fR, so an encrypted share asks the client to re-encrypt the key for the tokens user. No mount notification is sent, there is nothing to mount.
+.TP
+.B remove_no_mount_token \fR[\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] \fIshare\fR \fItoken_path\fR
+Remove a no mount token from the share. The users share key is removed with it, unless another of their tokens is still assigned to the share or \fB\-\-keep\-share\-key\fR is given.
 .SS Pool and Node Management
 .TP
 .B add_pool \fIshare\fR \fIpool\fR

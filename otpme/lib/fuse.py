@@ -4,6 +4,7 @@ import os
 import json
 import time
 import stat
+import threading
 import hmac
 import errno
 import secrets
@@ -127,6 +128,16 @@ def init_cryptfs(path, block_size, hash_params):
         msg = msg.format(diriv_file=diriv_file, e=e)
         raise OTPmeException(msg) from e
 
+# Errno a filesystem request gets while the connection to the share is
+# still being established. Anything but "hang until we are connected".
+NOT_CONNECTED_ERRNO = errno.ENOENT
+
+# Connect to the share in a thread and let the filesystem requests that
+# arrive meanwhile fail with NOT_CONNECTED_ERRNO instead of waiting for
+# it. Set to False to connect in the calling thread again, which is what
+# we did before and what the cases below still do.
+BACKGROUND_CONNECT = True
+
 class OTPmeFS(fuse.Operations):
     '''
     OTPmeFS.
@@ -146,6 +157,11 @@ class OTPmeFS(fuse.Operations):
         self.nodes = nodes
         self.hard = hard
         self.fsd_conn = None
+        # Connecting runs in its own thread, see start_connect().
+        self.connect_lock = threading.Lock()
+        self.connect_done = threading.Event()
+        self.connect_thread = None
+        self.connect_error = None
         self.max_name = 255
         self.username = None
         self.encrypted = False
@@ -217,270 +233,394 @@ class OTPmeFS(fuse.Operations):
             return False, mount_response_code, mount_response, mount_message
         return None, mount_response_code, mount_response, mount_message
 
-    def send(self, command, command_args, binary_data=None):
+    def connected(self):
+        """ Whether we have a connection that is ready to use.
+
+        connect() publishes self.fsd_conn before it mounts the share, so
+        a request must not use it while the connect thread still runs.
+        """
+        if self.fsd_conn is None:
+            return False
+        with self.connect_lock:
+            if self.connect_thread is None:
+                return True
+            if self.connect_thread.is_alive():
+                return False
+        return True
+
+    def start_connect(self, command):
+        """ Start connecting to a node in the background.
+
+        Connecting takes seconds (connect timeout per node, the mount
+        that follows, retries on other nodes), and a filesystem request
+        that waits for it blocks the command that triggered it. So do it
+        in a thread and let the request fail fast (see send()).
+        """
+        with self.connect_lock:
+            if self.connect_thread is not None:
+                if self.connect_thread.is_alive():
+                    return
+            self.connect_done.clear()
+            self.connect_thread = threading.Thread(target=self.connect_worker,
+                                                args=(command,),
+                                                daemon=True)
+            self.connect_thread.start()
+
+    def connect_worker(self, command):
+        """ Run connect() and remember why it failed. """
+        try:
+            self.connect(command)
+        except Exception as e:
+            self.fsd_conn = None
+            with self.connect_lock:
+                self.connect_error = e
+            log_msg = _("Failed to connect share: {share}: {e}", log=True)[1]
+            log_msg = log_msg.format(share=self.share, e=e)
+            self.logger.warning(log_msg)
+        finally:
+            self.connect_done.set()
+
+    def raise_connect_error(self):
+        """ Raise the error of the last connect attempt, if there was one.
+
+        This way the request that runs into it gets the real reason (e.g.
+        permission denied) instead of the generic "not connected yet".
+        """
+        with self.connect_lock:
+            connect_error = self.connect_error
+            self.connect_error = None
+        if connect_error is None:
+            return
+        raise connect_error
+
+    def wait_for_connection(self, command):
+        """ Make sure a connection is being established.
+
+        Returns True when we are connected. Two cases have to wait for
+        it instead of failing fast:
+
+        Encrypted shares, because connecting may run the key script,
+        which asks for the password via pinentry, and pinentry needs a
+        command to wait for it. On a terminal, because the shell would
+        read from the tty again as soon as the request returns. And with
+        a DISPLAY too, because a second pinentry started meanwhile
+        cannot grab the pointer and fails.
+
+        A write on a hard mount, because it must not fail. It waits and
+        retries like it did before.
+        """
+        block = self.encrypted
+        if self.hard and command == "fsop_write":
+            block = True
+        if not BACKGROUND_CONNECT:
+            block = True
+        if not block:
+            self.start_connect(command)
+            return self.connected()
+        # Connect in the calling thread, exactly like we did before the
+        # connect thread was added: this is the path that may run the
+        # key script, and it must behave the same as it always did.
         while True:
-            if not self.fsd_conn:
-                tried_nodes = []
-                nodes = self.nodes
-                while True:
-                    remaining_nodes = list(set(nodes) - set(tried_nodes))
-                    if not remaining_nodes:
-                        raise_exception = False
-                        if not self.hard:
-                            raise_exception = True
-                        if command != "fsop_write":
-                            raise_exception = True
-                        if raise_exception:
-                            raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
-                        break
-                    if self.username is None:
-                        try:
-                            self.username = self.get_user()
-                        except Exception as e:
-                            msg = _("Unable to get username from agent: {e}")
-                            msg = msg.format(e=e)
-                            raise OSError(errno.EINVAL, msg) from e
-                    node = secrets.choice(remaining_nodes)
-                    log_msg = _("Trying connection to node: {node}", log=True)[1]
-                    log_msg = log_msg.format(node=node)
-                    self.logger.info(log_msg)
+            if self.wait_for_connect_thread():
+                return True
+            self.connect(command)
+            if self.connected():
+                return True
+            # connect() does not raise for us in the hard write case, so
+            # anything we got here means the nodes were unreachable.
+            time.sleep(1)
+
+    def wait_for_connect_thread(self):
+        """ Wait for a running connect thread and take over its result.
+
+        There is only one when an earlier request went through the non
+        blocking path (see start_connect()).
+        """
+        with self.connect_lock:
+            connect_thread = self.connect_thread
+        if connect_thread is None:
+            return False
+        if not connect_thread.is_alive():
+            return self.connected()
+        self.connect_done.wait()
+        if self.connected():
+            return True
+        self.raise_connect_error()
+        return False
+
+    def connect(self, command):
+        """ Connect to a node and mount the share.
+
+        Runs in the connect thread, see start_connect().
+        """
+        tried_nodes = []
+        nodes = self.nodes
+        while True:
+            remaining_nodes = list(set(nodes) - set(tried_nodes))
+            if not remaining_nodes:
+                raise_exception = False
+                if not self.hard:
+                    raise_exception = True
+                if command != "fsop_write":
+                    raise_exception = True
+                if raise_exception:
+                    raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
+                break
+            if self.username is None:
+                try:
+                    self.username = self.get_user()
+                except Exception as e:
+                    msg = _("Unable to get username from agent: {e}")
+                    msg = msg.format(e=e)
+                    raise OSError(errno.EINVAL, msg) from e
+            node = secrets.choice(remaining_nodes)
+            log_msg = _("Trying connection to node: {node}", log=True)[1]
+            log_msg = log_msg.format(node=node)
+            self.logger.info(log_msg)
+            try:
+                self.fsd_conn = self.get_fsd_connection(node)
+            except Exception as e:
+                tried_nodes.append(node)
+                self.fsd_conn = None
+                log_msg = _("Failed to get fsd connection: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                #config.raise_exception()
+                if len(tried_nodes) == len(nodes):
+                    log_msg = _("Nodes failed: {tried_nodes}", log=True)[1]
+                    log_msg = log_msg.format(tried_nodes=tried_nodes)
+                    self.logger.warning(log_msg)
+                    raise_exception = False
+                    if not self.hard:
+                        raise_exception = True
+                    if command != "fsop_write":
+                        raise_exception = True
+                    if raise_exception:
+                        raise OSError(errno.EHOSTUNREACH, _("Server unreachable")) from e
+                continue
+            tried_nodes.append(node)
+            mount_args = {'share':self.share}
+            master_password_mount = False
+            if self.master_password:
+                master_password_mount = True
+                mount_args['master_password_mount'] = master_password_mount
+            mount_status, \
+            mount_response_code, \
+            mount_response, \
+            mount_message = self.mount_share(mount_args)
+            if not mount_status:
+                done = False
+                if mount_status is False:
+                    done = True
+                if len(tried_nodes) == len(nodes):
+                    done = True
+                if done:
+                    self.fsd_conn.close()
+                    self.fsd_conn = None
+                    raise_exception = False
+                    if not self.hard:
+                        raise_exception = True
+                    if command != "fsop_write":
+                        raise_exception = True
+                    if raise_exception:
+                        if mount_response_code == status_codes.UNKNOWN_OBJECT:
+                            raise OSError(errno.ENOENT, mount_message)
+                        elif mount_response_code == status_codes.PERMISSION_DENIED:
+                            raise OSError(errno.EACCES, mount_message)
+                        else:
+                            raise OSError(errno.EINVAL, mount_message)
+                time.sleep(1)
+                continue
+            try:
+                remote_command = mount_response['command']
+            except KeyError:
+                remote_command = None
+            if remote_command == "home_dir_enc":
+                description = _("Enter new password for encrypting you home share. Use a secure password and save it in a safe place.")
+                agent_conn = connections.get(daemon="agent")
+                try:
                     try:
-                        self.fsd_conn = self.get_fsd_connection(node)
-                    except Exception as e:
-                        tried_nodes.append(node)
-                        self.fsd_conn = None
-                        log_msg = _("Failed to get fsd connection: {e}", log=True)[1]
-                        log_msg = log_msg.format(e=e)
-                        self.logger.warning(log_msg)
-                        #config.raise_exception()
-                        if len(tried_nodes) == len(nodes):
-                            log_msg = _("Nodes failed: {tried_nodes}", log=True)[1]
-                            log_msg = log_msg.format(tried_nodes=tried_nodes)
-                            self.logger.warning(log_msg)
-                            raise_exception = False
-                            if not self.hard:
-                                raise_exception = True
-                            if command != "fsop_write":
-                                raise_exception = True
-                            if raise_exception:
-                                raise OSError(errno.EHOSTUNREACH, _("Server unreachable")) from e
-                        continue
+                        tty = agent_conn.get_tty()
+                    except Exception:
+                        tty = None
+                    try:
+                        display = agent_conn.get_display()
+                    except Exception:
+                        display = None
+                finally:
+                    agent_conn.close()
+                if not tty and not display:
+                    msg, log_msg = _("Failed to get password: No tty and no  DISPLAY", log=True)
+                    self.logger.warning(log_msg)
+                    self.fsd_conn.close()
+                    self.fsd_conn = None
+                    raise OSError(errno.EINVAL, msg)
+                try:
+                    password = get_new_password(description=description, tty=tty, display=display)
+                except Exception as e:
+                    password = None
+                    log_msg = _("Failed to get password via pinentry: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
+                if not password:
+                    msg = _("Failed to get password.")
+                    self.fsd_conn.close()
+                    self.fsd_conn = None
+                    raise OSError(errno.EINVAL, msg)
+                self.fsd_conn.interactive = True
+                share_key_response = self.fsd_conn.gen_share_key(mount_response,
+                                                                password=password)
+                self.fsd_conn.interactive = False
+                mount_args['enc_home_data'] = share_key_response
+                mount_status, \
+                mount_response_code, \
+                mount_response, \
+                mount_message = self.mount_share(mount_args)
+                if not mount_status:
+                    continue
+            try:
+                self.restore_share = mount_response['restore_share']
+            except KeyError:
+                pass
+            try:
+                nodes = mount_response['nodes']
+                if not nodes:
+                    log_msg = _("Received empty share nodes from fsd: {share}: {node}", log=True)[1]
+                    log_msg = log_msg.format(share=self.share, node=node)
+                    self.logger.warning(log_msg)
+            except KeyError:
+                nodes = None
+                log_msg = _("Mount response misses nodes: {share}: {node}", log=True)[1]
+                log_msg = log_msg.format(share=self.share, node=node)
+                self.logger.info(log_msg)
+            if nodes:
+                self.nodes = nodes
+            if self.encrypted:
+                try:
+                    block_size= mount_response['block_size']
+                except KeyError as err:
+                    log_msg = _("Mount response misses block size: {share}: {node}", log=True)[1]
+                    log_msg = log_msg.format(share=self.share, node=node)
+                    self.logger.warning(log_msg)
+                    self.fsd_conn.close()
+                    self.fsd_conn = None
                     tried_nodes.append(node)
-                    mount_args = {'share':self.share}
-                    master_password_mount = False
-                    if self.master_password:
-                        master_password_mount = True
-                        mount_args['master_password_mount'] = master_password_mount
-                    mount_status, \
-                    mount_response_code, \
-                    mount_response, \
-                    mount_message = self.mount_share(mount_args)
-                    if not mount_status:
-                        done = False
-                        if mount_status is False:
-                            done = True
-                        if len(tried_nodes) == len(nodes):
-                            done = True
-                        if done:
-                            self.fsd_conn.close()
-                            self.fsd_conn = None
-                            raise_exception = False
-                            if not self.hard:
-                                raise_exception = True
-                            if command != "fsop_write":
-                                raise_exception = True
-                            if raise_exception:
-                                if mount_response_code == status_codes.UNKNOWN_OBJECT:
-                                    raise OSError(errno.ENOENT, mount_message)
-                                elif mount_response_code == status_codes.PERMISSION_DENIED:
-                                    raise OSError(errno.EACCES, mount_message)
-                                else:
-                                    raise OSError(errno.EINVAL, mount_message)
-                        time.sleep(1)
-                        continue
-                    try:
-                        remote_command = mount_response['command']
-                    except KeyError:
-                        remote_command = None
-                    if remote_command == "home_dir_enc":
-                        description = _("Enter new password for encrypting you home share. Use a secure password and save it in a safe place.")
-                        agent_conn = connections.get(daemon="agent")
+                    raise OSError(errno.ENOENT, _("Missing block size")) from err
+                # Set block size for encrypted fs.
+                self.set_block_size(block_size)
+                if not self.key:
+                    if master_password_mount:
                         try:
-                            try:
-                                tty = agent_conn.get_tty()
-                            except Exception:
-                                tty = None
-                            try:
-                                display = agent_conn.get_display()
-                            except Exception:
-                                display = None
-                        finally:
-                            agent_conn.close()
-                        if not tty and not display:
-                            msg, log_msg = _("Failed to get password: No tty and no  DISPLAY", log=True)
-                            self.logger.warning(log_msg)
-                            self.fsd_conn.close()
-                            self.fsd_conn = None
-                            raise OSError(errno.EINVAL, msg)
-                        try:
-                            password = get_new_password(description=description, tty=tty, display=display)
-                        except Exception as e:
-                            password = None
-                            log_msg = _("Failed to get password via pinentry: {e}", log=True)[1]
-                            log_msg = log_msg.format(e=e)
-                            self.logger.warning(log_msg)
-                        if not password:
-                            msg = _("Failed to get password.")
-                            self.fsd_conn.close()
-                            self.fsd_conn = None
-                            raise OSError(errno.EINVAL, msg)
-                        self.fsd_conn.interactive = True
-                        share_key_response = self.fsd_conn.gen_share_key(mount_response,
-                                                                        password=password)
-                        self.fsd_conn.interactive = False
-                        mount_args['enc_home_data'] = share_key_response
-                        mount_status, \
-                        mount_response_code, \
-                        mount_response, \
-                        mount_message = self.mount_share(mount_args)
-                        if not mount_status:
-                            continue
-                    try:
-                        self.restore_share = mount_response['restore_share']
-                    except KeyError:
-                        pass
-                    try:
-                        nodes = mount_response['nodes']
-                        if not nodes:
-                            log_msg = _("Received empty share nodes from fsd: {share}: {node}", log=True)[1]
-                            log_msg = log_msg.format(share=self.share, node=node)
-                            self.logger.warning(log_msg)
-                    except KeyError:
-                        nodes = None
-                        log_msg = _("Mount response misses nodes: {share}: {node}", log=True)[1]
-                        log_msg = log_msg.format(share=self.share, node=node)
-                        self.logger.info(log_msg)
-                    if nodes:
-                        self.nodes = nodes
-                    if self.encrypted:
-                        try:
-                            block_size= mount_response['block_size']
+                            master_password_hash_params= mount_response['master_password_hash_params']
                         except KeyError as err:
-                            log_msg = _("Mount response misses block size: {share}: {node}", log=True)[1]
+                            log_msg = _("Mount response misses master password hash parameters: {share}: {node}", log=True)[1]
                             log_msg = log_msg.format(share=self.share, node=node)
                             self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
                             tried_nodes.append(node)
-                            raise OSError(errno.ENOENT, _("Missing block size")) from err
-                        # Set block size for encrypted fs.
-                        self.set_block_size(block_size)
-                        if not self.key:
-                            if master_password_mount:
-                                try:
-                                    master_password_hash_params= mount_response['master_password_hash_params']
-                                except KeyError as err:
-                                    log_msg = _("Mount response misses master password hash parameters: {share}: {node}", log=True)[1]
-                                    log_msg = log_msg.format(share=self.share, node=node)
-                                    self.logger.warning(log_msg)
-                                    self.fsd_conn.close()
-                                    self.fsd_conn = None
-                                    tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("No share key received")) from err
-                                try:
-                                    hash_data = hash_password(self.master_password,
-                                                            encoding=None,
-                                                            **master_password_hash_params)
-                                    share_key = hash_data.pop("hash")
-                                except Exception as e:
-                                    log_msg = _("Failed to derive share key from master password: {share}: {e}", log=True)[1]
-                                    log_msg = log_msg.format(share=self.share, e=e)
-                                    self.logger.warning(log_msg)
-                                    self.fsd_conn.close()
-                                    self.fsd_conn = None
-                                    tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("No share key received")) from e
-                            else:
-                                try:
-                                    share_key= mount_response['share_key']
-                                except KeyError as err:
-                                    log_msg = _("Mount response misses share key: {share}: {node}", log=True)[1]
-                                    log_msg = log_msg.format(share=self.share, node=node)
-                                    self.logger.warning(log_msg)
-                                    self.fsd_conn.close()
-                                    self.fsd_conn = None
-                                    tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("No share key received")) from err
-                                # Decrypt share key with key script.
-                                share_id = f"{self.share_site}/{self.share}"
-                                try:
-                                    share_key = stuff.decrypt_share_key(self.username,
-                                                                        share_key,
-                                                                        key_mode=None,
-                                                                        encode=False,
-                                                                        share=share_id)
-                                except Exception as e:
-                                    log_msg = _("Failed to decrypt share key: {share}: {e}", log=True)[1]
-                                    log_msg = log_msg.format(share=self.share, e=e)
-                                    self.logger.warning(log_msg)
-                                    self.fsd_conn.close()
-                                    self.fsd_conn = None
-                                    tried_nodes.append(node)
-                                    raise OSError(errno.EACCES, _("Failed to decrypt share key")) from e
-                            try:
-                                self.setup_encryption(share_key)
-                            except Exception as e:
-                                msg, log_msg = _("Failed to setup encryption: {share}: {e}", log=True)
-                                msg = msg.format(share=self.share, e=e)
-                                log_msg = log_msg.format(share=self.share, e=e)
-                                self.logger.warning(log_msg)
-                                self.fsd_conn.close()
-                                self.fsd_conn = None
-                                tried_nodes.append(node)
-                                raise OSError(errno.EINVAL, msg) from e
-                        # Get max filename length for encrypted shares.
-                        statfs = self.statfs(path="/")
+                            raise OSError(errno.EACCES, _("No share key received")) from err
                         try:
-                            self.max_name = statfs['f_namemax']
-                        except Exception:
-                            pass
-                    msg, log_msg = _("Share mounted: {share} ({node})", log=True)
-                    msg = msg.format(share=self.share, node=node)
-                    log_msg = log_msg.format(share=self.share, node=node)
-                    self.logger.info(log_msg)
-                    print(msg)
-                    # Add share key.
-                    if self.add_share_key:
-                        # Encrypt share key with key script.
-                        try:
-                            enc_share_key = stuff.encrypt_share_key(username=self.username,
-                                                                    share_user=self.username,
-                                                                    share_key=share_key,
-                                                                    key_mode=None)
+                            hash_data = hash_password(self.master_password,
+                                                    encoding=None,
+                                                    **master_password_hash_params)
+                            share_key = hash_data.pop("hash")
                         except Exception as e:
-                            log_msg = _("Failed to encrypt share key: {share}: {e}", log=True)[1]
+                            log_msg = _("Failed to derive share key from master password: {share}: {e}", log=True)[1]
                             log_msg = log_msg.format(share=self.share, e=e)
                             self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
+                            tried_nodes.append(node)
+                            raise OSError(errno.EACCES, _("No share key received")) from e
+                    else:
+                        try:
+                            share_key= mount_response['share_key']
+                        except KeyError as err:
+                            log_msg = _("Mount response misses share key: {share}: {node}", log=True)[1]
+                            log_msg = log_msg.format(share=self.share, node=node)
+                            self.logger.warning(log_msg)
+                            self.fsd_conn.close()
+                            self.fsd_conn = None
+                            tried_nodes.append(node)
+                            raise OSError(errno.EACCES, _("No share key received")) from err
+                        # Decrypt share key with key script.
+                        share_id = f"{self.share_site}/{self.share}"
+                        try:
+                            share_key = stuff.decrypt_share_key(self.username,
+                                                                share_key,
+                                                                key_mode=None,
+                                                                encode=False,
+                                                                share=share_id)
+                        except Exception as e:
+                            log_msg = _("Failed to decrypt share key: {share}: {e}", log=True)[1]
+                            log_msg = log_msg.format(share=self.share, e=e)
+                            self.logger.warning(log_msg)
+                            self.fsd_conn.close()
+                            self.fsd_conn = None
+                            tried_nodes.append(node)
                             raise OSError(errno.EACCES, _("Failed to decrypt share key")) from e
-                        # Add token and share key to share
-                        add_args = {'share_key':enc_share_key}
-                        add_status, \
-                        add_response_code, \
-                        add_response, \
-                        add_binary_data = self.fsd_conn.send(command="add_share_key",
-                                                        command_args=add_args,
-                                                        handle_response=False,
-                                                        encrypt_request=False,
-                                                        encode_request=False,
-                                                        compress_request=False)
-                        if not add_status:
-                            raise OSError(errno.EACCES, _("Failed to add share key."))
-                        self.add_share_key = False
-                    break
+                    try:
+                        self.setup_encryption(share_key)
+                    except Exception as e:
+                        msg, log_msg = _("Failed to setup encryption: {share}: {e}", log=True)
+                        msg = msg.format(share=self.share, e=e)
+                        log_msg = log_msg.format(share=self.share, e=e)
+                        self.logger.warning(log_msg)
+                        self.fsd_conn.close()
+                        self.fsd_conn = None
+                        tried_nodes.append(node)
+                        raise OSError(errno.EINVAL, msg) from e
+                # Get max filename length for encrypted shares.
+                statfs = self.statfs(path="/")
+                try:
+                    self.max_name = statfs['f_namemax']
+                except Exception:
+                    pass
+            msg, log_msg = _("Share mounted: {share} ({node})", log=True)
+            msg = msg.format(share=self.share, node=node)
+            log_msg = log_msg.format(share=self.share, node=node)
+            self.logger.info(log_msg)
+            print(msg)
+            # Add share key.
+            if self.add_share_key:
+                # Encrypt share key with key script.
+                try:
+                    enc_share_key = stuff.encrypt_share_key(username=self.username,
+                                                            share_user=self.username,
+                                                            share_key=share_key,
+                                                            key_mode=None)
+                except Exception as e:
+                    log_msg = _("Failed to encrypt share key: {share}: {e}", log=True)[1]
+                    log_msg = log_msg.format(share=self.share, e=e)
+                    self.logger.warning(log_msg)
+                    self.fsd_conn.close()
+                    self.fsd_conn = None
+                    raise OSError(errno.EACCES, _("Failed to decrypt share key")) from e
+                # Add token and share key to share
+                add_args = {'share_key':enc_share_key}
+                add_status, \
+                add_response_code, \
+                add_response, \
+                add_binary_data = self.fsd_conn.send(command="add_share_key",
+                                                command_args=add_args,
+                                                handle_response=False,
+                                                encrypt_request=False,
+                                                encode_request=False,
+                                                compress_request=False)
+                if not add_status:
+                    raise OSError(errno.EACCES, _("Failed to add share key."))
+                self.add_share_key = False
+            break
 
-            if not self.fsd_conn:
+    def send(self, command, command_args, binary_data=None):
+        while True:
+            if not self.connected():
+                if not self.wait_for_connection(command):
+                    self.raise_connect_error()
+                    msg = _("Share not connected yet: {share}")
+                    msg = msg.format(share=self.share)
+                    raise OSError(NOT_CONNECTED_ERRNO, msg)
                 continue
 
             try:
@@ -532,7 +672,7 @@ class OTPmeFS(fuse.Operations):
         plaintext path to its encrypted counterpart. So make sure we are
         connected/mounted before using them.
         """
-        if self.fsd_conn:
+        if self.connected():
             return
         # Any command will do. statfs() is cheap and works for regular and
         # restore shares.

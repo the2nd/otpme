@@ -510,6 +510,24 @@ cmd_help = {
                                 },
                 },
 
+    'add_no_mount_token'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share add_no_mount_token {share} {token}'),
+                    'cmd'   :   '<|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add token that does not get the share mounted automatically.'),
+                                },
+                },
+
+    'remove_no_mount_token'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-share remove_no_mount_token [--remove-share-key] [--keep-share-key] {share} {token}'),
+                    'cmd'   :   '--keep-share-key :keep_share_key=True: --remove-share-key :keep_share_key=False: <|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove no mount token from share.'),
+                                    '--keep-share-key'      : _('Keep share key.'),
+                                    '--remove-share-key'    : _('Remove share key.'),
+                                },
+                },
+
     'remove_root_mount_token'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share remove_root_mount_token [--share-notify] [--no-share-notify] [--persist-mount] [--no-persist-mount] {share} {token}'),
                     'cmd'   :   '--share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --persist-mount :persist_mount=True: --no-persist-mount :persist_mount=False: <|object|> <token_path>',

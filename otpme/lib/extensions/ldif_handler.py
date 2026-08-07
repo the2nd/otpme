@@ -399,6 +399,13 @@ class OTPmeLDIFHandler(object):
 
         return callback.ok()
 
+    def get_dn_attribute(self, object_type, attribute):
+        try:
+            dn_attribute = self.attribute_mappings[object_type][attribute][0]
+        except Exception:
+            return
+        return dn_attribute
+
     def get_acls(self, object_type):
         acls = []
         # Merge object ACLs with extension ACLs.

@@ -2455,3 +2455,39 @@ def get_console_lang(default="en"):
             continue
         return val.split("_", 1)[0].split(".", 1)[0].lower()
     return default
+
+def get_user_shares(auth_token, host_uuid):
+    from otpme.lib import backend
+    user_shares = auth_token.get_shares(skip_disabled=True,
+                                        return_type="instance")
+    shares = {}
+    for share in user_shares:
+        # A no mount token may mount the share, it just does not get it
+        # mounted automatically (see Share.add_no_mount_token()).
+        if share.is_no_mount_token(auth_token.uuid):
+            continue
+        if share.limit_by_hosts:
+            if not share.is_assigned_host(host_uuid,
+                                    include_groups=True,
+                                    include_roles=True):
+                continue
+        share_nodes = share.get_nodes(include_pools=True,
+                                    return_type="instance")
+        if not share_nodes:
+            share_nodes = backend.search(object_type="node",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=share.realm,
+                                        site=share.site,
+                                        return_type="instance")
+        if share_nodes:
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+            share_id = share.share_id
+            shares[share_id] = {}
+            shares[share_id]['name'] = share.name
+            shares[share_id]['site'] = share.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['encrypted'] = share.encrypted
+    return shares

@@ -640,6 +640,16 @@ REGISTER_BEFORE = [
                     ]
 REGISTER_AFTER = []
 
+def register_ldap_object():
+    """ Register LDAP object settings.
+
+    A realm carries the "dc=" entries at the root of the tree, so it
+    shows up in LDAP like any other object. Registering it is also what
+    makes backend.outdate_object() tell ldapd that one changed.
+    """
+    config.register_ldap_object(object_type="realm",
+                                scopes=['one', 'base', 'sub'])
+
 def register():
     register_dn()
     register_oid()
@@ -651,6 +661,7 @@ def register():
     register_hooks()
     register_config()
     register_backend()
+    register_ldap_object()
     register_commands("realm", commands)
     register_module("otpme.lib.classes.resolver")
     register_module("otpme.lib.classes.policy")

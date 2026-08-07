@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-import copy
 #import errno
 import signal
 import setproctitle
@@ -31,6 +30,7 @@ from ldaptor.protocols.ldap import ldapsyntax
 from ldaptor.protocols.ldap import ldaperrors
 from ldaptor.protocols.ldap import ldifprotocol
 from ldaptor.protocols.ldap import distinguishedname
+from twisted.protocols.tls import TLSMemoryBIOFactory
 
 #from twisted.mail.maildir import _generateMaildirName as tempName
 from ldaptor.protocols import pureldap
@@ -54,6 +54,8 @@ from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.classes.otpme_object import get_ldif
+from otpme.lib.classes.otpme_object import get_ldif_whitelist_id
+from otpme.lib.classes.otpme_object import get_ldif_whitelist_attributes
 from otpme.lib.backends.file.file import get_oid_from_path
 from otpme.lib.backends.file.file import get_config_paths
 from otpme.lib.backends.file.file import OBJECTS_DIR
@@ -66,9 +68,74 @@ ldap_query_cache = {}
 uuid_to_oid = {}
 user_ldif_cache = {}
 global_ldif_cache = {}
+ldif_settings_cache = {}
+
+# The state of the shared outdated objects dict we acted on. See
+# sync_outdated_objects().
+outdated_counter = None
+outdated_time = None
+
+# Search bases we resolved. See LDIFTreeEntry.lookup().
+lookup_cache = {}
+
+# How well our caches do. See count_cache() and log_cache_stats().
+cache_stats = {}
+cache_stats_time = 0
+# Seconds between two lines of cache statistics.
+CACHE_STATS_INTERVAL = 30
+
+# Resolving the LDIF settings of a token means loading the token and our
+# site, and update_ldif_settings() runs for every entry a search builds. So
+# cache them for a moment. A changed config parameter takes effect with
+# a delay of up to this many seconds.
+LDIF_SETTINGS_CACHE_TIME = 30
+
+# How long we trust cached LDIF data without asking the backend for the
+# objects current checksum. Verifying it is one index query per object,
+# which is way too much for a search that returns thousands of them.
+LDIF_CACHE_TIME = 30
+
+# How long a search result stays in the cache the ldapd processes share.
+# Also the expiry of the redis keys, so nobody has to clean up after a
+# process that went away.
+#
+# The resolved search bases get the same span, locally and shared: an
+# entry we take over from a sibling would otherwise be too old for us
+# right away and we would fetch it again on every request. What keeps
+# this correct is not the time but outdate_ldap_object(), which drops
+# the entry of an object that moved.
+#
+# Set from the "ldap_shared_cache_time" config parameter when ldapd
+# starts, before it forks its workers, see LdapDaemon._run().
+SHARED_QUERY_CACHE_TIME = 3600
+shared_query_cache_time = SHARED_QUERY_CACHE_TIME
+
+def set_shared_cache_time(cache_time):
+    """ Set how long the ldapd processes trust a cached search. """
+    global shared_query_cache_time
+    shared_query_cache_time = int(cache_time)
+
+# Whether the processes share anything at all: their search results and
+# the search bases they resolved. Set from the "ldap_shared_cache" config
+# parameter when ldapd starts, before it forks its workers, see
+# LdapDaemon._run().
+shared_cache_enabled = True
+
+def set_shared_cache(enabled):
+    """ Turn the caches the ldapd processes share on or off. """
+    global shared_cache_enabled
+    shared_cache_enabled = bool(enabled)
 
 LDAP_CLIENT_NAME = "LDAP"
 LDAP_ACCESSGROUP = "LDAP"
+
+# Connections the kernel queues for us until we accept them.
+LISTEN_BACKLOG = 128
+
+# Default value of the "ldap_on_request_attributes" config parameter.
+ON_REQUEST_ATTRIBUTES = [
+                    'jpegPhoto',
+                    ]
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
@@ -78,6 +145,7 @@ REGISTER_AFTER = [
 
 def register():
     register_config()
+    register_config_parameters()
 
 def register_config():
     """ Register config stuff. """
@@ -90,88 +158,697 @@ def register_config():
                             name=config.ldap_client_name,
                             attributes=client_attrs)
 
+def register_config_parameters():
+    """ Register config parameters. """
+    # Whether ldapd verifies the ACLs of the objects it hands out to a
+    # token (see LDIFTreeEntry.ldap_verify_acls()). Resolved through the
+    # tokens inheritance chain (token -> user -> unit -> site), so it can
+    # be turned off for a single service token without opening up the
+    # whole site. admin_only: switching it off gives the token every
+    # attribute of every object it can find, which is nothing an ACL on
+    # the token itself should be able to decide.
+    config.register_config_parameter(name="ldap_verify_acls",
+                                    ctype=bool,
+                                    default_value=True,
+                                    admin_only=True,
+                                    object_types=[
+                                                'site',
+                                                'unit',
+                                                'user',
+                                                'token',
+                                                ])
+    # Attributes we only hand out when the search asked for them by
+    # name. A client that requests all attributes (SOGo does that on
+    # every address book search) would otherwise pull the photos of
+    # every hit over the wire and into our caches. RFC 4522 allows
+    # holding back attributes on a wildcard request.
+    def on_request_attributes_setter(attributes, **kwargs):
+        if isinstance(attributes, str):
+            attributes = attributes.split(",")
+        _attributes = []
+        for x_attr in attributes:
+            x_attr = x_attr.strip()
+            if not x_attr:
+                continue
+            if x_attr in _attributes:
+                continue
+            _attributes.append(x_attr)
+        return _attributes
+    config.register_config_parameter(name="ldap_on_request_attributes",
+                                    ctype=list,
+                                    setter=on_request_attributes_setter,
+                                    default_value=ON_REQUEST_ATTRIBUTES,
+                                    object_types=[
+                                                'site',
+                                                'unit',
+                                                'user',
+                                                'token',
+                                                ])
+
+def install_reactor():
+    """ Get a reactor of our own.
+
+    The reactor is built when this module gets imported, so it already
+    exists when ldapd forks its workers and they would all share it --
+    above all its wakeup pipe. callFromThread() puts the work into a
+    queue and writes a byte into that pipe to get the reactor out of
+    poll(). A sibling that reads the byte first leaves the process the
+    work belongs to asleep, with the work still sitting in its queue,
+    until something else happens to wake it -- and poll() without a
+    pending timer waits forever. Every search takes that path, it runs
+    through deferToThread().
+
+    Twisted refuses to install a second reactor, so we drop the one we
+    inherited first. Call this before anything imports the reactor in
+    this process, or that one would go on using the old one.
+    """
+    import sys
+    try:
+        del sys.modules['twisted.internet.reactor']
+    except KeyError:
+        pass
+    pollreactor.install()
+
+def create_listen_socket(address, port, reuse_port=True):
+    """ Get a socket to listen on.
+
+    We build it ourselves instead of leaving that to twisted because of
+    SO_REUSEPORT: it lets several processes bind the same address and
+    port, and the kernel spreads the connections over them. That is how
+    ldapd runs on more than one core, see LdapDaemon.
+
+    Made outside of LDAPServer on purpose: creating one of those
+    registers an adapter and builds the root entry, and whoever binds
+    the socket (the parent, while it still has the privileges) is not
+    the one who serves it.
+    """
+    import socket
+    addr_info = socket.getaddrinfo(address, port,
+                                type=socket.SOCK_STREAM,
+                                flags=socket.AI_PASSIVE)
+    if not addr_info:
+        msg = _("Cannot listen on address: {address}")
+        msg = msg.format(address=address)
+        raise OTPmeException(msg)
+    family, socket_type, proto, _canonname, sockaddr = addr_info[0]
+    listen_socket = socket.socket(family, socket_type, proto)
+    listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if reuse_port:
+        listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    listen_socket.bind(sockaddr)
+    listen_socket.listen(LISTEN_BACKLOG)
+    # adoptStreamPort() wants a non blocking socket.
+    listen_socket.setblocking(False)
+    return listen_socket
+
 def clear_caches():
     global ldap_cache
+    global uuid_to_oid
+    global lookup_cache
     global user_ldif_cache
     global ldap_query_cache
     global global_ldif_cache
+    global ldif_settings_cache
     ldap_cache.clear()
+    uuid_to_oid.clear()
+    lookup_cache.clear()
     user_ldif_cache.clear()
     ldap_query_cache.clear()
     global_ldif_cache.clear()
+    ldif_settings_cache.clear()
     ldap_search_cache.invalidate()
 
-def get_ldap_cache(auth_token, client, object_id):
+def drop_cached_objects(read_oids):
+    """ Remove the given objects from our entry caches. """
+    global ldap_cache
+    global uuid_to_oid
+    global lookup_cache
+    global user_ldif_cache
+    global global_ldif_cache
+    for x_oid in read_oids:
+        global_ldif_cache.pop(x_oid, None)
+        for x_token_id in list(user_ldif_cache):
+            user_ldif_cache[x_token_id].pop(x_oid, None)
+        for x_token_id in list(ldap_cache):
+            for x_client in list(ldap_cache[x_token_id]):
+                ldap_cache[x_token_id][x_client].pop(x_oid, None)
+    # A renamed object keeps its UUID but gets a new OID, so a stale
+    # entry here would send get_object() looking for something that does
+    # not exist anymore.
+    for x_uuid in list(uuid_to_oid):
+        if uuid_to_oid[x_uuid] not in read_oids:
+            continue
+        uuid_to_oid.pop(x_uuid, None)
+    # Same for a search base that moved: its DN would still point at the
+    # directory it used to live in.
+    for x_dn in list(lookup_cache):
+        if lookup_cache[x_dn]['read_oid'] not in read_oids:
+            continue
+        lookup_cache.pop(x_dn, None)
+
+def sync_outdated_objects():
+    """ Drop the objects that changed in the meantime from our caches.
+
+    Runs once per request, not per object: asking for the counter is a
+    roundtrip to the shared dict, and only a change makes us read the
+    objects themselves. See backend.outdate_ldap_object().
+    """
+    global outdated_counter
+    global outdated_time
+    global ldap_query_cache
+    global ldif_settings_cache
+    # Runs once per request, so this is where we get around to it.
+    #log_cache_stats()
+    # Before the counter: an object that changes while we read must not
+    # look older than the point we say we are up to date with.
+    now = time.monotonic()
+    counter = backend.get_ldap_outdated_counter()
+    if counter is None:
+        return
+    if counter == outdated_counter:
+        return
+    try:
+        outdated_objects, pruned = backend.get_ldap_outdated_objects()
+    except Exception as e:
+        log_msg = _("Failed to get outdated LDAP objects: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+        return
+
+    if outdated_time is None:
+        # Our first look. Our caches are empty, so there is nothing to
+        # drop and everything up to now does not concern us.
+        pass
+    elif pruned is not None and outdated_time < pruned:
+        # We fell behind further than the dict reaches back, so we
+        # cannot know what we missed.
+        log_msg = _("Missed LDAP cache updates, clearing all caches.", log=True)[1]
+        config.logger.warning(log_msg)
+        clear_caches()
+    else:
+        read_oids = set()
+        for x_oid in outdated_objects:
+            x_time = outdated_objects[x_oid]
+            if x_time is None:
+                continue
+            if x_time <= outdated_time:
+                continue
+            read_oids.add(x_oid)
+        if read_oids:
+            drop_cached_objects(read_oids)
+            # These are keyed by the search, not by object, so we cannot
+            # tell which of them the changed objects belong to.
+            ldap_query_cache.clear()
+            ldif_settings_cache.clear()
+
+    outdated_counter = counter
+    outdated_time = now
+
+def get_ldif_settings(auth_token_uuid):
+    """ Get the LDIF settings that apply to the given token.
+
+    Takes the UUID, not the token: without a cache hit we do not even
+    have to load the token object.
+    """
+    global ldif_settings_cache
+    now = time.time()
+    try:
+        cache_entry = ldif_settings_cache[auth_token_uuid]
+    except KeyError:
+        cache_entry = None
+    if cache_entry is not None:
+        cache_age = now - cache_entry['time']
+        if cache_age < LDIF_SETTINGS_CACHE_TIME:
+            return cache_entry
+    auth_token = None
+    if auth_token_uuid:
+        auth_token = backend.get_object(uuid=auth_token_uuid)
+    whitelist_attributes = get_ldif_whitelist_attributes(auth_token=auth_token)
+    cache_entry = {
+        'time'                  : now,
+        'whitelist_attributes'  : whitelist_attributes,
+        'whitelist_id'          : get_ldif_whitelist_id(whitelist=whitelist_attributes),
+        'on_request_attributes' : get_on_request_attributes(auth_token=auth_token),
+        }
+    ldif_settings_cache[auth_token_uuid] = cache_entry
+    return cache_entry
+
+def get_on_request_attributes(auth_token=None):
+    """ Get the attributes that are only handed out when asked for.
+
+    Comes from the "ldap_on_request_attributes" config parameter of the
+    requesting token (token -> user -> unit -> site), so a client that
+    really wants the photos with every search can be exempted. Without a
+    token we ask our own site. Returned lowercase: LDAP attribute names
+    are case insensitive.
+    """
+    attributes = None
+    if auth_token:
+        try:
+            attributes = auth_token.get_config_parameter("ldap_on_request_attributes")
+        except Exception:
+            attributes = None
+    if attributes is None:
+        my_site = None
+        if config.site_uuid:
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+        if my_site:
+            try:
+                attributes = my_site.get_config_parameter("ldap_on_request_attributes")
+            except Exception:
+                attributes = None
+    if attributes is None:
+        attributes = ON_REQUEST_ATTRIBUTES
+    return {x.lower() for x in attributes}
+
+def get_ldif_attributes(attributes):
+    """ Get the attributes an LDAP search asked for.
+
+    Returns None if the client wants them all, else the attributes to
+    build. "dn" and "objectClass" are always included: get_ldif() only
+    renders the DN line when objectClass is asked for, and the search
+    reads the DN back out of the rendered LDIF.
+
+    ldaptor hands us the list from the search request as bytes (see
+    RFC 4511: no attributes means all user attributes, "*" all user
+    attributes, "+" the operational ones, "1.1" none).
+    """
+    if not attributes:
+        return None
+    _attributes = []
+    for x_attr in attributes:
+        if isinstance(x_attr, bytes):
+            x_attr = x_attr.decode()
+        if x_attr == "*":
+            return None
+        if x_attr == "+":
+            continue
+        if x_attr == "1.1":
+            continue
+        _attributes.append(x_attr)
+    if not _attributes:
+        return None
+    _attributes.append("dn")
+    _attributes.append("objectClass")
+    return tuple(sorted(set(_attributes)))
+
+def get_ldif_attributes_id(attributes):
+    """ Get a stable ID of the requested attributes, for cache keys. """
+    if attributes is None:
+        return "all"
+    return ",".join(attributes)
+
+def count_cache(cache_name, hit):
+    """ Note down whether one of our caches had what we wanted.
+
+    The calls to this are commented out. Uncomment them (and the
+    log_cache_stats() call in sync_outdated_objects()) to get the hit
+    rates of every cache into the log again.
+    """
+    global cache_stats
+    try:
+        counters = cache_stats[cache_name]
+    except KeyError:
+        counters = {'hit':0, 'miss':0}
+        cache_stats[cache_name] = counters
+    if hit:
+        counters['hit'] += 1
+    else:
+        counters['miss'] += 1
+
+def log_cache_stats():
+    """ Log how well our caches did since we last said so.
+
+    Counting is cheap, and without it there is no way to tell a cache
+    that does not help from one that is not asked. With several ldapd
+    processes every one of them keeps its own caches, so every one of
+    them writes its own line.
+    """
+    global cache_stats
+    global cache_stats_time
+    now = time.time()
+    if not cache_stats_time:
+        cache_stats_time = now
+        return
+    if now - cache_stats_time < CACHE_STATS_INTERVAL:
+        return
+    cache_stats_time = now
+    if not cache_stats:
+        return
+    stats = []
+    for x_name in sorted(cache_stats):
+        x_hit = cache_stats[x_name]['hit']
+        x_miss = cache_stats[x_name]['miss']
+        x_total = x_hit + x_miss
+        if not x_total:
+            continue
+        x_rate = x_hit / x_total * 100
+        stats.append(f"{x_name}={x_rate:.0f}% ({x_hit}/{x_total})")
+    cache_stats.clear()
+    if not stats:
+        return
+    log_msg = _("LDAP cache hits: {stats}", log=True)[1]
+    log_msg = log_msg.format(stats=" ".join(stats))
+    config.logger.info(log_msg)
+
+def split_client_dn(object_dn):
+    """ Get the OTPme client out of a DN, and the DN without it.
+
+    A client picks its accessgroup by putting a "dc=" of its own left of
+    the realm, which is what get_ldif() inserts as the fake DC. Which
+    object a DN means does not depend on that part, so everything we
+    cache by DN is cached under the DN without it -- otherwise the same
+    object would sit in the cache once per client, and invalidating it
+    would mean knowing every client there is.
+
+    Returns the client, the DN without it and the realm.
+    """
+    realm = None
+    client = None
+    dn_parts = object_dn.split(",")
+    realm_parts = []
+    for x_part in reversed(dn_parts):
+        if not x_part.startswith("dc="):
+            continue
+        if realm:
+            # Left of the realm, so this one names a client.
+            client = x_part.split("=")[1]
+            continue
+        realm_parts.insert(0, re.sub('^dc=', '', x_part))
+        x_realm = ".".join(realm_parts)
+        if x_realm == config.realm:
+            realm = x_realm
+    real_dn = object_dn
+    if client:
+        real_dn = ",".join(x for x in dn_parts if x != f"dc={client}")
+    return client, real_dn, realm
+
+def get_lookup_cache(object_dn):
+    """ Get what we know about a search base we resolved before.
+
+    ldaptor resolves the base of every request, and doing that means an
+    "ldif:dn" search over all object types plus get_oid() plus
+    get_config_paths(). Three backend queries to answer the same
+    question every time, because the base of a client hardly ever
+    changes.
+    """
+    global lookup_cache
+    try:
+        cache_entry = lookup_cache[object_dn]
+    except KeyError:
+        cache_entry = None
+    if cache_entry is not None:
+        age = time.time() - cache_entry['time']
+        if age < shared_query_cache_time:
+            #count_cache("base", True)
+            return cache_entry
+    # Nothing of ours, so ask what our siblings resolved.
+    cache_entry = get_shared_lookup_cache(object_dn)
+    if cache_entry is None:
+        #count_cache("base", False)
+        return
+    # Keep it here as well, so next time we do not have to ask.
+    lookup_cache[object_dn] = cache_entry
+    #count_cache("base", True)
+    return cache_entry
+
+def update_lookup_cache(object_dn, config_dir, object_id):
+    """ Remember a DN we resolved.
+
+    Keyed by the DN without the client part, see split_client_dn(). No
+    client in here either: it belongs to the request, and our caller
+    reads it from the DN it was asked for.
+    """
+    global lookup_cache
+    cache_entry = {
+                'time'          : time.time(),
+                'config_dir'    : config_dir,
+                'read_oid'      : object_id.read_oid,
+                }
+    lookup_cache[object_dn] = cache_entry
+    update_shared_lookup_cache(object_dn, cache_entry)
+
+def get_shared_lookup_key(object_dn):
+    """ Get the key a resolved DN is stored under.
+
+    From the backend, so what we write and what outdate_ldap_lookup()
+    drops cannot drift apart.
+    """
+    return backend.get_ldap_lookup_key(object_dn)
+
+def get_shared_lookup_cache(object_dn):
+    """ Get a search base another ldapd process resolved. """
+    if not shared_cache_enabled:
+        return
+    try:
+        cache_entry = multiprocessing.ldap_shared_lookups[get_shared_lookup_key(object_dn)]
+    except KeyError:
+        return
+    except Exception as e:
+        log_msg = _("Failed to read shared LDAP lookups: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+        return
+    if not cache_entry:
+        return
+    age = time.time() - cache_entry['time']
+    if age >= shared_query_cache_time:
+        return
+    return cache_entry
+
+def update_shared_lookup_cache(object_dn, cache_entry):
+    """ Hand a resolved search base to the other ldapd processes. """
+    if not shared_cache_enabled:
+        return
+    try:
+        multiprocessing.ldap_shared_lookups.add(get_shared_lookup_key(object_dn),
+                                            cache_entry,
+                                            expire=shared_query_cache_time)
+    except Exception as e:
+        log_msg = _("Failed to write shared LDAP lookups: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+
+def get_cache_token_id(auth_token, whitelist_id, attributes_id, verify_acls):
+    """ Get the token part of our cache keys.
+
+    The LDIF we cache is filtered by the tokens ACLs, by the LDIF
+    whitelist in effect for it and by the attributes the search asked
+    for, so all of it belongs into the key: after a change of
+    "ldif_whitelist_attributes" the entries built with the old list must
+    not be found anymore, and a search for a few attributes must not be
+    answered from an entry built for another set.
+
+    verify_acls is part of it as well. We cache what a search would
+    build, and that is not the same thing with the ACL check on as it is
+    with it off, so turning "ldap_verify_acls" back on must not find the
+    entries we built without it.
+
+    Without a token they all share one key. That happens for the search
+    base of every request: ldaptor looks it up before it knows the bind,
+    so it gets built without one (see LDIFTreeEntry.lookup() and
+    OTPmeLDAPServer._cbSearchGotBase()). There are no ACLs to filter by
+    then, so what we build is the same for everyone.
+    """
+    if auth_token is None:
+        token_uuid = "no-token"
+    else:
+        token_uuid = auth_token.uuid
+    return f"{token_uuid}|{whitelist_id}|{attributes_id}|{verify_acls}"
+
+def copy_ldif_data(object_data):
+    """ Get a private copy of cached object data.
+
+    Our callers only modify the LDIF: get_object() drops the attributes
+    the search must not see and get_ldif() sorts the objectClass values
+    in place. So copying the LDIF (and its value lists) is enough, and
+    way cheaper than a copy.deepcopy() of the whole thing for every
+    object of a search that returns thousands of them.
+    """
+    object_data = dict(object_data)
+    object_ldif = object_data['ldif']
+    if isinstance(object_ldif, dict):
+        object_ldif = {x:list(object_ldif[x]) for x in object_ldif}
+    else:
+        object_ldif = list(object_ldif)
+    object_data['ldif'] = object_ldif
+    return object_data
+
+def get_ldap_cache(auth_token, whitelist_id, attributes_id, verify_acls,
+    client, object_id):
     """ Get cached entry. """
     global ldap_cache
-    if config.ldap_cache_clear:
-        clear_caches()
-        config.ldap_cache_clear = False
-        return
+    token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
+                                verify_acls)
     read_oid = object_id.read_oid
     try:
-        cache_time = ldap_cache[auth_token.uuid][client][read_oid]['TIME']
+        cache_time = ldap_cache[token_id][client][read_oid]['TIME']
     except KeyError:
+        #count_cache("entry", False)
         return
     cache_age = time.time() - cache_time
     if cache_age >= 300:
         try:
-            cached_object_checksum = ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM']
+            cached_object_checksum = ldap_cache[token_id][client][read_oid]['CHECKSUM']
         except KeyError:
+            #count_cache("entry", False)
             return
         try:
             object_checksum = backend.get_checksum(object_id)
         except Exception:
             object_checksum = None
+        # Each of these is a backend query of its own, so count how many
+        # of them we make and how often they tell us anything new.
+        #count_cache("csum", object_checksum == cached_object_checksum)
         if object_checksum != cached_object_checksum:
+            #count_cache("entry", False)
             return
-    ldap_cache[auth_token.uuid][client][read_oid]['TIME'] = time.time()
-    cache_entry = ldap_cache[auth_token.uuid][client][read_oid]['ENTRY']
+    ldap_cache[token_id][client][read_oid]['TIME'] = time.time()
+    cache_entry = ldap_cache[token_id][client][read_oid]['ENTRY']
+    #count_cache("entry", True)
     return cache_entry
 
-def update_ldap_cache(auth_token, client, object_id, ldap_entry, checksum):
+def update_ldap_cache(auth_token, whitelist_id, attributes_id, verify_acls,
+    client, object_id, ldap_entry, checksum):
     """ Add cache entry. """
     global ldap_cache
+    token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
+                                verify_acls)
     read_oid = object_id.read_oid
-    if auth_token.uuid not in ldap_cache:
-        ldap_cache[auth_token.uuid] = {}
-    if client not in ldap_cache[auth_token.uuid]:
-        ldap_cache[auth_token.uuid][client] = {}
-    if read_oid not in ldap_cache[auth_token.uuid][client]:
-        ldap_cache[auth_token.uuid][client][read_oid] = {}
-    ldap_cache[auth_token.uuid][client][read_oid]['TIME'] = time.time()
-    ldap_cache[auth_token.uuid][client][read_oid]['ENTRY'] = ldap_entry
-    ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM'] = checksum
+    if token_id not in ldap_cache:
+        ldap_cache[token_id] = {}
+    if client not in ldap_cache[token_id]:
+        ldap_cache[token_id][client] = {}
+    if read_oid not in ldap_cache[token_id][client]:
+        ldap_cache[token_id][client][read_oid] = {}
+    ldap_cache[token_id][client][read_oid]['TIME'] = time.time()
+    ldap_cache[token_id][client][read_oid]['ENTRY'] = ldap_entry
+    ldap_cache[token_id][client][read_oid]['CHECKSUM'] = checksum
 
-def get_ldap_search_cache(auth_token, client, cache_key):
+def get_ldap_search_cache(auth_token, whitelist_id, attributes_id, verify_acls,
+    client, cache_key):
     """ Get cached entry. """
     global ldap_query_cache
-    if config.ldap_cache_clear:
-        clear_caches()
-        config.ldap_cache_clear = False
-        return
+    token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
+                                verify_acls)
     try:
-        cache_time = ldap_query_cache[auth_token.uuid][client][cache_key]['time']
-        cache_entry = ldap_query_cache[auth_token.uuid][client][cache_key]['entries']
+        cache_time = ldap_query_cache[token_id][client][cache_key]['time']
+        cache_entry = ldap_query_cache[token_id][client][cache_key]['entries']
     except KeyError:
+        #count_cache("query", False)
         return
     cache_age = time.time() - cache_time
     if cache_age >= 300:
+        #count_cache("query", False)
         return
     #cache_entry = copy.deepcopy(cache_entry)
+    #count_cache("query", True)
     return cache_entry
 
-def update_ldap_search_cache(auth_token, client, cache_key, entries):
+def update_ldap_search_cache(auth_token, whitelist_id, attributes_id,
+    verify_acls, client, cache_key, entries):
     """ Add cache entry. """
     global ldap_query_cache
-    if not auth_token.uuid in ldap_query_cache:
-        ldap_query_cache[auth_token.uuid] = {}
-    if client not in ldap_query_cache[auth_token.uuid]:
-        ldap_query_cache[auth_token.uuid][client] = {}
-    if cache_key not in ldap_query_cache[auth_token.uuid][client]:
-        ldap_query_cache[auth_token.uuid][client][cache_key] = {}
-    ldap_query_cache[auth_token.uuid][client][cache_key]['entries'] = entries
-    ldap_query_cache[auth_token.uuid][client][cache_key]['time'] = time.time()
+    token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
+                                verify_acls)
+    if not token_id in ldap_query_cache:
+        ldap_query_cache[token_id] = {}
+    if client not in ldap_query_cache[token_id]:
+        ldap_query_cache[token_id][client] = {}
+    if cache_key not in ldap_query_cache[token_id][client]:
+        ldap_query_cache[token_id][client][cache_key] = {}
+    ldap_query_cache[token_id][client][cache_key]['entries'] = entries
+    ldap_query_cache[token_id][client][cache_key]['time'] = time.time()
+
+def get_shared_query_key(auth_token, whitelist_id, attributes_id, verify_acls,
+    client, cache_key):
+    """ Get the key a search is stored under for all ldapd processes.
+
+    Hashed, because the readable form is the base DN plus the whole
+    search filter. That gets long, and memcached refuses a key over 250
+    bytes or one with a space in it -- and a filter can easily have
+    both.
+    """
+    token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
+                                verify_acls)
+    return stuff.gen_sha256(f"{token_id}|{client}|{cache_key}")
+
+def get_shared_search_cache(auth_token, whitelist_id, attributes_id,
+    verify_acls, client, cache_key):
+    """ Get a search another ldapd process already did.
+
+    Returns the UUIDs it found, or None. The entries themselves are not
+    in there: they carry ldaptor objects, and those do not survive
+    serialization -- an LDAPAttributeSet comes back empty without
+    saying so. What we do share is the data a search brings along
+    anyway, so whoever gets a hit here can build the entries without
+    touching the backend at all.
+    """
+    global uuid_to_oid
+    global global_ldif_cache
+    if not shared_cache_enabled:
+        return
+    shared_key = get_shared_query_key(auth_token, whitelist_id, attributes_id,
+                                    verify_acls, client, cache_key)
+    try:
+        cache_entry = multiprocessing.ldap_shared_queries[shared_key]
+    except KeyError:
+        return
+    except Exception as e:
+        log_msg = _("Failed to read shared LDAP queries: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
+        return
+    if not cache_entry:
+        return
+    cache_age = time.time() - cache_entry['time']
+    if cache_age >= shared_query_cache_time:
+        return
+
+    # Take the object data over. Without it get_object() would go and
+    # ask the backend for every single object of the result, which is
+    # worse than the one search we just saved.
+    now = time.time()
+    objects = cache_entry['objects']
+    for x_oid in objects:
+        x_data = objects[x_oid]
+        global_ldif_cache[x_oid] = {'time':now, 'data':x_data}
+        uuid_to_oid[x_data['uuid']] = x_oid
+    return cache_entry['uuids']
+
+def update_shared_search_cache(auth_token, whitelist_id, attributes_id,
+    verify_acls, client, cache_key, uuids):
+    """ Hand our search over to the other ldapd processes. """
+    global uuid_to_oid
+    global global_ldif_cache
+    if not shared_cache_enabled:
+        return
+    objects = {}
+    for x_uuid in uuids:
+        try:
+            x_oid = uuid_to_oid[x_uuid]
+            objects[x_oid] = global_ldif_cache[x_oid]['data']
+        except KeyError:
+            # Whatever we cannot hand over completely we leave out, so
+            # nobody gets a result with holes in it.
+            return
+    cache_entry = {
+                'time'      : time.time(),
+                'uuids'     : list(uuids),
+                'objects'   : objects,
+                }
+    shared_key = get_shared_query_key(auth_token, whitelist_id, attributes_id,
+                                    verify_acls, client, cache_key)
+    try:
+        # With an expiry, so a process that goes away leaves nothing
+        # behind that anyone has to clean up.
+        multiprocessing.ldap_shared_queries.add(shared_key, cache_entry,
+                                            expire=shared_query_cache_time)
+    except Exception as e:
+        log_msg = _("Failed to write shared LDAP queries: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        config.logger.warning(log_msg)
 
 class LDIFTreeEntryContainsMultipleEntries(Exception):
     """LDIFTree entry contains multiple LDIF entries."""
@@ -202,12 +879,17 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     ):
     """ Class that adds LDAP support to OTPme using twisted ldaptor. """
 
-    def __init__(self, path, dn=None, auth_token=None, client=None, *a, **kw):
+    def __init__(self, path, dn=None, auth_token=None, client=None,
+        attributes=None, object_data=None, verify_acls=None,
+        object_id=None, *a, **kw):
         if dn is None:
             dn = ''
 
         self.logger = config.logger
         self.auth_token_uuid = None
+        # Without a path we resolve it from the OID when we need it.
+        self._path = None
+        self._path_oid = object_id
 
         if auth_token:
             self.auth_token = auth_token
@@ -227,12 +909,78 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         entry.BaseLDAPEntry.__init__(self, dn, *a, **kw)
 
-        self.path = re.sub('[/]$', '', path)
-        if dn != '':
-            self._load()
+        # Must be set before _load(): it reads the object through
+        # get_object(), which filters by both and keys its caches on
+        # them (see get_cache_token_id()).
+        self.update_ldif_settings()
+        # The attributes the search asked for, None for all of them.
+        self.attributes = get_ldif_attributes(attributes)
+        self.attributes_id = get_ldif_attributes_id(self.attributes)
 
-    def _load(self):
-        """ Load LDIF of self.dn. """
+        self.path = path
+        if dn != '':
+            self._load(object_data=object_data, verify_acls=verify_acls)
+
+    @property
+    def path(self):
+        """ Get the fs path of our object.
+
+        Resolving it from the OID is an index query, and a search that
+        returns thousands of objects would run one for each of them. So
+        the search hands us the OID and we resolve the path if anyone
+        really wants it.
+        """
+        if self._path is None:
+            if self._path_oid is None:
+                return None
+            config_paths = get_config_paths(object_id=self._path_oid)
+            self._path = re.sub('[/]$', '', config_paths['config_dir'])
+        return self._path
+
+    @path.setter
+    def path(self, path):
+        if path is None:
+            self._path = None
+        else:
+            self._path = re.sub('[/]$', '', path)
+
+    def ldap_verify_acls(self, auth_token=None):
+        if auth_token is None:
+            auth_token = self.auth_token
+        if not auth_token:
+            return False
+        ldap_verify_acls = auth_token.get_config_parameter("ldap_verify_acls")
+        if ldap_verify_acls is False:
+            return False
+        if auth_token.is_admin():
+            return False
+        return True
+
+    def update_ldif_settings(self):
+        """ Take over the LDIF settings of our auth token.
+
+        Must run again whenever the token changes: the entry a search
+        runs on is created without one (ldaptor looks it up before the
+        bind is known) and gets its token assigned afterwards, on every
+        search (see OTPmeLDAPServer._cbSearchGotBase()). Resolving only
+        in __init__ would leave the search entry on the whitelist of our
+        site, and a change of the tokens "ldif_whitelist_attributes"
+        would never reach the cache keys built from it.
+
+        Runs for every entry a search builds, so the values themselves
+        come from get_ldif_settings(), which caches them.
+        """
+        ldif_settings = get_ldif_settings(self.auth_token_uuid)
+        self.whitelist_attributes = ldif_settings['whitelist_attributes']
+        self.whitelist_id = ldif_settings['whitelist_id']
+        self.on_request_attributes = ldif_settings['on_request_attributes']
+
+    def _load(self, object_data=None, verify_acls=None):
+        """ Load LDIF of self.dn.
+
+        A search that builds an entry has read the object already, so it
+        hands us its data and we do not read it a second time.
+        """
         # Handle subschmema requests.
         if self.dn.getText() == "cn=Subschema":
             ldif = f"dn: {self.dn}\ncn: Subschema\nobjectClass: subschema\n"
@@ -277,13 +1025,20 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             #        realm = x
 
             # Handle OTPme object requests.
-            if not self.otpme_oid:
-                msg = _("Not an OTPme file backend path: {path}")
-                msg = msg.format(path=self.path)
-                raise OTPmeException(msg)
+            if object_data is None:
+                if not self.otpme_oid:
+                    msg = _("Not an OTPme file backend path: {path}")
+                    msg = msg.format(path=self.path)
+                    raise OTPmeException(msg)
 
-            # Get object data from cache.
-            object_data = self.get_object(self.otpme_oid, fake_dc=self.client)
+                if verify_acls is None:
+                    verify_acls = self.ldap_verify_acls()
+
+                # Get object data from cache.
+                object_data = self.get_object(self.otpme_oid,
+                                            fake_dc=self.client,
+                                            verify_acls=verify_acls,
+                                            attributes=self.attributes)
             object_name = object_data['name']
             object_type = object_data['type']
             ldif = object_data['ldif']
@@ -369,6 +1124,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                                         username,
                                                         password,
                                                         auth_cache_timeout)
+                self.update_ldif_settings()
                 # Get audit logger.
                 audit_logger = config.audit_logger
                 log_msg = _("User authenticated to ldapd by cache: {username}", log=True)[1]
@@ -439,6 +1195,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
             # Set auth token.
             self.auth_token_uuid = auth_response[0]['login_token_uuid']
+            self.update_ldif_settings()
             # Cache authentication.
             if cache_auth:
                 try:
@@ -463,7 +1220,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     @auth_token.setter
     def auth_token(self, auth_token):
-        self.auth_token_uuid = auth_token.uuid
+        if auth_token is None:
+            self.auth_token_uuid = None
+        else:
+            self.auth_token_uuid = auth_token.uuid
+        # The whitelist comes from the token, see update_ldif_settings().
+        self.update_ldif_settings()
 
     def parent(self):
         if self.dn == '':
@@ -566,55 +1328,27 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         Lookup the given object (dn) and return it as
         distinguishedname.DistinguishedName.
         """
+        # Runs for the base of every request, so this is where a bind
+        # gets its caches up to date.
+        sync_outdated_objects()
         object_dn = dn.getText()
 
+        cache_entry = None
+        if object_dn != "cn=Subschema":
+            # The client belongs to the request, not to the object, so
+            # take it from the DN we were asked for -- every time, and
+            # also when there is none. Reading it back out of the cache
+            # would hand one client the client of another, and leaving
+            # it alone would carry the one of the request before along.
+            client, real_dn, realm = split_client_dn(object_dn)
+            self.client = client
+            cache_entry = get_lookup_cache(real_dn)
+
         if object_dn == "cn=Subschema":
-            dn_parts = [object_dn]
             config_dir = self.path
+        elif cache_entry is not None:
+            config_dir = cache_entry['config_dir']
         else:
-            realm = None
-            site = None
-            # Get realm and site from DN.
-            dn_parts = object_dn.split(",")
-            dn_parts.reverse()
-            r = []
-            for i in dn_parts:
-                if i.startswith("dc="):
-                    if realm:
-                        # Get OTPme client from DN.
-                        self.client = i.split("=")[1]
-                        #msg = f"Using client from DN: {self.client}"
-                        #log.msg(msg, logLevel=logging.DEBUG)
-                    r.insert(0, re.sub('^dc=', '', i))
-                    x = ".".join(r)
-                    if x == config.realm:
-                        realm = x
-                if i.startswith("ou="):
-                    site = re.sub('^ou=', '', i)
-                    break
-
-            # Make sure we do not add <site> parameter when searching for a
-            # site object.
-            if realm and site:
-                x_realm = []
-                for x in realm.split("."):
-                    x_realm.append(f"dc={x}")
-                x_realm = ",".join(x_realm)
-                test_dn = f"ou={site},{x_realm}"
-                if test_dn == object_dn:
-                    site = None
-
-            if self.client:
-                x = list(dn_parts)
-                x.reverse()
-                # Remove fake DC used to pass on OTPme client within LDAP
-                # requests.
-                client_dc = f"dc={self.client}"
-                if client_dc in x:
-                    x.remove(client_dc)
-                real_dn = ",".join(x)
-            else:
-                real_dn = object_dn
             # Get object UUID from backend via 'dn' search.
             result = backend.search(attribute="ldif:dn",
                                     value=real_dn,
@@ -628,6 +1362,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             # Get object config dir.
             object_id = backend.get_oid(uuid, instance=True)
             config_dir = get_config_paths(object_id=object_id)['config_dir']
+            update_lookup_cache(real_dn, config_dir, object_id)
 
         if not os.path.isdir(config_dir):
             return defer.fail(ldaperrors.LDAPNoSuchObject(dn))
@@ -641,8 +1376,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     def __repr__(self):
         return f'{self.__class__.__name__}({self.path!r}, {self.dn.getText()!r})'
 
-    def gen_cache_key(self, filterObject, sizeLimit=0, timeLimit=0):
-        """ Generate cache key for ldap search cache. """
+    def gen_cache_key(self, filterObject, sizeLimit=0, timeLimit=0, scope=None):
+        """ Generate cache key for ldap search cache.
+
+        The scope belongs in it: the same filter under the same base
+        returns something else with "base" than it does with "sub", and
+        a shared cache would carry that mix over to every process.
+        """
         value =  None
         cache_key = self.dn.getText()
 
@@ -725,6 +1465,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         cache_key += f"{sizeLimit}"
         cache_key += f"{timeLimit}"
+        if scope is not None:
+            cache_key += f"+scope={scope}"
 
         return cache_key
 
@@ -932,65 +1674,84 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         return result_uuids
 
-    def get_object(self, object_id, verify_acls=None, fake_dc=None):
+    def get_object(self, object_id, verify_acls=None, fake_dc=None,
+        attributes=None, auth_token=None):
         global user_ldif_cache
         global global_ldif_cache
+        attributes_id = get_ldif_attributes_id(attributes)
         read_oid = object_id.read_oid
         object_type = object_id.object_type
 
+        # Loading our token means a backend query, so a search that runs
+        # us for each of its objects resolves it once and hands it over.
+        if auth_token is None:
+            auth_token = self.auth_token
+
         if verify_acls is None:
-            verify_acls = False
-            if self.auth_token:
-                if not self.auth_token.is_admin():
-                    verify_acls = True
+            verify_acls = True
+            if auth_token:
+                if auth_token.is_admin():
+                    verify_acls = False
 
-        # FIXME: when to verify ACLs?
-        if not config.ldap_verify_acls:
-            verify_acls = False
-
-        if verify_acls and not self.auth_token:
+        if verify_acls and not auth_token:
             msg = _("Unable to verify ACLs without token.")
             raise OTPmeException(msg)
 
-        # Try to get object data from user cache.
-        if self.auth_token:
-            auth_token = self.auth_token.uuid
-            try:
-                object_data = user_ldif_cache[auth_token][read_oid]['data']
-                object_data = copy.deepcopy(object_data)
-                cache_time = user_ldif_cache[auth_token][read_oid]['time']
-            except Exception:
-                object_data = None
-            if object_data:
-                check_cache_time = True
-                object_client = object_data['client']
-                if object_client:
-                    if object_client != self.client:
-                        check_cache_time = False
-                if check_cache_time:
-                    now = time.time()
-                    age = now - cache_time
-                    if age < 10:
-                        return object_data
-                    object_checksum = object_data['checksum']
-                    x_checksum = backend.get_checksum(object_id)
-                    if object_checksum == x_checksum:
-                        user_ldif_cache[auth_token][read_oid]['time'] = time.time()
-                        return object_data
+        # Try to get the object data from the LDIF cache. Also without a
+        # token: the search base of every request is built before the
+        # bind is known, so it comes without one and would otherwise be
+        # rendered again for every single request.
+        cache_token_id = get_cache_token_id(auth_token, self.whitelist_id,
+                                        attributes_id, verify_acls)
+        try:
+            object_data = user_ldif_cache[cache_token_id][read_oid]['data']
+            object_data = copy_ldif_data(object_data)
+            cache_time = user_ldif_cache[cache_token_id][read_oid]['time']
+        except Exception:
+            object_data = None
+        if object_data:
+            check_cache_time = True
+            object_client = object_data['client']
+            if object_client:
+                if object_client != self.client:
+                    check_cache_time = False
+            if check_cache_time:
+                now = time.time()
+                age = now - cache_time
+                if age < LDIF_CACHE_TIME:
+                    #count_cache("ldif", True)
+                    return object_data
+                object_checksum = object_data['checksum']
+                x_checksum = backend.get_checksum(object_id)
+                #count_cache("csum", object_checksum == x_checksum)
+                if object_checksum == x_checksum:
+                    user_ldif_cache[cache_token_id][read_oid]['time'] = time.time()
+                    #count_cache("ldif", True)
+                    return object_data
+        #count_cache("ldif", False)
 
         # Try to get object data from global cache.
         try:
-            object_data = global_ldif_cache[read_oid]['data']
-            object_data = copy.deepcopy(object_data)
-            cache_time = global_ldif_cache[read_oid]['time']
+            cache_entry = global_ldif_cache[read_oid]
+        except KeyError:
+            cache_entry = None
+        do_search = True
+        if cache_entry is not None:
+            object_data = copy_ldif_data(cache_entry['data'])
             do_search = False
-        except Exception:
-            do_search = True
-        if not do_search:
-            object_checksum = object_data['checksum']
-            x_checksum = backend.get_checksum(object_id)
-            if object_checksum != x_checksum:
-                do_search = True
+            # The searches we run fill the global cache from the backend,
+            # so an entry that young was verified a moment ago. Asking the
+            # backend for the checksum again is one index query per object.
+            age = time.time() - cache_entry['time']
+            if age >= LDIF_CACHE_TIME:
+                object_checksum = object_data['checksum']
+                x_checksum = backend.get_checksum(object_id)
+                #count_cache("csum", object_checksum == x_checksum)
+                if object_checksum != x_checksum:
+                    do_search = True
+        # Whether the raw LDIF of the object was there. A miss here means
+        # we have to ask the backend for it.
+        #count_cache("raw", not do_search)
 
         if do_search:
             # Try to get object data from backend.
@@ -1002,13 +1763,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 msg = msg.format(oid=read_oid)
                 raise OTPmeException(msg)
 
-        try:
-            object_data = global_ldif_cache[read_oid]['data']
-            object_data = copy.deepcopy(object_data)
-        except Exception:
-            msg = _("Unknown object: {oid}")
-            msg = msg.format(oid=read_oid)
-            raise UnknownObject(msg) from None
+            try:
+                object_data = copy_ldif_data(global_ldif_cache[read_oid]['data'])
+            except Exception:
+                msg = _("Unknown object: {oid}")
+                msg = msg.format(oid=read_oid)
+                raise UnknownObject(msg) from None
 
         object_ldif = object_data['ldif']
         if not object_ldif:
@@ -1016,16 +1776,29 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             msg = msg.format(oid=read_oid)
             raise UnknownObject(msg)
 
-        update_user_cache = False
         object_uuid = object_data['uuid']
         object_name = object_data['name']
         object_type = object_data['type']
         object_acls = object_data['acls']
         object_checksum = object_data['checksum']
-        if verify_acls:
-            update_user_cache = True
+        if attributes is None:
+            # Wildcard search: hold back the attributes that are only
+            # handed out when asked for by name.
             for x_attr in dict(object_ldif):
-                if x_attr in config.ldif_whitelist_attributes:
+                if x_attr.lower() not in self.on_request_attributes:
+                    continue
+                object_ldif.pop(x_attr)
+        else:
+            # Drop what the search did not ask for before we verify any
+            # ACL for it. LDAP attribute names are case insensitive.
+            requested_attributes = {x.lower() for x in attributes}
+            for x_attr in dict(object_ldif):
+                if x_attr.lower() in requested_attributes:
+                    continue
+                object_ldif.pop(x_attr)
+        if verify_acls:
+            for x_attr in dict(object_ldif):
+                if x_attr in self.whitelist_attributes:
                     continue
                 x_acl = f"view:attribute:{x_attr}"
                 result = otpme_acl.verify(uuid=object_uuid,
@@ -1034,27 +1807,38 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                         check_admin_role=True,
                                         check_admin_user=True,
                                         need_exact_acl=False,
-                                        auth_token=self.auth_token)
+                                        auth_token=auth_token)
                 if result:
                     continue
                 object_ldif.pop(x_attr)
+
+        # We filtered above, so let get_ldif() render what is left: its
+        # own filter is case sensitive and would drop attributes whose
+        # spelling differs from the search request.
         object_ldif = get_ldif(object_ldif, text=False, fake_dc=fake_dc)
         object_data['ldif'] = object_ldif
-        if update_user_cache:
-            if auth_token not in user_ldif_cache:
-                user_ldif_cache[auth_token] = {}
-            user_ldif_cache[auth_token][read_oid] = {}
-            user_ldif_cache[auth_token][read_oid]['time'] = time.time()
-            user_ldif_cache[auth_token][read_oid]['data'] = {
-                                                'uuid'      : object_uuid,
-                                                'read_oid'  : read_oid,
-                                                'name'      : object_name,
-                                                'type'      : object_type,
-                                                'ldif'      : object_ldif,
-                                                'acls'      : object_acls,
-                                                'checksum'  : object_checksum,
-                                                'client'    : self.client,
-                                                }
+
+        # Caching this does not depend on whether we verified any ACLs.
+        # The key covers the token, the LDIF whitelist, the attributes
+        # the search asked for and the ACL check itself (see
+        # get_cache_token_id()), so what we put in matches what we would
+        # build again. Tying it to the ACL check left a token with
+        # "ldap_verify_acls" turned off -- the fast path -- without any
+        # cache at all.
+        if cache_token_id not in user_ldif_cache:
+            user_ldif_cache[cache_token_id] = {}
+        user_ldif_cache[cache_token_id][read_oid] = {}
+        user_ldif_cache[cache_token_id][read_oid]['time'] = time.time()
+        user_ldif_cache[cache_token_id][read_oid]['data'] = {
+                                            'uuid'      : object_uuid,
+                                            'read_oid'  : read_oid,
+                                            'name'      : object_name,
+                                            'type'      : object_type,
+                                            'ldif'      : object_ldif,
+                                            'acls'      : object_acls,
+                                            'checksum'  : object_checksum,
+                                            'client'    : self.client,
+                                            }
         return object_data
 
     @ldap_search_cache.cache_method()
@@ -1116,15 +1900,23 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         return_attributes = ['read_oid', 'name', 'object_type', 'ldif', 'checksum']
 
+        # Without an object type the backend queries every one of them,
+        # and OTPme has 31 while only the ones registered as LDAP objects
+        # can ever carry an LDIF. The rest cannot match, but each of them
+        # still costs a query the database has to plan.
+        object_types = None
+        if object_type is None:
+            object_types = list(config.ldap_object_types)
+
         result = backend.search(object_type=object_type,
+                                object_types=object_types,
                                 attributes=search_attributes,
                                 case_sensitive=False,
                                 return_raw_acls=True,
                                 less_than=less_than,
                                 greater_than=greater_than,
                                 return_attributes=return_attributes,
-                                max_results=size_limit,
-                                _debug=True)
+                                max_results=size_limit)
 
         acls = result['acls']
         objects = result['objects']
@@ -1137,15 +1929,21 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             object_acls = acls[x_uuid]
             object_ldif = objects[x_uuid]['ldif']
 
-            try:
-                cache_checksum = global_ldif_cache[object_id]['data']['checksum']
-            except KeyError:
-                cache_checksum = None
-
-            if cache_checksum == object_checksum:
-                continue
-
             uuid_to_oid[x_uuid] = object_id
+
+            try:
+                cache_entry = global_ldif_cache[object_id]
+            except KeyError:
+                cache_entry = None
+
+            if cache_entry is not None:
+                if cache_entry['data']['checksum'] == object_checksum:
+                    # Data is unchanged. But we just got the checksum from
+                    # the backend, so mark the entry as verified: it saves
+                    # get_object() one index query per object.
+                    cache_entry['time'] = time.time()
+                    continue
+
             global_ldif_cache[object_id] = {}
             global_ldif_cache[object_id]['time'] = time.time()
             global_ldif_cache[object_id]['data'] = {
@@ -1169,7 +1967,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             sizeLimit = 1024
         # Run search as thread.
         # http://www.ianbicking.org/twisted-and-threads.html
-        return threads.deferToThread(self._search,
+        search_defer = threads.deferToThread(self._search,
                                     filterText=filterText,
                                     filterObject=filterObject,
                                     attributes=attributes,
@@ -1177,16 +1975,40 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                     derefAliases=derefAliases,
                                     sizeLimit=sizeLimit,
                                     timeLimit=timeLimit,
-                                    typesOnly=typesOnly,
-                                    callback=callback)
+                                    typesOnly=typesOnly)
+        if callback is None:
+            return search_defer
+
+        def send_entries(entries):
+            """ Hand the entries to our caller.
+
+            It writes them to the client, and a twisted transport must
+            only be written to from the reactor thread. So this must not
+            happen in our search thread: it corrupts the TLS state of the
+            connection (bio_read() of a connection that is gone).
+            """
+            for x_entry in entries:
+                callback(x_entry)
+            return []
+
+        search_defer.addCallback(send_entries)
+        return search_defer
 
     def _search(self, filterText=None, filterObject=None, attributes=(),
         scope=None, derefAliases=None, sizeLimit=0,
-        timeLimit=0, typesOnly=0, callback=None):
-        """ Search LDAP object. """
+        timeLimit=0, typesOnly=0):
+        """ Search LDAP object.
+
+        Returns the entries we found. Sending them to the client is the
+        job of our caller, see search().
+        """
         from ldaptor.protocols import pureldap
         results = []
         schema_search = False
+
+        # Get rid of what changed since our last search before we answer
+        # anything from cache.
+        sync_outdated_objects()
 
         if scope is None:
             scope = pureldap.LDAP_SCOPE_wholeSubtree
@@ -1212,31 +2034,54 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 schema_search = True
                 dn = distinguishedname.DistinguishedName('cn=Subschema')
                 e = self.__class__(self.path, dn)
-                if callback is None:
-                    results.append(e)
-                else:
-                    callback(e)
+                results.append(e)
 
         if not schema_search:
+            # The attributes the client asked for. We only build those,
+            # so they are part of our cache keys as well.
+            search_attributes = get_ldif_attributes(attributes)
+            attributes_id = get_ldif_attributes_id(search_attributes)
+            # Our token is a property that loads it from the backend on
+            # every access. Resolve it once, we need it for each object.
+            auth_token = self.auth_token
+            # Part of our cache keys, so we need it before we look
+            # anything up, not just for building the entries.
+            verify_acls = self.ldap_verify_acls(auth_token=auth_token)
             cached_entry = None
-            if self.auth_token:
-                cache_key = self.gen_cache_key(filterObject, sizeLimit, timeLimit)
-                cached_entry = get_ldap_search_cache(self.auth_token, self.client, cache_key)
+            shared_uuids = None
+            if auth_token:
+                cache_key = self.gen_cache_key(filterObject, sizeLimit,
+                                            timeLimit, scope)
+                cached_entry = get_ldap_search_cache(auth_token, self.whitelist_id,
+                                                    attributes_id, verify_acls,
+                                                    self.client, cache_key)
+                if cached_entry is None:
+                    # Nothing of ours, but maybe one of our siblings ran
+                    # this very search already.
+                    shared_uuids = get_shared_search_cache(auth_token,
+                                                    self.whitelist_id,
+                                                    attributes_id, verify_acls,
+                                                    self.client, cache_key)
             if cached_entry is not None:
                 result_objects = cached_entry
             else:
-                # Handle OTPme object search requests.
-                try:
-                    result_uuids = self.search_otpme(filterText=filterText,
-                                                    filterObject=filterObject,
-                                                    attributes=(),
-                                                    sizeLimit=sizeLimit,
-                                                    timeLimit=timeLimit,
-                                                    typesOnly=typesOnly,
-                                                    scope=scope)
-                except SizeLimitExceeded as e:
-                    log.msg(str(e), logLevel=logging.WARNING)
-                    raise ldaperrors.LDAPSizeLimitExceeded() from e
+                if shared_uuids is not None:
+                    # It brought the object data along, so building the
+                    # entries below needs no backend at all.
+                    result_uuids = shared_uuids
+                else:
+                    # Handle OTPme object search requests.
+                    try:
+                        result_uuids = self.search_otpme(filterText=filterText,
+                                                        filterObject=filterObject,
+                                                        attributes=(),
+                                                        sizeLimit=sizeLimit,
+                                                        timeLimit=timeLimit,
+                                                        typesOnly=typesOnly,
+                                                        scope=scope)
+                    except SizeLimitExceeded as e:
+                        log.msg(str(e), logLevel=logging.WARNING)
+                        raise ldaperrors.LDAPSizeLimitExceeded() from e
 
                 result_objects = {}
                 for x_uuid in result_uuids:
@@ -1253,29 +2098,43 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                         continue
 
                     # Try to get entry from cache.
-                    if self.auth_token:
-                        entry = get_ldap_cache(self.auth_token, self.client, object_id)
+                    if auth_token:
+                        entry = get_ldap_cache(auth_token, self.whitelist_id,
+                                                attributes_id, verify_acls,
+                                                self.client, object_id)
                         if entry:
                             object_dn = entry.dn.getText()
 
                     if not object_dn:
                         if object_id:
-                            object_data = self.get_object(object_id, fake_dc=self.client)
+                            object_data = self.get_object(object_id,
+                                                        fake_dc=self.client,
+                                                        verify_acls=verify_acls,
+                                                        attributes=search_attributes,
+                                                        auth_token=auth_token)
                             object_dn = object_data['ldif'][0][4:]
                             object_id = object_data['read_oid']
                             object_id = oid.get(object_id)
                             object_checksum = object_data['checksum']
 
-                            object_path = get_config_paths(object_id=object_id)['config_dir']
-
                             dn = distinguishedname.DistinguishedName(object_dn)
 
-                            # Create new entry and pass on auth token and client.
-                            entry = self.__class__(object_path, dn, self.auth_token, self.client)
+                            # Create new entry and pass on auth token and
+                            # client. It gets the object data we just read,
+                            # so it does not read the object again, and
+                            # only the OID of the object: resolving its fs
+                            # path is an index query we do not need here.
+                            entry = self.__class__(None, dn, auth_token,
+                                                    self.client, attributes,
+                                                    object_data=object_data,
+                                                    verify_acls=verify_acls,
+                                                    object_id=object_id)
                             # Update cache.
-                            if self.auth_token:
-                                update_ldap_cache(self.auth_token, self.client,
-                                                object_id, entry, object_checksum)
+                            if auth_token:
+                                update_ldap_cache(auth_token, self.whitelist_id,
+                                                attributes_id, verify_acls,
+                                                self.client, object_id, entry,
+                                                object_checksum)
 
                     if scope == "base":
                         if self.dn.getText() == object_dn:
@@ -1292,18 +2151,22 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                         result_objects[f"{dn_path_len} {object_dn}"] = entry
 
             # Update ldap search cache.
-            if self.auth_token:
-                update_ldap_search_cache(self.auth_token, self.client, cache_key, result_objects)
+            if auth_token:
+                update_ldap_search_cache(auth_token, self.whitelist_id,
+                                        attributes_id, verify_acls, self.client,
+                                        cache_key, result_objects)
+                if cached_entry is None and shared_uuids is None:
+                    # We are the one who did the search, so hand it over.
+                    # Coming from one of the two caches there is nothing
+                    # to hand over that is not in there already.
+                    update_shared_search_cache(auth_token, self.whitelist_id,
+                                            attributes_id, verify_acls,
+                                            self.client, cache_key,
+                                            result_uuids)
 
             for key in sorted(result_objects):
-                entry = result_objects[key]
-                if callback is None:
-                    results.append(entry)
-                else:
-                    callback(entry)
+                results.append(result_objects[key])
 
-        if callback is None:
-            return defer.succeed(results)
         return results
 
 def otpme_log_translate(conf):
@@ -1441,15 +2304,23 @@ class LDAPServer(object):
             debug.print_timing_result(print_status=True)
         os._exit(0)
 
-    def listen(self, use_ssl=False, cert=None, key=None):
-        """ Start listening. """
+    def listen(self, use_ssl=False, cert=None, key=None,
+        ssl_context=None, listen_socket=None):
+        """ Start listening.
+
+        With more than one ldapd process both the socket and the SSL
+        context are made before they are forked: the socket because
+        binding a port below 1024 needs privileges the workers do not
+        have anymore, the context so the private key does not have to
+        stay on disk while they start up.
+        """
         from twisted.internet import ssl
         from twisted.internet import reactor
 
         # FIXME: also implement StartTLS?
         # https://twistedmatrix.com/documents/12.0.0/core/howto/ssl.html
         # https://twistedmatrix.com/documents/14.0.0/core/howto/ssl.html
-        if use_ssl and not (cert and key):
+        if use_ssl and not (cert and key) and not ssl_context:
             msg = _("'use_ssl' requires 'cert' and 'key'.")
             raise OTPmeException(msg)
 
@@ -1457,14 +2328,31 @@ class LDAPServer(object):
         listen_uri = net.format_socket_uri("tcp", self.address, self.port)
         if use_ssl:
             new_proctitle = f"{self.proctitle} ListenSSL: {listen_uri}"
-            ssl_context = ssl.DefaultOpenSSLContextFactory(privateKeyFileName=key,
+            if ssl_context is None:
+                ssl_context = ssl.DefaultOpenSSLContextFactory(privateKeyFileName=key,
                                                             certificateFileName=cert)
+        else:
+            new_proctitle = f"{self.proctitle} Listen: {listen_uri}"
+            ssl_context = None
+
+        if listen_socket is not None:
+            factory = self.factory
+            if ssl_context:
+                # listenSSL() wraps the factory for us, adoptStreamPort()
+                # hands us a plain TCP port and leaves that to us.
+                factory = TLSMemoryBIOFactory(ssl_context, False, factory)
+            # adoptStreamPort() takes its own copy of the descriptor. We
+            # keep ours open: our parent hands us the very same socket
+            # again when it has to start us over.
+            reactor.adoptStreamPort(listen_socket.fileno(),
+                                    listen_socket.family,
+                                    factory)
+        elif ssl_context:
             reactor.listenSSL(port=self.port,
                             factory=self.factory,
                             interface=self.address,
                             contextFactory=ssl_context)
         else:
-            new_proctitle = f"{self.proctitle} Listen: {listen_uri}"
             reactor.listenTCP(port=self.port,
                             factory=self.factory,
                             interface=self.address)

@@ -2606,34 +2606,9 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.build_response(True, shares)
 
     def _cmd_get_shares(self, subcommand, command_args):
-        user_shares = config.auth_token.get_shares(skip_disabled=True,
-                                                return_type="instance")
-        shares = {}
-        for share in user_shares:
-            if share.limit_by_hosts:
-                if not share.is_assigned_host(self.peer.uuid,
-                                        include_groups=True,
-                                        include_roles=True):
-                    continue
-            share_nodes = share.get_nodes(include_pools=True,
-                                        return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
-                                            return_type="instance")
-            if share_nodes:
-                node_fqdns = []
-                for node in share_nodes:
-                    node_fqdns.append(node.fqdn)
-                share_id = share.share_id
-                shares[share_id] = {}
-                shares[share_id]['name'] = share.name
-                shares[share_id]['site'] = share.site
-                shares[share_id]['nodes'] = node_fqdns
-                shares[share_id]['encrypted'] = share.encrypted
+        from otpme.lib import stuff
+        shares = stuff.get_user_shares(auth_token=config.auth_token,
+                                        host_uuid=self.peer.uuid)
         return self.build_response(True, shares)
 
     def _cmd_get_token_type(self, subcommand, command_args):
@@ -2756,13 +2731,17 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.build_response(True, response)
 
     def dump_object(self, subcommand, command_args):
-        if not self.is_admin:
-            return self.build_response(False, _("Permission denied."))
         try:
             object_id = command_args['object_id']
             object_id = oid.get(object_id=object_id)
         except Exception as e:
             return self.build_response(False, str(e) if str(e) else "Need OID.")
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
+        if config.auth_token.uuid != config.admin_token_uuid:
+            no_dump_object_types = ['realm', 'site', 'node']
+            if object_id.object_type in no_dump_object_types:
+                return self.build_response(False, _("Permission denied."))
         if not backend.object_exists(object_id):
             return self.build_response(False, "Object does not exist.")
         object_config = backend.read_config(object_id)

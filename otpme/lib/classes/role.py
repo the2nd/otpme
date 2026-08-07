@@ -1297,7 +1297,7 @@ class Role(OTPmeObject):
             elif return_type == "path":
                 result.append(share.share_id)
             else:
-                msg = _("Invalid resturn type: {return_type}")
+                msg = _("Invalid return type: {return_type}")
                 msg = msg.format(return_type=return_type)
                 if _caller == "API":
                     raise OTPmeException(msg)
@@ -1329,7 +1329,7 @@ class Role(OTPmeObject):
             return result
 
         role_shares = self.get_shares(recursive=True,
-                                    skip_disabled=False,
+                                    skip_disabled=True,
                                     return_type="instance")
         if not role_shares:
             return result
@@ -1476,7 +1476,7 @@ class Role(OTPmeObject):
             persist_mount = True
 
         role_shares = self.get_shares(recursive=True,
-                                    skip_disabled=False,
+                                    skip_disabled=True,
                                     return_type="instance")
         if role_shares:
             role_to_add = backend.get_object(uuid=_role_uuid)
@@ -1814,12 +1814,15 @@ class Role(OTPmeObject):
         share.get_tokens(skip_disabled=True) per share so we notify
         only tokens that genuinely gain new access -- tokens already
         reaching the share via another enabled path were already
-        mounted and don't need a redundant share_mount. """
+        mounted and don't need a redundant share_mount.
+
+        Disabled shares stay out: this only ever sends share_mount, and
+        nobody is to mount a share that is switched off. """
         role_tokens = self.get_tokens(skip_disabled=False,
                                       include_roles=True,
                                       return_type="rel_path")
         role_shares = self.get_shares(recursive=True,
-                                      skip_disabled=False,
+                                      skip_disabled=True,
                                       return_type="instance")
         share_tokens_before = {}
         for share in role_shares:

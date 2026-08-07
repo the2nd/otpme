@@ -723,6 +723,8 @@ class AuthHandler(object):
 
             # Try to verify session.
             if self.verify_session(session, **kwargs) is not None:
+                if self.auth_session.authorize_host is not None:
+                    self.authorize_host = self.auth_session.authorize_host
                 self.verify_session_token(session)
                 self.update_session(session)
                 self.request_cacheable = True
@@ -2218,7 +2220,8 @@ class AuthHandler(object):
                                 uuid=self.new_session_uuid,
                                 access_group=self.access_group,
                                 client=client_uuid,
-                                client_ip=self.client_ip)
+                                client_ip=self.client_ip,
+                                authorize_host=self.authorize_host)
                 # Invoke method to create child sessions which also creates
                 # parent session so we need no session.add() here. Child
                 # sessions are always created regardless if sessions are
@@ -2316,13 +2319,12 @@ class AuthHandler(object):
         access_group=None, user_token=None, count_fails=None, host_type=None,
         host=None, host_ip=None, replace_sessions=None, require_token_types=None,
         require_pass_types=None, redirect_challenge=None, jwt_auth=False,
-        allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
+        authorize_host=True, allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
         jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
         auth_group=None, auth_client=None, oidc_context=False, oidc_scope="",
-        oidc_nonce=None, oidc_redirect_uri=None,
-        oidc_code_challenge=None, oidc_code_challenge_method=None,
-        oidc_skip_backchannel_client=None,
+        oidc_nonce=None, oidc_redirect_uri=None, oidc_code_challenge=None,
+        oidc_code_challenge_method=None, oidc_skip_backchannel_client=None,
         oidc_skip_backchannel=False):
         """
         Try to authenticate user:
@@ -2412,6 +2414,7 @@ class AuthHandler(object):
         self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data
         self.vlan = None
+        self.authorize_host = authorize_host
         self.realm_login = realm_login
         self.realm_logout = realm_logout
         self.unlock = unlock
@@ -2941,17 +2944,24 @@ class AuthHandler(object):
 
         # Check policies.
         if not self.auth_failed:
+            authorize_host = False
             authorize_token = False
+            authorize_client = False
             if self.check_policies and self.auth_token:
+                authorize_token = True
                 if self.auth_host:
                     if self.auth_host.site == config.site:
-                        authorize_token = True
+                        authorize_host = True
+                    if not self.authorize_host:
+                        authorize_host = False
                 if self.auth_client:
-                    authorize_token = True
+                    authorize_client = True
                 if self.user.type != "user":
+                    authorize_host = False
                     authorize_token = False
-            if authorize_token:
-                try:
+                    authorize_client = False
+            try:
+                if authorize_token:
                     # Check token policies.
                     self.auth_token.run_policies("authorize",
                                             token=self.auth_token)
@@ -2961,32 +2971,32 @@ class AuthHandler(object):
                     # Check accessgroup policies.
                     self.auth_group.run_policies("authorize",
                                             token=self.auth_token)
-                    # Check host/node/client role/group policies.
-                    if self.auth_host:
-                        self.auth_host.authorize_token(self.auth_token,
-                                                    self.login_interface)
-                    if self.auth_client:
-                        self.auth_client.authorize_token(self.auth_token)
-                except PolicyException as e:
-                    log_msg = str(e)
-                    self.logger.warning(log_msg)
-                    self.auth_failed = True
-                    self.count_fails = False
-                    self.auth_message = "AUTH_DENIED_BY_POLICY"
-                except LoginsLimited as e:
-                    log_msg = str(e)
-                    self.logger.warning(log_msg)
-                    self.auth_failed = True
-                    self.count_fails = False
-                    self.auth_message = "LOGINS_LIMITED"
-                except Exception as e:
-                    config.raise_exception()
-                    log_msg = _("Internal server error", log=True)[1]
-                    log_msg = f"{log_msg}: {e}"
-                    self.logger.critical(log_msg)
-                    self.auth_failed = True
-                    self.count_fails = False
-                    self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
+                # Check host/node/client role/group policies.
+                if authorize_host:
+                    self.auth_host.authorize_token(self.auth_token,
+                                                self.login_interface)
+                if authorize_client:
+                    self.auth_client.authorize_token(self.auth_token)
+            except PolicyException as e:
+                log_msg = str(e)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.count_fails = False
+                self.auth_message = "AUTH_DENIED_BY_POLICY"
+            except LoginsLimited as e:
+                log_msg = str(e)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.count_fails = False
+                self.auth_message = "LOGINS_LIMITED"
+            except Exception as e:
+                config.raise_exception()
+                log_msg = _("Internal server error", log=True)[1]
+                log_msg = f"{log_msg}: {e}"
+                self.logger.critical(log_msg)
+                self.auth_failed = True
+                self.count_fails = False
+                self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
 
         # Log request auth data if enabled. Sensitive fields are written
         # via print() to stdout only — never through self.logger — so
@@ -3227,40 +3237,8 @@ class AuthHandler(object):
                 auth_response['key_mode'] = self.user.key_mode
                 # Get shares to mount on client.
                 if self.user.auto_mount:
-                    search_attrs = {
-                                    'token' : {'value':self.auth_token.uuid},
-                                }
-                    user_shares = backend.search(object_type="share",
-                                                attributes=search_attrs,
-                                                return_type="instance")
-                    token_roles = self.auth_token.get_roles(return_type="uuid", recursive=True)
-                    if token_roles:
-                        search_attrs = {
-                                        'role' : {'values':token_roles},
-                                    }
-                        user_shares += backend.search(object_type="share",
-                                                    attributes=search_attrs,
-                                                    return_type="instance")
-                    shares = {}
-                    for share in user_shares:
-                        if not share.enabled:
-                            continue
-                        if share.limit_by_hosts:
-                            if not share.is_assigned_host(self.peer.uuid,
-                                                    include_groups=True,
-                                                    include_roles=True):
-                                continue
-                        share_nodes = share.get_nodes(include_pools=True,
-                                                    return_type="instance")
-                        node_fqdns = []
-                        for node in share_nodes:
-                            node_fqdns.append(node.fqdn)
-                        share_id = share.share_id
-                        shares[share_id] = {}
-                        shares[share_id]['name'] = share.name
-                        shares[share_id]['site'] = share.site
-                        shares[share_id]['nodes'] = node_fqdns
-                        shares[share_id]['encrypted'] = share.encrypted
+                    shares = stuff.get_user_shares(auth_token=self.auth_token,
+                                                    host_uuid=self.peer.uuid)
                     auth_response['shares'] = shares
 
             # Get SSH private key from token.

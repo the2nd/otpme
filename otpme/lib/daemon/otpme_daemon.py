@@ -531,5 +531,7 @@ class OTPmeDaemon(object):
         ## Confirm shutdown.
         #self.comm_handler.send(recipient="controld", command="down", timeout=1)
         self.comm_handler.close()
-        if os.path.exists(self.status_file):
+        try:
             os.remove(self.status_file)
+        except Exception:
+            pass

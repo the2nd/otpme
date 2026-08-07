@@ -117,6 +117,7 @@ ssohost = [
     "Flask-Login>=0.6.3",
     "Flask-WTF>=1.2.1",
     "gunicorn>=23.0.0",
+    "gevent>=26.7.0",
     "joserfc>=1.0.0",
 ]
 
@@ -133,6 +134,7 @@ node = [
     "scapy>=2.4.4",
     "service_identity",
     "Twisted>=24.3.0",
+    "pyroute2>=0.9.6",
 ]
 
 dev = [

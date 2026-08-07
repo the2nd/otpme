@@ -5898,25 +5898,36 @@ class User(OTPmeObject):
                         script=auth_script, callback=callback,
                         **kwargs)
 
-    def _shares_data_for_notify(self, persist_mount: bool=True):
+    def _shares_data_for_notify(self, persist_mount: bool=True,
+        skip_disabled: bool=False, skip_no_mount: bool=False):
         """ Build the per-share notify dict covering every share this
         user's tokens reach (directly or via roles). Returns {} if the
         user has no reachable share. Shape matches the dict produced
         by role.add_role / share helpers.
 
-        skip_disabled=False on purpose for both tokens and shares: a
-        token or share may have been disabled WHILE the user was still
-        logged in and the agent already had the share mounted. The
-        user.enable/disable notify is our chance to push a cleanup
-        even if the upstream token.disable / share.disable handlers
-        missed it (or weren't there yet). """
+        skip_disabled: leave out disabled shares. Set it for mount
+        notifications only. An unmount has to reach them: a share may
+        have been disabled WHILE the user was still logged in and the
+        agent already had it mounted, and this notify is our chance to
+        push a cleanup even if the upstream token.disable /
+        share.disable handlers missed it (or weren't there yet). The
+        user's own disabled tokens are walked either way, for the same
+        reason.
+
+        skip_no_mount: leave out the shares a token does not get
+        mounted by itself (see Share.add_no_mount_token()). Set it for
+        mount notifications only: an unmount has to reach them too,
+        they may have been mounted by hand. """
         tokens_per_share = {}
         for token_uuid in self.tokens:
             token = backend.get_object(uuid=token_uuid)
             if not token:
                 continue
-            for share in token.get_shares(skip_disabled=False,
+            for share in token.get_shares(skip_disabled=skip_disabled,
                                           return_type="instance"):
+                if skip_no_mount:
+                    if share.is_no_mount_token(token.uuid):
+                        continue
                 tokens_per_share.setdefault(share, []).append(token.rel_path)
         shares_data = {}
         for share, token_paths in tokens_per_share.items():
@@ -5970,7 +5981,9 @@ class User(OTPmeObject):
             return super().enable(*args, callback=callback, **kwargs)
         if persist_mount is None:
             persist_mount = True
-        shares_data = self._shares_data_for_notify(persist_mount=persist_mount)
+        shares_data = self._shares_data_for_notify(persist_mount=persist_mount,
+                                                skip_disabled=True,
+                                                skip_no_mount=True)
         result = super().enable(*args, callback=callback, **kwargs)
         if not result:
             return result

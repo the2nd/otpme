@@ -539,11 +539,6 @@ Compression for object JSON files (e.g. "lz4").
 **PRETTIFY_OBJECT_JSON**  
 Pretty-print object JSON files.
 
-# LDAP
-
-**LDAP_VERIFY_ACLS**  
-Verify ACLs for LDAP access.
-
 # LOGGING
 
 **LOGLEVEL**  

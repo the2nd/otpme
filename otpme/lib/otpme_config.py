@@ -169,9 +169,6 @@ class OTPmeConfig(object):
         self.register_config_var("pinentry", str, "/usr/bin/pinentry",
                                 config_file_parameter="PINENTRY",
                                 user_config_file_parameter="PINENTRY")
-        # LDAP verify ACLs.
-        self.register_config_var("ldap_verify_acls", bool, False,
-                                config_file_parameter="LDAP_VERIFY_ACLS")
         self.register_config_var("_logger", None, None)
         # OTPme command that was called.
         self.register_config_var("command", None, None)
@@ -872,6 +869,30 @@ class OTPmeConfig(object):
 
         self.register_config_var("radius_mod_logfile", str, "/var/log/otpme/radius-module.log",
                             config_file_parameter="RADIUS_MOD_LOGFILE")
+        # Spread LDAP requests over the member nodes. Off by default:
+        # it needs haproxy installed, and a single node works without
+        # it. See otpme/lib/haproxy/utils.py.
+        self.register_config_var("start_haproxy", bool, False,
+                            config_file_parameter="START_HAPROXY")
+        self.register_config_var("haproxy_bin", str, "/usr/sbin/haproxy",
+                            config_file_parameter="HAPROXY_BIN")
+        # The port clients reach LDAP on. 636 is where they look for
+        # LDAPS, which is what dovecot and SOGo want to be pointed at.
+        self.register_config_var("haproxy_port", int, 636,
+                            config_file_parameter="HAPROXY_PORT")
+        self.register_config_var("haproxy_maxconn", int, 4096,
+                            config_file_parameter="HAPROXY_MAXCONN")
+        self.register_config_var("haproxy_check_interval", str, "5s",
+                            config_file_parameter="HAPROXY_CHECK_INTERVAL")
+        self.register_config_var("haproxy_connect_timeout", str, "5s",
+                            config_file_parameter="HAPROXY_CONNECT_TIMEOUT")
+        # Generous: dovecot keeps its LDAP connection open between
+        # logins, and cutting an idle one only makes it reconnect.
+        self.register_config_var("haproxy_client_timeout", str, "1h",
+                            config_file_parameter="HAPROXY_CLIENT_TIMEOUT")
+        self.register_config_var("haproxy_server_timeout", str, "1h",
+                            config_file_parameter="HAPROXY_SERVER_TIMEOUT")
+
         self.register_config_var("start_freeradius", bool, True,
                             config_file_parameter="START_FREERADIUS")
         self.register_config_var("freeradius_bin", str, "/usr/sbin/freeradius",

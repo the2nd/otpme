@@ -1136,7 +1136,6 @@ class OTPmeClusterP1(OTPmeServer1):
         elif command == "set_master_failover":
             status = True
             message = _("Master failover started successful.")
-            config.cluster_status = False
             config.master_failover = True
 
         elif command == "get_master_failover_status":
@@ -1193,7 +1192,6 @@ class OTPmeClusterP1(OTPmeServer1):
                 log_msg = _("Starting master failover...", log=True)[1]
                 logger.info(log_msg)
                 config.master_failover = True
-                config.cluster_status = False
                 result = backend.search(object_type="node",
                                         attribute="uuid",
                                         value="*",
