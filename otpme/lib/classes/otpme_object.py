@@ -6586,7 +6586,8 @@ class OTPmeObject(OTPmeBaseObject):
         verify_acl_func = None
         if verify_acls:
             verify_acl_func = self.verify_acl
-        ldif = get_ldif(ldif=self.ldif, text=text,
+        object_ldif = self.ldif.copy()
+        ldif = get_ldif(ldif=object_ldif, text=text,
                         verify_acl_func=verify_acl_func,
                         **kwargs)
         return callback.ok(ldif, return_value=True)

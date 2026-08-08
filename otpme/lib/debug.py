@@ -91,7 +91,10 @@ def end_timing(warn_seconds=0.1, quiet=False):
         msg = _("TOOK: {caller}: {age:.2f}")
         msg = msg.format(caller=caller, age=age)
         print(msg)
-    start_times.pop(caller)
+    try:
+        start_times.pop(caller)
+    except KeyError:
+        pass
     return age
 
 def trace(ignore_callers=None, trace_len=10):

@@ -1058,6 +1058,22 @@ def get_config_paths(object_id, object_uuid=None, use_index=True, no_lock=False)
         config_paths['config_file'] = config_file
     return config_paths
 
+def get_result_count(result):
+    """ Number of objects in a search result, whatever shape it has.
+
+    With the ACLs requested a result is a dict of "objects", "acls" and
+    "matching_acls", so len() of it is 3 no matter how many objects it
+    holds. Everything else is a list or a dict of the objects.
+    """
+    if result is None:
+        return 0
+    if isinstance(result, dict):
+        try:
+            return len(result['objects'])
+        except KeyError:
+            pass
+    return len(result)
+
 # FIXME: implement regex searching??? http://xion.io/post/code/sqlalchemy-regex-filters.html
 @handle_transaction
 @index_search_cache.cache_function()
@@ -1193,6 +1209,16 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if not object_type:
         o_result = None
         for x_object_type in object_types:
+            # <max_results> is the limit of the search, not of each
+            # object type in it. Handing it to every one of them let a
+            # search over the six LDAP object types return up to six
+            # times what the caller asked for, so take off what we have
+            # already got and stop once the budget is used up.
+            x_max_results = max_results
+            if max_results > 0:
+                x_max_results = max_results - get_result_count(o_result)
+                if x_max_results <= 0:
+                    break
             x_result = index_search(realm=realm,
                                     site=site,
                                     attribute=attribute,
@@ -1214,7 +1240,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                                     verify_acls=verify_acls,
                                     return_acls=return_acls,
                                     return_raw_acls=return_raw_acls,
-                                    max_results=max_results,
+                                    max_results=x_max_results,
                                     size_limit=size_limit)
             if isinstance(x_result, list):
                 if not o_result:
@@ -1590,9 +1616,17 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             msg = msg.format(attr=attr)
             raise SearchException(msg)
 
-        # Search objects with the given ACL.
+        # Search objects with the given ACL. As an EXISTS, like the
+        # attribute filters below, not as a join: we are looking for
+        # objects, and a join puts an object into the result once per
+        # ACL of it that matches. That made <max_results> mean two
+        # different things. Where the caller wants the ACLs as well the
+        # query only feeds an IN(), which swallows the duplicates, and
+        # the limit is applied per object while iterating. Everywhere
+        # else the limit lands on the duplicated rows, so an object with
+        # three matching ACLs used up three of them and the caller got a
+        # third of the objects it asked for.
         if attr == "acl":
-            q = q.join(IndexObject.acls)
             x_values = []
             if value is not None:
                 x_values = [value]
@@ -1608,7 +1642,12 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     x_tuple.append(IndexObjectACL.value.like(sql_like, escape="!"))
                 else:
                     x_tuple.append(IndexObjectACL.value.is_(x_val))
-            q = q.filter(or_(*x_tuple))
+            if x_tuple:
+                q = q.filter(IndexObject.acls.any(or_(*x_tuple)))
+            else:
+                # No value to match, so any ACL will do. Same as the
+                # join gave us before.
+                q = q.filter(IndexObject.acls.any())
 
         # Search by base attributes (e.g. name).
         elif attr in config.otpme_base_attributes:

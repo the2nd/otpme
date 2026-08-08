@@ -33,6 +33,7 @@ from ldaptor.protocols.ldap import distinguishedname
 from twisted.protocols.tls import TLSMemoryBIOFactory
 
 #from twisted.mail.maildir import _generateMaildirName as tempName
+from ldaptor.protocols import pureber
 from ldaptor.protocols import pureldap
 
 try:
@@ -61,6 +62,15 @@ from otpme.lib.backends.file.file import get_config_paths
 from otpme.lib.backends.file.file import OBJECTS_DIR
 
 from otpme.lib.exceptions import *
+
+# The tokens we read from the backend, with the time we read them.
+# Value and time belong together: with the token kept on the entry and
+# only the time shared, the first holder to refresh stamps the time for
+# everyone else, and every other holder then keeps its old token for
+# good. Shared by UUID also means one read per token and interval for
+# the whole process, however many connections bound with it.
+auth_token_cache = {}
+AUTH_TOKEN_READ_TIMEOUT = 30
 
 ldap_cache = {}
 ldap_query_cache = {}
@@ -93,7 +103,7 @@ LDIF_SETTINGS_CACHE_TIME = 30
 # How long we trust cached LDIF data without asking the backend for the
 # objects current checksum. Verifying it is one index query per object,
 # which is way too much for a search that returns thousands of them.
-LDIF_CACHE_TIME = 30
+LDIF_CACHE_TIME = 300
 
 # How long a search result stays in the cache the ldapd processes share.
 # Also the expiry of the redis keys, so nobody has to clean up after a
@@ -128,6 +138,12 @@ def set_shared_cache(enabled):
 
 LDAP_CLIENT_NAME = "LDAP"
 LDAP_ACCESSGROUP = "LDAP"
+
+# Encoded search results we keep per entry. The key is the attribute
+# list of the request, so it is the client that decides how many there
+# are. A handful covers what an application asks for; past that we
+# encode again rather than let one entry grow without an end.
+MAX_ENTRY_PAYLOADS = 8
 
 # Connections the kernel queues for us until we accept them.
 LISTEN_BACKLOG = 128
@@ -261,12 +277,28 @@ def create_listen_socket(address, port, reuse_port=True):
     listen_socket.setblocking(False)
     return listen_socket
 
+def update_auth_token_cache(token_uuid, auth_token):
+    """ Remember a token, with the time and the OID of its object. """
+    global auth_token_cache
+    read_oid = None
+    if auth_token is not None:
+        try:
+            read_oid = auth_token.oid.read_oid
+        except Exception:
+            read_oid = None
+    auth_token_cache[token_uuid] = {
+                                    'token'     : auth_token,
+                                    'time'      : time.time(),
+                                    'read_oid'  : read_oid,
+                                    }
+
 def clear_caches():
     global ldap_cache
     global uuid_to_oid
     global lookup_cache
     global user_ldif_cache
     global ldap_query_cache
+    global auth_token_cache
     global global_ldif_cache
     global ldif_settings_cache
     ldap_cache.clear()
@@ -274,6 +306,7 @@ def clear_caches():
     lookup_cache.clear()
     user_ldif_cache.clear()
     ldap_query_cache.clear()
+    auth_token_cache.clear()
     global_ldif_cache.clear()
     ldif_settings_cache.clear()
     ldap_search_cache.invalidate()
@@ -305,6 +338,13 @@ def drop_cached_objects(read_oids):
         if lookup_cache[x_dn]['read_oid'] not in read_oids:
             continue
         lookup_cache.pop(x_dn, None)
+    # A token we hold may have been disabled or had its ACLs changed, and
+    # we must not go on verifying against the one we read before. Without
+    # this it would stay in effect for AUTH_TOKEN_READ_TIMEOUT.
+    for x_uuid in list(auth_token_cache):
+        if auth_token_cache[x_uuid]['read_oid'] not in read_oids:
+            continue
+        auth_token_cache.pop(x_uuid, None)
 
 def sync_outdated_objects():
     """ Drop the objects that changed in the meantime from our caches.
@@ -850,6 +890,24 @@ def update_shared_search_cache(auth_token, whitelist_id, attributes_id,
         log_msg = log_msg.format(error=e)
         config.logger.warning(log_msg)
 
+class CachedSearchResultEntry(pureber.BERBase):
+    """ A search result entry we encoded before.
+
+    ldaptor wraps whatever we hand to reply() into an LDAPMessage and
+    calls toWire() on it, and that message is a BER sequence of the
+    request ID and us. So returning the bytes we kept gives byte for
+    byte what encoding the entry again would, without us having to know
+    the request ID to build the envelope ourselves.
+    """
+    def __init__(self, wire):
+        self.wire = wire
+
+    def toWire(self):
+        return self.wire
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(<{len(self.wire)} bytes>)"
+
 class LDIFTreeEntryContainsMultipleEntries(Exception):
     """LDIFTree entry contains multiple LDIF entries."""
 
@@ -890,6 +948,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         # Without a path we resolve it from the OID when we need it.
         self._path = None
         self._path_oid = object_id
+        # The encoded search result we hand to the client, keyed by the
+        # attributes the request asked for. Encoding one costs more than
+        # everything else a cached search does, and what comes out only
+        # depends on our DN and our attributes, so it is good for as long
+        # as we are. Riding along on the entry also means it goes away
+        # with us when the object changes, see drop_cached_objects().
+        self.ldap_payloads = {}
 
         if auth_token:
             self.auth_token = auth_token
@@ -1213,9 +1278,22 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     @property
     def auth_token(self):
+        """ Get our token.
+
+        Reading it is a backend query, and a search asks for it more
+        than once, so we keep it for AUTH_TOKEN_READ_TIMEOUT seconds.
+        That long is also how long a token that got disabled or had its
+        ACLs changed stays in effect here.
+        """
         if not self.auth_token_uuid:
             return
+        now = time.time()
+        cache_entry = auth_token_cache.get(self.auth_token_uuid)
+        if cache_entry is not None:
+            if now - cache_entry['time'] < AUTH_TOKEN_READ_TIMEOUT:
+                return cache_entry['token']
         auth_token = backend.get_object(uuid=self.auth_token_uuid)
+        update_auth_token_cache(self.auth_token_uuid, auth_token)
         return auth_token
 
     @auth_token.setter
@@ -1224,6 +1302,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             self.auth_token_uuid = None
         else:
             self.auth_token_uuid = auth_token.uuid
+            # Handed to us, so it is as good as one we just read.
+            update_auth_token_cache(self.auth_token_uuid, auth_token)
         # The whitelist comes from the token, see update_ldif_settings().
         self.update_ldif_settings()
 
@@ -1739,6 +1819,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         if cache_entry is not None:
             object_data = copy_ldif_data(cache_entry['data'])
             do_search = False
+            # This cache is shared by every token, and a search that
+            # verifies no ACLs does not fetch any. Taking its entry for
+            # one that does would filter every attribute away, so read
+            # the object again to get them.
+            if verify_acls and object_data['acls'] is None:
+                do_search = True
             # The searches we run fill the global cache from the backend,
             # so an entry that young was verified a moment ago. Asking the
             # backend for the checksum again is one index query per object.
@@ -1844,32 +1930,33 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     @ldap_search_cache.cache_method()
     def _search_otpme(self, attribute=None, value=None, attributes=None,
         object_type=None, less_than=None, greater_than=None,
-        size_limit=1024, scope="one"):
+        size_limit=1024, scope="one", verify_acls=True):
         """ Search OTPme objects. """
         global global_ldif_cache
         global uuid_to_oid
         search_attributes = {
                                 #'l'     : {'value':"Sitename",},
-                                'acl'  : {
-                                            'values' : [
-                                                        "*:edit",
-                                                        "*:edit:*",
-                                                        "*:view",
-                                                        "*:view:*",
-                                                        "*:view_all",
-                                                        "*:view_all:*",
-                                                        "*:view_public",
-                                                        "*:view_public:*",
-                                                        "*:view:attribute",
-                                                        "*:view:attribute:*",
-                                                        "*:view_all:attribute",
-                                                        "*:view_all:attribute:*",
-                                                        "*:view_public:attribute",
-                                                        "*:view_public:attribute:*",
-                                                        ],
-                                        },
                                 'template'  : {'value':False,},
                             }
+        if verify_acls:
+            search_attributes['acl'] = {
+                                        'values' : [
+                                                    "*:edit",
+                                                    "*:edit:*",
+                                                    "*:view",
+                                                    "*:view:*",
+                                                    "*:view_all",
+                                                    "*:view_all:*",
+                                                    "*:view_public",
+                                                    "*:view_public:*",
+                                                    "*:view:attribute",
+                                                    "*:view:attribute:*",
+                                                    "*:view_all:attribute",
+                                                    "*:view_all:attribute:*",
+                                                    "*:view_public:attribute",
+                                                    "*:view_public:attribute:*",
+                                                    ],
+                                    }
 
         # Add attribute and values.
         if attribute and value is not None:
@@ -1912,22 +1999,33 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                 object_types=object_types,
                                 attributes=search_attributes,
                                 case_sensitive=False,
-                                return_raw_acls=True,
+                                return_raw_acls=verify_acls,
                                 less_than=less_than,
                                 greater_than=greater_than,
                                 return_attributes=return_attributes,
                                 max_results=size_limit)
 
-        acls = result['acls']
-        objects = result['objects']
+        # Asked for the ACLs we get them next to the objects, otherwise
+        # the objects are all there is.
+        if verify_acls:
+            acls = result['acls']
+            objects = result['objects']
+        else:
+            acls = None
+            objects = result
 
         for x_uuid in objects:
             object_name = objects[x_uuid]['name']
             object_id = objects[x_uuid]['read_oid']
             object_type = objects[x_uuid]['object_type']
             object_checksum = objects[x_uuid]['checksum']
-            object_acls = acls[x_uuid]
             object_ldif = objects[x_uuid]['ldif']
+            # None, not an empty list: we did not ask for them, and
+            # whoever finds this in the cache has to tell "this object
+            # has no ACLs" from "nobody looked".
+            object_acls = None
+            if verify_acls:
+                object_acls = acls[x_uuid]
 
             uuid_to_oid[x_uuid] = object_id
 
@@ -2078,7 +2176,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                                         sizeLimit=sizeLimit,
                                                         timeLimit=timeLimit,
                                                         typesOnly=typesOnly,
-                                                        scope=scope)
+                                                        scope=scope,
+                                                        verify_acls=verify_acls)
                     except SizeLimitExceeded as e:
                         log.msg(str(e), logLevel=logging.WARNING)
                         raise ldaperrors.LDAPSizeLimitExceeded() from e
@@ -2147,8 +2246,11 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                             scope_match = True
 
                     if scope_match:
-                        dn_path_len = str(len(object_dn.split(",")))
-                        result_objects[f"{dn_path_len} {object_dn}"] = entry
+                        # A tuple, not a string: with the depth printed
+                        # into one, "10 ..." sorts before "3 ..." and a
+                        # deep unit tree comes out in the wrong order.
+                        dn_path_len = len(object_dn.split(","))
+                        result_objects[(dn_path_len, object_dn)] = entry
 
             # Update ldap search cache.
             if auth_token:
@@ -2264,9 +2366,68 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
         return ldapserver.LDAPServer.handle_LDAPSearchRequest(self, request, controls, response)
 
     def _cbSearchGotBase(self, base, dn, request, response):
+        """ Answer a search.
+
+        Same as the one we inherit, except that an entry we already
+        encoded is not encoded again. Building the BER tree of a result
+        entry costs an object per attribute name and per attribute
+        value, which for a search returning a few dozen entries is more
+        work than everything else it does put together.
+
+        Clone instead of a call to super() because ldaptor defines the
+        method that sends a single entry inside _cbSearchGotBase(), so
+        there is nothing to override on its own.
+        """
         # Pass on auth token.
         base.auth_token = self.boundUser.auth_token
-        return super()._cbSearchGotBase(base, dn, request, response)
+
+        requested_attributes = request.attributes
+        # What we cache are the bytes for this attribute selection, and
+        # the request order is the order they go out in, so the whole
+        # list belongs in the key.
+        payload_key = tuple(requested_attributes)
+        send_all = True
+        if requested_attributes:
+            if b"*" not in requested_attributes:
+                send_all = False
+
+        def send_entry(entry):
+            payloads = getattr(entry, "ldap_payloads", None)
+            if payloads is None:
+                payload = None
+            else:
+                payload = payloads.get(payload_key)
+            if payload is None:
+                if send_all:
+                    entry_attributes = entry.items()
+                else:
+                    entry_attributes = [(x, entry.get(x))
+                                        for x in requested_attributes
+                                        if x in entry]
+                result_entry = pureldap.LDAPSearchResultEntry(
+                                            objectName=entry.dn.getText(),
+                                            attributes=entry_attributes)
+                payload = result_entry.toWire()
+                if payloads is not None:
+                    if len(payloads) < MAX_ENTRY_PAYLOADS:
+                        payloads[payload_key] = payload
+            response(CachedSearchResultEntry(payload))
+
+        search_defer = base.search(filterObject=request.filter,
+                                attributes=request.attributes,
+                                scope=request.scope,
+                                derefAliases=request.derefAliases,
+                                sizeLimit=request.sizeLimit,
+                                timeLimit=request.timeLimit,
+                                typesOnly=request.typesOnly,
+                                callback=send_entry)
+
+        def search_done(_):
+            return pureldap.LDAPSearchResultDone(
+                            resultCode=ldaperrors.Success.resultCode)
+
+        search_defer.addCallback(search_done)
+        return search_defer
 
 class LDAPServer(object):
     """ Class to start an LDAP server as OTPme daemon using ldaptor. """
