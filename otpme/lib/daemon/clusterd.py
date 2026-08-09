@@ -1112,6 +1112,8 @@ class ClusterDaemon(OTPmeDaemon):
             try:
                 master_node_conn.authenticate()
             except HostDisabled:
+                # Stop ldapd.
+                self.stop_ldapd()
                 self.disable_node()
             finally:
                 master_node_conn.close()

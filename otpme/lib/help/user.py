@@ -451,7 +451,7 @@ cmd_help = {
                 },
 
      'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user add_attribute {user} {attribute}=[value]'),
+                    '_cmd_usage_help' : _('Usage: otpme-user add_attribute -i <position> {user} {attribute}=[value]'),
                     'cmd'   :   '-i :position: <|object|> <attribute>=[value]',
                     '_help' :   {
                                     'cmd'                   : _('Add (ldap) attribute to user'),

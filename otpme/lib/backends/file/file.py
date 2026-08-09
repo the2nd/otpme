@@ -1074,6 +1074,38 @@ def get_result_count(result):
             pass
     return len(result)
 
+def get_equal_filter(column, value, case_sensitive):
+    """ Equality filter that honours case_sensitive.
+
+    Lowering the column alone does not do it: the value has to be
+    lowered as well, or nothing matches at all as soon as it carries
+    an upper case letter. The value also has to reach the query
+    through the column's own type, because LDIF attribute values are
+    stored JSON encoded -- a bare string would end up compared
+    against a quoted one, which never matches either.
+    """
+    from sqlalchemy import func
+    from sqlalchemy import literal
+    if case_sensitive or not isinstance(value, str):
+        return column==value
+    return func.lower(column)==func.lower(literal(value, type_=column.type))
+
+def get_in_filter(column, values, case_sensitive):
+    """ IN filter that honours case_sensitive. """
+    from sqlalchemy import or_
+    if case_sensitive:
+        return column.in_(values)
+    # Only strings have a case. Anything else (a bool, a number)
+    # stays an exact match and can still go into one IN.
+    other_values = [x for x in values if not isinstance(x, str)]
+    value_filters = [get_equal_filter(column, x, case_sensitive)
+                    for x in values if isinstance(x, str)]
+    if other_values or not value_filters:
+        value_filters.append(column.in_(other_values))
+    if len(value_filters) == 1:
+        return value_filters[0]
+    return or_(*value_filters)
+
 # FIXME: implement regex searching??? http://xion.io/post/code/sqlalchemy-regex-filters.html
 @handle_transaction
 @index_search_cache.cache_function()
@@ -1094,7 +1126,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     #from sqlalchemy import and_
     from sqlalchemy import cast
     from sqlalchemy import desc
-    from sqlalchemy import func
     from sqlalchemy import Integer
     from sqlalchemy.orm import aliased
     from sqlalchemy.orm import contains_eager
@@ -1688,11 +1719,13 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                             else:
                                 plain_vals.append(val)
                         if plain_vals:
-                            or_filter_parts.append(getattr(IndexObject, attr).in_(plain_vals))
+                            or_filter_parts.append(get_in_filter(getattr(IndexObject, attr),
+                                                    plain_vals, case_sensitive))
                         if or_filter_parts:
                             or_filters.append(or_(*or_filter_parts))
                         if neg_vals:
-                            or_filters.append(~getattr(IndexObject, attr).in_(neg_vals))
+                            or_filters.append(~get_in_filter(getattr(IndexObject, attr),
+                                                    neg_vals, case_sensitive))
                 if values is not None:
                     if "*" in values:
                         q = q.filter(getattr(IndexObject, attr).isnot(None))
@@ -1737,9 +1770,11 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                                 else:
                                     pos_vals.append(val)
                         if pos_vals:
-                            q = q.filter(getattr(IndexObject, attr).in_(pos_vals))
+                            q = q.filter(get_in_filter(getattr(IndexObject, attr),
+                                                    pos_vals, case_sensitive))
                         if neg_vals:
-                            q = q.filter(~getattr(IndexObject, attr).in_(neg_vals))
+                            q = q.filter(~get_in_filter(getattr(IndexObject, attr),
+                                                    neg_vals, case_sensitive))
                         q = q.options(contains_eager(IndexObject.attributes))
             elif value is not None:
                 sql_like = str(value)
@@ -1752,13 +1787,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     else:
                         q = q.filter(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
                 else:
-                    if case_sensitive:
-                        q = q.filter(getattr(IndexObject, attr)==value)
-                    else:
-                        if isinstance(value, str):
-                            q = q.filter(func.lower(getattr(IndexObject, attr))==value)
-                        else:
-                            q = q.filter(getattr(IndexObject, attr)==value)
+                    q = q.filter(get_equal_filter(getattr(IndexObject, attr),
+                                                value, case_sensitive))
             elif less_than is not None:
                 q = q.filter(cast(getattr(IndexObject, attr), Integer) < less_than)
             elif greater_than is not None:
@@ -1806,11 +1836,15 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                             else:
                                 plain_vals.append(val)
                         if plain_vals:
-                            or_filter_parts.append(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(plain_vals))))
+                            in_filter = get_in_filter(IndexObjectAttribute.value,
+                                                    plain_vals, case_sensitive)
+                            or_filter_parts.append(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (in_filter)))
                         if or_filter_parts:
                             or_filters.append(or_(*or_filter_parts))
                         if neg_vals:
-                            or_filters.append(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(neg_vals))))
+                            in_filter = get_in_filter(IndexObjectAttribute.value,
+                                                    neg_vals, case_sensitive)
+                            or_filters.append(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (in_filter)))
                 if values is not None:
                     if "*" in values:
                         q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attr))
@@ -1860,9 +1894,13 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                                 else:
                                     pos_vals.append(val)
                         if pos_vals:
-                            q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(pos_vals))))
+                            in_filter = get_in_filter(IndexObjectAttribute.value,
+                                                    pos_vals, case_sensitive)
+                            q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (in_filter)))
                         if neg_vals:
-                            q = q.filter(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(neg_vals))))
+                            in_filter = get_in_filter(IndexObjectAttribute.value,
+                                                    neg_vals, case_sensitive)
+                            q = q.filter(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (in_filter)))
                         #q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(values))))
                     #q = q.filter(IndexObjectAttribute.name==attr, IndexObjectAttribute.value.in_(values))
                     #for val in values:
@@ -1896,10 +1934,14 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         else:
                             q = q.filter(like_filter)
                 else:
+                    value_filter = get_equal_filter(IndexObjectAttribute.value,
+                                                    value, case_sensitive)
+                    value_filter = IndexObject.attributes.any(value_filter,
+                                                            name=attr)
                     if negate_filter:
-                        q = q.filter(~IndexObject.attributes.any(name=attr, value=value))
+                        q = q.filter(~value_filter)
                     else:
-                        q = q.filter(IndexObject.attributes.any(name=attr, value=value))
+                        q = q.filter(value_filter)
             if less_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)

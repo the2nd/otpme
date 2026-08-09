@@ -488,6 +488,20 @@ class RedisHandler(object):
                 self.connection_error_logged = True
                 self.logger.critical(log_msg)
 
+    def mget(self, *args, **kwargs):
+        try:
+            return self.redis_db.mget(*args, **kwargs)
+        except (redis.ConnectionError, redis.ResponseError) as e:
+            msg, log_msg = _("Redis error: {error}", log=True)
+            msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
+            if "mget" in self.raise_exceptions:
+                raise KeyError(msg) from e
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                self.logger.critical(log_msg)
+        return []
+
     def delete(self, *args, **kwargs):
         try:
             return self.redis_db.delete(*args, **kwargs)
@@ -659,6 +673,30 @@ class RedisDict(SharedDict):
         finally:
             if self.locking:
                 _lock.release_lock()
+
+    def get_multi(self, keys):
+        """ Get many keys in one roundtrip.
+
+        Returns what is there, missing keys are simply not in the
+        result. Callers that need all of them have to check.
+        """
+        keys = list(keys)
+        if not keys:
+            return {}
+        _keys = [self.get_key_id(x) for x in keys]
+        values = self.redis_db.mget(_keys)
+        result = {}
+        for x_key, x_value in zip(keys, values):
+            if x_value is None:
+                continue
+            if self.compression:
+                x_value = stuff.decompress(x_value, self.compression)
+            if self.pickle:
+                x_value = self.pickle_handler.loads(x_value)
+            else:
+                x_value = json.loads(x_value)
+            result[x_key] = x_value
+        return result
 
     def _add(self, key, value, expire=None):
         # Pickle data.

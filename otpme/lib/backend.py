@@ -494,9 +494,11 @@ def outdate_ldap_object(object_id: oid.OTPmeOid):
             prune_ldap_outdated_objects(outdated_objects)
         outdated_objects[LDAP_OUTDATED_COUNTER_KEY] = counter
     except Exception as e:
-        # Nothing to fall back to: without the shared dict ldapd cannot
-        # read anything either. Its caches notice on their own, they
-        # verify the checksum of an entry once it gets old enough.
+        # Nothing to fall back to, and nothing catches this later: the
+        # caches of ldapd have no age of their own, this is the only
+        # thing that tells them an object changed. So whatever is in
+        # them for this object stays until the process restarts, which
+        # is why this is critical and not a warning.
         log_msg = _("Failed to outdate LDAP object: {oid}: {error}", log=True)[1]
         log_msg = log_msg.format(oid=read_oid, error=e)
         config.logger.critical(log_msg)

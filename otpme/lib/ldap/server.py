@@ -18,6 +18,7 @@ from twisted.internet import defer
 #from twisted.python import failure
 from zope.interface import implementer
 from twisted.python import components
+from twisted.python.util import InsensitiveDict
 from twisted.internet import protocol
 
 from ldaptor import entry
@@ -100,10 +101,12 @@ CACHE_STATS_INTERVAL = 30
 # a delay of up to this many seconds.
 LDIF_SETTINGS_CACHE_TIME = 30
 
-# How long we trust cached LDIF data without asking the backend for the
-# objects current checksum. Verifying it is one index query per object,
-# which is way too much for a search that returns thousands of them.
-LDIF_CACHE_TIME = 300
+# Cached LDIF data and the entries built from it have no age of their
+# own. What keeps them right is outdate_ldap_object(): a changed object
+# names itself, and sync_outdated_objects() drops exactly its entries at
+# the start of the next request. Verifying a checksum on top of that was
+# one index query per object, which a search returning thousands of them
+# cannot afford -- and it only ever confirmed what we already knew.
 
 # How long a search result stays in the cache the ldapd processes share.
 # Also the expiry of the redis keys, so nobody has to clean up after a
@@ -715,37 +718,67 @@ def copy_ldif_data(object_data):
     object_data['ldif'] = object_ldif
     return object_data
 
+def get_entry_attributes(ldap_entry):
+    """ Get the attributes of an entry, as the LDIF of the object has
+    them.
+
+    Not items() of the class ldaptor gives us: that one pulls
+    objectClass to the front, sorts the attribute names and sorts the
+    values of every single attribute, for every entry of every search.
+    It also costs, but the reason is a different one -- what it hands
+    out is not the LDIF of the object anymore, so a search and
+    "otpme-user show_ldif" disagree.
+
+    Taking the values out of the entry instead does not work either.
+    They live in a set there, so their order is the hash order, and
+    Python seeds string hashing per process: the same search would
+    answer differently depending on which of our workers took it, and a
+    client that reads the first mail address as the primary one would
+    get a different one every time. Hence ldif_values, filled while the
+    LDIF is parsed, see LDIFTreeEntry._load().
+    """
+    ldif_values = getattr(ldap_entry, "ldif_values", None)
+    if not ldif_values:
+        return ldap_entry.items()
+    return [(x_attr, ldif_values[x_attr]) for x_attr in ldif_values]
+
+def get_object_acls(object_id):
+    """ Get the raw ACLs of a single object.
+
+    Without an ACL filter: we already know the object, we are only
+    after the ACLs it carries.
+    """
+    result = backend.search(object_type=object_id.object_type,
+                            attribute="read_oid",
+                            value=object_id.read_oid,
+                            return_raw_acls=True,
+                            return_attributes=['read_oid'])
+    acls = result['acls']
+    for x_uuid in acls:
+        return acls[x_uuid]
+    return []
+
 def get_ldap_cache(auth_token, whitelist_id, attributes_id, verify_acls,
     client, object_id):
-    """ Get cached entry. """
+    """ Get cached entry.
+
+    No age check and no checksum: an object that changed takes its
+    entries with it the moment we hear about it, see
+    sync_outdated_objects() and drop_cached_objects(). Asking the
+    backend for the checksum instead was one index query per object of
+    a search, which is what made a search go slow again once the entries
+    were old enough.
+    """
     global ldap_cache
     token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
                                 verify_acls)
     read_oid = object_id.read_oid
     try:
-        cache_time = ldap_cache[token_id][client][read_oid]['TIME']
+        cache_entry = ldap_cache[token_id][client][read_oid]['ENTRY']
     except KeyError:
         #count_cache("entry", False)
         return
-    cache_age = time.time() - cache_time
-    if cache_age >= 300:
-        try:
-            cached_object_checksum = ldap_cache[token_id][client][read_oid]['CHECKSUM']
-        except KeyError:
-            #count_cache("entry", False)
-            return
-        try:
-            object_checksum = backend.get_checksum(object_id)
-        except Exception:
-            object_checksum = None
-        # Each of these is a backend query of its own, so count how many
-        # of them we make and how often they tell us anything new.
-        #count_cache("csum", object_checksum == cached_object_checksum)
-        if object_checksum != cached_object_checksum:
-            #count_cache("entry", False)
-            return
     ldap_cache[token_id][client][read_oid]['TIME'] = time.time()
-    cache_entry = ldap_cache[token_id][client][read_oid]['ENTRY']
     #count_cache("entry", True)
     return cache_entry
 
@@ -768,18 +801,22 @@ def update_ldap_cache(auth_token, whitelist_id, attributes_id, verify_acls,
 
 def get_ldap_search_cache(auth_token, whitelist_id, attributes_id, verify_acls,
     client, cache_key):
-    """ Get cached entry. """
+    """ Get cached entry.
+
+    No age check: what a search finds depends on the objects and on
+    nothing else, and a changed object empties this cache before we
+    answer anything from it, see sync_outdated_objects(). An age on top
+    of that only meant running every cached search again every few
+    minutes although nothing had changed -- and it did not bound the
+    memory either, an entry too old is not dropped, it is rebuilt and
+    written over.
+    """
     global ldap_query_cache
     token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
                                 verify_acls)
     try:
-        cache_time = ldap_query_cache[token_id][client][cache_key]['time']
         cache_entry = ldap_query_cache[token_id][client][cache_key]['entries']
     except KeyError:
-        #count_cache("query", False)
-        return
-    cache_age = time.time() - cache_time
-    if cache_age >= 300:
         #count_cache("query", False)
         return
     #cache_entry = copy.deepcopy(cache_entry)
@@ -799,7 +836,6 @@ def update_ldap_search_cache(auth_token, whitelist_id, attributes_id,
     if cache_key not in ldap_query_cache[token_id][client]:
         ldap_query_cache[token_id][client][cache_key] = {}
     ldap_query_cache[token_id][client][cache_key]['entries'] = entries
-    ldap_query_cache[token_id][client][cache_key]['time'] = time.time()
 
 def get_shared_query_key(auth_token, whitelist_id, attributes_id, verify_acls,
     client, cache_key):
@@ -920,6 +956,18 @@ class StoreParsedLDIF(ldifprotocol.LDIF):
     def __init__(self):
         self.done = False
         self.seen = []
+        # The attributes as the LDIF has them, per entry. What the
+        # parser hands to gotEntry() carries its values in a set, so by
+        # then their order is the hash order and gone.
+        self.seen_values = []
+
+    def state_IN_ENTRY(self, line):
+        # An empty line ends the entry, and right after it the parser
+        # drops self.data. Take the order while it is still there.
+        if line == b"":
+            if self.data is not None:
+                self.seen_values.append(dict(self.data))
+        return ldifprotocol.LDIF.state_IN_ENTRY(self, line)
 
     def gotEntry(self, obj):
         self.seen.append(obj)
@@ -955,6 +1003,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         # as we are. Riding along on the entry also means it goes away
         # with us when the object changes, see drop_cached_objects().
         self.ldap_payloads = {}
+        # The attributes as the LDIF of our object has them, filled by
+        # _load(). See get_entry_attributes().
+        self.ldif_values = InsensitiveDict()
 
         if auth_token:
             self.auth_token = auth_token
@@ -1145,9 +1196,20 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         elif len(entries) > 1:
             raise (LDIFTreeEntryContainsMultipleEntries, entries)
         else:
-            # TODO ugliness and all of its friends
-            for k,v in entries[0].items():
+            # Take the attributes from what the parser saw, not from
+            # the entry it built: its items() pulls objectClass to the
+            # front, sorts the attribute names and sorts the values of
+            # every attribute. We hand out the LDIF of the object as it
+            # is, so "otpme-user show_ldif" and a search agree.
+            try:
+                ldif_values = parser.seen_values[0]
+            except IndexError:
+                # TODO ugliness and all of its friends
+                ldif_values = dict(entries[0].items())
+            self.ldif_values = InsensitiveDict()
+            for k, v in ldif_values.items():
                 self._attributes[k] = attributeset.LDAPAttributeSet(k, v)
+                self.ldif_values[k] = list(v)
 
     def bind(self, password):
         if isinstance(password, bytes):
@@ -1786,28 +1848,21 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         try:
             object_data = user_ldif_cache[cache_token_id][read_oid]['data']
             object_data = copy_ldif_data(object_data)
-            cache_time = user_ldif_cache[cache_token_id][read_oid]['time']
         except Exception:
             object_data = None
         if object_data:
-            check_cache_time = True
+            # The DN we rendered carries the fake dc of the client it
+            # was rendered for, so an entry of another one is of no use
+            # to us.
+            use_cache_entry = True
             object_client = object_data['client']
             if object_client:
                 if object_client != self.client:
-                    check_cache_time = False
-            if check_cache_time:
-                now = time.time()
-                age = now - cache_time
-                if age < LDIF_CACHE_TIME:
-                    #count_cache("ldif", True)
-                    return object_data
-                object_checksum = object_data['checksum']
-                x_checksum = backend.get_checksum(object_id)
-                #count_cache("csum", object_checksum == x_checksum)
-                if object_checksum == x_checksum:
-                    user_ldif_cache[cache_token_id][read_oid]['time'] = time.time()
-                    #count_cache("ldif", True)
-                    return object_data
+                    use_cache_entry = False
+            if use_cache_entry:
+                user_ldif_cache[cache_token_id][read_oid]['time'] = time.time()
+                #count_cache("ldif", True)
+                return object_data
         #count_cache("ldif", False)
 
         # Try to get object data from global cache.
@@ -1821,20 +1876,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             do_search = False
             # This cache is shared by every token, and a search that
             # verifies no ACLs does not fetch any. Taking its entry for
-            # one that does would filter every attribute away, so read
-            # the object again to get them.
+            # one that does would filter every attribute away, so get
+            # them -- and only them. Searching for the object again
+            # would put the ACL filter in front of it, and an object
+            # that filter does not let through would come back as
+            # unknown even though we are holding it right here.
             if verify_acls and object_data['acls'] is None:
-                do_search = True
-            # The searches we run fill the global cache from the backend,
-            # so an entry that young was verified a moment ago. Asking the
-            # backend for the checksum again is one index query per object.
-            age = time.time() - cache_entry['time']
-            if age >= LDIF_CACHE_TIME:
-                object_checksum = object_data['checksum']
-                x_checksum = backend.get_checksum(object_id)
-                #count_cache("csum", object_checksum == x_checksum)
-                if object_checksum != x_checksum:
-                    do_search = True
+                object_acls = get_object_acls(object_id)
+                object_data['acls'] = object_acls
+                cache_entry['data']['acls'] = object_acls
         # Whether the raw LDIF of the object was there. A miss here means
         # we have to ask the backend for it.
         #count_cache("raw", not do_search)
@@ -1972,18 +2022,27 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 vals = attributes[attr]
                 search_attributes[attr] = vals
 
-        ldap_settings = config.get_ldap_settings(self.otpme_oid.object_type)
-        if ldap_settings:
-            object_scopes = ldap_settings['scopes']
-            default_scope = ldap_settings['default_scope']
-            if scope not in object_scopes:
-                scope = default_scope
-        if scope == "one":
-            object_type = self.otpme_oid.object_type
-            search_attributes['name'] = {'value':self.otpme_oid.name}
-        if scope == "sub":
-            path = f"{self.otpme_oid.path}/*"
-            search_attributes['path'] = {'value':path}
+        # The scope narrows a search down to what lies under us, and for
+        # that both branches below reach for self.otpme_oid. Asked for
+        # one object by its read_oid there is nothing to narrow: the OID
+        # names it already, and it is usually not one of ours -- a search
+        # under a realm gets its users through here. Doing it anyway
+        # replaced the object type we were given with our own and put our
+        # name in front of it as a filter, so the object came back as
+        # unknown. See get_object().
+        if attribute != "read_oid":
+            ldap_settings = config.get_ldap_settings(self.otpme_oid.object_type)
+            if ldap_settings:
+                object_scopes = ldap_settings['scopes']
+                default_scope = ldap_settings['default_scope']
+                if scope not in object_scopes:
+                    scope = default_scope
+            if scope == "one":
+                object_type = self.otpme_oid.object_type
+                search_attributes['name'] = {'value':self.otpme_oid.name}
+            if scope == "sub":
+                path = f"{self.otpme_oid.path}/*"
+                search_attributes['path'] = {'value':path}
 
         return_attributes = ['read_oid', 'name', 'object_type', 'ldif', 'checksum']
 
@@ -1995,10 +2054,16 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         if object_type is None:
             object_types = list(config.ldap_object_types)
 
+        # LDAP attribute values are matched without regard to case, an
+        # OID is not: it names exactly one object, and matching it
+        # loosely finds nothing at all for a name that has an upper case
+        # letter in it -- see the note in index_search().
+        case_sensitive = attribute == "read_oid"
+
         result = backend.search(object_type=object_type,
                                 object_types=object_types,
                                 attributes=search_attributes,
-                                case_sensitive=False,
+                                case_sensitive=case_sensitive,
                                 return_raw_acls=verify_acls,
                                 less_than=less_than,
                                 greater_than=greater_than,
@@ -2399,11 +2464,23 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
                 payload = payloads.get(payload_key)
             if payload is None:
                 if send_all:
-                    entry_attributes = entry.items()
+                    entry_attributes = get_entry_attributes(entry)
                 else:
-                    entry_attributes = [(x, entry.get(x))
-                                        for x in requested_attributes
-                                        if x in entry]
+                    # Values from the same place and for the same
+                    # reason, see get_entry_attributes(). Through
+                    # ldif_values itself, because LDAP attribute names
+                    # are case insensitive and it knows that.
+                    ldif_values = getattr(entry, "ldif_values", None)
+                    entry_attributes = []
+                    for x_attr in requested_attributes:
+                        if x_attr not in entry:
+                            continue
+                        x_values = None
+                        if ldif_values:
+                            x_values = ldif_values.get(x_attr)
+                        if x_values is None:
+                            x_values = entry.get(x_attr)
+                        entry_attributes.append((x_attr, x_values))
                 result_entry = pureldap.LDAPSearchResultEntry(
                                             objectName=entry.dn.getText(),
                                             attributes=entry_attributes)
@@ -2463,6 +2540,7 @@ class LDAPServer(object):
         if config.print_timing_results:
             from otpme.lib import debug
             debug.print_timing_result(print_status=True)
+        multiprocessing.cleanup(ignore_thread=True)
         os._exit(0)
 
     def listen(self, use_ssl=False, cert=None, key=None,
@@ -2528,7 +2606,7 @@ class LDAPServer(object):
             msg = _("You need to call listen() first.")
             raise OTPmeException(msg)
         # Handle multiprocessing stuff.
-        multiprocessing.atfork(quiet=True)
+        multiprocessing.atfork(ignore_thread=True, quiet=True)
         # Setup logger.
         self.logger = log.setup_logger(pid=True)
         # FIXME: we need this?

@@ -189,7 +189,7 @@ def signal_handler(_signal, frame):
     logger.info(log_msg)
     os._exit(0)
 
-def atfork(keep_locks=False, quiet=True,
+def atfork(keep_locks=False, quiet=True, ignore_thread=False,
     exit_on_signal=False, signal_method=None):
     """ Do multiprocessing stuff. """
     from otpme.lib import log
@@ -204,10 +204,11 @@ def atfork(keep_locks=False, quiet=True,
     global posix_semaphores
     #proc_thread_id = None
     pid = os.getpid()
-    proc_type = get_proc_type()
-    if proc_type != "process":
-        msg = _("Cannot run this method from within a thread.")
-        raise OTPmeException(msg)
+    if not ignore_thread:
+        proc_type = get_proc_type()
+        if proc_type != "process":
+            msg = _("Cannot run this method from within a thread.")
+            raise OTPmeException(msg)
     # Make sure we use new DB connections. config.session may have been
     # set by the parent with a checked-out connection still bound to the
     # parent's psycopg2 socket -- using it in the child would interleave
@@ -245,7 +246,7 @@ def atfork(keep_locks=False, quiet=True,
     for method in atfork_methods:
         method()
 
-def cleanup(keep_queues=False):
+def cleanup(ignore_thread=False, keep_queues=False):
     """ Do a clean process exit. """
     from otpme.lib import config
     from otpme.lib import backend
@@ -254,10 +255,12 @@ def cleanup(keep_queues=False):
     global message_queues
     global cleanup_methods
     global posix_semaphores
-    proc_type = get_proc_type()
-    if proc_type != "process":
-        msg = _("Cannot run this method from within a thread.")
-        raise OTPmeException(msg)
+
+    if not ignore_thread:
+        proc_type = get_proc_type()
+        if proc_type != "process":
+            msg = _("Cannot run this method from within a thread.")
+            raise OTPmeException(msg)
     # Get logger.
     logger = config.logger
     # Get ID.
@@ -1198,6 +1201,30 @@ class SharedDict(dict):
     def keys(self):
         keys = self._dict.keys()
         return keys
+
+    # Our data lives in self._dict, not in the dict we inherit from,
+    # because add() puts it there. Without these two the inherited ones
+    # would look at the empty dict underneath us and report that we hold
+    # nothing -- and dict() would answer every caller with {}, which for
+    # something like a cache invalidation is the most dangerous wrong
+    # answer there is.
+    def items(self):
+        items = self._dict.items()
+        return items
+
+    def values(self):
+        values = self._dict.values()
+        return values
+
+    def get_multi(self, keys):
+        """ Get many keys at once. Missing ones are left out. """
+        result = {}
+        for x_key in keys:
+            try:
+                result[x_key] = self._dict[x_key]
+            except KeyError:
+                continue
+        return result
 
     def add(self, key, value, **kwargs):
         self._dict[key] = value

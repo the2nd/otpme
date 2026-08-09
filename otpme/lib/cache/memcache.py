@@ -210,6 +210,38 @@ class MemcacheClient(object):
             value = json.loads(value)
         return value
 
+    def get_multi(self, keys):
+        """ Get many keys in one roundtrip.
+
+        Missing keys are simply not in the result, same as memcached
+        answers them.
+        """
+        keys = list(keys)
+        if not keys:
+            return {}
+        try:
+            with self.pool.reserve() as mc:
+                values = mc.get_multi(keys)
+        except (pylibmc.Error, pylibmc.ConnectionError) as e:
+            if not self.connection_error_logged:
+                self.connection_error_logged = True
+                log_msg = _("Memcache get_multi error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+            return {}
+        result = {}
+        for x_key, x_value in values.items():
+            if x_value is None:
+                continue
+            if self.compression:
+                x_value = stuff.decompress(x_value, self.compression)
+            if self.pickle:
+                x_value = self.pickle_handler.loads(x_value)
+            else:
+                x_value = json.loads(x_value)
+            result[x_key] = x_value
+        return result
+
     def set(self, key, value, **kwargs):
         key = key.replace(" ", "_")
         key = key.replace("(", "_")
@@ -429,6 +461,29 @@ class MemcacheDict(SharedDict):
             if key_expire is not None:
                 self.client.touch(_key, key_expire)
         return value
+
+    def get_multi(self, keys):
+        """ Get many keys in one roundtrip.
+
+        Returns what is there, missing keys are simply not in the
+        result. Callers that need all of them have to check. No expiry
+        refresh here: that would be a touch per key and undo the point
+        of asking for them together.
+        """
+        keys = list(keys)
+        if not keys:
+            return {}
+        key_map = {}
+        for x_key in keys:
+            key_map[self.get_key_id(x_key)] = x_key
+        try:
+            values = self.client.get_multi(list(key_map))
+        except Exception:
+            return {}
+        result = {}
+        for x_key, x_value in values.items():
+            result[key_map[x_key]] = x_value
+        return result
 
     def delete(self, key):
         try:

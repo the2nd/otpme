@@ -171,7 +171,6 @@ class OTPmeServer1(object):
             self.require_preauth = False
             self.encrypt_session = False
             self.require_client_cert = False
-            self.peer = backend.get_object(uuid=config.uuid)
         else:
             self.client = net.normalize_ip(self.client)
 
@@ -580,16 +579,19 @@ class OTPmeServer1(object):
 
         # Try to get peer object from client cert.
         if self.client_cn and not self.peer and not config.use_api:
-            try:
-                self.peer = self.get_peer_from_cert()
-            except Exception as e:
-                if self.require_host:
-                    config.raise_exception()
-                    msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
-                    msg = msg.format(error=e)
-                    log_msg = log_msg.format(error=e)
-                    self.logger.warning(log_msg)
-                    raise ServerQuit(msg) from e
+            if self.client.startswith("socket://"):
+                self.peer = backend.get_object(uuid=config.uuid)
+            else:
+                try:
+                    self.peer = self.get_peer_from_cert()
+                except Exception as e:
+                    if self.require_host:
+                        config.raise_exception()
+                        msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
+                        msg = msg.format(error=e)
+                        log_msg = log_msg.format(error=e)
+                        self.logger.warning(log_msg)
+                        raise ServerQuit(msg) from e
             if self.require_host:
                 if not self.peer:
                     msg, log_msg = _("Unknown node/host: {client_cn}", log=True)

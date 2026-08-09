@@ -1190,8 +1190,14 @@ class ControlDaemon(UnixDaemon):
 
     def ensure_daemons(self):
         for x in self.daemons:
-            if self.ensure_daemon(x):
-                continue
+            try:
+                if self.ensure_daemon(x):
+                    continue
+            except Exception as e:
+                log_msg = _("Failed to ensure daemon: {daemon}: {error}", log=True)[1]
+                log_msg = log_msg.format(daemon=x, error=e)
+                self.logger.critical(log_msg)
+                return False
             return False
         return True
 
