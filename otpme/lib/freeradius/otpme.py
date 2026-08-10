@@ -57,6 +57,8 @@ from otpme.lib import mschap
 from otpme.lib import connections
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
+from otpme.lib.audit import get_audit_logger
+from otpme.lib.audit import get_audit_file_logger
 from otpme.lib.register import register_module
 
 # Get logger.
@@ -201,6 +203,13 @@ def authenticate(authData):
 
     # Default return code should be reject.
     return_code = radiusd.RLM_MODULE_REJECT
+
+    # Get audit logger. Without an audit log server there is none, and
+    # then the file is where it goes -- the daemons do the same when
+    # they fork, and an event of ours is worth as much as one of theirs.
+    audit_logger = get_audit_logger()
+    if not audit_logger:
+        audit_logger = get_audit_file_logger()
 
     # Set empty response_tuple and config_tuple. Both will be filled in while
     # processing the request.
@@ -371,13 +380,15 @@ def authenticate(authData):
                                     username,
                                     password,
                                     auth_cache_timeout)
-                    auth_message, log_msg = _("User authenticated for {client} (radius) by cache: {username}", log=True)
-                    auth_message = auth_message.format(client=auth_client.name, username=username)
-                    log_msg = auth_message.format(username=username)
+                    log_msg = _("User authenticated for {client} (radius) by cache: {username}", log=True)[1]
+                    log_msg = log_msg.format(client=auth_client.name, username=username)
                     logger.info(log_msg)
-                    # Get audit logger.
-                    audit_msg = f"{config.daemon_name}: {log_msg}"
-                    config.audit_logger.info(audit_msg)
+                    # We run inside freeradius and are not a daemon, so
+                    # config.daemon_name is None here. The tool name is
+                    # what names us everywhere else in the log.
+                    audit_msg = f"{config.tool_name}: {log_msg}"
+                    if audit_logger:
+                        audit_logger.info(audit_msg)
                     do_auth = False
                     auth_status = True
                 except AuthFailed:

@@ -2383,6 +2383,34 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
         # Get peer.
         self.peer = self.transport.getPeer()
 
+    def refuse_modification(self):
+        """ OTPme objects cannot be changed through LDAP.
+
+        The entry class we serve has no write methods at all, so there
+        was never a way to get a change in. But ldaptor's own handlers
+        do not know that: they walk into the entry, and what comes back
+        is an exception the error response cannot be built from -- the
+        DN as an object where it wants text. That build happens while
+        the response is written, after the errback chain is done, so
+        twisted logs it and nothing goes out at all. The client is left
+        waiting on an answer that never comes, holding its connection.
+        Say no right away instead.
+        """
+        msg = _("Modifying objects via LDAP is not supported.")
+        raise ldaperrors.LDAPUnwillingToPerform(msg)
+
+    def handle_LDAPAddRequest(self, request, controls, response):
+        self.refuse_modification()
+
+    def handle_LDAPDelRequest(self, request, controls, response):
+        self.refuse_modification()
+
+    def handle_LDAPModifyRequest(self, request, controls, response):
+        self.refuse_modification()
+
+    def handle_LDAPModifyDNRequest(self, request, controls, response):
+        self.refuse_modification()
+
     def handle_LDAPBindRequest(self, request, controls, response):
         if request.version != 3:
             msg = _("Version {version} not supported")

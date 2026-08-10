@@ -1,6 +1,15 @@
-/var/log/otpme/*.log
+# OTPme writes its own logs through a WatchedFileHandler. That one
+# stats the file at the start of every write and reopens it once the
+# inode changed, so it follows a rename on its own and nothing needs to
+# be signalled. It also never writes into the rotated file: the reopen
+# happens before the line goes out, not after, so there is nothing left
+# to lose by compressing right away.
+/var/log/otpme/otpme-*.log
+/var/log/otpme/audit.log
+/var/log/otpme/radius-module.log
+/var/log/otpme/pam.log
 {
-	create 600 otpme otpme
+	create 0660 otpme otpme
 	daily
 	compress
 	dateext
@@ -9,5 +18,28 @@
 	missingok
 	notifempty
 	su root root
-	sharedscripts
+}
+
+# postgres, redis, freeradius, mysqld and memcached hold their log open
+# and never hear about the rotation: postgres gets its one as a redirect
+# from pg_ctl, the others name it in their own config, and none of them
+# reopens on a signal we could send here. A rename would leave them
+# writing into the rotated file while the new one stays empty, so these
+# are copied and truncated instead. <create> has no effect that way --
+# the file stays where it is and keeps the permissions it has.
+/var/log/otpme/postgresql.log
+/var/log/otpme/redis.log
+/var/log/otpme/radius.log
+/var/log/otpme/mysqld.log
+/var/log/otpme/memcached.log
+{
+	copytruncate
+	daily
+	compress
+	dateext
+	maxage 365
+	rotate 99
+	missingok
+	notifempty
+	su root root
 }

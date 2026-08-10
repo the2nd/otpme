@@ -23,6 +23,7 @@ from otpme.lib.multiprocessing import register_atfork_method
 from otpme.lib.exceptions import *
 
 audit_loggers = {}
+audit_file_loggers = {}
 
 def emit_audit(prefix, event, level='info', **fields):
     """ Emit a structured audit event.
@@ -54,10 +55,44 @@ def emit_audit(prefix, event, level='info', **fields):
     else:
         audit_logger.info(msg)
 
-def atfork_cleanup():
+def get_audit_file_logger():
+    """ Audit logger writing to file.
+
+    Where no audit log server is configured this is where the events
+    go, so that they are written down somewhere rather than dropped.
+    Cached per process like the one above, because building it opens
+    the file and writes a banner.
+    """
     from otpme.lib import log
+    global audit_file_loggers
+    proc_pid = os.getpid()
+    try:
+        return audit_file_loggers[proc_pid]
+    except KeyError:
+        pass
+    try:
+        audit_logger = log.get_logger(log_name="audit",
+                                    pid=proc_pid,
+                                    banner=True,
+                                    logfile="/var/log/otpme/audit.log",
+                                    level="DEBUG",
+                                    color_logs=False,
+                                    timestamps=True)
+    except Exception as e:
+        # Not being able to write the audit log must not stop whoever
+        # asked for it from doing its job.
+        log_msg = _("Failed to get audit file logger: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        config.logger.warning(log_msg)
+        return
+    audit_file_loggers[proc_pid] = audit_logger
+    return audit_logger
+
+def atfork_cleanup():
     global audit_loggers
+    global audit_file_loggers
     audit_loggers.clear()
+    audit_file_loggers.clear()
     if config.daemon_name == "agent":
         return
     try:
@@ -69,13 +104,7 @@ def atfork_cleanup():
         audit_logger = None
     # If no audit logger is configured, use file logging.
     if not audit_logger:
-        audit_logger = log.get_logger(log_name="audit",
-                                    pid=os.getpid(),
-                                    banner=True,
-                                    logfile="/var/log/otpme/audit.log",
-                                    level="DEBUG",
-                                    color_logs=False,
-                                    timestamps=True)
+        audit_logger = get_audit_file_logger()
     config.audit_logger = audit_logger
 register_atfork_method(atfork_cleanup)
 

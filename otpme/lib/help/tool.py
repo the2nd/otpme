@@ -326,14 +326,14 @@ cmd_help = {
                 },
 
     'index'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool index {start|status|stop|cli|init|drop|fix|rebuild|create_db_indices|drop_db_indices}'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool index {start|status|reload|restart|stop|cli|init|drop|fix|rebuild|create_db_indices|drop_db_indices}'),
                     '_help' :   {
                                     'cmd'                   : _('Execute index command (e.g. rebuild)'),
                                 },
                 },
 
     'cache'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool cache {command}'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool cache {start|status|restart|stop|cli}'),
                     '_help' :   {
                                     'cmd'                   : _('Execute cache command (e.g start)'),
                                 },
