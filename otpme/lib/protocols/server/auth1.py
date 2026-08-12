@@ -258,7 +258,7 @@ class OTPmeAuthP1(OTPmeServer1):
             return
         return user
 
-    def gen_jwt(self, username, token, reason, challenge, access_group=None, sso=False):
+    def gen_jwt(self, username, token, reason, challenge, access_group=None, sso=False, src_token=None):
         if access_group:
             token_accessgroups = token.get_access_groups(return_type="uuid")
             try:
@@ -345,13 +345,19 @@ class OTPmeAuthP1(OTPmeServer1):
                 'accessgroup'       : access_group,
                 'socket_auth'       : config.socket_auth,
                 }
+        if src_token:
+            jwt_data['src_token'] = src_token.uuid
 
         _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
 
         expire_human = datetime.datetime.fromtimestamp(
                             jwt_data['exp']).strftime("%Y-%m-%d %H:%M:%S")
-        log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}, expire={expire}", log=True)[1]
-        log_msg = log_msg.format(username=username, token_name=token.name, access_group=access_group, reason=reason, expire=expire_human)
+        if src_token:
+            log_msg = _("Sigend JWT: user={username} src_token={src_token} token={token_name} access_group={access_group}, reason={reason}, expire={expire}", log=True)[1]
+            log_msg = log_msg.format(username=username, src_token=src_token.rel_path, token_name=token.name, access_group=access_group, reason=reason, expire=expire_human)
+        else:
+            log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}, expire={expire}", log=True)[1]
+            log_msg = log_msg.format(username=username, token_name=token.name, access_group=access_group, reason=reason, expire=expire_human)
         self.logger.info(log_msg)
         return _jwt
 
@@ -398,12 +404,14 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = log_msg.format(command_error=command_error, log_username=self.log_username, log_access_group=self.log_access_group, log_client=self.log_client, log_client_ip=self.log_client_ip, log_auth_mode=self.log_auth_mode, log_auth_type=self.log_auth_type)
             return log_msg
 
-    def authd_redirect_command(self, command, user, command_args, node=None):
+    def authd_redirect_command(self, command, user, command_args, node=None, site=None):
+        if site is None:
+            site = user.site
         try:
             authd_conn = connections.get("authd",
                                         node=node,
                                         realm=config.realm,
-                                        site=user.site,
+                                        site=site,
                                         auto_preauth=True,
                                         auto_auth=False)
         except Exception as e:
@@ -735,6 +743,20 @@ class OTPmeAuthP1(OTPmeServer1):
             'auth_state'    : auth_state,
             'auth_response' : json.dumps(auth_response),
         }
+        # The token that owns the asserted credential. Both paths below
+        # need it: the reauth one verifies against it directly, the
+        # login one hands it to user.authenticate(). It stays None for a
+        # credential we have no name for, which then fails the regular
+        # way.
+        token = None
+        for t in backend.search(object_type="token",
+                                attribute="owner_uuid",
+                                value=user.uuid,
+                                return_type="instance"):
+            if t.token_type in ("fido2", "passkey") and t.name == matched_token_name:
+                token = t
+                break
+
         # Step-up reauth: verify FIDO2 directly on the token (which
         # already enforces counter / replay protection) and bump
         # reauth_time on the existing SSO session. No full
@@ -747,14 +769,6 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(False, {
                     'message': 'Login failed.', 'status': False,
                 })
-            token = None
-            for t in backend.search(object_type="token",
-                                    attribute="owner_uuid",
-                                    value=user.uuid,
-                                    return_type="instance"):
-                if t.token_type in ("fido2", "passkey") and t.name == matched_token_name:
-                    token = t
-                    break
             if token is None:
                 log_msg = _("Reauth: matched FIDO2 token not found.", log=True)[1]
                 self.logger.warning(log_msg)
@@ -815,7 +829,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 realm_login=False,
                 realm_logout=False,
                 smartcard_data=smartcard_data,
-                user_token=matched_token_name,
+                user_token=token,
             )
             auth_status = auth_result['status']
         except Exception as e:
@@ -854,9 +868,71 @@ class OTPmeAuthP1(OTPmeServer1):
             auth_result['app_data'] = app_data
         return self.build_response(True, auth_result)
 
+    def verify_redirect_jwt(self, response, dst_token, src_token,
+        jwt_challenge, jwt_reason):
+        """ Verify the JWT of the site we redirected a verify to.
+
+        We are about to tell whoever asked us that this token verified,
+        and we sign that statement ourselves -- but we did not verify
+        anything, another site did. Its JWT is what we have to go on,
+        so check it before passing its word off as our own.
+        """
+        if not isinstance(response, dict):
+            log_msg = _("Redirected verify answered without data: {token}", log=True)[1]
+            log_msg = log_msg.format(token=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        dst_jwt = response.get('jwt')
+        if not dst_jwt:
+            log_msg = _("Redirected verify answered without a JWT: {token}", log=True)[1]
+            log_msg = log_msg.format(token=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        dst_site = backend.get_object(object_type="site",
+                                    uuid=dst_token.site_uuid)
+        if not dst_site:
+            log_msg = _("Unknown site of destination token: {token}", log=True)[1]
+            log_msg = log_msg.format(token=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        try:
+            jwt_data = jwt.decode(jwt=dst_jwt,
+                                key=dst_site._cert_public_key,
+                                algorithm='RS256')
+        except Exception as e:
+            log_msg = _("JWT of redirected verify failed verification: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return False
+
+        # The challenge and the reason we passed on tie the answer to
+        # this request, the two tokens tie it to what we asked about.
+        checks = [
+                ('challenge', jwt_challenge),
+                ('reason', jwt_reason),
+                ('login_token', dst_token.uuid),
+                ('src_token', src_token.uuid),
+                ]
+        for x_field, x_wanted in checks:
+            if jwt_data.get(x_field) == x_wanted:
+                continue
+            log_msg = _("JWT of redirected verify has wrong {field}: {token}", log=True)[1]
+            log_msg = log_msg.format(field=x_field, token=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        return True
+
     def token_verify(self, user, auth_type, command, command_args,
         password=None, mschap_challenge=None, mschap_response=None,
         smartcard_data=None):
+        try:
+            token_uuid = command_args['token_uuid']
+        except Exception:
+            token_uuid = None
         try:
             jwt_reason = command_args['jwt_reason']
         except Exception:
@@ -900,6 +976,11 @@ class OTPmeAuthP1(OTPmeServer1):
                     'challenge' : mschap_challenge,
                     'response'  : mschap_response,
                     }
+        if command == "token_verify_smartcard":
+            token_verify_parms = {
+                    'auth_type'         : "smartcard",
+                    'smartcard_data'    : smartcard_data,
+                    }
         if command == "token_verify_fido2":
             try:
                 fido2_state_id = command_args.pop('fido2_state_id')
@@ -919,8 +1000,38 @@ class OTPmeAuthP1(OTPmeServer1):
                     'auth_type'     : "smartcard",
                     'smartcard_data': smartcard_data,
                     }
-        auth_token = None
-        user_tokens = user.get_tokens(return_type="instance")
+        verify_token = None
+        if token_uuid:
+            verify_token = backend.get_object(object_type="token",
+                                            uuid=token_uuid)
+            if not verify_token:
+                status = False
+                log_msg = _("Unknown token: {token}.", log=True)[1]
+                log_msg = log_msg.format(token=token_uuid)
+                self.logger.warning(log_msg)
+                message = "AUTH_FAILED"
+                return self.build_response(status, message)
+            # The caller names the user and the token independently of
+            # each other, and nothing tied the two together so far.
+            # Every check made above was made for <user>, so a token of
+            # someone else would decide this request by a credential
+            # the named user never owned.
+            if verify_token.uuid not in user.tokens:
+                emit_audit("AuthZ", "denied",
+                           level='warning',
+                           actor=verify_token.rel_path,
+                           user=user.name,
+                           method='verify_token',
+                           reason='token_owner_mismatch')
+                status = False
+                log_msg = _("Token '{token}' is not a token of user: {user}", log=True)[1]
+                log_msg = log_msg.format(token=verify_token.rel_path, user=user.name)
+                self.logger.warning(log_msg)
+                message = "AUTH_FAILED"
+                return self.build_response(status, message)
+            user_tokens = [verify_token]
+        else:
+            user_tokens = user.get_tokens(return_type="instance")
         # Mirror the fido2_auth_begin gate: on the cross-site verify
         # path (originator redirected here) an assertion signed with a
         # passkey must not be accepted when the user's cascade doesn't
@@ -964,14 +1075,66 @@ class OTPmeAuthP1(OTPmeServer1):
                 message = message.format(access_group=jwt_access_group)
                 return self.build_response(status, message)
             jwt_ag = result[0]
+        src_token = None
+        dst_token = None
+        auth_token = None
+        redirect_response = None
         for x_token in user_tokens:
+            # Whose assignment this is asks about the token that was
+            # selected, not about the one holding the secret: a link is
+            # what gets assigned to an accessgroup, what its destination
+            # is assigned to is a matter for the site that owns it.
+            # Checked before the link is resolved, so that both cases
+            # below are judged by the same token.
+            if jwt_access_group:
+                if not jwt_ag.is_assigned_token(x_token.uuid):
+                    continue
+            if x_token.destination_token:
+                if not x_token.dst_token:
+                    continue
+                dst_token = x_token.dst_token
+                if dst_token.site == config.site:
+                    src_token = x_token
+                    x_token = dst_token
+                else:
+                    verify_args = command_args.copy()
+                    # The accessgroup belongs to whoever asked us, and
+                    # the token assigned to it is the link we just
+                    # checked. The next site holds neither of the two,
+                    # so passing it on would only make it judge a token
+                    # that was never assigned there.
+                    try:
+                        verify_args.pop("jwt_access_group")
+                    except KeyError:
+                        pass
+                    verify_args['token_uuid'] = x_token.uuid
+                    status, \
+                    response = self.authd_redirect_command(command=command,
+                                                    user=user,
+                                                    command_args=verify_args,
+                                                    site=dst_token.site)
+                    if not status:
+                        continue
+                    if not self.verify_redirect_jwt(response, dst_token,
+                                                x_token, jwt_challenge,
+                                                jwt_reason):
+                        continue
+                    # Verified by another site, so whatever we hand back
+                    # has to come out of its answer -- verify() never
+                    # ran here, and <verify_status> holds nothing of
+                    # this token.
+                    redirect_response = response
+                    auth_token = x_token
+                    break
             if command == "token_verify":
                 if x_token.pass_type != "static":
                     if x_token.pass_type != "otp":
-                        if not x_token.support_dot1x:
-                            continue
+                        continue
             if command == "token_verify_mschap":
                 if not x_token.mschap_enabled:
+                    continue
+            if command == "token_verify_smartcard":
+                if x_token.pass_type != "smartcard":
                     continue
             if command == "token_verify_fido2":
                 if x_token.token_type not in ("fido2", "passkey"):
@@ -980,9 +1143,6 @@ class OTPmeAuthP1(OTPmeServer1):
                     continue
             if dot1x_auth:
                 if not x_token.support_dot1x:
-                    continue
-            if jwt_access_group:
-                if not jwt_ag.is_assigned_token(x_token.uuid):
                     continue
             if dot1x_auth:
                 try:
@@ -1014,14 +1174,20 @@ class OTPmeAuthP1(OTPmeServer1):
             break
 
         # Try temp password.
-        if not auth_token and password:
+        if not auth_token \
+        and (command == "token_verify_mschap" or command == "token_verify"):
             for x_token in user_tokens:
+                _verify_token = x_token
+                if x_token.destination_token:
+                    if not x_token.dst_token:
+                        continue
+                    _verify_token = x_token.dst_token
                 if command == "token_verify_mschap":
                     try:
-                        verify_status = x_token.verify(temp=True, **token_verify_parms)
+                        verify_status = _verify_token.verify(temp=True, **token_verify_parms)
                     except Exception as e:
                         log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
-                        log_msg = log_msg.format(token_name=x_token.name, error=e)
+                        log_msg = log_msg.format(token_name=_verify_token.name, error=e)
                         self.logger.critical(log_msg)
                         continue
                 else:
@@ -1030,10 +1196,10 @@ class OTPmeAuthP1(OTPmeServer1):
                             'password'          : password,
                             }
                     try:
-                        verify_status = x_token.verify_temp_password(**token_verify_parms)
+                        verify_status = _verify_token.verify_temp_password(**token_verify_parms)
                     except Exception as e:
                         log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
-                        log_msg = log_msg.format(token_name=x_token.name, error=e)
+                        log_msg = log_msg.format(token_name=_verify_token.name, error=e)
                         self.logger.critical(log_msg)
                         continue
 
@@ -1044,7 +1210,8 @@ class OTPmeAuthP1(OTPmeServer1):
                 elif verify_status is not True:
                     continue
 
-                auth_token = x_token
+                auth_token = _verify_token
+                src_token = x_token
                 break
 
         _jwt = None
@@ -1054,6 +1221,7 @@ class OTPmeAuthP1(OTPmeServer1):
             try:
                 _jwt = self.gen_jwt(username=auth_token.owner,
                                     token=auth_token,
+                                    src_token=src_token,
                                     reason=jwt_reason,
                                     access_group=jwt_access_group,
                                     challenge=jwt_challenge)
@@ -1063,14 +1231,34 @@ class OTPmeAuthP1(OTPmeServer1):
                 message = message.format(e=e)
                 return self.build_response(status, message)
             nt_key = None
-            if command == "token_verify_mschap":
+            pass_hash = None
+            if command == "token_verify_mschap" and redirect_response:
+                # The site that verified it already decided what it is
+                # willing to give out, so pass its answer along.
+                nt_key = redirect_response.get('nt_key')
+                pass_hash = redirect_response.get('pass_hash')
+            elif command == "token_verify_mschap":
                 nt_key = verify_status[1]
+                # The third element of the tuple is a one time value for
+                # one time tokens -- the clear text OTP, or the hash of
+                # the code we pushed. Both are spent with this
+                # verification, so they can go back and let the caller
+                # build the session hash it needs to let the client
+                # present the same OTP again.
+                #
+                # For a static token it is the NT hash instead, which
+                # answers any future challenge on its own. That one
+                # stays here: whoever is allowed to hold it syncs the
+                # token anyway and has no reason to ask us.
+                if auth_token.pass_type in ("otp", "otp_push"):
+                    pass_hash = verify_status[2]
             sso_jwt = None
             if sso_login and sso_ag:
                 # Gen jwt for SSO auth.
                 try:
                     sso_jwt = self.gen_jwt(username=user.name,
                                         token=auth_token,
+                                        src_token=src_token,
                                         reason="SSO_AUTH",
                                         challenge=sso_challenge,
                                         access_group=sso_ag,
@@ -1085,9 +1273,11 @@ class OTPmeAuthP1(OTPmeServer1):
                         'login_token'   : auth_token.rel_path,
                         'message'       : "Token successfully verified.",
                         'nt_key'        : nt_key,
+                        'pass_hash'     : pass_hash,
                         'sso_jwt'       : sso_jwt,
                         'jwt'           : _jwt,
                         }
+
             log_msg = _("Token verified successful: {token}", log=True)[1]
             log_msg = log_msg.format(token=auth_token.rel_path)
             self.logger.info(log_msg)
@@ -1404,6 +1594,7 @@ class OTPmeAuthP1(OTPmeServer1):
                             "get_jwt",
                             "token_verify",
                             "token_verify_mschap",
+                            "token_verify_smartcard",
                             "token_verify_fido2",
                             "verify_static",
                             "verify_mschap",
@@ -1577,6 +1768,8 @@ class OTPmeAuthP1(OTPmeServer1):
             auth_type = "mschap"
         if command == "token_verify_fido2":
             auth_type = "smartcard"
+        if command == "token_verify_smartcard":
+            auth_type = "smartcard"
         if command == "fido2_auth_begin":
             auth_type = "smartcard"
         if command == "fido2_auth_complete":
@@ -1655,34 +1848,12 @@ class OTPmeAuthP1(OTPmeServer1):
             message = _("Cross realm auth not supported yet.")
             return self.build_response(status, message)
 
-        redirect_connection = False
-        if user.site != config.site:
-            try:
-                stuff.get_site_trust_status(user.realm, user.site)
-            except SiteNotTrusted:
-                redirect_connection = True
-        if oidc_login:
-            redirect_connection = False
-        if sso_logout:
-            redirect_connection = False
-
         # Set proctitle to contain username.
         self.set_proctitle(username)
 
-        # Do redirected authentication.
-        if redirect_connection:
-            return self.do_redirect_auth(user=user,
-                                        auth_type=auth_type,
-                                        sso_challenge=sso_challenge,
-                                        password=password,
-                                        mschap_challenge=mschap_challenge,
-                                        mschap_response=mschap_response,
-                                        access_group=access_group,
-                                        client=client,
-                                        client_ip=client_ip)
-
         if command == "token_verify" \
         or command == "token_verify_mschap" \
+        or command == "token_verify_smartcard" \
         or command == "token_verify_fido2":
             if self.peer.type != "node":
                 status = status_codes.PERMISSION_DENIED
@@ -1696,6 +1867,29 @@ class OTPmeAuthP1(OTPmeServer1):
                                     mschap_challenge=mschap_challenge,
                                     mschap_response=mschap_response,
                                     smartcard_data=smartcard_data)
+
+        redirect_connection = False
+        if user.site != config.site:
+            try:
+                stuff.get_site_trust_status(user.realm, user.site)
+            except SiteNotTrusted:
+                redirect_connection = True
+        if oidc_login:
+            redirect_connection = False
+        if sso_logout:
+            redirect_connection = False
+
+        # Do redirected authentication.
+        if redirect_connection:
+            return self.do_redirect_auth(user=user,
+                                        auth_type=auth_type,
+                                        sso_challenge=sso_challenge,
+                                        password=password,
+                                        mschap_challenge=mschap_challenge,
+                                        mschap_response=mschap_response,
+                                        access_group=access_group,
+                                        client=client,
+                                        client_ip=client_ip)
 
         return self.auth_user(user=user,
                             auth_type=auth_type,

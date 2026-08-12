@@ -452,7 +452,7 @@ cmd_help = {
                 },
 
     'show_sessions'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool show_sessions'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool show_sessions [login_pid]'),
                     '_help' :   {
                                     'cmd'                   : _('Get otpme-agent login sessions.'),
                                 },

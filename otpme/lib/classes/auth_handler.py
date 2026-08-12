@@ -18,6 +18,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_pass
+from otpme.lib import connections
 from otpme.lib.humanize import units
 from otpme.lib.encryption.ec import ECKey
 from otpme.lib.encoding.base import decode
@@ -333,8 +334,10 @@ class AuthHandler(object):
 
         # Make sure we use the destination token for linked tokens.
         if self.auth_token.destination_token:
-            if self.auth_token.dst_token:
-                self.verify_token = self.auth_token.dst_token
+            # Once: the property asks the backend on every access.
+            dst_token = self.auth_token.dst_token
+            if dst_token:
+                self.verify_token = dst_token
             else:
                 log_msg = _("Token '{token_name}' is missing its destination token.", log=True)[1]
                 log_msg = log_msg.format(token_name=self.auth_token.name)
@@ -369,21 +372,29 @@ class AuthHandler(object):
         master_group = self.auth_group.get_master_group()
         if not self.found_sotp and not self.auth_session:
             if master_group:
+                # Whose assignment this is asks about the token that was
+                # used here, not about the one holding the secret: a
+                # link is what gets assigned to our accessgroups, and
+                # what the destination is assigned to is a matter for
+                # the site that owns it. Same as the accessgroup check
+                # further down.
                 if master_group.name == config.sso_access_group:
-                    if self.verify_token.uuid in master_group.tokens:
+                    if self.auth_token.uuid in master_group.tokens:
                         log_msg = _("Token {token} is assigned to SSO accessgroup. Auth will fail.", log=True)[1]
-                        log_msg = log_msg.format(token=self.verify_token.rel_path)
+                        log_msg = log_msg.format(token=self.auth_token.rel_path)
                         self.logger.warning(log_msg)
                         self.auth_failed = True
                         self.count_fails = False
-                        self.auth_message
                         self.auth_message = "AUTH_FAILED"
                         return
 
-        # Check token policies.
+        # Check token policies. Of the token used here, same as in
+        # verify_user_token(): the policies of a destination token
+        # belong to the site that owns it, ours are the ones on the
+        # link.
         if self.check_policies:
             try:
-                self.verify_token.run_policies("authenticate")
+                self.auth_token.run_policies("authenticate")
             except PolicyException as e:
                 log_msg = str(e)
                 self.logger.warning(log_msg)
@@ -472,7 +483,7 @@ class AuthHandler(object):
         if self.found_sotp:
             config.auth_type = "sotp"
         else:
-            config.auth_type = "token"
+            config.auth_type = "session"
 
         # On session logout we are done here.
         if self.session_logout:
@@ -1063,34 +1074,22 @@ class AuthHandler(object):
         if self.auth_status is True:
             return
 
-        if self.user_token:
+        if self.user_token or self.src_token:
             # If a token was given load it.
-            token = self.user.token(self.user_token)
+            if self.src_token:
+                token = self.src_token
+            else:
+                token = self.user_token
             if not token:
                 msg = _("Token does not exist: {user_token}")
-                msg = msg.format(user_token=self.user_token)
+                msg = msg.format(user_token=token.rel_path)
                 raise OTPmeException(msg)
 
             log_msg = _("Verifying token from request: {token_path}", log=True)[1]
             log_msg = log_msg.format(token_path=token.rel_path)
             self.logger.debug(log_msg)
 
-            # Make sure we resolve token links.
-            if token.destination_token:
-                if not token.dst_token:
-                    log_msg = _("Token '{token_name}' is missing its destination token.", log=True)[1]
-                    log_msg = log_msg.format(token_name=token.name)
-                    self.logger.error(log_msg)
-                    # This should normally not happen and is probably a
-                    # configuration error.
-                    self.auth_failed = True
-                    self.auth_message = "AUTH_CONFIG_ERROR"
-                    return
-                verify_token = token.dst_token
-            else:
-                verify_token = token
-
-            token_pass_type = verify_token.pass_type
+            token_pass_type = token.pass_type
             if token_pass_type == "ssh_key":
                 if self.auth_type == "ssh":
                     self.valid_user_tokens_ssh = [ token ]
@@ -1106,6 +1105,8 @@ class AuthHandler(object):
                 self.valid_user_tokens_script_otp = [ token ]
             if token_pass_type == "otp_push":
                 self.valid_user_tokens_otp_push = [ token ]
+            if token_pass_type == "link":
+                self.valid_user_tokens_link = [ token ]
 
         else:
             log_msg = _("Selecting user tokens based on access_group '{access_group}'", log=True)[1]
@@ -1113,7 +1114,7 @@ class AuthHandler(object):
             self.logger.debug(log_msg)
 
             # Make sure we honor self.require_pass_types when selecting tokens.
-            select_tokens = ['otp', 'ssh', 'static', 'smartcard', 'dot1x']
+            select_tokens = ['otp', 'ssh', 'static', 'smartcard', 'dot1x', 'link']
             if self.auth_mode == "static" or self.auth_mode == "auto":
                 if self.require_pass_types \
                 and "static" not in self.require_pass_types:
@@ -1196,6 +1197,7 @@ class AuthHandler(object):
                                                 access_group=ag,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
+                                                resolv_token_links=False,
                                                 return_type="instance",
                                                 quiet=False)
                 for token in ag_tokens:
@@ -1223,6 +1225,8 @@ class AuthHandler(object):
                         self.valid_user_tokens_ssh.append(token)
                     if token.pass_type == "smartcard":
                         self.valid_user_tokens_smartcard.append(token)
+                    if token.pass_type == "link":
+                        self.valid_user_tokens_link.append(token)
 
         # If no token was found log it and set authentication failed.
         if not self.valid_user_tokens_static \
@@ -1231,6 +1235,7 @@ class AuthHandler(object):
         and not self.valid_user_tokens_script_otp \
         and not self.valid_user_tokens_otp_push \
         and not self.valid_user_tokens_smartcard \
+        and not self.valid_user_tokens_link \
         and not self.valid_user_tokens_dot1x \
         and not self.valid_user_tokens_ssh \
         and not self.temp_pass_tokens \
@@ -1296,15 +1301,34 @@ class AuthHandler(object):
             return None
 
         # Make sure we use the destination token for linked tokens.
+        dst_token = None
+        _verify_token = token
         if token.destination_token:
-            if not token.dst_token.enabled:
+            # Once: the property asks the backend on every access.
+            dst_token = token.dst_token
+            if not dst_token:
+                log_msg = _("Token '{token_name}' is missing its destination token.", log=True)[1]
+                log_msg = log_msg.format(token_name=token.name)
+                self.logger.error(log_msg)
+                # This should normally not happen and is probably a
+                # configuration error.
+                self.auth_failed = True
+                self.auth_message = "AUTH_CONFIG_ERROR"
+                return None
+            if not dst_token.enabled:
                 log_msg = _("Not verifying disabled destination token: {token_path}", log=True)[1]
-                log_msg = log_msg.format(token_path=token.dst_token.rel_path)
+                log_msg = log_msg.format(token_path=dst_token.rel_path)
                 self.logger.debug(log_msg)
                 return None
-            _verify_token = token.dst_token
-        else:
-            _verify_token = token
+            # The destination token is what everything below reads to
+            # decide what kind of credential is being verified -- which
+            # parameters the request needs, whether dot1x is possible,
+            # what auth mode this ends up being. That is true no matter
+            # which site holds it; only its secret cannot be checked
+            # here. What belongs to us instead of to the credential
+            # (VLAN, policies) reads self.auth_token, which stays the
+            # link.
+            _verify_token = dst_token
 
         # Check for a second factor token.
         if _verify_token.second_factor_token_enabled:
@@ -1391,38 +1415,136 @@ class AuthHandler(object):
         log_msg = log_msg.format(token_type=token.token_type, token_path=token.rel_path)
         self.logger.debug(log_msg)
 
-        if temp:
-            # Try to verify token. A status of None means continue to next token.
-            verify_status = self.try_temp_pass_auth(_verify_token,
-                                                token_verify_parms)
-        else:
-            if do_dot1x_auth:
-                try:
-                    verify_status = _verify_token.verify_dot1x(**token_verify_parms)
-                except Exception as e:
-                    log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
-                    log_msg = log_msg.format(token_name=token.name, error=e)
-                    self.logger.critical(log_msg)
-                    config.raise_exception()
-            else:
-                try:
-                    verify_status = _verify_token.verify(**token_verify_parms)
-                except Exception as e:
-                    log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
-                    log_msg = log_msg.format(token_name=token.name, error=e)
-                    self.logger.critical(log_msg)
-                    config.raise_exception()
+        # Only a destination token on another site has to be verified
+        # there. One of our own is verified right here like any other
+        # token -- <_verify_token> is it already.
+        if dst_token and dst_token.site != config.site:
+            jwt_challenge = stuff.gen_secret(32)
+            jwt_access_group = f"{config.site}/{self.access_group}"
+            verify_args = token_verify_parms.copy()
+            verify_args['username'] = self.user.name
+            verify_args['token_uuid'] = token.uuid
+            verify_args['jwt_reason'] = "DST_TOKEN_VERIFY"
+            verify_args['jwt_access_group'] = jwt_access_group
+            verify_args['jwt_challenge'] = jwt_challenge
+            verify_args['dot1x_auth'] = do_dot1x_auth
+            verify_args['client'] = self.client
+            verify_args['client_ip'] = self.client_ip
+            verify_command = "token_verify"
+            if self.auth_type == "clear-text":
+                verify_args['password'] = self.password
+            if self.auth_type == "mschap":
+                verify_command = "token_verify_mschap"
+                verify_args['challenge'] = self.challenge
+                verify_args['response'] = self.response
+            if dst_token.token_type == "fido2":
+                verify_command = "token_verify_smartcard"
+                verify_args['smartcard_data'] = self.smartcard_data
+            if dst_token.pass_type == "smartcard":
+                verify_command = "token_verify_smartcard"
+                verify_args['smartcard_data'] = self.smartcard_data
+            try:
+                authd_conn = connections.get("authd",
+                                            realm=config.realm,
+                                            site=dst_token.site,
+                                            auto_preauth=True,
+                                            auto_auth=False)
+            except Exception as e:
+                log_msg = _("Link token redirect connection failed: {token}: {e}", log=True)[1]
+                log_msg = log_msg.format(token=dst_token.rel_path, e=e)
+                self.logger.warning(log_msg)
+                return None
+            try:
+                verify_status, \
+                status_code, \
+                response, \
+                binary_data = authd_conn.send(command=verify_command,
+                                            command_args=verify_args)
+            except Exception as e:
+                log_msg = _("Link token redirect command failed: {token}: {command}", log=True)[1]
+                log_msg = log_msg.format(token=dst_token.rel_path,
+                                        command=verify_command)
+                log_msg = f"{log_msg}: {e}"
+                self.logger.warning(log_msg)
+                return None
+            finally:
+                authd_conn.close()
 
-        if self.auth_type == "mschap":
-            # For OTP tokens verify() returns a tuple with verify status,
-            # clear-text OTP, and NT_KEY. For static password tokens the
-            # password hash is returned instead of the OTP.
-            mschap_status = verify_status
-            # Get status from return value.
-            if isinstance(mschap_status, tuple):
-                verify_status = mschap_status[0]
+            if verify_status is not True:
+                # send() turns everything that is not OK into False, and
+                # False means "this token failed for good" down below,
+                # which ends the whole request. The other site cannot
+                # tell us that much anyway: a token that simply did not
+                # match answers with the same "Auth failed" as a denied
+                # permission or a rejected accessgroup. So treat it the
+                # way a local verify() treats a password that does not
+                # match -- not this token, try the next one.
+                log_msg = _("Link token not verified by its site: {token_path}: {status_code}", log=True)[1]
+                log_msg = log_msg.format(token_path=dst_token.rel_path,
+                                        status_code=status_code)
+                self.logger.info(log_msg)
+                return None
+
+            if not self.verify_dst_token_jwt(response.get('jwt'),
+                                            dst_token, jwt_challenge):
+                return None
+
+            if self.auth_type == "mschap":
+                # Same shape the local verify() would have returned, so
+                # that everything below reads it the same way: status,
+                # NT_KEY, and the one time value the session hash is
+                # built from. With get(): a site that still runs an
+                # older version answers without these and would
+                # otherwise take the request down with a KeyError.
+                mschap_status = (verify_status,
+                                response.get('nt_key'),
+                                response.get('pass_hash'))
+                if mschap_status[2] is None:
+                    # A session stores that value as its hash and
+                    # rebuilds the MSCHAP response from it on the next
+                    # request. Without one it would match nothing and
+                    # log a critical per request, so do not make one --
+                    # every request goes to the destination site
+                    # instead. A static token gets here: its hash
+                    # answers any future challenge and therefore stays
+                    # where it belongs.
+                    log_msg = _("No session for '{token_path}': its site keeps the password hash.", log=True)[1]
+                    log_msg = log_msg.format(token_path=dst_token.rel_path)
+                    self.logger.info(log_msg)
+                    self.create_sessions = False
+        else:
+            if temp:
+                # Try to verify token. A status of None means continue to next token.
+                verify_status = self.try_temp_pass_auth(_verify_token,
+                                                    token_verify_parms)
             else:
-                verify_status = mschap_status
+                if do_dot1x_auth:
+                    try:
+                        verify_status = _verify_token.verify_dot1x(**token_verify_parms)
+                    except Exception as e:
+                        log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                        log_msg = log_msg.format(token_name=token.name, error=e)
+                        self.logger.critical(log_msg)
+                        config.raise_exception()
+                else:
+                    try:
+                        verify_status = _verify_token.verify(**token_verify_parms)
+                    except Exception as e:
+                        log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                        log_msg = log_msg.format(token_name=token.name, error=e)
+                        self.logger.critical(log_msg)
+                        config.raise_exception()
+
+            if self.auth_type == "mschap":
+                # For OTP tokens verify() returns a tuple with verify status,
+                # clear-text OTP, and NT_KEY. For static password tokens the
+                # password hash is returned instead of the OTP.
+                mschap_status = verify_status
+                # Get status from return value.
+                if isinstance(mschap_status, tuple):
+                    verify_status = mschap_status[0]
+                else:
+                    verify_status = mschap_status
 
         if verify_status is None:
             # If we got "None" as status token verification was not successful
@@ -1437,14 +1559,15 @@ class AuthHandler(object):
         # If status is not None we found token of this request.
         self.auth_token = token
         self.verify_token = _verify_token
-        if self.found_sotp:
-            config.auth_type = "sotp"
-        else:
-            config.auth_type = "token"
 
-        # Get VLAN we will return in rlm_python module.
+        # Get VLAN we will return in rlm_python module. From the token
+        # that was selected here, not from the one holding the secret:
+        # for a link token the VLAN says which network this site grants
+        # this access, and the link is what lives here and is assigned
+        # to our accessgroup. Both are the same object for a token
+        # without a link.
         if do_dot1x_auth:
-            self.vlan = self.get_vlan(self.verify_token)
+            self.vlan = self.get_vlan(self.auth_token)
 
         # Verify auth token.
         if not self.auth_failed:
@@ -1466,26 +1589,10 @@ class AuthHandler(object):
             if not self.password_hash:
                 self.gen_pass_hash()
 
-        # Check token policies.
-        if self.check_policies:
-            try:
-                self.verify_token.run_policies("authenticate")
-            except PolicyException as e:
-                log_msg = str(e)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.count_fails = False
-                self.auth_message = "AUTH_DENIED_BY_POLICY"
-                return False
-            except Exception as e:
-                config.raise_exception()
-                log_msg = _("Internal server error", log=True)[1]
-                log_msg = f"{log_msg}: {e}"
-                self.logger.critical(log_msg)
-                self.auth_failed = True
-                self.count_fails = False
-                self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
-                return False
+        # The "authenticate" policies ran in verify_auth_token() above,
+        # which every path into here goes through -- session, JWT and
+        # this one. Running them a second time here would run them
+        # twice per request.
 
         # otp_push tokens need special handling.
         if self.verify_token.pass_type == "otp_push" and verify_status:
@@ -1680,6 +1787,8 @@ class AuthHandler(object):
         # At this point token verification was successful!
         # Set auth status.
         self.auth_status = True
+        # Set global auth type.
+        config.auth_type = "token"
 
         # Handle non-realm login requests.
         log_msg = _("Token '{token_name}' verified successful.", log=True)[1]
@@ -1748,8 +1857,63 @@ class AuthHandler(object):
             if token_status is False:
                 self.auth_failed = True
                 return False
+            # A token may fail the request without saying so through its
+            # status: a policy that denies it, a missing destination
+            # token. Trying the next one then hands the request a second
+            # chance it must not get.
+            if self.auth_failed:
+                return False
         # Default should be None (e.g. no valid token found)
         return None
+
+    def verify_dst_token_jwt(self, dst_jwt, dst_token, jwt_challenge):
+        """ Verify the JWT the destination site signed for us.
+
+        The site key it is signed with says the answer came from that
+        site and not from something in between, and the challenge we
+        put in says it belongs to this request rather than to one
+        recorded earlier. Only checking it makes either worth sending.
+        """
+        if not dst_jwt:
+            log_msg = _("Link token verify response has no JWT: {token_path}", log=True)[1]
+            log_msg = log_msg.format(token_path=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        dst_site = backend.get_object(object_type="site",
+                                    uuid=dst_token.site_uuid)
+        if not dst_site:
+            log_msg = _("Unknown site of destination token: {token_path}", log=True)[1]
+            log_msg = log_msg.format(token_path=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        try:
+            jwt_data = jwt.decode(jwt=dst_jwt,
+                                key=dst_site._cert_public_key,
+                                algorithm='RS256')
+        except Exception as e:
+            log_msg = _("JWT of destination token site failed verification: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return False
+
+        # What we asked for has to be what came back.
+        checks = [
+                ('challenge', jwt_challenge),
+                ('reason', "DST_TOKEN_VERIFY"),
+                ('login_token', dst_token.uuid),
+                ]
+        for x_field, x_wanted in checks:
+            x_got = jwt_data.get(x_field)
+            if x_got == x_wanted:
+                continue
+            log_msg = _("JWT of destination token site has wrong {field}: {token_path}", log=True)[1]
+            log_msg = log_msg.format(field=x_field, token_path=dst_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+
+        return True
 
     def verify_jwt(self):
         """ Verify received JWT. """
@@ -2316,11 +2480,12 @@ class AuthHandler(object):
         login_interface=None, reneg=None, reneg_salt=None, rsp_hash_type=None,
         unlock=False, session_logout=False, password=None, challenge=None,
         response=None, smartcard_data=None, client=None, client_ip=None,
-        access_group=None, user_token=None, count_fails=None, host_type=None,
-        host=None, host_ip=None, replace_sessions=None, require_token_types=None,
-        require_pass_types=None, redirect_challenge=None, jwt_auth=False,
-        authorize_host=True, allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
-        jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
+        access_group=None, user_token=None, src_token=None, count_fails=None,
+        host_type=None, host=None, host_ip=None, replace_sessions=None,
+        require_token_types=None, require_pass_types=None, redirect_challenge=None,
+        jwt_auth=False, authorize_host=True, allow_sotp_reuse=False,
+        redirect_response=None, gen_jwt=None, jwt_challenge=None,
+        rsp_ecdh_client_pub=None, verify_host=True,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
         auth_group=None, auth_client=None, oidc_context=False, oidc_scope="",
         oidc_nonce=None, oidc_redirect_uri=None, oidc_code_challenge=None,
@@ -2391,6 +2556,7 @@ class AuthHandler(object):
                 'host_ip'                   : host_ip,
                 'host_type'                 : host_type,
                 'user_token'                : user_token,
+                'src_token'                 : src_token,
                 'rsp_ecdh_client_pub'       : rsp_ecdh_client_pub,
                 'client_offline_enc_type'   : client_offline_enc_type,
                 }
@@ -2406,6 +2572,7 @@ class AuthHandler(object):
         self.user_is_admin = False
         self.password = string_vars['password']
         self.user_token = string_vars['user_token']
+        self.src_token = string_vars['src_token']
         self.peer = peer
         self.challenge = string_vars['challenge']
         self.response = string_vars['response']
@@ -2531,6 +2698,8 @@ class AuthHandler(object):
         # Will hold a list of user smartcard tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_smartcard = []
+        # Will hold all link tokens.
+        self.valid_user_tokens_link = []
         # Will hold a list of user dot1x tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_dot1x = []
@@ -2920,6 +3089,13 @@ class AuthHandler(object):
                 log_msg = _("Verifying script_otp tokens...", log=True)[1]
                 self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
+
+        # Verify link tokens.
+        if not self.auth_failed and self.auth_status is False:
+            if self.valid_user_tokens_link:
+                log_msg = _("Verifying link tokens...", log=True)[1]
+                self.logger.debug(log_msg)
+                self.verify_user_tokens(tokens=self.valid_user_tokens_link)
 
         if not self.auth_failed and self.auth_status is False:
             if self.temp_pass_tokens:

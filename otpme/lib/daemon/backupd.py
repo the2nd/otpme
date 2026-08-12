@@ -260,6 +260,14 @@ class BackupDaemon(OTPmeDaemon):
                     self.logger.warning(log_msg)
                     continue
                 if backup_age < backup_interval:
+                    # The interval holds off a second run within the same
+                    # window, and only that. Where the last one started
+                    # outside the window we have now it belonged to a
+                    # different one -- someone moved backup_time for a
+                    # while and a backup ran while it was moved. That one
+                    # does not count against this window, so let the
+                    # regular run happen even though the interval is not
+                    # up yet.
                     last_backup = datetime.fromtimestamp(o.last_backup).time()
                     if self.in_backup_window(last_backup, start_time, end_time):
                         continue

@@ -1902,9 +1902,33 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             try:
                 object_data = copy_ldif_data(global_ldif_cache[read_oid]['data'])
             except Exception:
+                object_data = None
+
+            if object_data is None:
+                # Filling global_ldif_cache is a side effect of the
+                # search above, and the search caches its own result --
+                # so one that answers from that cache fills in nothing.
+                # Both caches are dropped when an object changes, but
+                # not by the same signal: the search cache goes on a
+                # clear trigger, this one per OID through
+                # sync_outdated_objects(). Where the OID is dropped
+                # after the search cache was refilled we end up here
+                # with the object sitting in the backend, in no cache,
+                # and a search that does not go looking for it. So ask
+                # once more, this time without its cache.
+                self._search_otpme(object_type=object_type,
+                                    attribute="read_oid",
+                                    value=read_oid,
+                                    _no_func_cache=True)
+                try:
+                    object_data = copy_ldif_data(global_ldif_cache[read_oid]['data'])
+                except Exception:
+                    object_data = None
+
+            if object_data is None:
                 msg = _("Unknown object: {oid}")
                 msg = msg.format(oid=read_oid)
-                raise UnknownObject(msg) from None
+                raise UnknownObject(msg)
 
         object_ldif = object_data['ldif']
         if not object_ldif:
@@ -1980,8 +2004,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     @ldap_search_cache.cache_method()
     def _search_otpme(self, attribute=None, value=None, attributes=None,
         object_type=None, less_than=None, greater_than=None,
-        size_limit=1024, scope="one", verify_acls=True):
-        """ Search OTPme objects. """
+        size_limit=1024, scope="one", verify_acls=True, **kwargs):
+        """ Search OTPme objects.
+
+        The kwargs are for <_no_func_cache>, which the cache decorator
+        reads but hands down to us as well.
+        """
         global global_ldif_cache
         global uuid_to_oid
         search_attributes = {

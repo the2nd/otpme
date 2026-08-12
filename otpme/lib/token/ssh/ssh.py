@@ -398,7 +398,6 @@ class SshToken(Token):
         self.keep_session = False
         self.signable = True
         self.signatures = {}
-        self.cross_site_links = True
         self.need_password = True
         self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
@@ -1020,9 +1019,6 @@ class SshToken(Token):
             # Get public key from private key if not given.
             if not public_key:
                 public_key = rsa_key.ssh_public_key.split(" ")[1]
-            # We cannot support cross site token links if the token includes
-            # a SSH private key.
-            self.cross_site_links = False
 
         msg = _("Setting SSH public key to token: {rel_path}")
         msg = msg.format(rel_path=self.rel_path)

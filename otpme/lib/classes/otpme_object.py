@@ -1109,6 +1109,30 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.unit = unit_oid.rel_path
         self.unit_uuid = unit_uuid
 
+    def get_sync_relationship(self, peer):
+        """ How much of this object the given peer may see.
+
+        A trusted node syncs the whole object, secrets included, so
+        anything it could read that way is not worth withholding from
+        it elsewhere. An untrusted one gets what <sync_fields> lists
+        for it and nothing more.
+        """
+        # Check if this object is from peers site.
+        if peer.site_uuid == self.site_uuid:
+            return "trusted"
+        # Check if this object is peers site.
+        if peer.site_uuid == self.uuid:
+            return "trusted"
+        # Check if peer is from our site.
+        if peer.site_uuid == config.site_uuid:
+            return "trusted"
+        # Check if peer is from one of our trusted sites.
+        our_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        if peer.site_uuid in our_site.trusted_sites:
+            return "trusted"
+        return "untrusted"
+
     def get_sync_config(self, peer):
         """
         Get object config with fields selected by sync peer type (e.g.
@@ -1126,22 +1150,7 @@ class OTPmeBaseObject(OTPmeLockObject):
             if peer.uuid == self.uuid:
                 return sync_config
 
-        relationship = "untrusted"
-        # Check if this object is from peers site.
-        if peer.site_uuid == self.site_uuid:
-            relationship = "trusted"
-        # Check if this object is peers site.
-        elif peer.site_uuid == self.uuid:
-            relationship = "trusted"
-        # Check if peer is from our site.
-        elif peer.site_uuid == config.site_uuid:
-            relationship = "trusted"
-        else:
-            # Check if peer is from one of our trusted sites.
-            our_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-            if peer.site_uuid in our_site.trusted_sites:
-                relationship = "trusted"
+        relationship = self.get_sync_relationship(peer)
 
         # Trusted nodes are allowed to sync all fields.
         if peer.type == "node" and relationship == "trusted":

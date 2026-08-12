@@ -3975,6 +3975,7 @@ class CommandHandler(object):
                         "timeout",
                         "utimeout",
                         "offline",
+                        "session_uuid",
                         ]
             table = PrettyTable(table_headers,
                                 header_style="title",
@@ -4096,6 +4097,12 @@ class CommandHandler(object):
                     except Exception:
                         offline = ""
                     current_row.append(offline)
+
+                    try:
+                        session_uuid = session['session_uuid']
+                    except Exception:
+                        session_uuid = None
+                    current_row.append(session_uuid)
 
                     table.add_row(current_row)
 

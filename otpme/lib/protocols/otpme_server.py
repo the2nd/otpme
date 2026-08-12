@@ -157,7 +157,7 @@ class OTPmeServer1(object):
         self.client_cn = None
 
         # Client infos.
-        self.peer = None
+        self._peer = None
         self.client = client
         self.client_name = client
         # Get process infos from unix socket client.
@@ -177,6 +177,8 @@ class OTPmeServer1(object):
         self.peer_cert = peer_cert
         self.client_cn = None
         self.token = None
+        self.src_token = None
+        self.src_tokens = {}
         self.token_challenges = {}
         self.redirect_challenge = None
         self.preauth_status = None
@@ -254,6 +256,32 @@ class OTPmeServer1(object):
         except Exception:
             pass
         os._exit(0)
+
+    @property
+    def peer(self):
+        if not self._peer:
+            return
+        if not self.check_peer_disabled:
+            return self._peer
+        result = backend.search(object_type=self._peer.type,
+                                attribute="uuid",
+                                value=self._peer.uuid,
+                                return_attributes=['last_modified'])
+        if not result:
+            return
+        last_modified = result[0]
+        if self._peer.last_modified == last_modified:
+            return self._peer
+        result = backend.search(object_type=self._peer.type,
+                                attribute="uuid",
+                                value=self._peer.uuid,
+                                return_type="instance")
+        self._peer = result[0]
+        return self._peer
+
+    @peer.setter
+    def peer(self, peer):
+        self._peer = peer
 
     @property
     def site_key(self):
@@ -543,6 +571,36 @@ class OTPmeServer1(object):
                         return self.build_response(status, message, encrypt=False)
                     self.new_connection = False
 
+        # Try to get peer object from client cert.
+        if not config.use_api:
+            if not self.peer:
+                if self.client.startswith("socket://"):
+                    self.peer = backend.get_object(uuid=config.uuid)
+                elif self.client_cn:
+                    try:
+                        self.peer = self.get_peer_from_cert()
+                    except Exception as e:
+                        if self.require_host:
+                            config.raise_exception()
+                            msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
+                            msg = msg.format(error=e)
+                            log_msg = log_msg.format(error=e)
+                            self.logger.warning(log_msg)
+                            raise ServerQuit(msg) from e
+                if self.peer:
+                    if config.debug_level() > 3:
+                        log_msg = _("Found valid peer {peer_type}: {peer_name}", log=True)[1]
+                        log_msg = log_msg.format(peer_type=self.peer.type,
+                                                peer_name=self.peer.name)
+                        self.logger.debug(log_msg)
+            if self.require_host:
+                if not self.peer:
+                    msg, log_msg = _("Unknown node/host: {client_cn}", log=True)
+                    msg = msg.format(client_cn=self.client_cn)
+                    log_msg = log_msg.format(client_cn=self.client_cn)
+                    self.logger.warning(log_msg)
+                    raise ServerQuit(msg)
+
         # Make sure peer is not disabled.
         if self.check_peer_disabled:
             if self.peer and not self.peer.enabled:
@@ -576,34 +634,6 @@ class OTPmeServer1(object):
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
             raise ServerQuit(msg) from e
-
-        # Try to get peer object from client cert.
-        if self.client.startswith("socket://") and not self.peer and not config.use_api:
-            self.peer = backend.get_object(uuid=config.uuid)
-        elif self.client_cn and not self.peer and not config.use_api:
-            try:
-                self.peer = self.get_peer_from_cert()
-            except Exception as e:
-                if self.require_host:
-                    config.raise_exception()
-                    msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
-                    msg = msg.format(error=e)
-                    log_msg = log_msg.format(error=e)
-                    self.logger.warning(log_msg)
-                    raise ServerQuit(msg) from e
-        if self.require_host:
-            if not self.peer:
-                msg, log_msg = _("Unknown node/host: {client_cn}", log=True)
-                msg = msg.format(client_cn=self.client_cn)
-                log_msg = log_msg.format(client_cn=self.client_cn)
-                self.logger.warning(log_msg)
-                raise ServerQuit(msg)
-        if self.peer:
-            if config.debug_level() > 3:
-                log_msg = _("Found valid peer {peer_type}: {peer_name}", log=True)[1]
-                log_msg = log_msg.format(peer_type=self.peer.type,
-                                        peer_name=self.peer.name)
-                self.logger.debug(log_msg)
 
         # Allow "quit" also for disabled hosts.
         if command == "quit":
@@ -1315,7 +1345,8 @@ class OTPmeServer1(object):
         clear_text_token_found = False
         for token in valid_user_tokens:
             # Make sure we resolve token links.
-            if token.destination_token:
+            if token.destination_token and token.dst_token:
+                self.src_tokens[token.dst_token.uuid] = token
                 verify_token = token.dst_token
             else:
                 verify_token = token
@@ -2027,6 +2058,12 @@ class OTPmeServer1(object):
                 msg = "Got invalid challenge"
                 raise OTPmeException(msg)
 
+        if self.token:
+            try:
+                self.src_token = self.src_tokens[self.token.uuid]
+            except KeyError:
+                pass
+
         # If we got a password try to auth user.
         if auth_type == "clear-text" or auth_type == "jwt":
             jwt_auth = False
@@ -2072,9 +2109,6 @@ class OTPmeServer1(object):
             # Get auth status from response.
             auth_status = auth_response['status']
         else:
-            user_token = None
-            if self.token:
-                user_token = self.token.name
             # Try to authenticate user.
             try:
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
@@ -2086,7 +2120,8 @@ class OTPmeServer1(object):
                                         authorize_host=self.authorize_host,
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
-                                        user_token=user_token,
+                                        user_token=self.token,
+                                        src_token=self.src_token,
                                         challenge=challenge,
                                         response=response,
                                         smartcard_data=smartcard_data,
@@ -2239,6 +2274,7 @@ class OTPmeServer1(object):
         self.authenticated = False
         self.username = None
         self.token = None
+        self.src_token = None
         self.peer_challenge = None
         self.peer = None
         self.peer_cert = None

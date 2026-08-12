@@ -67,6 +67,8 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.require_cluster_status = True
         # Allow reuse of SOTPs.
         self.allow_sotp_reuse = True
+        # We check peer status in handle_share_setttings().
+        self.check_peer_disabled = False
         # Will hold share name.
         self.share = None
         self.share_uuid = None

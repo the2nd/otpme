@@ -1208,7 +1208,6 @@ class Token(OTPmeObject):
         self.auth_script_options = None
         self.auth_script_enabled = None
         self.destination_token = None
-        self.cross_site_links = False
         self.sftoken = None
         self.second_factor_token = None
         self.second_factor_token_enabled = False
@@ -1378,11 +1377,6 @@ class Token(OTPmeObject):
                                                         'encryption': config.disk_encryption,
                                                     },
 
-                        'CROSS_SITE_LINKS'          : {
-                                                        'var_name'  : 'cross_site_links',
-                                                        'type'      : bool,
-                                                        'required'  : True,
-                                                    },
                         'TEMP_PASSWORD_HASH'        : {
                                                         'var_name'      : '_temp_password_hash',
                                                         'type'          : str,
@@ -4607,8 +4601,6 @@ class Token(OTPmeObject):
                 lines.append(f'SSO_DEPLOY="{self.sso_deploy}"')
             else:
                 lines.append('SSO_DEPLOY=""')
-
-        lines.append(f'CROSS_SITE_LINKS="{self.cross_site_links}"')
 
         # Append lines from child class.
         lines += config_lines
