@@ -46,29 +46,6 @@ PROTOCOL_VERSION = "OTPme-sso-1.0"
 def register():
     config.register_otpme_protocol("ssod", PROTOCOL_VERSION, server=True)
 
-def _serialize_fido2_state(state):
-    """ Serialize fido2 state dict for Flask session storage. """
-    serialized = {}
-    for k, v in state.items():
-        if isinstance(v, bytes):
-            serialized[k] = base64.b64encode(v).decode('ascii')
-            serialized['_b_' + k] = True
-        else:
-            serialized[k] = v
-    return serialized
-
-def _deserialize_fido2_state(data):
-    """ Deserialize fido2 state dict from Flask session. """
-    state = {}
-    for k, v in data.items():
-        if k.startswith('_b_'):
-            continue
-        if data.get('_b_' + k):
-            state[k] = base64.b64decode(v)
-        else:
-            state[k] = v
-    return state
-
 def get_apps(token):
     """ Return SSO app metadata visible to the given token. """
     app_data = []
@@ -670,11 +647,10 @@ class OTPmeSsoP1(OTPmeServer1):
         # Registration always lands on the master node (mgmt=True from
         # the web layer; no multi-master in OTPme), so begin and
         # complete share the same per-host shared dict by construction.
-        fido2_reg_state = _serialize_fido2_state(reg_state)
         fido2_state_id = stuff.gen_secret(len=32)
         multiprocessing.fido2_reg_states.add(
                 key=fido2_state_id,
-                value={'state':      fido2_reg_state,
+                value={'state':      reg_state,
                        'token_uuid': fido2_token.uuid},
                 expire=300)
         fido2_reg_data = {
@@ -729,7 +705,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False, {
                     'message': 'REGISTRATION_FAILED', 'status': False})
-        reg_state = _deserialize_fido2_state(state_data['state'])
+        reg_state = state_data['state']
         token_uuid = state_data['token_uuid']
         # Get fido2 token
         fido2_token = backend.get_object(uuid=token_uuid)
@@ -757,7 +733,8 @@ class OTPmeSsoP1(OTPmeServer1):
         if check_attestation_cert:
             from otpme.lib.token.fido2.fido2 import verify_attestation_cert
             try:
-                info_messages = verify_attestation_cert(registration_data)
+                info_messages, \
+                attestation_cert = verify_attestation_cert(registration_data)
             except OTPmeException as e:
                 log_msg = _("FIDO2 attestation cert verification failed for token '{token}' of user '{user_name}': {error}", log=True)[1]
                 log_msg = log_msg.format(token=fido2_token.rel_path,
@@ -768,6 +745,8 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.build_response(False, auth_response)
             for info_msg in info_messages:
                 self.logger.info(info_msg)
+            # Keep what we accepted, same as the deploy path does.
+            fido2_token.attestation_cert = attestation_cert
         # Store credential data on token.
         fido2_token.rp = rp_id
         fido2_token.credential_data = encode(auth_data.credential_data, "hex")
@@ -1043,11 +1022,10 @@ class OTPmeSsoP1(OTPmeServer1):
         # master node (mgmt=True from the web layer; no multi-master in
         # OTPme), so begin and complete share the same per-host shared
         # dict by construction.
-        passkey_reg_state = _serialize_fido2_state(reg_state)
         passkey_state_id = stuff.gen_secret(len=32)
         multiprocessing.passkey_reg_states.add(
                 key=passkey_state_id,
-                value={'state':       passkey_reg_state,
+                value={'state':       reg_state,
                        'device_name': device_name,
                        'token_name':  token_name},
                 expire=300)
@@ -1121,8 +1099,7 @@ class OTPmeSsoP1(OTPmeServer1):
         rp_data = {"id": rp_id, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="none")
         try:
-            auth_data = fido2_server.register_complete(
-                            _deserialize_fido2_state(reg_state),
+            auth_data = fido2_server.register_complete(reg_state,
                             registration_data)
         except Exception as e:
             log_msg = _("Passkey registration failed: {e}", log=True)[1]

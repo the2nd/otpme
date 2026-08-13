@@ -9,6 +9,7 @@ from fido2.server import Fido2Server
 from fido2.webauthn import RegistrationResponse
 from fido2.webauthn import AttestedCredentialData
 from fido2.webauthn import AuthenticationResponse
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
@@ -161,8 +162,9 @@ REGISTER_AFTER = []
 def verify_attestation_cert(registration_data, site=None):
     """ Verify fido2 attestation certificate from registration data.
 
-    Returns a list of informational messages on success.
-    Raises OTPmeException on any failure.
+    Returns a list of informational messages and the certificate as PEM
+    on success, so that the caller can keep a record of what it
+    accepted. Raises OTPmeException on any failure.
     """
     registration = RegistrationResponse.from_dict(registration_data)
     attestation_object = registration.response.attestation_object
@@ -227,7 +229,8 @@ def verify_attestation_cert(registration_data, site=None):
         msg = msg.format(error=e)
         raise OTPmeException(msg) from e
     messages.append(_("Attestation certificate verified succesfully."))
-    return messages
+    cert_pem = attestation_cert.public_bytes(serialization.Encoding.PEM)
+    return messages, cert_pem.decode()
 
 def register():
     """ Register object. """
@@ -308,6 +311,25 @@ class Fido2Token(Token):
         self.rp = None
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'fido2' ]
+        self._sub_sync_fields = {
+                    'host'  : {
+                        'trusted'  : [
+                            "SIGNATURES",
+                            ]
+                        },
+
+                    'node'  : {
+                        'untrusted'  : [
+                            "RP",
+                            "UV",
+                            "HMAC_SUPPORTED",
+                            "SIGNATURES",
+                            "CREDENTIAL_DATA",
+                            #"ATTESTATION_CERT",
+                            ]
+                        },
+                    }
+
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -473,11 +495,17 @@ class Fido2Token(Token):
         check_attestation_cert = self.get_config_parameter("check_fido2_attestation_cert")
         if check_attestation_cert:
             try:
-                info_messages = verify_attestation_cert(registration_data)
+                info_messages, \
+                attestation_cert = verify_attestation_cert(registration_data)
             except OTPmeException as e:
                 return callback.error(str(e))
             for msg in info_messages:
                 callback.send(msg)
+            # Keep what we accepted. Without it there is no way to tell
+            # afterwards which authenticator was bound here -- the
+            # certificate only ever exists in the registration data,
+            # which we do not keep either.
+            self.attestation_cert = attestation_cert
         # Set credential data.
         self.credential_data = encode(auth_data.credential_data, "hex")
         # Bind the token to the RP the credential was registered for. This is
@@ -489,6 +517,8 @@ class Fido2Token(Token):
         self.rp = fido2_server.rp.id
         # Clear registration state.
         self.reg_state = {}
+        # Gen used OTP salt.
+        self.used_otp_salt = stuff.gen_secret(32)
         # Write object.
         self._cache(callback=callback)
         # Strong forensic signal: a new authenticator was bound to this

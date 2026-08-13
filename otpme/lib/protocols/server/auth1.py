@@ -46,38 +46,6 @@ PROTOCOL_VERSION = "OTPme-auth-1.0"
 def register():
     config.register_otpme_protocol("authd", PROTOCOL_VERSION, server=True)
 
-def _serialize_fido2_state(state):
-    """ Serialize an fido2-server auth/registration state dict to a
-    plain-JSON-safe form: bytes values are b64-encoded and tagged
-    with a sibling ``_b_<key>=True`` marker so the round-trip can
-    restore them. Used before stashing the state in the
-    Redis-backed shared dict (``multiprocessing.fido2_auth_states``)
-    that bridges the begin/complete HTTP roundtrip. """
-    serialized = {}
-    for k, v in state.items():
-        if isinstance(v, bytes):
-            serialized[k] = base64.b64encode(v).decode('ascii')
-            serialized['_b_' + k] = True
-        else:
-            serialized[k] = v
-    return serialized
-
-def _deserialize_fido2_state(data):
-    """ Inverse of ``_serialize_fido2_state``: rebuild the original
-    state dict (bytes restored where the ``_b_<key>=True`` marker is
-    present) before handing it to fido2-server's authenticate_complete /
-    register_complete. """
-    state = {}
-    for k, v in data.items():
-        if k.startswith('_b_'):
-            continue
-        if data.get('_b_' + k):
-            state[k] = base64.b64decode(v)
-        else:
-            state[k] = v
-    return state
-
-
 def _sso_allow_passkeys_for_user(user):
     """ Home-side resolution of the ``sso_allow_passkeys`` cascade
     (user → unit → site) for the WebAuthn login path. Passkey login
@@ -590,6 +558,10 @@ class OTPmeAuthP1(OTPmeServer1):
         # the success case.
         credentials = []
         credential_token_map = {}
+        # Why a token did not make it into the allow-list. Ends up in
+        # the decoy log line below, which otherwise says that we found
+        # nothing without ever saying what we looked at.
+        skipped = []
         if user is not None:
             sso_ag = backend.get_object(object_type="accessgroup",
                                         uuid=sso_ag_uuid)
@@ -602,7 +574,27 @@ class OTPmeAuthP1(OTPmeServer1):
             # signature stage indistinguishable from an unknown user.
             passkeys_allowed = _sso_allow_passkeys_for_user(user)
             for token in user_tokens:
-                if token.token_type == "passkey" and not passkeys_allowed:
+                # The credential belongs to the destination of a link,
+                # the assignment to the link -- so everything the
+                # browser is offered is read from the destination,
+                # while the name we remember is the link's. That name
+                # goes back into user.authenticate() at complete, and
+                # only the link knows where the token really lives.
+                cred_token = token
+                if token.destination_token:
+                    cred_token = token.dst_token
+                    if not cred_token:
+                        # Its site holds it and we do not have it. From
+                        # here the token simply is not there, which is
+                        # worth saying: the whole login then ends in
+                        # decoys with nothing to point at.
+                        log_msg = _("FIDO2 auth_begin: destination token of '{token_path}' not available here: {dst_uuid}", log=True)[1]
+                        log_msg = log_msg.format(token_path=token.rel_path,
+                                                dst_uuid=token.destination_token)
+                        self.logger.warning(log_msg)
+                        continue
+                if cred_token.token_type == "passkey" and not passkeys_allowed:
+                    skipped.append(f"{token.rel_path}:passkeys_not_allowed")
                     continue
                 # Only offer credentials that were registered for this RP: an
                 # authenticator's assertion is bound to the rpIdHash it was
@@ -611,15 +603,20 @@ class OTPmeAuthP1(OTPmeServer1):
                 # allow-list clean (and avoids leaking foreign-rp cred IDs).
                 # Legacy tokens without a stored rp (rp is None) are not
                 # filtered, preserving pre-existing deployments.
-                if token.token_type in ("fido2", "passkey") \
-                and token.rp and token.rp != rp_id:
+                if cred_token.token_type not in ("fido2", "passkey"):
+                    skipped.append(f"{token.rel_path}:type={cred_token.token_type}")
                     continue
-                if token.token_type in ("fido2", "passkey") and token.credential_data:
-                    cred_data = decode(token.credential_data, "hex")
-                    acd = AttestedCredentialData(cred_data)
-                    credentials.append(acd)
-                    cred_id_b64 = base64.urlsafe_b64encode(acd.credential_id).rstrip(b'=').decode()
-                    credential_token_map[cred_id_b64] = token.name
+                if cred_token.rp and cred_token.rp != rp_id:
+                    skipped.append(f"{token.rel_path}:rp={cred_token.rp}")
+                    continue
+                if not cred_token.credential_data:
+                    skipped.append(f"{token.rel_path}:no_credential_data")
+                    continue
+                cred_data = decode(cred_token.credential_data, "hex")
+                acd = AttestedCredentialData(cred_data)
+                credentials.append(acd)
+                cred_id_b64 = base64.urlsafe_b64encode(acd.credential_id).rstrip(b'=').decode()
+                credential_token_map[cred_id_b64] = token.name
         if not credentials:
             # User unknown OR exists but has no FIDO2 / passkey
             # credentials. Generate deterministic decoys so the
@@ -628,9 +625,9 @@ class OTPmeAuthP1(OTPmeServer1):
             # (real path: wrong key) or at token lookup (decoy path:
             # no token by that name). Both surface as a generic
             # "Login failed" -- indistinguishable to the caller.
-            log_msg = _("FIDO2 auth_begin: returning decoys for {username}",
-                        log=True)[1]
-            log_msg = log_msg.format(username=username)
+            log_msg = _("FIDO2 auth_begin: returning decoys for {username} (rp_id={rp_id}, skipped: {skipped})", log=True)[1]
+            log_msg = log_msg.format(username=username, rp_id=rp_id,
+                                    skipped=", ".join(skipped) or "-")
             self.logger.info(log_msg)
             credentials, credential_token_map = _decoy_fido2_credentials(
                                                             username)
@@ -640,7 +637,6 @@ class OTPmeAuthP1(OTPmeServer1):
             credentials,
             user_verification="preferred",
         )
-        fido2_auth_state = _serialize_fido2_state(auth_state)
         my_host = self._get_host()
         fido2_auth_node = my_host.fqdn
         fido2_state_id = stuff.gen_secret(len=32)
@@ -651,7 +647,7 @@ class OTPmeAuthP1(OTPmeServer1):
         # resistance. The map is popped at fido2_auth_complete to
         # resolve matched_token_name.
         multiprocessing.fido2_auth_states.add(key=fido2_state_id,
-                                            value={'state':fido2_auth_state,
+                                            value={'state':auth_state,
                                                     'node':fido2_auth_node,
                                                     'credential_token_map':credential_token_map},
                                             expire=60)
@@ -728,7 +724,7 @@ class OTPmeAuthP1(OTPmeServer1):
         # Load fido2 auth state and build the smartcard_data envelope
         # consumed by both the step-up reauth path (``token.verify()``)
         # and the regular login path (``user.authenticate()``).
-        auth_state = _deserialize_fido2_state(state_data['state'])
+        auth_state = state_data['state']
         # Look up which token name owns the credential the browser
         # asserted with. The map was cached server-side at begin so
         # decoy token names ("decoy-N") never leak via the web
@@ -749,13 +745,27 @@ class OTPmeAuthP1(OTPmeServer1):
         # credential we have no name for, which then fails the regular
         # way.
         token = None
+        verify_token = None
         for t in backend.search(object_type="token",
                                 attribute="owner_uuid",
                                 value=user.uuid,
                                 return_type="instance"):
-            if t.token_type in ("fido2", "passkey") and t.name == matched_token_name:
-                token = t
-                break
+            if t.name != matched_token_name:
+                continue
+            # The name we put into the map at begin is the link's, while
+            # the credential the browser signed with belongs to its
+            # destination. <token> is what the request was made with,
+            # <verify_token> is what holds the credential.
+            x_verify_token = t
+            if t.destination_token:
+                x_verify_token = t.dst_token
+                if not x_verify_token:
+                    continue
+            if x_verify_token.token_type not in ("fido2", "passkey"):
+                continue
+            token = t
+            verify_token = x_verify_token
+            break
 
         # Step-up reauth: verify FIDO2 directly on the token (which
         # already enforces counter / replay protection) and bump
@@ -775,13 +785,25 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(False, {
                     'message': 'Login failed.', 'status': False,
                 })
-            try:
-                verify_ok = token.verify(smartcard_data=smartcard_data)
-            except Exception as e:
-                log_msg = _("Reauth: FIDO2 verify failed: {err}", log=True)[1]
-                log_msg = log_msg.format(err=e)
-                self.logger.warning(log_msg)
-                verify_ok = False
+            if verify_token.site != config.site:
+                # A link to another site: the credential is verified
+                # where it lives, or the replay counter would be raised
+                # here while the owning site keeps accepting the same
+                # assertion.
+                verify_ok = self.reauth_redirect(user=user,
+                                            token=token,
+                                            verify_token=verify_token,
+                                            smartcard_data=smartcard_data,
+                                            client=client,
+                                            client_ip=client_ip)
+            else:
+                try:
+                    verify_ok = verify_token.verify(smartcard_data=smartcard_data)
+                except Exception as e:
+                    log_msg = _("Reauth: FIDO2 verify failed: {err}", log=True)[1]
+                    log_msg = log_msg.format(err=e)
+                    self.logger.warning(log_msg)
+                    verify_ok = False
             if not verify_ok:
                 emit_audit("Auth", "reauth_failed",
                                 level='warning',
@@ -867,6 +889,38 @@ class OTPmeAuthP1(OTPmeServer1):
             app_data = self.get_apps(auth_token)
             auth_result['app_data'] = app_data
         return self.build_response(True, auth_result)
+
+    def reauth_redirect(self, user, token, verify_token, smartcard_data,
+        client, client_ip):
+        """ Have the site owning a linked token verify the assertion.
+
+        The step-up reauth verifies the credential itself instead of
+        going through user.authenticate(), so it also has to make the
+        redirect itself when the destination of a link lives elsewhere.
+        """
+        jwt_reason = "DST_TOKEN_VERIFY"
+        jwt_challenge = stuff.gen_secret(32)
+        verify_args = {
+                    'username'          : user.name,
+                    'token_uuid'        : token.uuid,
+                    'jwt_reason'        : jwt_reason,
+                    'jwt_challenge'     : jwt_challenge,
+                    'smartcard_data'    : smartcard_data,
+                    'client'            : client,
+                    'client_ip'         : client_ip,
+                    }
+        status, \
+        response = self.authd_redirect_command(command="token_verify_smartcard",
+                                            user=user,
+                                            command_args=verify_args,
+                                            site=verify_token.site)
+        if not status:
+            log_msg = _("Reauth: redirected verify failed: {token}", log=True)[1]
+            log_msg = log_msg.format(token=verify_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+        return self.verify_redirect_jwt(response, verify_token, token,
+                                    jwt_challenge, jwt_reason)
 
     def verify_redirect_jwt(self, response, dst_token, src_token,
         jwt_challenge, jwt_reason):
@@ -994,7 +1048,7 @@ class OTPmeAuthP1(OTPmeServer1):
             if err is not None:
                 return err
             # Load fido2 auth state.
-            auth_state = _deserialize_fido2_state(state_data['state'])
+            auth_state = state_data['state']
             smartcard_data['auth_state'] = auth_state
             token_verify_parms = {
                     'auth_type'     : "smartcard",
@@ -1078,6 +1132,7 @@ class OTPmeAuthP1(OTPmeServer1):
         src_token = None
         dst_token = None
         auth_token = None
+        tried_tokens = []
         redirect_response = None
         for x_token in user_tokens:
             # Whose assignment this is asks about the token that was
@@ -1108,11 +1163,20 @@ class OTPmeAuthP1(OTPmeServer1):
                     except KeyError:
                         pass
                     verify_args['token_uuid'] = x_token.uuid
+                    # Our state id means nothing at the next site, and
+                    # popping it above left the command without one
+                    # anyway. It does not need one: the state itself
+                    # travels in <smartcard_data>, where we just put it,
+                    # and that is what token_verify_smartcard reads.
+                    x_command = command
+                    if command == "token_verify_fido2":
+                        x_command = "token_verify_smartcard"
                     status, \
-                    response = self.authd_redirect_command(command=command,
+                    response = self.authd_redirect_command(command=x_command,
                                                     user=user,
                                                     command_args=verify_args,
                                                     site=dst_token.site)
+                    tried_tokens.append(x_token.oid.read_oid)
                     if not status:
                         continue
                     if not self.verify_redirect_jwt(response, dst_token,
@@ -1144,6 +1208,7 @@ class OTPmeAuthP1(OTPmeServer1):
             if dot1x_auth:
                 if not x_token.support_dot1x:
                     continue
+            tried_tokens.append(x_token.oid.read_oid)
             if dot1x_auth:
                 try:
                     verify_status = x_token.verify_dot1x(**token_verify_parms)
@@ -1182,6 +1247,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     if not x_token.dst_token:
                         continue
                     _verify_token = x_token.dst_token
+                tried_tokens.append(_verify_token.oid.read_oid)
                 if command == "token_verify_mschap":
                     try:
                         verify_status = _verify_token.verify(temp=True, **token_verify_parms)
@@ -1290,8 +1356,8 @@ class OTPmeAuthP1(OTPmeServer1):
                         'status'    : auth_status,
                         'message'   : "Auth failed.",
                         }
-            log_msg = _("Token verification failed: {user}", log=True)[1]
-            log_msg = log_msg.format(user=user.name)
+            log_msg = _("Token verification failed: {user}: {tried_tokens}", log=True)[1]
+            log_msg = log_msg.format(user=user.name, tried_tokens=tried_tokens)
             self.logger.warning(log_msg)
             # Audit logging.
             if audit_logger:

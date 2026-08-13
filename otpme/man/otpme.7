@@ -640,6 +640,21 @@ and
 headers are honored to determine the actual client IP and the requested host. Requests from any other source IP ignore these headers, so a client cannot spoof its origin by setting them itself.
 .br
 Object types: site
+.TP
+.B site_admin_blacklist \fR(list)
+Comma separated list of object OIDs (for example
+.BR user|myrealm/mysite/myuser )
+that members of the
+.B SITE_ADMIN
+role must not reach through their role alone. Being in that role normally grants access to every object of the site without any ACL check; for a listed object that shortcut is dropped, and access is decided by the ACLs on the object like it is for anyone else. An ACL set explicitly on the object therefore still grants access -- the list withdraws the blanket permission, it does not override an ACL that was granted on purpose.
+.br
+The list is set as OIDs but stored as UUIDs, so an entry survives a rename of the object and is not inherited by a new object that later takes over the name. An OID of an object that does not exist is rejected. The parameter is read from the site handling the request, and the same rule applies to it as to
+.BR realm ", " site " and " node
+objects, which are protected this way unconditionally: it lives on the site object, where the role shortcut never applies, so site admins cannot remove entries from their own blacklist.
+.br
+Applies to the object interfaces (management, API). LDAP verifies its ACLs on its own path and is not affected.
+.br
+Object types: site
 .SS OIDC Provider
 The following parameters apply per OIDC client (with site/unit serving as the deployment default). For the operational view of the OP -- enabling it, rotating signing keys, the pairwise secret -- see
 .BR otpme\-site (1).

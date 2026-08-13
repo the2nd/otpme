@@ -1197,7 +1197,6 @@ class AuthHandler(object):
                                                 access_group=ag,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
-                                                resolv_token_links=False,
                                                 return_type="instance",
                                                 quiet=False)
                 for token in ag_tokens:

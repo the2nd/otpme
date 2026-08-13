@@ -6,6 +6,7 @@ from cryptography import x509
 from fido2.utils import sha256
 from fido2.ctap1 import SignatureData
 from fido2.ctap1 import RegistrationData
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
@@ -387,6 +388,12 @@ class U2fToken(Token):
                 msg = _("Attestation certificate not valid anymore: {not_valid_before}")
                 msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
                 return callback.error(msg)
+            # Keep what we accepted. The certificate exists only in the
+            # registration data, which we do not keep, so without this
+            # there is no telling afterwards which authenticator was
+            # bound to this token.
+            cert_pem = attestation_cert.public_bytes(serialization.Encoding.PEM)
+            self.attestation_cert = cert_pem.decode()
 
         # Set key handle.
         self.key_handle = encode(registration_data.key_handle, "hex")

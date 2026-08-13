@@ -230,6 +230,7 @@ data_files = [
                         "otpme/man/otpme-site.1",
                         "otpme/man/otpme-token.1",
                         "otpme/man/otpme-tool.1",
+                        "otpme/man/otpme-vlan.1",
                         "otpme/man/otpme-unit.1",
                         "otpme/man/otpme-user.1",
                     ]
@@ -281,6 +282,7 @@ setup(
     entry_points={
         'console_scripts': [
             'otpme-yk-piv = otpme.bin.yk_piv:main',
+            'otpme-hpke = otpme.bin.hpke:main',
             'local-backup = otpme.bin.backup_cli:main',
         ],
     },

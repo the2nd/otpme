@@ -937,6 +937,27 @@ commands = {
             },
     }
 
+def get_site_admin_blacklist():
+    """ UUIDs of the objects our site keeps out of reach of its admins.
+
+    Read from the site handling the request, not from the one owning the
+    object: whom a foreign site trusts with its own objects is its
+    business, and asking it here would let it widen our rules as easily
+    as narrow them.
+    """
+    if not config.site_uuid:
+        return []
+    site = backend.get_object(uuid=config.site_uuid)
+    if not site:
+        return []
+    # Unresolved: what is stored are the UUIDs, and those are what the
+    # caller compares against. The getter would hand out OIDs.
+    blacklist = site.get_config_parameter("site_admin_blacklist",
+                                        apply_getter=False)
+    if not blacklist:
+        return []
+    return blacklist
+
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
@@ -2052,6 +2073,50 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Objects the site keeps out of reach of its own admins.
+    def site_admin_blacklist_setter(object_ids, callback=JobCallback, **kwargs):
+        """ Resolve the given OIDs to the objects UUIDs.
+
+        Set as OIDs because that is what an admin reads and writes, but
+        stored as UUIDs: a blacklisted object that gets renamed has to
+        stay blacklisted, and a new object must not inherit the entry
+        by taking over the name.
+        """
+        if isinstance(object_ids, str):
+            object_ids = object_ids.split(",")
+        object_uuids = []
+        for x_object_id in object_ids:
+            x_object_id = x_object_id.strip()
+            if not x_object_id:
+                continue
+            # Verifies the OID itself and raises on a malformed one.
+            x_oid = oid.get(x_object_id)
+            x_uuid = backend.get_uuid(x_oid)
+            if not x_uuid:
+                msg = _("Unknown object: {object_id}")
+                msg = msg.format(object_id=x_object_id)
+                raise ValueError(msg)
+            if x_uuid in object_uuids:
+                continue
+            object_uuids.append(x_uuid)
+        return object_uuids
+    def site_admin_blacklist_getter(object_uuids, callback=JobCallback, **kwargs):
+        if isinstance(object_uuids, str):
+            object_uuids = object_uuids.split(",")
+        object_ids = []
+        for x_uuid in object_uuids:
+            x_object_id = backend.get_oid(uuid=x_uuid, full=False)
+            if not x_object_id:
+                # Show the unresolvable entry instead of hiding it.
+                object_ids.append(x_uuid)
+                continue
+            object_ids.append(x_object_id)
+        return object_ids
+    config.register_config_parameter(name="site_admin_blacklist",
+                                    ctype=list,
+                                    setter=site_admin_blacklist_setter,
+                                    getter=site_admin_blacklist_getter,
+                                    object_types=['site'])
     # Reverse proxy IPs.
     def reverse_proxy_ips_setter(proxy_ips, **kwargs):
         if isinstance(proxy_ips, str):

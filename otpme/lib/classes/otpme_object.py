@@ -6873,6 +6873,13 @@ class OTPmeObject(OTPmeBaseObject):
             check_admin_role = False
         if self.uuid == config.admin_token_uuid:
             check_admin_role = False
+        # Same for whatever else the site put out of their reach. Only
+        # asked while the shortcut is still in play: with it already
+        # gone the answer changes nothing, and this reads the site.
+        if check_admin_role:
+            from otpme.lib.classes.site import get_site_admin_blacklist
+            if self.uuid in get_site_admin_blacklist():
+                check_admin_role = False
         result = otpme_acl.verify(uuid=self.uuid, acl_list=self.acls, acl=acl,
                                     check_admin_role=check_admin_role,
                                     check_admin_user=check_admin_user,
@@ -10435,6 +10442,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
+        lines.append(f'OID="{self.oid.full_oid}"')
         lines.append(f'UUID="{self.uuid}"')
 
         if self.verify_acl("view:status") \

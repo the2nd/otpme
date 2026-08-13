@@ -3893,7 +3893,6 @@ class User(OTPmeObject):
         client: Union[OTPmeObject,None]=None,
         host: Union[OTPmeObject,None]=None,
         access_group: Union[OTPmeObject,None]=None,
-        resolv_token_links: bool=True,
         token_type: Union[str,None]=None,
         pass_type: Union[str,None]=None,
         token_types: Union[List,None]=None,
@@ -3923,13 +3922,13 @@ class User(OTPmeObject):
 
         token_data = {}
         if self.tokens:
+            # Type and dot1x are properties of the credential, and for a
+            # link that is its destination, not the link itself -- whose
+            # own type is "link" and which supports no dot1x. Asking the
+            # backend for them here would drop every linked token before
+            # there is anything to resolve, so they are checked below,
+            # once it is clear which token actually holds the secret.
             search_attrs = {'uuid': {'values': self.tokens}}
-            if pass_types:
-                search_attrs['pass_type'] = {'values':pass_types}
-            if token_types:
-                search_attrs['token_type'] = {'values':token_types}
-            if support_dot1x:
-                search_attrs['support_dot1x'] = {'value':True}
             return_attrs = [
                             'name',
                             'read_oid',
@@ -3957,49 +3956,72 @@ class User(OTPmeObject):
                 if not token_enabled:
                     continue
 
-            # Make sure we resolve token links.
-            destination_token = None
-            if resolv_token_links:
-                try:
-                    destination_token = token_data[uuid]['destination_token'][0]
-                except KeyError:
-                    destination_token = None
-                # Make sure we load destination tokens.
-                if destination_token:
-                    dst_token_result = backend.search(object_type="token",
-                                            attribute="uuid",
-                                            value=destination_token,
-                                            return_attributes=return_attrs)
-                    if not dst_token_result:
+            # A link is what gets assigned to an accessgroup, a host or
+            # a client, while its destination is what says which kind of
+            # credential this is. So the two are asked separately below:
+            # the link about assignments, the destination about type,
+            # dot1x and whether it is enabled.
+            try:
+                destination_token = token_data[uuid]['destination_token'][0]
+            except KeyError:
+                destination_token = None
+            credential_uuid = uuid
+            if destination_token:
+                dst_token_result = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        value=destination_token,
+                                        return_attributes=return_attrs)
+                if not dst_token_result:
+                    continue
+                token_data[destination_token] = dst_token_result[destination_token]
+                credential_uuid = destination_token
+                if skip_disabled:
+                    try:
+                        destination_token_enabled = token_data[destination_token]['enabled'][0]
+                    except KeyError:
                         continue
-                    if skip_disabled:
-                        try:
-                            destination_token_enabled = dst_token_result[destination_token]['enabled'][0]
-                        except KeyError:
-                            continue
-                        if not destination_token_enabled:
-                            continue
-                    token_data[destination_token] = dst_token_result[destination_token]
+                    if not destination_token_enabled:
+                        continue
 
-            # Make sure we resolv token links.
-            if resolv_token_links and destination_token:
-                token_uuid = destination_token
-            else:
-                token_uuid = uuid
+            # The credential side.
+            if token_types:
+                try:
+                    x_token_type = token_data[credential_uuid]['token_type'][0]
+                except KeyError:
+                    continue
+                if x_token_type not in token_types:
+                    continue
 
-            # Check if token is valid.
+            if pass_types:
+                try:
+                    x_pass_type = token_data[credential_uuid]['pass_type'][0]
+                except KeyError:
+                    continue
+                if x_pass_type not in pass_types:
+                    continue
+
+            if support_dot1x:
+                try:
+                    dot1x_token = token_data[credential_uuid]['support_dot1x'][0]
+                except KeyError:
+                    dot1x_token = False
+                if not dot1x_token:
+                    continue
+
+            # The assignment side. Always the token we were walking
+            # over, never its destination.
             token_valid = False
             match_uuid = None
             if access_group:
-                match_uuid = access_group.is_assigned_token(token_uuid)
+                match_uuid = access_group.is_assigned_token(uuid)
                 if match_uuid:
                     token_valid = True
             elif host:
-                match_uuid = host.is_assigned_token(token_uuid)
+                match_uuid = host.is_assigned_token(uuid)
                 if match_uuid:
                     token_valid = True
             elif client:
-                match_uuid = client.is_assigned_token(token_uuid)
+                match_uuid = client.is_assigned_token(uuid)
                 if match_uuid:
                     token_valid = True
             else:
@@ -4008,14 +4030,7 @@ class User(OTPmeObject):
             if not token_valid:
                 continue
 
-            try:
-                dot1x_token = token_data[token_uuid]['support_dot1x'][0]
-            except KeyError:
-                dot1x_token = False
-            if support_dot1x and not dot1x_token:
-                continue
-
-            if token_uuid in tokens:
+            if uuid in tokens:
                 continue
 
             # Append token to list if not already added.
@@ -4027,10 +4042,7 @@ class User(OTPmeObject):
                                             match_type=match_oid.object_type,
                                             match_name=match_oid.name)
                     logger.debug(log_msg)
-            if destination_token:
-                tokens.append(uuid)
-            else:
-                tokens.append(token_uuid)
+            tokens.append(uuid)
 
         result = []
         for token_uuid in tokens:

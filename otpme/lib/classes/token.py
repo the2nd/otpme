@@ -2062,6 +2062,10 @@ class Token(OTPmeObject):
         per-token used_otp_salt (encrypted-at-rest in the token
         config). Used to detect replay of already-consumed OTPs. """
         used_salt = self.used_otp_salt
+        if not used_salt:
+            msg = _("Cannot gen used hash without used_otp_salt: {token}")
+            msg = msg.format(token=self.rel_path)
+            raise ValueError(msg)
         used_hash = stuff.gen_sha256(data + used_salt)
         return used_hash
 
@@ -2253,7 +2257,12 @@ class Token(OTPmeObject):
             raise OTPmeException("Need token_counter as <int>.")
 
         # Generate counter hash.
-        counter_hash = self.gen_used_hash(str(token_counter))
+        try:
+            counter_hash = self.gen_used_hash(str(token_counter))
+        except Exception as e:
+            msg = _("Failed to gen used hash: {token}")
+            msg = msg.format(token=self.rel_path)
+            raise OTPmeException(msg)
 
         # Get sync time.
         counter_sync_time = self.counter_sync_time
