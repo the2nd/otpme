@@ -10,6 +10,8 @@ try:
 except Exception:
     pass
 
+from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
@@ -23,6 +25,10 @@ table_headers = [
                 "unit",
                 "status",
                 "vlan_id",
+                "tokens",
+                "roles",
+                "hosts",
+                "devices",
                 "policies",
                 "inherit",
                 "description",
@@ -62,7 +68,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, vlan_order, vlan_data, acls,
-    limit=None, max_policies=5, output_fields=None,
+    limit=None, max_policies=5, max_tokens=5, max_roles=5,
+    max_hosts=5, max_devices=5, output_fields=None,
     acl_checker=None, **kwargs):
     """ Build table rows for VLANs. """
     if output_fields is None:
@@ -73,6 +80,10 @@ def row_getter(realm, site, vlan_order, vlan_data, acls,
             limit = 30
     if limit is not None:
         max_policies = limit
+        max_tokens = limit
+        max_roles = limit
+        max_hosts = limit
+        max_devices = limit
     for vlan_uuid in vlan_order:
         row = []
         vlan_name = vlan_data[vlan_uuid]['name']
@@ -134,6 +145,54 @@ def row_getter(realm, site, vlan_order, vlan_data, acls,
                 row.append(vlan_id_string)
             else:
                 row.append("-")
+        # Members. Read through the object index (the same join the role
+        # table uses), not from the VLAN itself: it gives us the names
+        # and the enabled state in one query, and lets us stop counting
+        # at the limit instead of resolving every member.
+        member_types = (
+                        ('tokens', 'token', 'rel_path', max_tokens),
+                        ('roles', 'role', 'name', max_roles),
+                        ('hosts', 'host', 'name', max_hosts),
+                        ('devices', 'device', 'name', max_devices),
+                        )
+        for x_field, x_type, x_attr, x_max in member_types:
+            if x_field not in output_fields:
+                continue
+            if not check_acl(f"view:{x_field}") \
+            and not check_acl(f"add:{x_type}") \
+            and not check_acl(f"remove:{x_type}"):
+                row.append("-")
+                continue
+            return_attrs = [x_attr, 'enabled', 'site']
+            x_count, \
+            x_result = backend.search(object_type=x_type,
+                                    join_object_type="vlan",
+                                    join_search_attr="uuid",
+                                    join_search_val=vlan_uuid,
+                                    join_attribute=x_type,
+                                    attribute="uuid",
+                                    value="*",
+                                    max_results=x_max,
+                                    return_query_count=True,
+                                    return_attributes=return_attrs)
+            x_members = []
+            for x_uuid in x_result:
+                x_name = x_result[x_uuid][x_attr]
+                x_site = x_result[x_uuid]['site']
+                x_enabled = x_result[x_uuid]['enabled'][0]
+                x_status = ""
+                if not x_enabled:
+                    x_status = " (D)"
+                if x_site != config.site:
+                    x_name = f"{x_name} ({x_site})"
+                x_members.append(f"{x_name}{x_status}")
+                if len(x_members) == x_max:
+                    if x_count > x_max:
+                        msg = _("({processed} of {total} total)")
+                        msg = msg.format(processed=len(x_members), total=x_count)
+                        x_members.append(msg)
+                    break
+            row.append("\n".join(x_members))
         # Policies.
         if "policies" in output_fields:
             if check_acl("view:policies") \

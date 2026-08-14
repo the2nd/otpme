@@ -231,7 +231,7 @@ class ConnectSocket(object):
             connect_timeout_msg = f"{connect_timeout}s"
 
         if not quiet:
-            if config.debug_level() > 3:
+            if config.debug_level("connections") > 0:
                 log_msg = _("Connecting to '{uri}' (tmo={connect_timeout}/{timeout})", log=True)[1]
                 log_msg = log_msg.format(uri=self.socket_uri, connect_timeout=connect_timeout_msg, timeout=timeout_msg)
                 self.logger.debug(log_msg)
@@ -394,7 +394,7 @@ class ConnectSocket(object):
             self._close()
             return
         self.connected = False
-        if config.debug_level() > 0:
+        if config.debug_level("connections") > 0:
             log_msg = _("Closing connection to '{uri}'", log=True)[1]
             log_msg = log_msg.format(uri=self.socket_uri)
             self.logger.debug(log_msg)

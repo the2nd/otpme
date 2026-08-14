@@ -865,6 +865,7 @@ class Session(OTPmeLockObject):
 
     def verify(
         self,
+        auth_type: str,
         password: Union[str,None]=None,
         password_hash: Union[str,None]=None,
         challenge: Union[str,None]=None,
@@ -872,6 +873,11 @@ class Session(OTPmeLockObject):
         **kwargs,
         ):
         """ Verify session. """
+        if auth_type not in ('clear-text', 'mschap'):
+            log_msg = _("Not verifying session for auth type: {auth_type}", log=True)[1]
+            log_msg = log_msg.format(auth_type=auth_type)
+            logger.debug(log_msg)
+            return {'status': None}
         if not (password or password_hash) and not (challenge and response):
             log_msg = _("Cannot verify session without password, password_hash or challenge+response.", log=True)[1]
             logger.warning(log_msg)

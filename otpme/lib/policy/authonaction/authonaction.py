@@ -423,7 +423,7 @@ class AuthonactionPolicy(Policy):
         callback=default_callback, **kwargs):
         """ Handle policy hooks. """
         if "interactive" in config.ignore_policy_tags:
-            if config.debug_level() > 3:
+            if config.debug_level("policies") > 0:
                 log_msg = _("AuthonactionPolicy disabled by <config.ignore_policy_tags>.", log=True)[1]
                 logger.debug(log_msg)
             return callback.ok()

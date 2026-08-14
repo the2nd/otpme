@@ -61,7 +61,7 @@ class ConnHandler(object):
                 continue
             except ConnectionQuit:
                 self.connection._close()
-                if config.debug_level() > 3:
+                if config.debug_level("connections") > 0:
                     log_msg = _("Client closed connection.", log=True)[1]
                     self.logger.debug(log_msg)
                 break
@@ -182,7 +182,7 @@ class ConnHandler(object):
                         status = status_codes.SERVER_QUIT
                         #config.raise_exception()
                         break
-                    if config.debug_level() > 3:
+                    if config.debug_level("connections") > 0:
                         log_msg = _("Using protocol {protocol} for client: {client_ip}", log=True)[1]
                         log_msg = log_msg.format(protocol=self.protocol, client_ip=client_ip)
                         self.logger.debug(log_msg)

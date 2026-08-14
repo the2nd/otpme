@@ -1063,7 +1063,14 @@ class OTPmeConfig(object):
         # Get command line options.
         if not self.config_reload:
             from otpme.lib.help import get_main_opts
-            main_opts = get_main_opts()
+            try:
+                main_opts = get_main_opts()
+            except OTPmeException:
+                # A bad command line option. There is no help screen to
+                # print from in here, and whoever called us asks for the
+                # options again right after and does have one -- it gets
+                # the same error. Carry on with the defaults until then.
+                main_opts = {}
             for var in main_opts:
                 self.command_line_opts.append(var)
                 val = main_opts[var]
@@ -1477,6 +1484,10 @@ class OTPmeConfig(object):
         # Set new level.
         if new_level is None:
             # Get current level.
+            if self.debug_daemons:
+                if self.daemon_name:
+                    if self.daemon_name not in self.debug_daemons:
+                        return 0
             try:
                 level = self.debug_levels[slot]
             except Exception:

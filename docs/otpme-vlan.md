@@ -9,15 +9,46 @@ otpme-vlan - manage OTPme VLANs
 # DESCRIPTION
 
 **otpme-vlan** manages VLAN objects in the OTPme system. A VLAN object
-is the assignable representation of a network VLAN. It is referenced by
-the **vlans** config parameter of sites, units, hosts, devices, users
-and tokens, and the resulting value is returned as
-**Tunnel-Private-Group-Id** during 802.1x or MAB port authentication.
+is the assignable representation of a network VLAN. Its value is
+returned as **Tunnel-Private-Group-Id** during 802.1x or MAB port
+authentication.
 
-Assigning a VLAN requires the **assign** ACL on the VLAN object. This
-makes VLAN assignment delegable per VLAN: an operator can be allowed to
-hand out the guest VLAN without being able to put anybody into the
-server VLAN.
+There are two ways to assign a VLAN. The VLAN can be named on the
+object, through the **vlans** config parameter of sites, units, hosts,
+devices, users and tokens. Or the object can be named on the VLAN, by
+adding it as a member with **add_token**, **add_role**, **add_host** or
+**add_device**.
+
+Membership is the way to keep assignments where the network is. It only
+ever applies to VLANs of the site answering the RADIUS request, so a
+site makes all of its own assignments without touching objects that are
+owned somewhere else, and without any of the cross site rules further
+down: the member list lives on the VLAN object, which only its own site
+can edit. Member lists are not synced to other sites.
+
+The more specific assignment wins. A VLAN naming the object itself comes
+first, then one naming a role the object is in, then one naming a role
+that role is in, and so on up the nesting. So a single token can be
+moved out of the VLAN of its role, and a role nested in another can have
+a VLAN of its own. All of them win over the **vlans** config parameter,
+which is only looked at when no VLAN of our site names the object.
+
+Where two VLANs name the object at the same distance -- it is in two
+roles of the same nesting level, each in a different VLAN -- there is
+nothing to tell them apart. The VLAN whose name sorts first is used, so
+the answer is at least the same every time, and a warning naming both is
+logged.
+
+An object can only be a member of one VLAN per site. Adding it to a
+second one is refused, naming the VLAN it is already in. Only membership
+entered directly counts here: a role in another VLAN is not a conflict,
+it is what a more specific entry is meant to override.
+
+The rest of this section is about the **vlans** config parameter.
+Assigning a VLAN that way requires the **assign** ACL on the VLAN
+object. This makes VLAN assignment delegable per VLAN: an operator can
+be allowed to hand out the guest VLAN without being able to put anybody
+into the server VLAN.
 
 VLANs are site local objects, but they can be assigned across sites by
 prefixing the site name (*site***/***vlan*). This is needed when users
@@ -51,9 +82,10 @@ Create a new VLAN, optionally with a VLAN ID.
 
 **del *vlan***  
 Delete a VLAN. Asks for confirmation according to the confirmation
-policy. Objects the VLAN is assigned to keep an unresolvable assignment,
-they are not listed because the assignments live in their **vlans**
-config parameter.
+policy, saying how many members it still has. Members lose their VLAN
+with it, nothing is left behind. Objects that name the VLAN in their
+**vlans** config parameter keep an unresolvable assignment, they are not
+listed because that parameter is not indexed.
 
 **show \[*vlan*\]**  
 Display VLAN information.
@@ -77,6 +109,35 @@ Move VLAN to a different unit.
 
 **touch *vlan***  
 Re-index the object to fix potential index problems.
+
+## Members
+
+**add_token *vlan* *user***/***token***  
+Add a token to the VLAN. Refused if the token is already a member of
+another VLAN of this site.
+
+**remove_token *vlan* *user***/***token***  
+Remove a token from the VLAN.
+
+**add_role *vlan* *role***  
+Add a role to the VLAN. Every token, host and device of the role is then
+in the VLAN, and so is every role nested in it, unless a VLAN names one
+of them more closely.
+
+**remove_role *vlan* *role***  
+Remove a role from the VLAN.
+
+**add_host *vlan* *host***  
+Add a host to the VLAN. Used for MAB port authentication.
+
+**remove_host *vlan* *host***  
+Remove a host from the VLAN.
+
+**add_device *vlan* *device***  
+Add a device to the VLAN. Used for MAB port authentication.
+
+**remove_device *vlan* *device***  
+Remove a device from the VLAN.
 
 ## VLAN ID
 
@@ -198,6 +259,20 @@ Change the VLAN ID
 
 **otpme-vlan add_acl guests role netadmins assign**  
 Allow the role "netadmins" to assign this VLAN
+
+**otpme-vlan add_role guests employees**  
+Put every token, host and device of the role "employees" into the VLAN
+
+**otpme-vlan add_token servers joe/login**  
+Put a single token into another VLAN, no matter which VLAN its roles are
+in
+
+**otpme-vlan add_role servers admins**  
+Give a role nested in "employees" a VLAN of its own. Its members get it
+instead of the VLAN of "employees", which stays with everyone else
+
+**otpme-vlan add_host printers hp-lj-01**  
+Put a host into the VLAN, for MAB port authentication
 
 **otpme-token config joe/login vlans guests**  
 Assign the VLAN to a token

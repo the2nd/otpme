@@ -229,7 +229,7 @@ def atfork(keep_locks=False, quiet=True, ignore_thread=False,
     log.atfork()
     # Get logger.
     logger = config.logger
-    if config.debug_level() > 3:
+    if config.debug_level("forking") > 0:
         log_msg = _("Process forked: {pid}", log=True)[1]
         log_msg = log_msg.format(pid=pid)
         logger.debug(log_msg)
@@ -530,7 +530,7 @@ def drop_privileges(user=None, group=None, groups=None):
         except Exception as e:
             msg = _("Failed to drop privileges (group)")
             raise OTPmeException(msg) from e
-        if config.debug_level() > 3:
+        if config.debug_level("forking") > 0:
             log_msg = _("Changed group to: {group}", log=True)[1]
             log_msg = log_msg.format(group=group)
             logger.debug(log_msg)
@@ -543,7 +543,7 @@ def drop_privileges(user=None, group=None, groups=None):
         except Exception as e:
             msg = _("Failed to drop privileges (group)")
             raise OTPmeException(msg) from e
-        if config.debug_level() > 3:
+        if config.debug_level("forking") > 0:
             log_msg = _("Changed user to: {user}", log=True)[1]
             log_msg = log_msg.format(user=user)
             logger.debug(log_msg)

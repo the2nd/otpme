@@ -955,7 +955,7 @@ class OTPmeSyncP1(OTPmeServer1):
                         return self.build_response(status, response, encrypt=False)
 
         if command != "get_object":
-            if config.debug_level() > 3:
+            if config.debug_level("protocol") > 0:
                 log_msg = _("Processing sync command: {cmd}", log=True)[1]
                 log_msg = log_msg.format(cmd=command)
                 self.logger.debug(log_msg)

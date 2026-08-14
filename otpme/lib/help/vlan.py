@@ -72,6 +72,70 @@ cmd_help = {
                                 },
                 },
 
+    'add_token'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan add_token {vlan} {token}'),
+                    'cmd'   :   '<|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add token to VLAN.'),
+                                },
+                },
+
+    'remove_token'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan remove_token {vlan} {token}'),
+                    'cmd'   :   '<|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove token from VLAN.'),
+                                },
+                },
+
+    'add_role'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan add_role {vlan} {role}'),
+                    'cmd'   :   '<|object|> <role_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add role to VLAN.'),
+                                },
+                },
+
+    'remove_role'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan remove_role {vlan} {role}'),
+                    'cmd'   :   '<|object|> <role_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove role from VLAN.'),
+                                },
+                },
+
+    'add_host'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan add_host {vlan} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add host to VLAN.'),
+                                },
+                },
+
+    'remove_host'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan remove_host {vlan} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove host from VLAN.'),
+                                },
+                },
+
+    'add_device'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan add_device {vlan} {device}'),
+                    'cmd'   :   '<|object|> <device_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add device to VLAN.'),
+                                },
+                },
+
+    'remove_device'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan remove_device {vlan} {device}'),
+                    'cmd'   :   '<|object|> <device_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove device from VLAN.'),
+                                },
+                },
+
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan config -d -a {vlan} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',

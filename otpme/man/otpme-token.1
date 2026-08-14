@@ -151,6 +151,30 @@ Test if given OTP/password can be verified by the token.
 .TP
 .B temp_password \fR[\fB\-\-generate\fR] [\fB\-\-duration\fR \fItime\fR] [\fB\-\-remove\fR] \fItoken\fR \fR[\fIpassword\fR]
 Set, generate or remove a temporary password.
+.SS VLAN Assignment
+A token is not assigned a VLAN with a command of its own. Either the VLAN
+names the token, so that the assignment belongs to the site that runs the
+network (see
+.BR otpme-vlan (1)):
+.PP
+.RS
+.B otpme-vlan add_token \fIvlan\fR \fIuser\fB/\fItoken\fR
+.RE
+.PP
+or the token names the VLAN through its
+.B vlans
+config parameter (see
+.BR otpme (7)):
+.PP
+.RS
+.B otpme-token config \fIuser\fB/\fItoken\fR vlans \fIvlan\fR
+.RE
+.PP
+The VLAN is returned during 802.1x port authentication. Membership wins: the
+.B vlans
+parameter is only looked at when no VLAN of the site answering the RADIUS
+request names the token or a role it is in. The more specific assignment
+wins, so a VLAN naming the token itself overrides the VLAN of its role.
 .SS Offline Configuration
 .TP
 .B enable_offline \fItoken\fR
@@ -506,6 +530,12 @@ Test token authentication
 .TP
 .B otpme-token \-\-type link add root/admin_link alice/login
 Create a link token
+.TP
+.B otpme-vlan add_token servers alice/totp
+Put the token into a VLAN, whatever VLAN its roles are in
+.TP
+.B otpme-token config alice/totp vlans guests
+Assign a VLAN to the token, used where no VLAN names it
 .SH FILES
 .TP
 .I /var/lib/otpme/
@@ -516,7 +546,8 @@ OTPme data directory
 .BR otpme-user (1),
 .BR otpme-role (1),
 .BR otpme-policy (1),
-.BR otpme-accessgroup (1)
+.BR otpme-accessgroup (1),
+.BR otpme-vlan (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

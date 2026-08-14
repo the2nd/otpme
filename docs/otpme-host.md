@@ -70,6 +70,25 @@ Limit logins to tokens and roles explicitly assigned to this host.
 **unlimit_logins *host***  
 Allow logins from all authorized tokens.
 
+## VLAN Assignment
+
+A host is not assigned a VLAN from here. Either the VLAN names the host,
+so that the assignment belongs to the site that runs the network (see
+**otpme-vlan**(1)):
+
+> **otpme-vlan add_host *vlan* *host***
+
+or the host names the VLAN through its **vlans** config parameter (see
+**otpme**(7)):
+
+> **otpme-host config *host* vlans *vlan***
+
+The VLAN is returned during MAB port authentication, where the host
+authenticates with its MAC address. Membership wins: the **vlans**
+parameter is only looked at when no VLAN of the site answering the
+RADIUS request names the host. A host that is in the VLAN only through a
+role is overridden by one that names the host itself.
+
 ## User and Group Listing
 
 **list_users *host***  
@@ -318,6 +337,15 @@ Allow bob's SSH key only for SSH interface
 **otpme-host limit_logins notebook1**  
 Limit logins to explicitly assigned tokens
 
+## VLAN Assignment
+
+**otpme-vlan add_host printers notebook1**  
+Put the host into a VLAN, for MAB port authentication
+
+**otpme-host config notebook1 vlans berlin/guests**  
+Assign a VLAN of another site to the host, honoured only if the
+answering site trusts it
+
 ## Certificate Operations
 
 **otpme-host dump_cert notebook1**  
@@ -342,7 +370,7 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-node**(1), **otpme-token**(1),
-**otpme-role**(1), **otpme-ca**(1)
+**otpme-role**(1), **otpme-vlan**(1), **otpme-ca**(1)
 
 # AUTHOR
 

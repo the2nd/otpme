@@ -645,7 +645,7 @@ class OTPmeClient(OTPmeClientBase):
             exception = None
             # Set agent protocol we negotiated.
             self.agent_protocol = response.split(":")[1].replace(" ", "")
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Agent supports protocol version: {agent_protocol}", log=True)[1]
                 log_msg = log_msg.format(agent_protocol=self.agent_protocol)
                 self.logger.debug(log_msg)
@@ -764,7 +764,7 @@ class OTPmeClient(OTPmeClientBase):
         # Set server protocol we negotiated.
         self.protocol = response.split(":")[1].replace(" ", "")
         config.client_protocol = self.protocol
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("client_crypto") > 0:
             log_msg = _("Server supports protocol version: {protocol}", log=True)[1]
             log_msg = log_msg.format(protocol=self.protocol)
             self.logger.debug(log_msg)
@@ -2863,7 +2863,7 @@ class OTPmeClient1(OTPmeClientBase):
             enc_mod = self.session_enc_mod
             enc_key = enc_mod.gen_key()
             # Load site key.
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Loading site key.", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -2873,7 +2873,7 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = (_("Failed to load site key."))
                 raise OTPmeException(msg) from e
             # Encrypt AES key with site public key.
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Encrypting preauth key...", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -2894,7 +2894,7 @@ class OTPmeClient1(OTPmeClientBase):
             # Add encrypted AES key.
             command_args['enc_key'] = _enc_key
             # Generating DH parameters.
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Generating DH parameters for session key...", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -2939,7 +2939,7 @@ class OTPmeClient1(OTPmeClientBase):
             log_msg = log_msg.format(daemon=self.daemon,
                                     realm=self.realm,
                                     site=self.site)
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("client_crypto") > 0:
             self.logger.debug(log_msg)
         try:
             status, \
@@ -3073,14 +3073,14 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = _("Site signature verification failed: {site_cn}: {error}")
                 msg = msg.format(site_cn=self.site_cert.get_cn(), error=e)
                 raise AuthFailed(msg) from e
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Site signature verification successful: {site}", log=True)[1]
                 log_msg = log_msg.format(site=self.site)
                 self.logger.debug(log_msg)
 
         if self.connection.encrypt_session:
             # Generate session key via DH.
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Generating session key via DH.", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -3126,7 +3126,7 @@ class OTPmeClient1(OTPmeClientBase):
             elif self.logout:
                 # No need to redirect request on logout as its
                 # done via SLP from otpme-agent.
-                if config.debug_level(DEBUG_SLOT) > 3:
+                if config.debug_level("client_crypto") > 0:
                     log_msg = _("Doing cross-site logout.", log=True)[1]
                     self.logger.debug(log_msg)
 
@@ -3399,7 +3399,7 @@ class OTPmeClient1(OTPmeClientBase):
         #    if not self.login_session_id:
         #        return
         #    # If we got a login session ID try to auth with agent.
-        #    if config.debug_level(DEBUG_SLOT) > 3:
+        #    if config.debug_level("client_crypto") > 0:
         #        log_msg = _("Using login session ID: {login_session_id}", log=True)[1]
         #        log_msg = log_msg.format(login_session_id=self.login_session_id)
         #        self.logger.debug(log_msg)
@@ -3805,7 +3805,7 @@ class OTPmeClient1(OTPmeClientBase):
 
         if self.login:
             # Generate DH stuff used to calculate RSP.
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("client_crypto") > 0:
                 log_msg = _("Generating DH key for RSP.", log=True)[1]
                 self.logger.debug(log_msg)
 
@@ -4036,7 +4036,7 @@ class OTPmeClient1(OTPmeClientBase):
 
             if self.login:
                 # Calculate RSP.
-                if config.debug_level(DEBUG_SLOT) > 3:
+                if config.debug_level("client_crypto") > 0:
                     log_msg = _("Generating RSP via ECDH...", log=True)[1]
                     self.logger.debug(log_msg)
                 rsp_ecdh_server_pub = self.auth_response['ecdh_server_pub']
@@ -4263,7 +4263,7 @@ class OTPmeClient1(OTPmeClientBase):
         response, log_msg = _("{peer_type} response verification successful: {fqdn}", log=True)
         response = response.format(peer_type=peer_type, fqdn=self.peer.fqdn)
         log_msg = log_msg.format(peer_type=peer_type, fqdn=self.peer.fqdn)
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("client_crypto") > 0:
             self.logger.debug(log_msg)
 
         return response

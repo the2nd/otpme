@@ -1641,7 +1641,7 @@ class ClusterDaemon(OTPmeDaemon):
                 if node_name == self.host_name:
                     node_vote = calc_node_vote()
                     node_votes[self.host_name] = node_vote
-                    if config.debug_level() > 2:
+                    if config.debug_level("cluster") > 0:
                         if not quiet:
                             log_msg = _("Got cluster vote from node: {node}: {vote}", log=True)[1]
                             log_msg = log_msg.format(node=node_name, vote=node_vote)
@@ -1678,7 +1678,7 @@ class ClusterDaemon(OTPmeDaemon):
                     except KeyError:
                         pass
                     continue
-                if config.debug_level() > 2:
+                if config.debug_level("cluster") > 0:
                     if not quiet:
                         log_msg = _("Got cluster vote from node: {node}: {vote}", log=True)[1]
                         log_msg = log_msg.format(node=node_name, vote=x_node_vote)

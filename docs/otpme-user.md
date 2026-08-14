@@ -142,6 +142,24 @@ Set user description.
 **unit *user* \[*unit*\]**  
 Display or change user's organizational unit.
 
+## VLAN Assignment
+
+A user is never the object of a port authentication -- a token is. So a
+user has no VLAN of its own, and cannot be made a member of one. What it
+can do is set the default for its tokens through the **vlans** config
+parameter (see **otpme**(7)):
+
+> **otpme-user config *user* vlans *vlan***
+
+A token without a **vlans** parameter of its own inherits this one, the
+same way it inherits any other config parameter from its user, its unit
+and its site.
+
+It only decides where no VLAN of the site answering the RADIUS request
+names the token or a role it is in, because membership always wins. To
+give a person a VLAN that way, put their token or one of their roles
+into it (see **otpme-vlan**(1)).
+
 ## Cryptographic Keys
 
 **gen_keys \[*options*\] *user***  
@@ -373,6 +391,14 @@ Show alice's group memberships
 **otpme-user list_roles alice**  
 Show alice's assigned roles
 
+## VLAN Assignment
+
+**otpme-user config alice vlans guests**  
+Set the VLAN her tokens use where no VLAN names them
+
+**otpme-vlan add_token guests alice/totp**  
+Put one of her tokens into a VLAN, which wins over the parameter above
+
 ## Applying Policies
 
 **otpme-user add_policy alice strong_passwords**  
@@ -440,7 +466,7 @@ Create bob using the developer template
 # SEE ALSO
 
 **otpme**(7), **otpme-token**(1), **otpme-group**(1), **otpme-role**(1),
-**otpme-policy**(1), **otpme-unit**(1)
+**otpme-policy**(1), **otpme-vlan**(1), **otpme-unit**(1)
 
 # AUTHOR
 

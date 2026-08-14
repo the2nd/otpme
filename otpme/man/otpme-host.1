@@ -60,6 +60,30 @@ Limit logins to tokens and roles explicitly assigned to this host.
 .TP
 .B unlimit_logins \fIhost\fR
 Allow logins from all authorized tokens.
+.SS VLAN Assignment
+A host is not assigned a VLAN from here. Either the VLAN names the host, so
+that the assignment belongs to the site that runs the network (see
+.BR otpme-vlan (1)):
+.PP
+.RS
+.B otpme-vlan add_host \fIvlan\fR \fIhost\fR
+.RE
+.PP
+or the host names the VLAN through its
+.B vlans
+config parameter (see
+.BR otpme (7)):
+.PP
+.RS
+.B otpme-host config \fIhost\fR vlans \fIvlan\fR
+.RE
+.PP
+The VLAN is returned during MAB port authentication, where the host
+authenticates with its MAC address. Membership wins: the
+.B vlans
+parameter is only looked at when no VLAN of the site answering the RADIUS
+request names the host. A host that is in the VLAN only through a role is
+overridden by one that names the host itself.
 .SS User and Group Listing
 .TP
 .B list_users \fIhost\fR
@@ -285,6 +309,14 @@ Allow bob's SSH key only for SSH interface
 .TP
 .B otpme-host limit_logins notebook1
 Limit logins to explicitly assigned tokens
+.SS VLAN Assignment
+.TP
+.B otpme-vlan add_host printers notebook1
+Put the host into a VLAN, for MAB port authentication
+.TP
+.B otpme-host config notebook1 vlans berlin/guests
+Assign a VLAN of another site to the host, honoured only if the answering
+site trusts it
 .SS Certificate Operations
 .TP
 .B otpme-host dump_cert notebook1
@@ -309,6 +341,7 @@ OTPme data directory
 .BR otpme-node (1),
 .BR otpme-token (1),
 .BR otpme-role (1),
+.BR otpme-vlan (1),
 .BR otpme-ca (1)
 
 .SH AUTHOR

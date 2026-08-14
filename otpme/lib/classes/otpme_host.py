@@ -968,7 +968,7 @@ class OTPmeHost(OTPmeClientObject):
         msg, log_msg = _("Loading {host_type} {key_type} auth key.", log=True)
         msg = msg.format(host_type=self.type, key_type=key_type)
         log_msg = log_msg.format(host_type=self.type, key_type=key_type)
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             logger.debug(log_msg)
         try:
             if private:
@@ -984,7 +984,7 @@ class OTPmeHost(OTPmeClientObject):
 
     def gen_challenge(self):
         """ Generate host authentication challenge. """
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             log_msg = _("Generating {type} auth challenge.", log=True)[1]
             log_msg = log_msg.format(type=self.type)
             logger.debug(log_msg)
@@ -996,7 +996,7 @@ class OTPmeHost(OTPmeClientObject):
     def sign_challenge(self, challenge: str):
         """ Sign authentication challenge. """
         auth_key = self.load_auth_key(private=True)
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             log_msg = _("Signing {type} auth challenge.", log=True)[1]
             log_msg = log_msg.format(type=self.type)
             logger.debug(log_msg)
@@ -1008,7 +1008,7 @@ class OTPmeHost(OTPmeClientObject):
         """ Verify authentication challenge/response. """
         auth_key = self.load_auth_key()
         response = decode(response, "hex")
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             log_msg = _("Verifying {type} auth challenge.", log=True)[1]
             log_msg = log_msg.format(type=self.type)
             logger.debug(log_msg)

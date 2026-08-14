@@ -17,45 +17,17 @@ def register():
 
 cmd_help = {
     '_need_command'             : True,
-    '_include_global_opts'      : False,
+    '_include_global_opts'      : True,
     '_usage_help'               : _("Usage: otpme-agent {command}"),
 
+    # Only what is ours. Everything else comes from the global options,
+    # which is also where it stays correct: the copy that used to be
+    # here still called "-df" a file read/write long after that became
+    # the option for forking.
     '_help' :   {
                     'cmd'                           : _('Manage OTPme agent'),
-                    # Agent specific options.
                     '--reneg-timeout <timeout>'     : _('Timeout when trying session renegotiation.'),
-                    '--no-dns'                      : _('Do not resolve OTPme site address via DNS.'),
-                    '--use-dns'                     : _('Resolve OTPme site address via DNS.'),
-                    '--login-no-dns'                : _('Do not resolve OTPme login point via DNS.'),
-                    '--login-use-dns'               : _('Resolve OTPme login point via DNS.'),
-                    # Generic options.
                     '-l <file>'                     : _('Log to file instead of stdout.'),
-                    '-t <timeout>'                  : _('Connect timeout in seconds.'),
-                    '-tt <timeout>'                 : _('Connection timeout in seconds.'),
-                    '-d'                            : _('Enable debug mode. Multiple "d" will increase debug level.'),
-                    '-da'                           : _('Debug function cache adds.'),
-                    '-db'                           : _('Print when objects are read from backend.'),
-                    '-dc'                           : _('Print when objects are read from cache.'),
-                    '-dC'                           : _('Enable debug logging for client messages.'),
-                    '-dD'                           : _('Do not go to background and log to stdout.'),
-                    '-de'                           : _('Print tracebacks.'),
-                    '-dee'                          : _('Raise debug exceptions.'),
-                    '-df'                           : _('Print when reading/writing files.'),
-                    '-dh'                           : _('Debug function cache hits.'),
-                    '-dL'                           : _('Enable debug of locks.'),
-                    '-dm'                           : _('Print loading of OTPme modules.'),
-                    '-dM'                           : _('Enable function/method call tracing.'),
-                    '-dN'                           : _('Enable debug of network packets.'),
-                    '-dt'                           : _('Enable timestamps in debug output.'),
-                    '-dT'                           : _('Enable (debug) timing of function/method calls.'),
-                    '--color-logs'                  : _('Use colored logs.'),
-                    '--log-filter <syncd,authd>'    : _('Only print log messages for the given daemons.'),
-                    '--debug-daemons <authd,mgmtd>' : _('Enable debug stuff only for the given daemons.'),
-                    '--debug-users <user1,user2>'   : _('Enable debug stuff only for the given users.'),
-                    '--debug-timing-limit <seconds>': _('Print warning if function/method call takes longer than <seconds>.'),
-                    '--debug-counter-limit <call_count>': _('Print warning if function/method is called more than <call_count>.'),
-                    '--debug-func-caches <instance_cache,search_cache>' : _('Enable debug stuff only for the given function caches.'),
-                    '--version'                     : _('Show version.'),
                 },
 
     'start'    : {

@@ -4076,14 +4076,14 @@ class CommandHandler(object):
 
                     try:
                         timeout = session['session_timeout']
-                        timeout = units.int2time(timeout, time_unit="m")[0]
+                        timeout = units.int2time(timeout, time_unit="s")[0]
                     except Exception:
                         timeout = ""
                     current_row.append(timeout)
 
                     try:
                         unused_timeout = session['session_unused_timeout']
-                        unused_timeout = units.int2time(unused_timeout, time_unit="m")[0]
+                        unused_timeout = units.int2time(unused_timeout, time_unit="s")[0]
                     except Exception:
                         unused_timeout = ""
                     current_row.append(unused_timeout)

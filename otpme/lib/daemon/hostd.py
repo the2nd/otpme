@@ -1255,7 +1255,7 @@ class HostDaemon(OTPmeDaemon):
             try:
                 notify_sites = self.get_unsync_sites(timeout=self.lock_timeout)
             except LockWaitTimeout:
-                if config.debug_level() > 3:
+                if config.debug_level("lock_waits") > 0:
                     log_msg = _("Timeout waiting for lock getting unsync peers.", log=True)[1]
                     self.logger.warning(log_msg)
                 notify_sites = None
@@ -2122,7 +2122,7 @@ class HostDaemon(OTPmeDaemon):
                                     try:
                                         unsync_sites = self.get_unsync_sites(timeout=self.lock_timeout)
                                     except LockWaitTimeout:
-                                        if config.debug_level() > 3:
+                                        if config.debug_level("lock_waits") > 0:
                                             log_msg = _("Timeout waiting for lock getting unsync peers.", log=True)[1]
                                             self.logger.warning(log_msg)
                                         unsync_sites = None

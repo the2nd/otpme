@@ -16,6 +16,9 @@ To use a device for MAB port authentication, add it with
 .BR otpme-device ,
 set its MAC address and add it to the appropriate access group with
 .BR otpme-accessgroup (1).
+A VLAN can be assigned on top of that, see
+.B VLAN Assignment
+below.
 .SH COMMANDS
 .SS Device Management
 .TP
@@ -47,6 +50,30 @@ Move device to a different unit.
 .B mac \fIdevice\fR \fImac_address\fR
 Set the MAC address of the device. The MAC address is used for MAB port
 authentication.
+.SS VLAN Assignment
+A device is not assigned a VLAN from here. Either the VLAN names the device,
+so that the assignment belongs to the site that runs the network (see
+.BR otpme-vlan (1)):
+.PP
+.RS
+.B otpme-vlan add_device \fIvlan\fR \fIdevice\fR
+.RE
+.PP
+or the device names the VLAN through its
+.B vlans
+config parameter (see
+.BR otpme (7)):
+.PP
+.RS
+.B otpme-device config \fIdevice\fR vlans \fIvlan\fR
+.RE
+.PP
+The VLAN is returned during MAB port authentication, together with the
+access granted through the access group. Membership wins: the
+.B vlans
+parameter is only looked at when no VLAN of the site answering the RADIUS
+request names the device. A device that is in a VLAN only through a role is
+overridden by one that names the device itself.
 .SS Configuration
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdevice\fR \fIparameter\fR \fR[\fIvalue\fR]
@@ -156,6 +183,9 @@ Set the MAC address
 .B otpme-accessgroup add_device lan ip-phone-1
 Add device to access group for MAB
 .TP
+.B otpme-vlan add_device voice ip-phone-1
+Put the device into the voice VLAN
+.TP
 .B otpme-device description ip-phone-1 "Reception IP Phone"
 Set description
 .TP
@@ -169,6 +199,7 @@ OTPme data directory
 .BR otpme (7),
 .BR otpme-accessgroup (1),
 .BR otpme-host (1),
+.BR otpme-vlan (1),
 .BR otpme-client (1)
 .SH AUTHOR
 the2nd <the2nd@otpme.org>

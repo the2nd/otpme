@@ -647,7 +647,7 @@ class OTPmeSyncP1(OTPmeClient1):
                     else:
                         log_msg = _("Receiving remote object ({object_counter}/{object_count}): {object_id}", log=True)[1]
                         log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, object_id=object_id)
-                    if config.debug_level() > 2:
+                    if config.debug_level("sync") > 0:
                         self.logger.info(log_msg)
                     else:
                         print_processed_msg = False
@@ -935,7 +935,7 @@ class OTPmeSyncP1(OTPmeClient1):
             object_count += 1
 
         def log_progress(x_oid, status, object_counter, object_count):
-            if config.debug_level() > 2:
+            if config.debug_level("sync") > 0:
                 if status == "added":
                     log_msg = _("Added object ({object_counter}/{object_count}): {x_oid}", log=True)[1]
                     log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)

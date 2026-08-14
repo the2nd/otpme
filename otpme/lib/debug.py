@@ -310,12 +310,13 @@ def decorator(func, _otpme_class_debug=False):
                     debug_this_call = False
             else:
                 debug_this_call = False
+        # Says which daemons to debug, so it has nothing to say about
+        # something that is not one -- a tool run from a shell keeps
+        # its tracing. Same as in config.debug_level().
         if config.debug_daemons:
             if config.daemon_name:
                 if config.daemon_name not in config.debug_daemons:
                     debug_this_call = False
-            else:
-                debug_this_call = False
 
         if config.debug_func_names:
             debug_this_call = True

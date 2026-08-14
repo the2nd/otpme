@@ -148,6 +148,25 @@ Test if given OTP/password can be verified by the token.
 **temp_password \[**--generate**\] \[**--duration** *time*\] \[**--remove**\] *token* \[*password*\]**  
 Set, generate or remove a temporary password.
 
+## VLAN Assignment
+
+A token is not assigned a VLAN with a command of its own. Either the
+VLAN names the token, so that the assignment belongs to the site that
+runs the network (see **otpme-vlan**(1)):
+
+> **otpme-vlan add_token *vlan* *user***/***token***
+
+or the token names the VLAN through its **vlans** config parameter (see
+**otpme**(7)):
+
+> **otpme-token config *user***/***token* vlans *vlan***
+
+The VLAN is returned during 802.1x port authentication. Membership wins:
+the **vlans** parameter is only looked at when no VLAN of the site
+answering the RADIUS request names the token or a role it is in. The
+more specific assignment wins, so a VLAN naming the token itself
+overrides the VLAN of its role.
+
 ## Offline Configuration
 
 **enable_offline *token***  
@@ -547,6 +566,12 @@ Test token authentication
 **otpme-token --type link add root/admin_link alice/login**  
 Create a link token
 
+**otpme-vlan add_token servers alice/totp**  
+Put the token into a VLAN, whatever VLAN its roles are in
+
+**otpme-token config alice/totp vlans guests**  
+Assign a VLAN to the token, used where no VLAN names it
+
 # FILES
 
 */var/lib/otpme/*  
@@ -555,7 +580,7 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-role**(1),
-**otpme-policy**(1), **otpme-accessgroup**(1)
+**otpme-policy**(1), **otpme-accessgroup**(1), **otpme-vlan**(1)
 
 # AUTHOR
 

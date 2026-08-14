@@ -8,14 +8,46 @@ otpme-vlan \- manage OTPme VLANs
 .SH DESCRIPTION
 .B otpme-vlan
 manages VLAN objects in the OTPme system. A VLAN object is the assignable
-representation of a network VLAN. It is referenced by the
-.B vlans
-config parameter of sites, units, hosts, devices, users and tokens, and the
-resulting value is returned as
+representation of a network VLAN. Its value is returned as
 .B Tunnel\-Private\-Group\-Id
 during 802.1x or MAB port authentication.
 .PP
-Assigning a VLAN requires the
+There are two ways to assign a VLAN. The VLAN can be named on the object,
+through the
+.B vlans
+config parameter of sites, units, hosts, devices, users and tokens. Or the
+object can be named on the VLAN, by adding it as a member with
+.BR add_token ", " add_role ", " add_host " or " add_device .
+.PP
+Membership is the way to keep assignments where the network is. It only ever
+applies to VLANs of the site answering the RADIUS request, so a site makes
+all of its own assignments without touching objects that are owned somewhere
+else, and without any of the cross site rules further down: the member list
+lives on the VLAN object, which only its own site can edit. Member lists are
+not synced to other sites.
+.PP
+The more specific assignment wins. A VLAN naming the object itself comes
+first, then one naming a role the object is in, then one naming a role that
+role is in, and so on up the nesting. So a single token can be moved out of
+the VLAN of its role, and a role nested in another can have a VLAN of its
+own. All of them win over the
+.B vlans
+config parameter, which is only looked at when no VLAN of our site names the
+object.
+.PP
+Where two VLANs name the object at the same distance -- it is in two roles
+of the same nesting level, each in a different VLAN -- there is nothing to
+tell them apart. The VLAN whose name sorts first is used, so the answer is
+at least the same every time, and a warning naming both is logged.
+.PP
+An object can only be a member of one VLAN per site. Adding it to a second
+one is refused, naming the VLAN it is already in. Only membership entered
+directly counts here: a role in another VLAN is not a conflict, it is what a
+more specific entry is meant to override.
+.PP
+The rest of this section is about the
+.B vlans
+config parameter. Assigning a VLAN that way requires the
 .B assign
 ACL on the VLAN object. This makes VLAN assignment delegable per VLAN: an
 operator can be allowed to hand out the guest VLAN without being able to put
@@ -54,7 +86,7 @@ switches configured with named VLANs (e.g. Cisco) expect.
 Create a new VLAN, optionally with a VLAN ID.
 .TP
 .B del \fIvlan\fR
-Delete a VLAN. Asks for confirmation according to the confirmation policy. Objects the VLAN is assigned to keep an unresolvable assignment, they are not listed because the assignments live in their \fBvlans\fR config parameter.
+Delete a VLAN. Asks for confirmation according to the confirmation policy, saying how many members it still has. Members lose their VLAN with it, nothing is left behind. Objects that name the VLAN in their \fBvlans\fR config parameter keep an unresolvable assignment, they are not listed because that parameter is not indexed.
 .TP
 .B show \fR[\fIvlan\fR]
 Display VLAN information.
@@ -77,6 +109,34 @@ Move VLAN to a different unit.
 .TP
 .B touch \fIvlan\fR
 Re-index the object to fix potential index problems.
+.SS Members
+.TP
+.B add_token \fIvlan\fR \fIuser\fB/\fItoken\fR
+Add a token to the VLAN. Refused if the token is already a member of another
+VLAN of this site.
+.TP
+.B remove_token \fIvlan\fR \fIuser\fB/\fItoken\fR
+Remove a token from the VLAN.
+.TP
+.B add_role \fIvlan\fR \fIrole\fR
+Add a role to the VLAN. Every token, host and device of the role is then in
+the VLAN, and so is every role nested in it, unless a VLAN names one of them
+more closely.
+.TP
+.B remove_role \fIvlan\fR \fIrole\fR
+Remove a role from the VLAN.
+.TP
+.B add_host \fIvlan\fR \fIhost\fR
+Add a host to the VLAN. Used for MAB port authentication.
+.TP
+.B remove_host \fIvlan\fR \fIhost\fR
+Remove a host from the VLAN.
+.TP
+.B add_device \fIvlan\fR \fIdevice\fR
+Add a device to the VLAN. Used for MAB port authentication.
+.TP
+.B remove_device \fIvlan\fR \fIdevice\fR
+Remove a device from the VLAN.
 .SS VLAN ID
 .TP
 .B vlan_id \fIvlan\fR \fR[\fIvlan_id\fR]
@@ -189,6 +249,19 @@ Change the VLAN ID
 .TP
 .B otpme-vlan add_acl guests role netadmins assign
 Allow the role "netadmins" to assign this VLAN
+.TP
+.B otpme-vlan add_role guests employees
+Put every token, host and device of the role "employees" into the VLAN
+.TP
+.B otpme-vlan add_token servers joe/login
+Put a single token into another VLAN, no matter which VLAN its roles are in
+.TP
+.B otpme-vlan add_role servers admins
+Give a role nested in "employees" a VLAN of its own. Its members get it
+instead of the VLAN of "employees", which stays with everyone else
+.TP
+.B otpme-vlan add_host printers hp\-lj\-01
+Put a host into the VLAN, for MAB port authentication
 .TP
 .B otpme-token config joe/login vlans guests
 Assign the VLAN to a token

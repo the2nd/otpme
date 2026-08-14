@@ -123,6 +123,28 @@ Keep persisted share mounts on hosts (transient unmount only).
 .TP
 .B list_roles \fR[\fB\-r\fR] \fIrole\fR
 List roles assigned to the role. Use \fB\-r\fR for recursive listing.
+.SS VLAN Assignment
+A role is not assigned a VLAN from here. The VLAN names the role, not the
+other way round, so the assignment belongs to the site that runs the network
+(see
+.BR otpme-vlan (1)):
+.PP
+.RS
+.B otpme-vlan add_role \fIvlan\fR \fIrole\fR
+.RE
+.PP
+Every token, host and device of the role then gets that VLAN during 802.1x
+or MAB port authentication, and so does every role nested in it. The more
+specific assignment wins: a VLAN naming a token itself beats one naming its
+role, and a VLAN naming a nested role beats one naming the role it is nested
+in. So a role can be given a VLAN of its own without taking the outer role
+out of its VLAN.
+.PP
+Only VLANs of the site answering the RADIUS request are looked at. Where no
+VLAN names the role or its members, the
+.B vlans
+config parameter of the token, user, host or device decides (see
+.BR otpme (7)).
 .SS User and Group Listing
 .TP
 .B list_users \fIrole\fR
@@ -341,6 +363,14 @@ Add admins role as child of super_admins
 .TP
 .B otpme-role list_roles \-r super_admins
 List all nested roles recursively
+.SS VLAN Assignment
+.TP
+.B otpme-vlan add_role employees_vlan employees
+Put every member of the role into a VLAN
+.TP
+.B otpme-vlan add_role admin_vlan admins
+Give a role nested in "employees" a VLAN of its own. Its members get it
+instead of the VLAN of "employees"
 .SS Policy Assignment
 .TP
 .B otpme-role add_policy admins require_2fa
@@ -356,6 +386,7 @@ OTPme data directory
 .BR otpme-token (1),
 .BR otpme-group (1),
 .BR otpme-accessgroup (1),
+.BR otpme-vlan (1),
 .BR otpme-policy (1)
 
 .SH AUTHOR

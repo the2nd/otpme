@@ -137,6 +137,27 @@ Set user description.
 .TP
 .B unit \fIuser\fR \fR[\fIunit\fR]
 Display or change user's organizational unit.
+.SS VLAN Assignment
+A user is never the object of a port authentication -- a token is. So a user
+has no VLAN of its own, and cannot be made a member of one. What it can do
+is set the default for its tokens through the
+.B vlans
+config parameter (see
+.BR otpme (7)):
+.PP
+.RS
+.B otpme-user config \fIuser\fR vlans \fIvlan\fR
+.RE
+.PP
+A token without a
+.B vlans
+parameter of its own inherits this one, the same way it inherits any other
+config parameter from its user, its unit and its site.
+.PP
+It only decides where no VLAN of the site answering the RADIUS request names
+the token or a role it is in, because membership always wins. To give a
+person a VLAN that way, put their token or one of their roles into it (see
+.BR otpme-vlan (1)).
 .SS Cryptographic Keys
 .TP
 .B gen_keys \fR[\fIoptions\fR] \fIuser\fR
@@ -358,6 +379,13 @@ Show alice's group memberships
 .TP
 .B otpme-user list_roles alice
 Show alice's assigned roles
+.SS VLAN Assignment
+.TP
+.B otpme-user config alice vlans guests
+Set the VLAN her tokens use where no VLAN names them
+.TP
+.B otpme-vlan add_token guests alice/totp
+Put one of her tokens into a VLAN, which wins over the parameter above
 .SS Applying Policies
 .TP
 .B otpme-user add_policy alice strong_passwords
@@ -423,6 +451,7 @@ Create bob using the developer template
 .BR otpme-group (1),
 .BR otpme-role (1),
 .BR otpme-policy (1),
+.BR otpme-vlan (1),
 .BR otpme-unit (1)
 
 .SH AUTHOR

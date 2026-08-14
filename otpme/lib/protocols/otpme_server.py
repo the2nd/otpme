@@ -444,7 +444,7 @@ class OTPmeServer1(object):
         """ Load site certificate. """
         if self._site_cert:
             return self._site_cert
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             log_msg = _("Loading site certificate.", log=True)[1]
             self.logger.debug(log_msg)
         own_site = backend.get_object(object_type="site",
@@ -468,7 +468,7 @@ class OTPmeServer1(object):
             raise OTPmeException(msg)
         # Sing challenge with site cert.
         site_cert = self._get_site_cert()
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             log_msg = _("Signing ident challenge.", log=True)[1]
             self.logger.debug(log_msg)
         try:
@@ -588,7 +588,7 @@ class OTPmeServer1(object):
                             self.logger.warning(log_msg)
                             raise ServerQuit(msg) from e
                 if self.peer:
-                    if config.debug_level() > 3:
+                    if config.debug_level("host_auth") > 0:
                         log_msg = _("Found valid peer {peer_type}: {peer_name}", log=True)[1]
                         log_msg = log_msg.format(peer_type=self.peer.type,
                                                 peer_name=self.peer.name)
@@ -680,7 +680,7 @@ class OTPmeServer1(object):
                 status = False
                 message = _("Already authenticated.")
                 return self.build_response(status, message, encrypt=False)
-            if config.debug_level() > 3:
+            if config.debug_level("protocol") > 0:
                 log_msg = _("Processing 'preauth_check' command for client: {client}", log=True)[1]
                 log_msg = log_msg.format(client=self.client_name)
                 self.logger.debug(log_msg)
@@ -914,7 +914,7 @@ class OTPmeServer1(object):
                 return self.build_response(status, message, encrypt=False)
             # Set encryption mod for response.
             enc_mod = self.session_enc_mod
-            if config.debug_level() > 3:
+            if config.debug_level("protocol") > 0:
                 log_msg = _("Decrypting preauth request key...", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -937,7 +937,7 @@ class OTPmeServer1(object):
             log_msg = _("Decrypting preauth request...", log=True)[1]
         else:
             log_msg = _("Decoding preauth request...", log=True)[1]
-        if config.debug_level() > 3:
+        if config.debug_level("protocol") > 0:
             self.logger.debug(log_msg)
         try:
             request = json.decode(preauth_request,
@@ -1129,7 +1129,7 @@ class OTPmeServer1(object):
                 'preauth_response' : preauth_response,
                 }
 
-        if config.debug_level() > 3:
+        if config.debug_level("protocol") > 0:
             log_msg = _("Sending preauth response.", log=True)[1]
             self.logger.debug(log_msg)
 
@@ -1145,7 +1145,7 @@ class OTPmeServer1(object):
         if challenge:
             # Load site certificate.
             site_cert = self._get_site_cert()
-            if config.debug_level() > 3:
+            if config.debug_level("protocol") > 0:
                 log_msg = _("Signing preauth challenge.", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -1159,7 +1159,7 @@ class OTPmeServer1(object):
         ecdh_server_pub_pem =   None
         if self.encrypt_session:
             # Generate session key via DH.
-            if config.debug_level() > 3:
+            if config.debug_level("protocol") > 0:
                 log_msg = _("Generating session key via DH.", log=True)[1]
                 self.logger.debug(log_msg)
             try:
@@ -1420,9 +1420,10 @@ class OTPmeServer1(object):
         ssh_public_keys = []
         for uuid in verify_tokens:
             verify_token = verify_tokens[uuid]['token']
-            if verify_token.pass_type != "ssh_key":
+            ssh_public_key = getattr(verify_token, "ssh_public_key", None)
+            if not ssh_public_key:
                 continue
-            ssh_public_keys.append(verify_token.ssh_public_key)
+            ssh_public_keys.append(ssh_public_key)
 
         if verify_token:
             self.preauth_status = True
@@ -1680,16 +1681,16 @@ class OTPmeServer1(object):
         """ Check if we can find a valid SSH login token of the given user. """
         token = None
         verify_token = None
-        valid_user_tokens_ssh = self.get_valid_tokens(user=user,
-                                                pass_type="ssh_key")
-        for _token in valid_user_tokens_ssh:
+        valid_user_tokens = self.get_valid_tokens(user=user)
+        for _token in valid_user_tokens:
             # Make sure we use linked token if needed.
             if _token.destination_token:
                 _verify_token = _token.dst_token
             else:
                 _verify_token = _token
-            if _verify_token.ssh_public_key != ssh_auth_key:
-                    continue
+            ssh_public_key = getattr(_verify_token, "ssh_public_key", None)
+            if ssh_public_key != ssh_auth_key:
+                continue
             # Set found token and stop searching.
             verify_token = _verify_token
             token = _token
@@ -1723,7 +1724,7 @@ class OTPmeServer1(object):
 
             log_msg = _("Peer response verification successful: {peer_name}", log=True)[1]
             log_msg = log_msg.format(peer_name=self.peer.name)
-            if config.debug_level() > 3:
+            if config.debug_level("host_auth") > 0:
                 self.logger.debug(log_msg)
 
             self.authenticated = True
@@ -1738,7 +1739,7 @@ class OTPmeServer1(object):
             self.logger.warning(log_msg)
             raise OTPmeException(msg)
 
-        if config.debug_level() > 3:
+        if config.debug_level("host_auth") > 0:
             log_msg = _("Verified peer certificate CN: {peer_fqdn}", log=True)[1]
             log_msg = log_msg.format(peer_fqdn=self.peer.fqdn)
             self.logger.debug(log_msg)

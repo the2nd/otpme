@@ -589,7 +589,7 @@ class ListenSocket(object):
             if new_connection is None:
                 continue
             # Log new connection.
-            if config.debug_level() > 3:
+            if config.debug_level("connections") > 0:
                 log_msg = _("Worker {idx}: New connection from '{client}'", log=True)[1]
                 log_msg = log_msg.format(idx=worker_idx, client=client)
                 self.logger.debug(log_msg)
@@ -646,7 +646,7 @@ class ListenSocket(object):
                 break
 
             # Log new connection.
-            if config.debug_level() > 3:
+            if config.debug_level("connections") > 0:
                 log_msg = _("New connection from '{client}'", log=True)[1]
                 log_msg = log_msg.format(client=client)
                 self.logger.debug(log_msg)
@@ -767,7 +767,7 @@ class ListenSocket(object):
                     self.logger.warning(log_msg)
                     break
 
-        if config.debug_level() > 3:
+        if config.debug_level("connections") > 0:
             log_msg = _("Client '{client}' disconnected.", log=True)[1]
             log_msg = log_msg.format(client=client)
             self.logger.debug(log_msg)
@@ -1000,7 +1000,7 @@ class Connection(object):
         """ Close connection. """
         if not self.connected:
             return
-        if config.debug_level() > 3:
+        if config.debug_level("connections") > 0:
             log_msg = _("Closing connection to '{client}'", log=True)[1]
             log_msg = log_msg.format(client=self.client)
             self.logger.debug(log_msg)

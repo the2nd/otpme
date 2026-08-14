@@ -16,7 +16,8 @@ access.
 
 To use a device for MAB port authentication, add it with
 **otpme-device**, set its MAC address and add it to the appropriate
-access group with **otpme-accessgroup**(1).
+access group with **otpme-accessgroup**(1). A VLAN can be assigned on
+top of that, see **VLAN Assignment** below.
 
 # COMMANDS
 
@@ -51,6 +52,25 @@ Move device to a different unit.
 **mac *device* *mac_address***  
 Set the MAC address of the device. The MAC address is used for MAB port
 authentication.
+
+## VLAN Assignment
+
+A device is not assigned a VLAN from here. Either the VLAN names the
+device, so that the assignment belongs to the site that runs the network
+(see **otpme-vlan**(1)):
+
+> **otpme-vlan add_device *vlan* *device***
+
+or the device names the VLAN through its **vlans** config parameter (see
+**otpme**(7)):
+
+> **otpme-device config *device* vlans *vlan***
+
+The VLAN is returned during MAB port authentication, together with the
+access granted through the access group. Membership wins: the **vlans**
+parameter is only looked at when no VLAN of the site answering the
+RADIUS request names the device. A device that is in a VLAN only through
+a role is overridden by one that names the device itself.
 
 ## Configuration
 
@@ -168,6 +188,9 @@ Set the MAC address
 **otpme-accessgroup add_device lan ip-phone-1**  
 Add device to access group for MAB
 
+**otpme-vlan add_device voice ip-phone-1**  
+Put the device into the voice VLAN
+
 **otpme-device description ip-phone-1 Reception IP Phone**  
 Set description
 
@@ -182,7 +205,7 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(7), **otpme-accessgroup**(1), **otpme-host**(1),
-**otpme-client**(1)
+**otpme-vlan**(1), **otpme-client**(1)
 
 # AUTHOR
 

@@ -73,6 +73,10 @@ Enable verbose mode.
 .TP
 .B \-d
 Enable debug mode. Multiple 'd' will increase debug level.
+.br
+A letter selects a topic, a letter with a digit a sub topic of it (e.g. \fB\-dc\fR for object caching, \fB\-dc1\fR for the cache flushing within it). Options can be combined (\fB\-dcn\fR), and repeating one raises its level (\fB\-dc1c1\fR).
+.br
+Asking for a topic sets the log level to DEBUG, so its messages are shown. The options that say how to run rather than what to log (\fB\-dD\fR, \fB\-de\fR, \fB\-dE\fR, \fB\-dP\fR, \fB\-dt\fR) do not.
 .TP
 .B \-da
 Debug function cache adds.
@@ -80,11 +84,23 @@ Debug function cache adds.
 .B \-dA
 Enable debug of transactions.
 .TP
+.B \-dA1
+Debug reading/writing transactions on disk.
+.TP
+.B \-dA2
+Debug single transaction actions.
+.TP
 .B \-db
 Print when objects are read from backend.
 .TP
 .B \-dc
 Print when objects are read from cache.
+.TP
+.B \-dc1
+Print when caches are flushed.
+.TP
+.B \-df
+Debug forking and privilege dropping.
 .TP
 .B \-dr
 Print file reads.
@@ -94,6 +110,9 @@ Print file writes.
 .TP
 .B \-dC
 Enable debug logging for client messages.
+.TP
+.B \-dC1
+Debug client side crypto (keys, DH, signatures).
 .TP
 .B \-dD
 Do not go to background and log to stdout.
@@ -110,8 +129,14 @@ Include exception info in warning/error/critical/fatal log records (sets LOG_EXC
 .B \-dh
 Debug function cache hits.
 .TP
+.B \-dH
+Debug host authentication (certificates, challenges).
+.TP
 .B \-dL
 Debug locks.
+.TP
+.B \-dL1
+Debug waiting for locks.
 .TP
 .B \-dm
 Print loading of OTPme modules.
@@ -119,8 +144,26 @@ Print loading of OTPme modules.
 .B \-dM
 Enable function/method call tracing.
 .TP
+.B \-dn
+Debug connections (accept, connect, close).
+.TP
 .B \-dN
 Debug network packets.
+.TP
+.B \-do
+Debug policies.
+.TP
+.B \-dp
+Debug protocol handling (preauth, commands).
+.TP
+.B \-ds
+Debug object sync.
+.TP
+.B \-dS
+Debug cluster communication.
+.TP
+.B \-dx
+Debug object extensions.
 .TP
 .B \-dt
 Enable timestamps in debug output.

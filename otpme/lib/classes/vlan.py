@@ -59,12 +59,28 @@ write_acls = ["assign"]
 read_value_acls = {
                     "view"      : [
                                     "vlan_id",
+                                    "tokens",
+                                    "roles",
+                                    "hosts",
+                                    "devices",
                                 ],
             }
 
 write_value_acls = {
                     "edit"      : [
                                     "vlan_id",
+                                ],
+                    "add"       : [
+                                    "token",
+                                    "role",
+                                    "host",
+                                    "device",
+                                ],
+                    "remove"    : [
+                                    "token",
+                                    "role",
+                                    "host",
+                                    "device",
                                 ],
             }
 
@@ -92,6 +108,78 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_vlan_id',
                     'oargs'             : ['vlan_id'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_token',
+                    'args'              : ['token_path'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_token',
+                    'args'              : ['token_path'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_role'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_role',
+                    'args'              : ['role_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_role'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_role',
+                    'args'              : ['role_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_device'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_device',
+                    'args'              : ['device_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_device'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_device',
+                    'args'              : ['device_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -446,6 +534,88 @@ def get_recursive_default_acls(**kwargs):
     acls += config.get_recursive_default_acls("vlan")
     return acls
 
+def pick_member_vlan(vlans, object_uuid):
+    """ Pick one of the VLANs that name the object at the same distance.
+
+    There is nothing to tell them apart, so the choice is by name --
+    an arbitrary rule, but the same one every time, which the order the
+    backend returns them in is not. Says so, because a VLAN that
+    depends on nothing anybody configured is worth noticing.
+    """
+    if len(vlans) == 1:
+        return vlans[0]
+    object_id = backend.get_oid(uuid=object_uuid)
+    vlans = sorted(vlans, key=lambda x: x.name)
+    log_msg = _("Object is in more than one VLAN at the same distance, using '{vlan}': {object_id}: {vlans}", log=True)[1]
+    log_msg = log_msg.format(vlan=vlans[0].name,
+                            object_id=object_id.read_oid,
+                            vlans=", ".join(x.name for x in vlans))
+    logger.warning(log_msg)
+    return vlans[0]
+
+def get_member_vlan(object_uuid, object_type, site_uuid=None):
+    """ Get the VLAN of our site the given object is a member of.
+
+    Only VLANs of our own site: a VLAN is a network we run, and who is
+    in it is ours to say. What another site puts into its VLANs is its
+    own business, and it cannot put anything into ours -- the member
+    lists live on the VLAN object, which only we can edit. That is what
+    makes this the direct way to assign VLANs and the reason it needs
+    none of the trust checks the "vlans" config parameter needs.
+
+    The more specific assignment wins: the object named itself, then
+    the role it is in, then the role that role is in, and so on. So a
+    single token can be moved out of the VLAN of its role, and a role
+    nested in another can have a VLAN of its own -- the same rule all
+    the way up, instead of whichever VLAN the backend happened to
+    return first.
+    """
+    if site_uuid is None:
+        site_uuid = config.site_uuid
+    site = backend.get_object(object_type="site", uuid=site_uuid)
+    if not site:
+        return
+    vlans = []
+    for vlan in backend.search(object_type="vlan",
+                            attribute="uuid",
+                            value="*",
+                            realm=site.realm,
+                            site=site.name,
+                            return_type="instance"):
+        if not vlan.enabled:
+            continue
+        vlans.append(vlan)
+    if not vlans:
+        return
+
+    # Named by a VLAN itself.
+    x_vlans = [x for x in vlans if object_uuid in x.get_members(object_type)]
+    if x_vlans:
+        return pick_member_vlan(x_vlans, object_uuid)
+
+    # Through its roles, closest first. One step per round: the roles
+    # holding the object, then the roles holding those, until a VLAN
+    # names one of them or there are no roles left above.
+    check_uuids = backend.search(object_type="role",
+                                attribute=object_type,
+                                value=object_uuid,
+                                return_type="uuid")
+    seen_uuids = list(check_uuids)
+    while check_uuids:
+        x_vlans = [x for x in vlans
+                if [y for y in check_uuids if y in x.roles]]
+        if x_vlans:
+            return pick_member_vlan(x_vlans, object_uuid)
+        # The roles above the ones we just checked. Roles can be nested
+        # into each other in a loop, so anything seen before is done.
+        parent_uuids = backend.search(object_type="role",
+                                    attribute="role",
+                                    values=check_uuids,
+                                    return_type="uuid")
+        check_uuids = [x for x in parent_uuids if x not in seen_uuids]
+        seen_uuids += check_uuids
+    return
+
 def get_vlan_trusts(site_uuid, object_site_uuid):
     """ Get our VLAN trusts that apply to objects of the given site.
 
@@ -683,6 +853,38 @@ class Vlan(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        # Members. The other way round to assign a VLAN:
+                        # instead of naming the VLAN on the object (its
+                        # "vlans" config parameter), name the object on
+                        # the VLAN. The assignment then belongs to the
+                        # site running the network, which is the site
+                        # that has to answer for it, and a site can make
+                        # all of its assignments without touching
+                        # objects owned somewhere else.
+                        'TOKENS'                    : {
+                                                        'var_name'  : 'tokens',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'ROLES'                     : {
+                                                        'var_name'  : 'roles',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'HOSTS'                     : {
+                                                        'var_name'  : 'hosts',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'DEVICES'                   : {
+                                                        'var_name'  : 'devices',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
                         }
 
         return object_config
@@ -696,6 +898,123 @@ class Vlan(OTPmeObject):
         if self.vlan_id:
             return self.vlan_id
         return self.name
+
+    def get_members(self, member_type):
+        """ Members of the given type. """
+        if member_type == "token":
+            return self.tokens
+        if member_type == "role":
+            return self.roles
+        if member_type == "host":
+            return self.hosts
+        if member_type == "device":
+            return self.devices
+        msg = _("Unknown member type: {member_type}")
+        msg = msg.format(member_type=member_type)
+        raise OTPmeException(msg)
+
+    def check_member_vlan(self, member_type, member_uuid,
+        callback: JobCallback=default_callback):
+        """ Make sure the object is not a member of another VLAN.
+
+        One VLAN per site, the same rule the "vlans" config parameter
+        enforces: an object can only be in one of the VLANs of a network.
+        Only direct membership counts -- being in a VLAN through a role
+        is what a direct entry is meant to override.
+        """
+        for x_vlan in backend.search(object_type="vlan",
+                                    attribute="uuid",
+                                    value="*",
+                                    realm=self.realm,
+                                    site=self.site,
+                                    return_type="instance"):
+            if x_vlan.uuid == self.uuid:
+                continue
+            if member_uuid not in x_vlan.get_members(member_type):
+                continue
+            msg = _("Object is already a member of VLAN: {vlan}")
+            msg = msg.format(vlan=x_vlan.rel_path)
+            return callback.error(msg)
+        return True
+
+    def add_token(self, token_path: str,
+        callback: JobCallback=default_callback, **kwargs):
+        """ Add token to VLAN. """
+        if "/" not in token_path:
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+        token_user = token_path.split("/")[0]
+        token_name = token_path.split("/")[1]
+        token = backend.get_object(object_type="token",
+                                    realm=config.realm,
+                                    user=token_user,
+                                    name=token_name)
+        if not token:
+            msg = _("Unknown token: {token_path}")
+            msg = msg.format(token_path=token_path)
+            return callback.error(msg)
+        check_result = self.check_member_vlan("token", token.uuid,
+                                            callback=callback)
+        if check_result is not True:
+            return check_result
+        return super().add_token(token_path=token_path,
+                                callback=callback, **kwargs)
+
+    def add_role(self, role_name: str=None, role_uuid: str=None,
+        callback: JobCallback=default_callback, **kwargs):
+        """ Add role to VLAN. """
+        if role_name:
+            role_uuid = self.get_role_uuid(role_name, callback=callback)
+        if not role_uuid:
+            msg = "Need <role_name> or <role_uuid>."
+            raise OTPmeException(msg)
+        check_result = self.check_member_vlan("role", role_uuid,
+                                            callback=callback)
+        if check_result is not True:
+            return check_result
+        return super().add_role(role_uuid=role_uuid,
+                                callback=callback, **kwargs)
+
+    def add_host(self, host_name: str=None, host_uuid: str=None,
+        callback: JobCallback=default_callback, **kwargs):
+        """ Add host to VLAN. """
+        if not host_uuid:
+            host = backend.get_object(object_type="host",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=host_name)
+            if not host:
+                msg = _("Host does not exist: {host_name}")
+                msg = msg.format(host_name=host_name)
+                return callback.error(msg)
+            host_uuid = host.uuid
+        check_result = self.check_member_vlan("host", host_uuid,
+                                            callback=callback)
+        if check_result is not True:
+            return check_result
+        return super().add_host(host_uuid=host_uuid,
+                                callback=callback, **kwargs)
+
+    def add_device(self, device_name: str=None, device_uuid: str=None,
+        callback: JobCallback=default_callback, **kwargs):
+        """ Add device to VLAN. """
+        if not device_uuid:
+            device = backend.get_object(object_type="device",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=device_name)
+            if not device:
+                msg = _("Device does not exist: {device_name}")
+                msg = msg.format(device_name=device_name)
+                return callback.error(msg)
+            device_uuid = device.uuid
+        check_result = self.check_member_vlan("device", device_uuid,
+                                            callback=callback)
+        if check_result is not True:
+            return check_result
+        return super().add_device(device_uuid=device_uuid,
+                                callback=callback, **kwargs)
 
     @object_lock()
     @check_acls(['edit:vlan_id'])
@@ -798,6 +1117,15 @@ class Vlan(OTPmeObject):
         # Assignments live in the "vlans" config parameter of the assigned
         # objects, which is not indexed, so we cannot list them here.
         msg = _("Objects the VLAN is assigned to will keep an unresolvable assignment.")
+        # Members are the other way round: they live on us and go away
+        # with us, so nothing is left behind -- but the objects lose
+        # their VLAN, which is worth saying out loud.
+        member_count = (len(self.tokens) + len(self.roles)
+                        + len(self.hosts) + len(self.devices))
+        if member_count > 0:
+            member_msg = _("The VLAN still has {member_count} member(s) which will lose their VLAN.")
+            member_msg = member_msg.format(member_count=member_count)
+            msg = f"{msg} {member_msg}"
         if not self.ask_delete_confirmation(force=force,
                                             exception=msg,
                                             callback=callback):
@@ -844,6 +1172,30 @@ class Vlan(OTPmeObject):
             lines.append(f'VLAN_ID="{vlan_id}"')
         else:
             lines.append('VLAN_ID=""')
+
+        for x_type, x_field in (('token', 'TOKENS'), ('role', 'ROLES'),
+                                ('host', 'HOSTS'), ('device', 'DEVICES')):
+            if not self.verify_acl(f"view:{x_field.lower()}") \
+            and not self.verify_acl(f"add:{x_type}") \
+            and not self.verify_acl(f"remove:{x_type}"):
+                lines.append(f'{x_field}=""')
+                continue
+            x_members = []
+            for x_uuid in self.get_members(x_type):
+                x_oid = backend.get_oid(uuid=x_uuid,
+                                        object_type=x_type,
+                                        instance=True)
+                # Show the UUID of an orphan member instead of hiding it.
+                if not x_oid:
+                    x_members.append(x_uuid)
+                    continue
+                if x_type == "token":
+                    x_members.append(x_oid.rel_path)
+                else:
+                    x_members.append(x_oid.name)
+            x_members.sort()
+            x_members = ",".join(x_members)
+            lines.append(f'{x_field}="{x_members}"')
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

@@ -108,7 +108,16 @@ class AuthHandler(object):
         is the one to use. Which of the others we may hand out, and in which
         order we try them, is decided by our "vlan_trusts" config parameter.
         """
+        from otpme.lib.classes.vlan import get_member_vlan
         from otpme.lib.classes.vlan import get_vlan_trusts
+        # A VLAN of ours naming the object wins over anything the object
+        # names itself: the assignment was made on our site, for our
+        # network, so there is nothing to weigh against another site's
+        # wishes -- and it lets a site do all of its assignments without
+        # touching objects owned somewhere else.
+        member_vlan = get_member_vlan(config_object.uuid, config_object.type)
+        if member_vlan:
+            return member_vlan.get_vlan()
         vlans = config_object.get_config_parameter("vlans",
                                                 apply_getter=False)
         if not vlans:
@@ -186,7 +195,7 @@ class AuthHandler(object):
     def verify_session(self, session, **kwargs):
         """ Try to verify session. """
         # Try to verify session:
-        verify_response = session.verify(**kwargs)
+        verify_response = session.verify(auth_type=self.auth_type, **kwargs)
         session_status = verify_response['status']
         if session_status is None:
             return session_status
@@ -756,12 +765,13 @@ class AuthHandler(object):
                                         uuid=session_uuid)
             if not session:
                 continue
-            verify_response = session.verify(password=slp,
-                                        check_auth=False,
-                                        check_srp=False,
-                                        do_reneg=False,
-                                        check_sotp=False,
-                                        check_slp=True)
+            verify_response = session.verify(auth_type=self.auth_type,
+                                             password=slp,
+                                            check_auth=False,
+                                            check_srp=False,
+                                            do_reneg=False,
+                                            check_sotp=False,
+                                            check_slp=True)
 
             session_status = verify_response['status']
             if session_status is None:

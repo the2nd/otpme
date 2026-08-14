@@ -1399,7 +1399,7 @@ def seed_rng(fork=True, quiet=False):
 
     logger = config.logger
     status = True
-    if config.debug_level() < 4:
+    if config.debug_level("forking") == 0:
         quiet = True
     # Fix "AssertionError: PID check failed. RNG must be re-initialized after fork(). Hint: Try Random.atfork()"
     # Caveat: For the random number generator to work correctly, you must

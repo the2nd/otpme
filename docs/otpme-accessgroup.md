@@ -90,6 +90,20 @@ Bypass (MAB) port authentication of network devices such as IP phones.
 **remove_device *accessgroup* *device***  
 Remove a device from the access group.
 
+## VLANs
+
+An access group decides whether a token, host or device gets access at
+all. Which network it is put into is decided separately, by a VLAN (see
+**otpme-vlan**(1)). Both are answered in the same RADIUS reply, but
+nothing ties them together: membership in an access group grants no
+VLAN, and a VLAN grants no access.
+
+An access group is not assigned a VLAN and cannot be a member of one. To
+give the objects of an access group a VLAN, put them, or a role they are
+in, into the VLAN:
+
+> **otpme-vlan add_role *vlan* *role***
+
 ## Session Management
 
 **enable_sessions *accessgroup***  
@@ -351,7 +365,8 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(7), **otpme-client**(1), **otpme-host**(1),
-**otpme-token**(1), **otpme-role**(1), **otpme-policy**(1)
+**otpme-token**(1), **otpme-role**(1), **otpme-vlan**(1),
+**otpme-policy**(1)
 
 # AUTHOR
 

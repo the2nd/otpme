@@ -299,6 +299,12 @@ if need_command:
                         help_needed = False
         else:
             help_needed = True
+else:
+    # Asking for help without a subcommand to hang it on. The branch
+    # above only looks at "-h" behind one, so a command that takes none
+    # would never show its help.
+    if "-h" in sys.argv:
+        help_needed = True
 
 if not help_needed:
     if tool_name == "otpme-auth":

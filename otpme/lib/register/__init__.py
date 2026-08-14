@@ -203,7 +203,7 @@ def _register_module(mod):
     from otpme.lib import config
     if mod in registered_modules:
         return
-    if config.debug_level() > 1:
+    if config.debug_level("module_loading") > 0:
         msg, log_msg = _("Registering module: {mod}", log=True)
         msg = msg.format(mod=mod)
         log_msg = log_msg.format(mod=mod)

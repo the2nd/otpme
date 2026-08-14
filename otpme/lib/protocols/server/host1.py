@@ -197,7 +197,7 @@ class OTPmeHostP1(OTPmeServer1):
                         ]
 
         if command in valid_commands:
-            if config.debug_level() > 3:
+            if config.debug_level("protocol") > 0:
                 log_msg = _("Received command {command} from client: {client}", log=True)[1]
                 log_msg = log_msg.format(command=command, client=self.client)
                 logger.debug(log_msg)

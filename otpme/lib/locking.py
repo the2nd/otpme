@@ -277,7 +277,7 @@ def cleanup():
     """ Cleanup on process exit. """
     from otpme.lib import config
     try:
-        if config.debug_level("locking") > 1:
+        if config.debug_level("locking") > 0:
             # Get logger.
             logger = config.logger
             log_msg = _("Doing process exit cleanup.", log=True)[1]
@@ -451,7 +451,7 @@ class OTPmeLock(OTPmeFakeLock):
             if not lock_status:
                 raise LockWaitTimeout()
 
-            if config.debug_level("locking") > 1:
+            if config.debug_level("locking") > 0:
                 log_msg = _("Acquired lock: {lock_id} ({lock_type}): {lock_file}", log=True)[1]
                 log_msg = log_msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
                 self.logger.debug(log_msg)
@@ -505,7 +505,7 @@ class OTPmeLock(OTPmeFakeLock):
         # We dont want the released lock to be re-used.
         self.forget_lock()
 
-        if config.debug_level("locking") > 1:
+        if config.debug_level("locking") > 0:
             log_msg = _("Released lock: {lock_id} ({lock_type}): {lock_file}", log=True)[1]
             log_msg = log_msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
             self.logger.debug(log_msg)

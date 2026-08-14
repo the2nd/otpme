@@ -665,7 +665,7 @@ class BaseTransaction(object):
             action = journal_entry['action']
             journal_file = journal_entry['journal_file']
 
-            if config.debug_level(DEBUG_SLOT) > 4:
+            if config.debug_level("transaction_actions") > 0:
                 log_msg = _("Applying action: {action}: {log_name}", log=True)[1]
                 log_msg = log_msg.format(action=action, log_name=self.log_name)
                 logger.debug(log_msg)
@@ -873,7 +873,7 @@ class BaseTransaction(object):
             return
 
         for x in journal_files:
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("transaction_files") > 0:
                 log_msg = _("Reading transaction data from disk: {file}", log=True)[1]
                 log_msg = log_msg.format(file=x)
                 logger.debug(log_msg)
@@ -901,7 +901,7 @@ class BaseTransaction(object):
             journal_files.append(journal_file)
 
         for x in journal_files:
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("transaction_files") > 0:
                 log_msg = _("Reading transaction cluster data from disk: {file}", log=True)[1]
                 log_msg = log_msg.format(file=x)
                 logger.debug(log_msg)
@@ -932,7 +932,7 @@ class BaseTransaction(object):
                 logger.debug(log_msg)
             raise EmptyTransaction(msg)
 
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("transaction_files") > 0:
             log_msg = _("Writing transaction to disk: {spool_dir}", log=True)[1]
             log_msg = log_msg.format(spool_dir=self.spool_dir)
             logger.debug(log_msg)
@@ -952,7 +952,7 @@ class BaseTransaction(object):
             # Get spool file.
             journal_file = journal_entry['journal_file']
 
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("transaction_files") > 0:
                 log_msg = _("Writing transaction data to disk: {journal_file} ({name})", log=True)[1]
                 log_msg = log_msg.format(journal_file=journal_file, name=self.name)
                 logger.debug(log_msg)
@@ -977,7 +977,7 @@ class BaseTransaction(object):
             # Get spool file.
             journal_file = journal_entry['journal_file']
 
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("transaction_files") > 0:
                 log_msg = _("Writing transaction cluster data to disk: {journal_file} ({name})", log=True)[1]
                 log_msg = log_msg.format(journal_file=journal_file, name=self.name)
                 logger.debug(log_msg)
@@ -993,7 +993,7 @@ class BaseTransaction(object):
         """ Write transaction to disk. """
         # Mark transaction as completely written to disk.
         self.set_status("written")
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("transaction_files") > 0:
             log_msg = _("Transaction succesfully written to disk: {log_name}", log=True)[1]
             log_msg = log_msg.format(log_name=self.log_name)
             logger.debug(log_msg)
@@ -1032,7 +1032,7 @@ class BaseTransaction(object):
         """ Delete transaction spool directory. """
         if not os.path.exists(self.spool_dir):
             return
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("transaction_files") > 0:
             log_msg = _("Removing transaction: {log_name}", log=True)[1]
             log_msg = log_msg.format(log_name=self.log_name)
             logger.debug(log_msg)
@@ -1242,7 +1242,7 @@ class FileTransaction(BaseTransaction):
         if self._remove_incomplete_transaction():
             return
 
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("transaction_files") > 0:
             log_msg = _("Commiting transaction: {log_name}", log=True)[1]
             log_msg = log_msg.format(log_name=self.log_name)
             logger.debug(log_msg)
@@ -1252,7 +1252,7 @@ class FileTransaction(BaseTransaction):
             action = journal_entry['action']
             journal_file = journal_entry['journal_file']
 
-            if config.debug_level(DEBUG_SLOT) > 4:
+            if config.debug_level("transaction_actions") > 0:
                 log_msg = _("Applying action: {action}: {log_name}", log=True)[1]
                 log_msg = log_msg.format(action=action, log_name=self.log_name)
                 logger.debug(log_msg)
@@ -1428,7 +1428,7 @@ class ObjectTransaction(BaseTransaction):
     def add_sign_cache(self, object_id, user_uuid, signer_key, **kwargs):
         """ Add public key to transaction. """
         action = "add_sign_cache"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1451,7 +1451,7 @@ class ObjectTransaction(BaseTransaction):
     def get_sign_cache(self, object_id, user_uuid, **kwargs):
         """ Add public key to transaction. """
         action = "get_sign_cache"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1465,7 +1465,7 @@ class ObjectTransaction(BaseTransaction):
     def del_sign_cache(self, object_id, user_uuid, **kwargs):
         """ Del public key from transaction. """
         action = "del_sign_cache"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1596,7 +1596,7 @@ class ObjectTransaction(BaseTransaction):
     def add_object(self, object_id, object_config, **kwargs):
         """ Add object to transaction. """
         action = "add"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1622,7 +1622,7 @@ class ObjectTransaction(BaseTransaction):
     def get_object(self, object_id, parameters=None):
         """ Get object from transaction. """
         action = "get"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1643,7 +1643,7 @@ class ObjectTransaction(BaseTransaction):
         """ Rename object transaction. """
         from .file import read
         action = "rename"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id} > {new_object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, new_object_id=new_object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1677,7 +1677,7 @@ class ObjectTransaction(BaseTransaction):
         """ Delete object transaction. """
         from .file import read
         action = "delete"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1703,7 +1703,7 @@ class ObjectTransaction(BaseTransaction):
     def object_exists(self, object_id):
         """ Check if object exists in transaction. """
         action = "exists"
-        if config.debug_level(DEBUG_SLOT) > 4:
+        if config.debug_level("transaction_actions") > 0:
             log_msg = _("Transaction action: {action}: {object_id}: {log_name}", log=True)[1]
             log_msg = log_msg.format(action=action, object_id=object_id, log_name=self.log_name)
             logger.debug(log_msg)
@@ -1732,7 +1732,7 @@ class ObjectTransaction(BaseTransaction):
             self._write_journal()
         except EmptyTransaction:
             return
-        if config.debug_level(DEBUG_SLOT) > 3:
+        if config.debug_level("transaction_files") > 0:
             log_msg = _("Transaction data successful written to disk: {log_name}", log=True)[1]
             log_msg = log_msg.format(log_name=self.log_name)
             logger.debug(log_msg)
@@ -1755,7 +1755,7 @@ class ObjectTransaction(BaseTransaction):
                 if self.status != "written":
                     self._write()
 
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("transaction_files") > 0:
                 log_msg = _("Commiting transaction: {log_name}", log=True)[1]
                 log_msg = log_msg.format(log_name=self.log_name)
                 logger.debug(log_msg)
@@ -1803,7 +1803,7 @@ class ObjectTransaction(BaseTransaction):
             # Remove status file to indicate finished transaction.
             self._remove_file(self.status_file)
 
-            if config.debug_level(DEBUG_SLOT) > 3:
+            if config.debug_level("transaction_files") > 0:
                 log_msg = _("Transaction commited successful: {log_name}", log=True)[1]
                 log_msg = log_msg.format(log_name=self.log_name)
                 logger.debug(log_msg)

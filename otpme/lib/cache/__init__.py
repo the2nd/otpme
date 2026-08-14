@@ -757,7 +757,7 @@ def flush(commit=True, callback=default_callback, quiet=True):
 
     # Flush caches.
     for x in caches:
-        if config.debug_level() > 5:
+        if config.debug_level("cache_flushing") > 0:
             log_msg = _("Flushing cache: {x_name}", log=True)[1]
             log_msg = log_msg.format(x_name=x.name)
             logger.debug(log_msg)
@@ -786,7 +786,7 @@ def clear(object_id=None, object_type=None, cache_type=None, keep_func_caches=Fa
                     continue
                 if object_type not in x.clear_on_object_types:
                     continue
-            if config.debug_level() > 5:
+            if config.debug_level("cache_flushing") > 0:
                 log_msg = _("Flushing cache: {x_name}", log=True)[1]
                 log_msg = log_msg.format(x_name=x.name)
                 logger.debug(log_msg)
@@ -862,7 +862,7 @@ def clear(object_id=None, object_type=None, cache_type=None, keep_func_caches=Fa
                 pass
 
     if clean_success:
-        if config.debug_level("object_caching") > 2:
+        if config.debug_level("cache_flushing") > 0:
             for x_cache in caches_cleared:
                 x_count = caches_cleared[x_cache]
                 log_msg = _("Cleared {x_count} objects from {x_cache} cache.", log=True)[1]

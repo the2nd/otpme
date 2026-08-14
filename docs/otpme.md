@@ -81,7 +81,14 @@ Enable verbose mode.
 ## Debug Options
 
 **-d**  
-Enable debug mode. Multiple 'd' will increase debug level.
+Enable debug mode. Multiple 'd' will increase debug level.  
+A letter selects a topic, a letter with a digit a sub topic of it (e.g.
+**-dc** for object caching, **-dc1** for the cache flushing within it).
+Options can be combined (**-dcn**), and repeating one raises its level
+(**-dc1c1**).  
+Asking for a topic sets the log level to DEBUG, so its messages are
+shown. The options that say how to run rather than what to log (**-dD**,
+**-de**, **-dE**, **-dP**, **-dt**) do not.
 
 **-da**  
 Debug function cache adds.
@@ -89,11 +96,23 @@ Debug function cache adds.
 **-dA**  
 Enable debug of transactions.
 
+**-dA1**  
+Debug reading/writing transactions on disk.
+
+**-dA2**  
+Debug single transaction actions.
+
 **-db**  
 Print when objects are read from backend.
 
 **-dc**  
 Print when objects are read from cache.
+
+**-dc1**  
+Print when caches are flushed.
+
+**-df**  
+Debug forking and privilege dropping.
 
 **-dr**  
 Print file reads.
@@ -103,6 +122,9 @@ Print file writes.
 
 **-dC**  
 Enable debug logging for client messages.
+
+**-dC1**  
+Debug client side crypto (keys, DH, signatures).
 
 **-dD**  
 Do not go to background and log to stdout.
@@ -120,8 +142,14 @@ LOG_EXC_INFO for this run).
 **-dh**  
 Debug function cache hits.
 
+**-dH**  
+Debug host authentication (certificates, challenges).
+
 **-dL**  
 Debug locks.
+
+**-dL1**  
+Debug waiting for locks.
 
 **-dm**  
 Print loading of OTPme modules.
@@ -129,8 +157,26 @@ Print loading of OTPme modules.
 **-dM**  
 Enable function/method call tracing.
 
+**-dn**  
+Debug connections (accept, connect, close).
+
 **-dN**  
 Debug network packets.
+
+**-do**  
+Debug policies.
+
+**-dp**  
+Debug protocol handling (preauth, commands).
+
+**-ds**  
+Debug object sync.
+
+**-dS**  
+Debug cluster communication.
+
+**-dx**  
+Debug object extensions.
 
 **-dt**  
 Enable timestamps in debug output.

@@ -75,6 +75,20 @@ Add a device to the access group. This is used for MAC Authentication Bypass (MA
 .TP
 .B remove_device \fIaccessgroup\fR \fIdevice\fR
 Remove a device from the access group.
+.SS VLANs
+An access group decides whether a token, host or device gets access at all.
+Which network it is put into is decided separately, by a VLAN (see
+.BR otpme-vlan (1)).
+Both are answered in the same RADIUS reply, but nothing ties them together:
+membership in an access group grants no VLAN, and a VLAN grants no access.
+.PP
+An access group is not assigned a VLAN and cannot be a member of one. To
+give the objects of an access group a VLAN, put them, or a role they are in,
+into the VLAN:
+.PP
+.RS
+.B otpme-vlan add_role \fIvlan\fR \fIrole\fR
+.RE
 .SS Session Management
 .TP
 .B enable_sessions \fIaccessgroup\fR
@@ -313,6 +327,7 @@ OTPme data directory
 .BR otpme-host (1),
 .BR otpme-token (1),
 .BR otpme-role (1),
+.BR otpme-vlan (1),
 .BR otpme-policy (1)
 
 .SH AUTHOR

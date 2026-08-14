@@ -17,6 +17,6 @@ def register():
 
 cmd_help = {
         '_need_command'             : False,
-        '_include_global_opts'      : False,
+        '_include_global_opts'      : True,
         '_usage_help'      : _("Usage: otpme-get-authorized-keys <username>"),
     }

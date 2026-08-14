@@ -122,6 +122,25 @@ Keep persisted share mounts on hosts (transient unmount only).
 **list_roles \[**-r**\] *role***  
 List roles assigned to the role. Use **-r** for recursive listing.
 
+## VLAN Assignment
+
+A role is not assigned a VLAN from here. The VLAN names the role, not
+the other way round, so the assignment belongs to the site that runs the
+network (see **otpme-vlan**(1)):
+
+> **otpme-vlan add_role *vlan* *role***
+
+Every token, host and device of the role then gets that VLAN during
+802.1x or MAB port authentication, and so does every role nested in it.
+The more specific assignment wins: a VLAN naming a token itself beats
+one naming its role, and a VLAN naming a nested role beats one naming
+the role it is nested in. So a role can be given a VLAN of its own
+without taking the outer role out of its VLAN.
+
+Only VLANs of the site answering the RADIUS request are looked at. Where
+no VLAN names the role or its members, the **vlans** config parameter of
+the token, user, host or device decides (see **otpme**(7)).
+
 ## User and Group Listing
 
 **list_users *role***  
@@ -360,6 +379,15 @@ Add admins role as child of super_admins
 **otpme-role list_roles -r super_admins**  
 List all nested roles recursively
 
+## VLAN Assignment
+
+**otpme-vlan add_role employees_vlan employees**  
+Put every member of the role into a VLAN
+
+**otpme-vlan add_role admin_vlan admins**  
+Give a role nested in "employees" a VLAN of its own. Its members get it
+instead of the VLAN of "employees"
+
 ## Policy Assignment
 
 **otpme-role add_policy admins require_2fa**  
@@ -373,7 +401,8 @@ OTPme data directory
 # SEE ALSO
 
 **otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-token**(1),
-**otpme-group**(1), **otpme-accessgroup**(1), **otpme-policy**(1)
+**otpme-group**(1), **otpme-accessgroup**(1), **otpme-vlan**(1),
+**otpme-policy**(1)
 
 # AUTHOR
 

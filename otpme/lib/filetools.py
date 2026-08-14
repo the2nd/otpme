@@ -194,7 +194,7 @@ class AtomicFileLock(object):
             return lock_status
         if wait_message is not None:
             if log_wait_message:
-                if config.debug_level() >= 2:
+                if config.debug_level("lock_waits") > 0:
                     self.logger.debug(wait_message)
             if callback:
                 callback.send(wait_message)
@@ -834,9 +834,16 @@ class JsonFile(object):
 
     def read(self, parameters=None):
         """ Import bash style config file into dictionary. """
+        from otpme.lib import config
         try:
             if os.environ['OTPME_DEBUG_FILE_READ'] == "True":
-                print(f"READ: {self.file_path}")
+                debug_print = True
+                if config.debug_daemons:
+                    if config.daemon_name:
+                        if config.daemon_name not in config.debug_daemons:
+                            debug_print = False
+                if debug_print:
+                    print(f"READ: {self.file_path}")
         except Exception:
             pass
 
@@ -872,7 +879,13 @@ class JsonFile(object):
 
         try:
             if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
-                print(f"WRITE: {self.file_path}")
+                debug_print = True
+                if config.debug_daemons:
+                    if config.daemon_name:
+                        if config.daemon_name not in config.debug_daemons:
+                            debug_print = False
+                if debug_print:
+                    print(f"WRITE: {self.file_path}")
         except Exception:
             pass
 
@@ -1096,7 +1109,13 @@ class SQLiteFile(object):
 
         try:
             if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
-                print(f"WRITE: {self.file_path}")
+                debug_print = True
+                if config.debug_daemons:
+                    if config.daemon_name:
+                        if config.daemon_name not in config.debug_daemons:
+                            debug_print = False
+                if debug_print:
+                    print(f"WRITE: {self.file_path}")
         except Exception:
             pass
 

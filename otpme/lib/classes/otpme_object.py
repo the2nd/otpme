@@ -3694,7 +3694,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg, log_msg = _("Updating extension: {oid}: {ext_name} ({hook})", log=True)
                 msg = msg.format(oid=self.oid, ext_name=extension.name, hook=hook)
                 log_msg = log_msg.format(oid=self.oid, ext_name=extension.name, hook=hook)
-                if config.debug_level() > 3:
+                if config.debug_level("extensions") > 0:
                     logger.debug(log_msg)
                 if verbose_level > 2:
                     callback.send(msg)
@@ -4525,15 +4525,17 @@ class OTPmeObject(OTPmeBaseObject):
         msg = msg.format(token_path=token.rel_path, obj_type=self.type, obj_name=self.name)
         callback.send(msg)
 
-        # Remove token from object.
+        # Remove token from object. Not every object type that holds
+        # tokens has options for them (AttributeError), and one that
+        # has may hold none for this token (KeyError).
         self.tokens.remove(token.uuid)
         try:
             self.token_options.pop(token.uuid)
-        except KeyError:
+        except (AttributeError, KeyError):
             pass
         try:
             self.token_login_interfaces.pop(token.uuid)
-        except KeyError:
+        except (AttributeError, KeyError):
             pass
         # Update index.
         self.del_index('token', token.uuid)

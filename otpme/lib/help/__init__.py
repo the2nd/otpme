@@ -29,27 +29,54 @@ command_map = {
     # <file:name>   = Read file
     }
 
+# A letter names a topic, a letter with a digit a sub topic of it (e.g.
+# "c" for object caching, "c1" for the cache flushing within it). Sub
+# topics exist so that a topic can be turned on without the noisiest
+# part of it coming along.
 debug_opts_mapping = {
                 'a'         : 'func_cache_adds',
                 'A'         : 'transactions',
+                'A1'        : 'transaction_files',
+                'A2'        : 'transaction_actions',
                 'b'         : 'backend_reads',
                 'c'         : 'object_caching',
+                'c1'        : 'cache_flushing',
+                'f'         : 'forking',
                 'r'         : 'file_reads',
                 'w'         : 'file_writes',
                 'C'         : 'client',
+                'C1'        : 'client_crypto',
                 'd'         : 'base',
                 'D'         : 'daemonize',
                 'e'         : 'raise_exceptions',
                 'E'         : 'log_exc_info',
                 'h'         : 'func_cache_hits',
+                'H'         : 'host_auth',
                 'L'         : 'locking',
+                'L1'        : 'lock_waits',
                 'm'         : 'module_loading',
                 'M'         : 'method_calls',
+                'n'         : 'connections',
                 'N'         : 'net_traffic',
+                'o'         : 'policies',
+                'p'         : 'protocol',
+                's'         : 'sync',
+                'S'         : 'cluster',
                 't'         : 'debug_timestamps',
                 'T'         : 'debug_timings',
                 'P'         : 'debug_profile',
+                'x'         : 'extensions',
             }
+
+# Slots that change how we run instead of adding debug output. They are
+# the exception to "a slot raises the log level" in set_debug_level().
+NON_LOGGING_DEBUG_SLOTS = [
+                'daemonize',
+                'raise_exceptions',
+                'log_exc_info',
+                'debug_profile',
+                'debug_timestamps',
+            ]
 
 def register_cmd_help(command, help_dict, mod_name=None):
     global command_map
@@ -106,20 +133,33 @@ register_global_opt("-v", "Enable verbose mode")
 register_global_opt("-d", "Enable debug mode. Multiple 'd' will increase debug level")
 register_global_opt("-da", "Debug function cache adds")
 register_global_opt("-dA", "Enable debug of transactions.")
+register_global_opt("-dA1", "Debug reading/writing transactions on disk.")
+register_global_opt("-dA2", "Debug single transaction actions.")
 register_global_opt("-db", "Print when objects are read from backend")
 register_global_opt("-dc", "Print when objects are read from cache")
+register_global_opt("-dc1", "Print when caches are flushed")
+register_global_opt("-df", "Debug forking and privilege dropping")
 register_global_opt("-dr", "Print file reads")
 register_global_opt("-dw", "Print file writes")
 register_global_opt("-dC", "Enable debug logging for client messages")
+register_global_opt("-dC1", "Debug client side crypto (keys, DH, signatures).")
 register_global_opt("-dD", "Do not go to background and log to stdout.")
 register_global_opt("-de", "Print tracebacks.")
 register_global_opt("-dee", "Raise debug exceptions.")
 register_global_opt("-dE", "Include exception info in warning/error/critical/fatal log records.")
 register_global_opt("-dh", "Debug function cache hits.")
+register_global_opt("-dH", "Debug host authentication (certificates, challenges).")
 register_global_opt("-dL", "Debug locks.")
+register_global_opt("-dL1", "Debug waiting for locks.")
 register_global_opt("-dm", "Print loading of OTPme modules")
 register_global_opt("-dM", "Enable function/method call tracing")
+register_global_opt("-dn", "Debug connections (accept, connect, close).")
 register_global_opt("-dN", "Debug network packets.")
+register_global_opt("-do", "Debug policies.")
+register_global_opt("-dp", "Debug protocol handling (preauth, commands).")
+register_global_opt("-ds", "Debug object sync.")
+register_global_opt("-dS", "Debug cluster communication.")
+register_global_opt("-dx", "Debug object extensions.")
 register_global_opt("-dt", "Enable timestamps in debug output")
 register_global_opt("-dP", "Enable profiling via cProfile")
 register_global_opt("-dT", "Print warning if timing of function/method calls takes longer than --debug-timing-limit.")
@@ -254,12 +294,16 @@ def get_help(command, subcommand=None, command_map=None,
             row = [ f"   {x[0]}", help_text ]
             glob_opt_table.append(row)
 
-    # Add main command options help
-    if len(opt_table) > 0 or include_global_opts or (main_command_help and len(main_command_help) > 0):
-        if main_command_help:
-            for opt in sorted(main_command_help):
-                if opt == "cmd":
-                    continue
+    # Add main command options help. The global ones bring their own
+    # heading, so they do not make this one worth printing -- a command
+    # without options of its own would get an "Options:" with nothing
+    # under it.
+    own_opts = []
+    if main_command_help:
+        own_opts = [x for x in sorted(main_command_help) if x != "cmd"]
+    if len(opt_table) > 0 or own_opts:
+        if own_opts:
+            for opt in own_opts:
                 help_text = main_command_help[opt]
                 row = [ f"   {opt}", help_text ]
                 opt_table.insert(0, row)
@@ -288,7 +332,11 @@ def get_help(command, subcommand=None, command_map=None,
         message.append(main_usage_help)
     if output:
         message.append("")
-        message.append("Commands:")
+        # Only where there are any. Options and global options are part
+        # of the same table, so a command without subcommands would get
+        # a "Commands:" with its options underneath.
+        if cmd_table:
+            message.append("Commands:")
         message.append(output)
     if main_command_opts:
         message.append(main_command_opts)
@@ -300,7 +348,29 @@ def get_help(command, subcommand=None, command_map=None,
 
 main_opts = {}
 
+main_opts_error = None
+
 def get_main_opts(clear_cache=False, mod_name=None):
+    """ Get main options from sys.argv.
+
+    Remembers a bad option instead of parsing again: the first caller
+    is config.load(), which cannot print a help screen and therefore
+    swallows the error, and the one that can print it asks right after.
+    It has to get the same answer -- parsing a second time is not an
+    option, sys.argv is consumed as we go.
+    """
+    global main_opts_error
+    if clear_cache:
+        main_opts_error = None
+    if main_opts_error is not None:
+        raise OTPmeException(main_opts_error)
+    try:
+        return _get_main_opts(clear_cache=clear_cache, mod_name=mod_name)
+    except OTPmeException as e:
+        main_opts_error = str(e)
+        raise
+
+def _get_main_opts(clear_cache=False, mod_name=None):
     """ Get main options from sys.argv. """
     from otpme.lib import config
     # We need global var to cache main opts. This is required because we call
@@ -345,9 +415,16 @@ def get_main_opts(clear_cache=False, mod_name=None):
         x_debug_level += 1
         debug_levels[slot] = x_debug_level
         main_opts['debug_levels'] = debug_levels
+        # Asking for a topic means wanting to read what it has to say,
+        # so any of them raises the log level to DEBUG -- otherwise the
+        # slot is set and the logger drops everything it produces,
+        # which looks like the option did nothing. The ones below say
+        # how to run rather than what to log, and wanting a traceback
+        # or a foreground process is no reason to log everything.
+        if slot not in NON_LOGGING_DEBUG_SLOTS:
+            main_opts['debug_enabled'] = True
         if slot == "base":
             main_opts['verbose_level'] = 10
-            main_opts['debug_enabled'] = True
         if slot == "daemonize":
             main_opts['daemonize'] = False
         if slot == "file_reads":
@@ -367,6 +444,7 @@ def get_main_opts(clear_cache=False, mod_name=None):
         """ Parse debug options + level. """
         counter = 0
         cur_opt = None
+        cur_type = None
         opts_len = len(opts)
         lett_re = re.compile('^[a-zA-Z]$')
         numb_re = re.compile('^[0-9]$')
@@ -457,6 +535,14 @@ def get_main_opts(clear_cache=False, mod_name=None):
                             msg = msg.format(option=c)
                             raise OTPmeException(msg) from None
                         set_debug_level(debug_opt)
+
+        # A digit names a sub topic of the letter in front of it, so one
+        # without a letter is not an option at all. Says so instead of
+        # going on as though nothing was asked for.
+        if cur_type == "number":
+            msg = _("Option needs a letter in front of it: {option}")
+            msg = msg.format(option=cur_opt)
+            raise OTPmeException(msg)
 
     verbose_re = re.compile('^-[v]*$')
     # set variable depending on command line arguments
