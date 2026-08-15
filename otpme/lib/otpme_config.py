@@ -230,6 +230,48 @@ class OTPmeConfig(object):
                             "fsd"       : 104857600,    # 100 MB
                             "clusterd"  : 104857600,    # 100 MB
                             })
+        # Connections the kernel finishes on its own and queues until a
+        # worker accepts them. This is what carries a login storm while
+        # every worker is busy -- a client whose connection waits in
+        # there notices nothing but the delay. Kept well below the
+        # kernels own limit (net.core.somaxconn) does not help anybody:
+        # overflowing it drops the SYN on TCP (the client retries) and
+        # refuses the connect right away on a unix socket, which is the
+        # path ldapd, freeradius and the web portal take to authd.
+        # Each daemon reads this from its own host object at startup
+        # (inherited from unit/site) into config.socket_backlog, which
+        # is what the listening sockets are built with. Processes
+        # without a backend (the agent, command line tools) keep this
+        # default.
+        self.register_config_var("socket_backlog", int, 1024)
+        # Per-daemon idle timeout: how long a connection may sit there
+        # without asking anything before we close it. A worker serves one
+        # connection at a time, so a client that connects, completes the
+        # handshake and then says nothing holds a worker for good --
+        # <authd_workers> of those and nobody authenticates anywhere in
+        # the realm any more. Only counts the wait for the next request,
+        # never the work on one, so a token that takes its time (e.g. a
+        # push token waiting for the user) is not affected. 0 disables
+        # it, which is where every daemon starts: it is set for the ones
+        # we know what their connections look like. Daemons not listed
+        # have no timeout.
+        #
+        # This reaps silent and dead connections. It is not a defence
+        # against someone who means it: whatever we allow a real login
+        # is available to an attacker for the price of one request, so
+        # the value has to fit the slowest legitimate client, and the
+        # occupancy problem has to be solved elsewhere.
+        self.register_config_var("daemon_idle_timeout", dict, {
+                            # A login waits here while the user is
+                            # typing their password/OTP or looking for
+                            # their smartcard, so this has to outlast a
+                            # person at a prompt. 120s is what sshd
+                            # gives a login (LoginGraceTime), and
+                            # login(1) gives 60s (LOGIN_TIMEOUT), so
+                            # nothing that comes through PAM can hold a
+                            # connection longer than this anyway.
+                            "authd"     : 120,
+                            })
         # Instance cache update interval.
         self.register_config_var("cache_update_interval", int, 0)
         # Realm infos.

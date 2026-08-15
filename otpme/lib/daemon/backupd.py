@@ -291,6 +291,7 @@ class BackupDaemon(OTPmeDaemon):
             backup_child = multiprocessing.start_process(name=self.name,
                                                 target=self.start_backup,
                                                 target_args=(o,),
+                                                hard_exit=True,
                                                 join=True)
             self.backup_childs[o.uuid] = backup_child
 

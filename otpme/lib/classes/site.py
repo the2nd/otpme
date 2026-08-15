@@ -2319,10 +2319,36 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'user', 'token'])
-    # Start this number of authd workers.
+    # Start this number of authd workers. These stay for good, which is
+    # what keeps their caches warm, so this should carry the normal day.
     config.register_config_parameter(name="authd_workers",
                                     ctype=int,
                                     default_value=16,
+                                    object_types=['site', 'unit', 'node'])
+    # How far the authd pool may grow while every worker is busy. A
+    # worker is busy for as long as its login takes, and a login waits
+    # for the user to type, so a whole department arriving at eight in
+    # the morning needs more workers than the day does. Those extra ones
+    # are forked on demand and given back once the rush is over, instead
+    # of being kept (and diluting the caches) all day. Set to the same
+    # value as authd_workers to keep the pool fixed.
+    config.register_config_parameter(name="authd_max_workers",
+                                    ctype=int,
+                                    default_value=64,
+                                    object_types=['site', 'unit', 'node'])
+    # How long an authd connection may sit there without asking anything
+    # before we hang up. A worker serves one connection at a time, so a
+    # client that connects and then says nothing holds one for good --
+    # <authd_workers> of those and nobody authenticates anywhere in the
+    # realm any more. Only the wait for the next request is counted,
+    # never the work on one, so a token that takes its time (a push
+    # token waiting for the user) is not affected. A login does wait
+    # here while the user is typing, so this cannot go below what a
+    # person at a prompt needs: 120s matches what sshd gives a login
+    # (LoginGraceTime). 0 turns it off.
+    config.register_config_parameter(name="authd_idle_timeout",
+                                    ctype=int,
+                                    default_value=120,
                                     object_types=['site', 'unit', 'node'])
     # Processes ldapd answers LDAP requests with. One process cannot use
     # more than one core, so this is what lets a node put more of them to
@@ -2419,6 +2445,22 @@ def register_config():
                                     setter=max_decompressed_size_setter,
                                     getter=max_decompressed_size_getter,
                                     object_types=['site', 'unit', 'node', 'host'])
+    # Connections the kernel finishes on its own and queues until a
+    # daemon worker accepts them. This is what carries a login storm
+    # while every worker is busy: a client whose connection waits in
+    # there notices nothing but the delay. Read by each daemon from its
+    # own host object at startup, before it starts listening.
+    def socket_backlog_setter(value, **kwargs):
+        value = int(value)
+        if value < 1:
+            msg = _("socket_backlog must be positive")
+            raise ValueError(msg)
+        return value
+    config.register_config_parameter(name="socket_backlog",
+                                    ctype=int,
+                                    default_value=1024,
+                                    setter=socket_backlog_setter,
+                                    object_types=['site', 'unit', 'node'])
     # Allow otpme-tool who from hosts.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,

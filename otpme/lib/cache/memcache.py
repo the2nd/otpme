@@ -178,10 +178,42 @@ class MemcacheClient(object):
             self.pools[pid] = pool
         return pool
 
-    def get(self, key):
+    def drop_pool(self):
+        """ Throw away the connections of this process. """
+        self.pools.pop(os.getpid(), None)
+
+    def run(self, method, *args, **kwargs):
+        """ Run a memcached command, once more on a dead connection.
+
+        A pooled connection outlives the memcached it was made to: a
+        restart of memcached, or its connection limit turning us away,
+        leaves every long lived process holding one that is gone. The
+        first command on it fails, and it would go on failing as long as
+        the pool hands the same connection out again. So drop the pool
+        of this process and try once with a new connection, which is
+        what a client would get if it had just started.
+
+        The second failure is the callers to deal with -- then memcached
+        really is not answering.
+        """
         try:
             with self.pool.reserve() as mc:
-                value = mc.get(key)
+                return getattr(mc, method)(*args, **kwargs)
+        except (pylibmc.Error, pylibmc.ConnectionError) as e:
+            log_msg = _("Memcache {method} failed, reconnecting: {error}", log=True)[1]
+            log_msg = log_msg.format(method=method, error=e)
+            self.logger.warning(log_msg)
+            self.drop_pool()
+        with self.pool.reserve() as mc:
+            result = getattr(mc, method)(*args, **kwargs)
+        # It answered again, so the next failure is worth a line of its
+        # own rather than being swallowed as "already logged".
+        self.connection_error_logged = False
+        return result
+
+    def get(self, key):
+        try:
+            value = self.run("get", key)
         except pylibmc.Error as e:
             msg, log_msg = _("Memcache get error: {error}", log=True)
             msg = msg.format(error=e)
@@ -220,8 +252,7 @@ class MemcacheClient(object):
         if not keys:
             return {}
         try:
-            with self.pool.reserve() as mc:
-                values = mc.get_multi(keys)
+            values = self.run("get_multi", keys)
         except (pylibmc.Error, pylibmc.ConnectionError) as e:
             if not self.connection_error_logged:
                 self.connection_error_logged = True
@@ -263,8 +294,7 @@ class MemcacheClient(object):
         #    cas = mc.gets(key)
         #    mc.sets(key, value, cas, **kwargs)
         try:
-            with self.pool.reserve() as mc:
-                mc.set(key, value, **kwargs)
+            self.run("set", key, value, **kwargs)
         except pylibmc.Error as e:
             if self.connection_error_logged:
                 return
@@ -284,8 +314,7 @@ class MemcacheClient(object):
 
     def delete(self, key, **kwargs):
         try:
-            with self.pool.reserve() as mc:
-                mc.delete(key, **kwargs)
+            self.run("delete", key, **kwargs)
         except pylibmc.Error as e:
             if self.connection_error_logged:
                 return

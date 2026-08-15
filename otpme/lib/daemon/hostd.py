@@ -819,6 +819,7 @@ class HostDaemon(OTPmeDaemon):
             # Create child process that will do the sync.
             sync_child = multiprocessing.start_process(name=self.name,
                                                 target=self.sync_sites,
+                                                hard_exit=True,
                                                 join=True)
             # Add info.
             sync_child.info = sync_type
@@ -931,6 +932,7 @@ class HostDaemon(OTPmeDaemon):
                                                         nsscache_resync,
                                                         offline,),
                                                 target_kwargs=kwargs,
+                                                hard_exit=True,
                                                 join=True)
             # Add realm/site.
             child_info = sync_type
@@ -1414,6 +1416,7 @@ class HostDaemon(OTPmeDaemon):
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
                             target=self._process_auto_disabled,
+                            hard_exit=True,
                             join=True)
         self.auto_disabled_run_child = child
 
@@ -1526,6 +1529,7 @@ class HostDaemon(OTPmeDaemon):
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
                             target=self._run_resolvers,
+                            hard_exit=True,
                             join=True)
         self.resolver_run_child = child
 
@@ -1572,6 +1576,7 @@ class HostDaemon(OTPmeDaemon):
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
                             target=self._clear_outdated_cache_objects,
+                            hard_exit=True,
                             join=True)
         self.clear_outdated_cache_objects_child = child
 
@@ -1596,6 +1601,7 @@ class HostDaemon(OTPmeDaemon):
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
                             target=self._remove_outdated_tokens,
+                            hard_exit=True,
                             join=True)
         self.remove_outdated_tokens_child = child
 

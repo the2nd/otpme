@@ -275,6 +275,7 @@ class ScriptDaemon(OTPmeDaemon):
                             target=handle_script_request,
                             target_args=(request,),
                             daemon=True,
+                            hard_exit=True,
                             join=True)
         # Remove comm handler on exit.
         scriptd_comm_handler.close()

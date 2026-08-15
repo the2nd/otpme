@@ -39,6 +39,10 @@ class ConnHandler(object):
         # Falls back to the global socket buffer for unlisted daemons.
         self.max_request_size = config.daemon_max_request_size.get(
                                 name, config.socket_receive_buffer)
+        # How long we wait for the next request before hanging up. None
+        # for the daemons that have no timeout configured, which is what
+        # recv() wants for "wait as long as it takes".
+        self.idle_timeout = config.daemon_idle_timeout.get(name) or None
         # Arguments we will pass on to protocol handler
         self.handler_args = handler_args
         if logger:
@@ -54,11 +58,19 @@ class ConnHandler(object):
             self.pkg_count += 1
             # Receive data from peer (per-daemon size cap).
             try:
-                data = self.connection.recv(timeout=None,
+                data = self.connection.recv(timeout=self.idle_timeout,
                                     recv_buffer=self.max_request_size)
                 #data = self.connection.recv()
             except ConnectionTimeout:
-                continue
+                # Hang up. Going on would mean reading from a socket
+                # recv() already closed on the way out, and a client
+                # that has nothing to say is exactly the one we must
+                # not keep a worker busy with.
+                log_msg = _("Closing idle connection after {timeout}s: {client}", log=True)[1]
+                log_msg = log_msg.format(timeout=self.idle_timeout,
+                                        client=self.client)
+                self.logger.info(log_msg)
+                break
             except ConnectionQuit:
                 self.connection._close()
                 if config.debug_level("connections") > 0:

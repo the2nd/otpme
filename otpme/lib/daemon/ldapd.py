@@ -21,7 +21,6 @@ from otpme.lib import filetools
 from otpme.lib import multiprocessing
 from otpme.lib.ldap.server import LDAPServer
 from otpme.lib.ldap.server import clear_caches
-from otpme.lib.ldap.server import install_reactor
 from otpme.lib.ldap.server import set_shared_cache
 from otpme.lib.ldap.server import create_listen_socket
 from otpme.lib.ldap.server import set_shared_cache_time
@@ -293,8 +292,10 @@ class LdapDaemon(OTPmeDaemon):
 
     def run_worker(self, worker_id, ssl_context):
         """ Answer LDAP requests in our own process. """
-        # Before anything gets hold of the inherited one.
-        install_reactor()
+        # No reactor to get rid of here: nothing this process
+        # imported before the fork installs one (see the local
+        # ldapsyntax imports in ldap/server.py), so listen() below
+        # builds ours -- with a wakeup pipe no sibling holds.
         # We inherited the sockets of all our siblings. Ours is the only
         # one we may accept on, the rest are just descriptors to us.
         for x_id, x_sockets in enumerate(self.worker_sockets):

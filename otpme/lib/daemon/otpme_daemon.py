@@ -69,6 +69,9 @@ class OTPmeDaemon(object):
         self.conn_handler = None
         # Pre-fork worker count (0 = legacy fork-per-connection).
         self.worker_count = 0
+        # Upper bound the pool may grow to while all workers are busy.
+        # Anything at or below worker_count keeps the pool fixed.
+        self.max_worker_count = 0
 
     def signal_handler(self, _signal, frame):
         """ Handle signals """
@@ -108,6 +111,78 @@ class OTPmeDaemon(object):
         except Exception as e:
             log_msg = _("Failed to load max_decompressed_size from config: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+
+    def get_config_parameter(self, config_object, parameter):
+        """ Resolve a config parameter, falling back to its default.
+
+        OTPmeObject.get_config_parameter() walks the object hierarchy
+        for a value somebody set and returns None when nobody did -- it
+        does not know about the registered default.
+
+        Site.add() writes every registered parameter's default into the
+        site, so a site carries the defaults from the day it was made.
+        A parameter registered later is in no existing site, and raising
+        a registered default does not reach one either. This fallback is
+        what those get their value from.
+        """
+        value = config_object.get_config_parameter(parameter)
+        if value is not None:
+            return value
+        try:
+            return config.get_config_parameter(parameter)['default']
+        except (NotRegistered, KeyError):
+            return None
+
+    def load_socket_backlog(self):
+        """ Override the listen backlog from the host/site config parameter.
+
+        Best-effort: on any failure the built-in default stays. Has to
+        run before the sockets are built, which happens in _run().
+        """
+        try:
+            own_host = backend.get_object(uuid=config.uuid)
+            if not own_host:
+                return
+            value = own_host.get_config_parameter("socket_backlog")
+            if not value:
+                return
+            config.socket_backlog = int(value)
+        except Exception as e:
+            log_msg = _("Failed to load socket_backlog from config: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+
+    def load_idle_timeout(self):
+        """ Override our idle timeout from the host/site config parameter.
+
+        Generic on purpose: every daemon looks for its own
+        "<name>_idle_timeout", so giving one of the others a timeout is
+        a matter of registering the parameter (see site.py). Only authd
+        has one so far -- its connections are one request long, which
+        the others are not all known to be. Best-effort: on any failure
+        the built-in default stays. Runs before the workers are forked,
+        so they inherit the value.
+        """
+        parameter = f"{self.name}_idle_timeout"
+        try:
+            config.get_config_parameter(parameter)
+        except NotRegistered:
+            return
+        try:
+            own_host = backend.get_object(uuid=config.uuid)
+            if not own_host:
+                return
+            value = own_host.get_config_parameter(parameter)
+            if value is None:
+                return
+            config.daemon_idle_timeout[self.name] = int(value)
+            log_msg = _("Idle timeout: {value}s ({parameter})", log=True)[1]
+            log_msg = log_msg.format(value=int(value), parameter=parameter)
+            self.logger.info(log_msg)
+        except Exception as e:
+            log_msg = _("Failed to load {parameter} from config: {error}", log=True)[1]
+            log_msg = log_msg.format(parameter=parameter, error=e)
             self.logger.warning(log_msg)
 
     def _send_local_daemon_msg(self, command, data=None, timeout=1):
@@ -382,7 +457,8 @@ class OTPmeDaemon(object):
                             ssl_ca_data=self.ca_data,
                             ssl_verify_client=ssl_verify_client,
                             max_conn=self.max_conn,
-                            worker_count=self.worker_count)
+                            worker_count=self.worker_count,
+                            max_worker_count=self.max_worker_count)
 
     def listen(self):
         """ Start listening on sockets. """
@@ -483,6 +559,13 @@ class OTPmeDaemon(object):
         # Load the decompression cap from site/host config (best-effort)
         # before connection workers fork, so they inherit the value.
         self.load_max_decompressed_size()
+        # Same for the listen backlog, which the sockets are built with
+        # in _run() below.
+        self.load_socket_backlog()
+        # Same for the idle timeout: the connection handler reads it
+        # when a worker takes a connection, so it has to be in place
+        # before they fork.
+        self.load_idle_timeout()
         # Run child class method.
         try:
             self._run(**kwargs)

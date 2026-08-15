@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import errno
-import atexit
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -79,7 +78,7 @@ def close_connections(proc_id=None):
                     logger.warning(log_msg)
                 connections[x_proc_id][daemon].pop(key)
     connections.clear()
-atexit.register(close_connections)
+multiprocessing.register_at_exit(close_connections)
 
 def add_connection(proc_id, daemon, key, connection):
     """ Add connection to dict. """

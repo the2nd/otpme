@@ -24,6 +24,13 @@ LOCK_TYPE = "memcached"
 SOCKET_PERMS = "700"
 MEMCACHED_MAXMEM = 128
 MEMCACHED_THREADS = 32
+# Memcacheds own default is 1024, which we outgrow: the pool holds a
+# connection per thread and process, and never gives one back. Every
+# ldapd worker, every daemon and every forked child adds to that, and
+# once the limit is reached memcached turns new connections away right
+# at the door -- which reaches the client as a connection reset, on a
+# cache that is running fine.
+MEMCACHED_MAXCONN = 4096
 MEMCACHED_MAX_OBJECT_SIZE = "8m"
 MEMCACHED_SOCKET_NAME = "memcached.sock"
 MEMCACHED_PIDFILE_NAME = "memcached.pid"
@@ -41,6 +48,8 @@ def register():
                         config_file_parameter="MEMCACHED_MAXMEM")
     config.register_config_var("memcached_threads", int, MEMCACHED_THREADS,
                         config_file_parameter="MEMCACHED_THREADS")
+    config.register_config_var("memcached_maxconn", int, MEMCACHED_MAXCONN,
+                        config_file_parameter="MEMCACHED_MAXCONN")
     config.register_config_var("memcached_pidfile", str, None,
                         config_file_parameter="MEMCACHED_PIDFILE")
     config.register_config_var("memcached_socket", str, None,
@@ -176,6 +185,7 @@ def _start():
                         '-I', config.memcached_max_object_size,
                         '-m', str(config.memcached_maxmem),
                         '-t', str(config.memcached_threads),
+                        '-c', str(config.memcached_maxconn),
                         '-U', 'off',
                         '-s', memcached_socket,
                         '-a', SOCKET_PERMS,

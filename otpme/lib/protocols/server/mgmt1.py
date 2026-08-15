@@ -1109,6 +1109,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             w = multiprocessing.start_process(
                                 name=f"mass_add_worker_{i}",
                                 target=self._mass_add_worker_loop,
+                hard_exit=True,
                                 target_args=(self.mass_add_work_queue,
                                             self.mass_add_result_queue,
                                             force, callback),

@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-import atexit
 #import datetime
 from functools import wraps
 from functools import update_wrapper
@@ -287,7 +286,7 @@ def cleanup():
     cleanup_fds()
 
 # Release locks on exit.
-atexit.register(cleanup)
+multiprocessing.register_at_exit(cleanup)
 
 class OTPmeFakeLock(object):
     """ Simple fake locking class. """

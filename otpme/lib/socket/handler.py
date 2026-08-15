@@ -169,6 +169,13 @@ class SocketProtoHandler(object):
         # Receive protocol negotiation request
         try:
             proto_neg_req = self.raw_recv()
+        except ConnectionTimeout:
+            # Let it through: a client that connects and then says
+            # nothing at all times out right here, before it ever names
+            # a protocol. Wrapped in something generic it would reach
+            # the connection handler as an error, and hanging up on an
+            # idle client is not one.
+            raise
         except Exception as e:
             msg = ("Failed to receive protocol negotiation.")
             raise OTPmeException(msg) from e

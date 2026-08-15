@@ -2845,6 +2845,14 @@ class CommandHandler(object):
 
         def login_worker():
             multiprocessing.atfork(quiet=True)
+            # A multiprocessing.Queue hands its items to a feeder thread,
+            # and we leave through os._exit() (hard_exit below), which
+            # does not wait for it. Whatever it has not written by then
+            # is lost, and the parent waits for those results for good.
+            def flush_result_queue():
+                result_queue.close()
+                result_queue.join_thread()
+            multiprocessing.register_at_exit(flush_result_queue)
             while True:
                 job = task_queue.get()
                 if job is None:
@@ -2900,6 +2908,7 @@ class CommandHandler(object):
         for _x in range(worker_count):
             worker = multiprocessing.start_process(name="login_benchmark",
                                                     target=login_worker,
+                                            hard_exit=True,
                                                     daemon=True,
                                                     start=True)
             worker_procs.append(worker)

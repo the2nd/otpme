@@ -973,7 +973,8 @@ class Vlan(OTPmeObject):
                                             callback=callback)
         if check_result is not True:
             return check_result
-        return super().add_role(role_uuid=role_uuid,
+        return super().add_role(role_name=role_name,
+                                role_uuid=role_uuid,
                                 callback=callback, **kwargs)
 
     def add_host(self, host_name: str=None, host_uuid: str=None,
@@ -993,7 +994,8 @@ class Vlan(OTPmeObject):
                                             callback=callback)
         if check_result is not True:
             return check_result
-        return super().add_host(host_uuid=host_uuid,
+        return super().add_host(host_name=host_name,
+                                host_uuid=host_uuid,
                                 callback=callback, **kwargs)
 
     def add_device(self, device_name: str=None, device_uuid: str=None,
@@ -1013,7 +1015,8 @@ class Vlan(OTPmeObject):
                                             callback=callback)
         if check_result is not True:
             return check_result
-        return super().add_device(device_uuid=device_uuid,
+        return super().add_device(device_name=device_name,
+                                device_uuid=device_uuid,
                                 callback=callback, **kwargs)
 
     @object_lock()

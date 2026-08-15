@@ -57,8 +57,16 @@ class AuthDaemon(OTPmeDaemon):
         self.max_conn = 1024
         # Use pre-fork worker pool for better throughput.
         own_node = backend.get_object(uuid=config.uuid)
-        authd_workers = own_node.get_config_parameter("authd_workers")
-        self.worker_count = authd_workers
+        self.worker_count = self.get_config_parameter(own_node,
+                                                    "authd_workers")
+        # A login holds its worker while the user is typing their
+        # password/OTP or reaching for their smartcard, so the pool has
+        # to survive everyone logging in at the same time in the
+        # morning. The resident workers carry the normal load and stay
+        # warm; the rest is forked while they are all busy and given
+        # back afterwards.
+        self.max_worker_count = self.get_config_parameter(own_node,
+                                                    "authd_max_workers")
         # Speedup authd by setting cache update interval.
         config.cache_update_interval = 30
         # FIXME: where to configure socket banner?
@@ -86,7 +94,8 @@ class AuthDaemon(OTPmeDaemon):
                             user=self.user,
                             group=self.group,
                             mode=0o666,
-                            worker_count=self.worker_count)
+                            worker_count=self.worker_count,
+                            max_worker_count=self.max_worker_count)
         except Exception as e:
             log_msg = _("Failed to add unix socket: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)

@@ -8,8 +8,8 @@ import setproctitle
 
 #from twisted.internet import selectreactor
 #selectreactor.install()
-from twisted.internet import pollreactor
-pollreactor.install()
+#from twisted.internet import pollreactor
+#pollreactor.install()
 
 import logging
 from twisted.python import log
@@ -27,7 +27,6 @@ from ldaptor import attributeset
 
 #from ldaptor import entryhelpers
 from ldaptor.protocols.ldap import ldapserver
-from ldaptor.protocols.ldap import ldapsyntax
 from ldaptor.protocols.ldap import ldaperrors
 from ldaptor.protocols.ldap import ldifprotocol
 from ldaptor.protocols.ldap import distinguishedname
@@ -148,9 +147,6 @@ LDAP_ACCESSGROUP = "LDAP"
 # encode again rather than let one entry grow without an end.
 MAX_ENTRY_PAYLOADS = 8
 
-# Connections the kernel queues for us until we accept them.
-LISTEN_BACKLOG = 128
-
 # Default value of the "ldap_on_request_attributes" config parameter.
 ON_REQUEST_ATTRIBUTES = [
                     'jpegPhoto',
@@ -224,30 +220,6 @@ def register_config_parameters():
                                                 'token',
                                                 ])
 
-def install_reactor():
-    """ Get a reactor of our own.
-
-    The reactor is built when this module gets imported, so it already
-    exists when ldapd forks its workers and they would all share it --
-    above all its wakeup pipe. callFromThread() puts the work into a
-    queue and writes a byte into that pipe to get the reactor out of
-    poll(). A sibling that reads the byte first leaves the process the
-    work belongs to asleep, with the work still sitting in its queue,
-    until something else happens to wake it -- and poll() without a
-    pending timer waits forever. Every search takes that path, it runs
-    through deferToThread().
-
-    Twisted refuses to install a second reactor, so we drop the one we
-    inherited first. Call this before anything imports the reactor in
-    this process, or that one would go on using the old one.
-    """
-    import sys
-    try:
-        del sys.modules['twisted.internet.reactor']
-    except KeyError:
-        pass
-    pollreactor.install()
-
 def create_listen_socket(address, port, reuse_port=True):
     """ Get a socket to listen on.
 
@@ -275,7 +247,7 @@ def create_listen_socket(address, port, reuse_port=True):
     if reuse_port:
         listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     listen_socket.bind(sockaddr)
-    listen_socket.listen(LISTEN_BACKLOG)
+    listen_socket.listen(config.socket_backlog)
     # adoptStreamPort() wants a non blocking socket.
     listen_socket.setblocking(False)
     return listen_socket
@@ -1525,6 +1497,16 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         returns something else with "base" than it does with "sub", and
         a shared cache would carry that mix over to every process.
         """
+        # Imported here and not at the top of the module: this
+        # import is what installs twisteds reactor (ldapsyntax
+        # reaches ldapclient, which does "from twisted.internet
+        # import reactor"). At module level that happens before
+        # ldapd forks its workers, and they would all share the
+        # one they inherit -- above all its wakeup pipe, the one
+        # callFromThread() writes a byte into to get the reactor
+        # moving. Down here the first import happens in a worker
+        # that has a reactor of its own by then.
+        from ldaptor.protocols.ldap import ldapsyntax
         value =  None
         cache_key = self.dn.getText()
 
@@ -1613,6 +1595,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         return cache_key
 
     def get_ldif_attribute(self, attribute):
+        from ldaptor.protocols.ldap import ldapsyntax
         x = attribute.lower()
         try:
             try:
@@ -1697,6 +1680,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     def decode_ldap_filter(self, filterObject):
         """ Decode ldap filter object. """
+        from ldaptor.protocols.ldap import ldapsyntax
         value = None
         less_than = None
         attribute = None

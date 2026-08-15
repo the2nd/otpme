@@ -206,6 +206,13 @@ FLUSH_CACHE_ON_START="True"
 # Memcache settings.
 #MEMCACHED_MAXMEM="128"
 #MEMCACHED_THREADS="32"
+# Maximum number of connections. The connection pool holds one per thread
+# and process and never gives it back, so every daemon, every ldapd worker
+# and every forked child adds to the count. Once the limit is reached
+# memcached turns new connections away at the door, which reaches the
+# client as a connection reset on a cache that is running fine:
+# "Memcache get error: ... CONNECTION FAILURE(Connection reset by peer)"
+#MEMCACHED_MAXCONN="4096"
 # Maximum object size. If you have a lot of users, role and group objects
 # will increase in size and you may reach this limit. The following error
 # message indicates you reached the limit:
@@ -213,7 +220,7 @@ FLUSH_CACHE_ON_START="True"
 #MEMCACHED_MAX_OBJECT_SIZE="8m"
 #MEMCACHED_SOCKET="/var/run/otpme/sockets/memcached/memcached.sock"
 # Please note. If you uncomment MEMCACHED_OPTS any other memcached option is ignored.
-#MEMCACHED_OPTS="-d -P /var/run/otpme/pidfiles/memcached.pid -I 8m -m 128 -t 32 -U off -s /var/run/otpme/sockets/memcached.sock -a 700 -o lru_maintainer,lru_crawler,hash_algorithm=murmur3 -o expirezero_does_not_evict -v"
+#MEMCACHED_OPTS="-d -P /var/run/otpme/pidfiles/memcached.pid -I 8m -m 128 -t 32 -c 4096 -U off -s /var/run/otpme/sockets/memcached.sock -a 700 -o lru_maintainer,lru_crawler,hash_algorithm=murmur3 -o expirezero_does_not_evict -v"
 
 # Memcachedb binary.
 #MEMCACHEDB_BIN="memcachedb"

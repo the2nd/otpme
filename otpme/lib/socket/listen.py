@@ -3,6 +3,7 @@
 import os
 import pwd
 import ssl
+import mmap
 import time
 import struct
 import select
@@ -28,6 +29,23 @@ from otpme.lib import multiprocessing
 
 from otpme.lib.exceptions import *
 
+# Worker scoreboard: two bytes per worker slot in a shared mmap. The
+# first byte is written only by the worker itself, the second only by
+# the parent. One writer per byte means the whole thing needs no lock
+# and no shared dict (which would be a redis/memcached round trip per
+# connection, see multiprocessing.get_dict()).
+SCOREBOARD_SLOT_SIZE = 2
+WORKER_IDLE = 0
+WORKER_BUSY = 1
+WORKER_RUN = 0
+WORKER_EXIT = 1
+# How long the pool has to stay unsaturated before we start giving back
+# workers we forked on demand. Long enough that the morning login storm
+# does not fork and reap in circles.
+WORKER_SHRINK_DELAY = 60
+# Seconds between two supervisor rounds.
+WORKER_SUPERVISE_INTERVAL = 0.5
+
 class ListenSocket(object):
     """ Class to start and stop TCP or unix socket. """
     def __init__(self, socket_uri, connection_handler, name,
@@ -35,7 +53,7 @@ class ListenSocket(object):
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
         proctitle=None, logger=None, max_conn=100, conn_handling="multiprocessing",
-        worker_count=0):
+        worker_count=0, max_worker_count=0):
         # Check if we got all required paramters.
         if use_ssl:
             if not ssl_cert:
@@ -94,7 +112,16 @@ class ListenSocket(object):
         self._shutdown = None
         self.conn_handling = conn_handling
         self.worker_count = worker_count
+        # Upper bound the pool may grow to while every worker is busy.
+        # Anything at or below worker_count keeps the pool fixed.
+        self.max_worker_count = max_worker_count or 0
+        if self.max_worker_count < self.worker_count:
+            self.max_worker_count = self.worker_count
         self.worker_procs = []
+        self.scoreboard = None
+        # Last time we saw every worker busy at once.
+        self.last_saturated = 0
+        self.last_max_workers_warn = 0
 
         # Save proctitle for later use (e.g. new client connection)
         if proctitle is None:
@@ -391,10 +418,16 @@ class ListenSocket(object):
                                             do_handshake_on_connect=False,
                                             suppress_ragged_eofs=True,
                                             server_hostname=None)
-            # Start listening on socket.
-            # Set backlog to 128 to prevent:
-            #   "TCP: request_sock_TCP: Possible SYN flooding on port xxxx. Sending cookies.  Check SNMP counters."
-            self._socket.listen(128)
+            # Start listening on socket. The backlog is the queue of
+            # connections the kernel finished on its own and nobody has
+            # accepted yet. It is what carries a login storm while all
+            # workers are busy: a client whose connection sits in there
+            # notices nothing but the wait. Overflowing it costs more on
+            # a unix socket than on TCP -- TCP drops the SYN and the
+            # client tries again (see tcp_abort_on_overflow), a unix
+            # socket refuses the connect right away, and that is the
+            # path ldapd, freeradius and the web portal take to authd.
+            self._socket.listen(config.socket_backlog)
 
             # Using SSLContext.wrap_socket() with newer python versions it's
             # possible to remove cert/key files after socket initialization.
@@ -425,38 +458,34 @@ class ListenSocket(object):
             return False
 
         if self.worker_count > 0:
-            # Pre-fork worker pool mode.
-            log_msg = _("Starting {count} pre-fork workers for '{uri}'", log=True)[1]
-            log_msg = log_msg.format(count=self.worker_count, uri=self.socket_uri)
+            # Pre-fork worker pool mode. The scoreboard has to exist
+            # before the first fork: the workers inherit the mapping,
+            # which is what makes it shared without any IPC.
+            self.scoreboard = mmap.mmap(-1, self.max_worker_count
+                                        * SCOREBOARD_SLOT_SIZE)
+            if self.max_worker_count > self.worker_count:
+                log_msg = _("Starting {count} pre-fork workers (up to {max} under load) for '{uri}'", log=True)[1]
+                log_msg = log_msg.format(count=self.worker_count,
+                                        max=self.max_worker_count,
+                                        uri=self.socket_uri)
+            else:
+                log_msg = _("Starting {count} pre-fork workers for '{uri}'", log=True)[1]
+                log_msg = log_msg.format(count=self.worker_count,
+                                        uri=self.socket_uri)
             self.logger.info(log_msg)
+            # One slot per worker we may ever have. The ones above
+            # worker_count stay empty until the load asks for them.
+            self.worker_procs = [None] * self.max_worker_count
             for i in range(self.worker_count):
-                worker_name = f"{self.name}-worker-{i}"
-                p = multiprocessing.start_process(name=worker_name,
-                                target=self._worker_loop,
-                                target_args=(i,),
-                                join=False)
-                self.worker_procs.append(p)
+                self.worker_procs[i] = self.start_worker(i)
             # Wait for shutdown signal.
             while not self.shutdown:
-                # Respawn dead workers.
-                for i, p in enumerate(self.worker_procs):
-                    if p.is_alive():
-                        continue
-                    p.join()
-                    if self.shutdown:
-                        break
-                    log_msg = _("Worker {idx} died, respawning.", log=True)[1]
-                    log_msg = log_msg.format(idx=i)
-                    self.logger.warning(log_msg)
-                    worker_name = f"{self.name}-worker-{i}"
-                    new_p = multiprocessing.start_process(name=worker_name,
-                                    target=self._worker_loop,
-                                    target_args=(i,),
-                                    join=False)
-                    self.worker_procs[i] = new_p
-                time.sleep(0.5)
+                self.supervise_workers()
+                time.sleep(WORKER_SUPERVISE_INTERVAL)
             # Shutdown: wait for workers.
             for p in self.worker_procs:
+                if p is None:
+                    continue
                 p.join(timeout=5)
         else:
             # Legacy fork-per-connection mode.
@@ -475,7 +504,152 @@ class ListenSocket(object):
         # Do multiprocessing cleanup.
         multiprocessing.cleanup()
 
-    def _accept_connection(self):
+    def set_worker_state(self, worker_idx, state):
+        """ Tell the parent what we are doing. Called by the worker. """
+        if self.scoreboard is None:
+            return
+        self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE] = state
+
+    def get_worker_state(self, worker_idx):
+        """ What a worker is doing. Called by the parent. """
+        if self.scoreboard is None:
+            return WORKER_IDLE
+        return self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE]
+
+    def set_worker_command(self, worker_idx, command):
+        """ Ask a worker to stop. Called by the parent. """
+        if self.scoreboard is None:
+            return
+        self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 1] = command
+
+    def get_worker_command(self, worker_idx):
+        """ Check whether we were asked to stop. Called by the worker. """
+        if self.scoreboard is None:
+            return WORKER_RUN
+        return self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 1]
+
+    def start_worker(self, worker_idx):
+        """ Fork one worker for the given scoreboard slot. """
+        self.set_worker_state(worker_idx, WORKER_IDLE)
+        self.set_worker_command(worker_idx, WORKER_RUN)
+        worker_name = f"{self.name}-worker-{worker_idx}"
+        return multiprocessing.start_process(name=worker_name,
+                                        target=self._worker_loop,
+                                        target_args=(worker_idx,),
+                                        join=False)
+
+    def supervise_workers(self):
+        """ Respawn dead workers and size the pool to the load.
+
+        The scoreboard tells us how many workers are in a connection
+        right now. While all of them are, an accepted connection waits
+        in the listen backlog with nobody to pick it up -- that is the
+        morning login storm, where every worker sits in an auth flow
+        waiting for a user to type. So we fork more, up to
+        max_worker_count, and give them back once the rush is over.
+        """
+        # Respawn workers that died on us. A slot we retired ourselves
+        # is set to None and must stay empty.
+        for worker_idx, proc in enumerate(self.worker_procs):
+            if proc is None:
+                continue
+            if proc.is_alive():
+                continue
+            proc.join()
+            if self.shutdown:
+                return
+            if self.get_worker_command(worker_idx) == WORKER_EXIT:
+                # Went away because we asked it to.
+                self.worker_procs[worker_idx] = None
+                continue
+            log_msg = _("Worker {idx} died, respawning.", log=True)[1]
+            log_msg = log_msg.format(idx=worker_idx)
+            self.logger.warning(log_msg)
+            self.worker_procs[worker_idx] = self.start_worker(worker_idx)
+
+        if self.max_worker_count <= self.worker_count:
+            # Fixed pool.
+            return
+
+        idle_slots = []
+        leaving_slots = []
+        running = 0
+        busy = 0
+        for worker_idx, proc in enumerate(self.worker_procs):
+            if proc is None:
+                continue
+            if self.get_worker_command(worker_idx) == WORKER_EXIT:
+                # On its way out. It does not count as one of ours any
+                # more, in either number: counting it as running would
+                # hide the very saturation that has to bring it back,
+                # and we must not ask it to stop twice.
+                leaving_slots.append(worker_idx)
+                continue
+            running += 1
+            if self.get_worker_state(worker_idx) == WORKER_BUSY:
+                busy += 1
+            elif worker_idx >= self.worker_count:
+                # Only the ones we forked on demand may be given back.
+                idle_slots.append(worker_idx)
+
+        now = time.time()
+        if not running or busy < running:
+            # Somebody is free to accept, nothing to do but consider
+            # handing workers back further down.
+            pass
+        else:
+            self.last_saturated = now
+            if leaving_slots:
+                # Load came back while we were handing workers back.
+                # Keep them: they are still alive and still accepting,
+                # so taking the request back costs nothing, while
+                # forking replacements would cost a fork and a cold
+                # cache each. One that is gone already has its slot
+                # free and gets forked again below. Give them this
+                # round before growing any further.
+                for worker_idx in leaving_slots:
+                    self.set_worker_command(worker_idx, WORKER_RUN)
+                log_msg = _("All {running} workers busy, keeping {count} we were about to stop: {uri}", log=True)[1]
+                log_msg = log_msg.format(running=running,
+                                        count=len(leaving_slots),
+                                        uri=self.socket_uri)
+                self.logger.info(log_msg)
+                return
+            free_slots = [i for i, p in enumerate(self.worker_procs) if p is None]
+            if free_slots:
+                # Grow by half of what we have, so a storm is met in a
+                # few rounds instead of one worker every half second.
+                grow_by = min(max(1, running // 2), len(free_slots))
+                for worker_idx in free_slots[:grow_by]:
+                    self.worker_procs[worker_idx] = self.start_worker(worker_idx)
+                log_msg = _("All {running} workers busy, pool grown to {total} (max {max}): {uri}", log=True)[1]
+                log_msg = log_msg.format(running=running,
+                                        total=running + grow_by,
+                                        max=self.max_worker_count,
+                                        uri=self.socket_uri)
+                self.logger.info(log_msg)
+            elif (now - self.last_max_workers_warn) > 60:
+                self.last_max_workers_warn = now
+                log_msg = _("All {count} workers busy and pool at its maximum. New connections wait in the listen backlog: {uri}", log=True)[1]
+                log_msg = log_msg.format(count=running, uri=self.socket_uri)
+                self.logger.warning(log_msg)
+            return
+
+        # Hand back workers we forked on demand, one per round, once the
+        # load has stayed down long enough.
+        if not idle_slots:
+            return
+        if (now - self.last_saturated) < WORKER_SHRINK_DELAY:
+            return
+        worker_idx = idle_slots[-1]
+        self.set_worker_command(worker_idx, WORKER_EXIT)
+        log_msg = _("Pool not saturated for {delay}s, stopping worker {idx}: {uri}", log=True)[1]
+        log_msg = log_msg.format(delay=WORKER_SHRINK_DELAY,
+                                idx=worker_idx,
+                                uri=self.socket_uri)
+        self.logger.info(log_msg)
+
+    def _accept_connection(self, worker_idx=None):
         """ Accept a single connection. Returns (new_connection, client) or (None, None). """
         # Wait for the listener to become readable with a short timeout so the
         # accept loop can periodically check self.shutdown even when the
@@ -489,6 +663,11 @@ class ListenSocket(object):
         new_client_socket = None
         try:
             new_connection, new_client_socket = self._socket.accept()
+            # We are out of the accept queue and busy from here on. The
+            # TLS handshake below is part of that: a client that stalls
+            # it holds this worker just as much as one in an auth flow.
+            if worker_idx is not None:
+                self.set_worker_state(worker_idx, WORKER_BUSY)
             # Disable Nagle's algorithm on accepted connection.
             if self.protocol == "tcp":
                 new_connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -584,9 +763,21 @@ class ListenSocket(object):
         new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
         setproctitle.setproctitle(new_proctitle)
 
+        self.set_worker_state(worker_idx, WORKER_IDLE)
+
         while not self.shutdown:
-            new_connection, client = self._accept_connection()
+            # Only checked while we are between connections, so we never
+            # walk out on a client we already accepted.
+            if self.get_worker_command(worker_idx) == WORKER_EXIT:
+                log_msg = _("Worker {idx}: No longer needed, stopping.", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx)
+                self.logger.info(log_msg)
+                break
+            new_connection, client = self._accept_connection(worker_idx=worker_idx)
             if new_connection is None:
+                # Nothing came in, or the handshake failed. Either way
+                # we are free again.
+                self.set_worker_state(worker_idx, WORKER_IDLE)
                 continue
             # Log new connection.
             if config.debug_level("connections") > 0:
@@ -604,9 +795,21 @@ class ListenSocket(object):
                 log_msg = _("Worker {idx}: Error handling connection: {error}", log=True)[1]
                 log_msg = log_msg.format(idx=worker_idx, error=e)
                 self.logger.warning(log_msg)
+            finally:
+                self.set_worker_state(worker_idx, WORKER_IDLE)
             # Reset process title.
             new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
             setproctitle.setproctitle(new_proctitle)
+
+        # Leave the way every other forked child here leaves (see the
+        # SIGTERM handler in multiprocessing.py): hard, without running
+        # the interpreter shutdown. Returning from here would run the
+        # atexit hook of concurrent.futures, which joins thread objects
+        # we inherited at fork time -- threads that never existed in
+        # this process, so the join never returns and the worker stays
+        # alive for good. Nothing here needs flushing: the log handlers
+        # write through, and the connection is closed by now.
+        os._exit(0)
 
     def _accept_loop(self):
         """ Legacy fork-per-connection accept loop. """
@@ -659,6 +862,7 @@ class ListenSocket(object):
                                     target_args=(new_connection,
                                                 client,
                                                 self.connection_handler),
+                                    hard_exit=True,
                                     join=False)
                 except Exception as e:
                     log_msg = _("Failed to start connection handler: {e}", log=True)[1]
@@ -935,7 +1139,12 @@ class Connection(object):
             msg = msg.format(client=self.client)
             raise Exception(msg) from err
         finally:
-            if timeout is not None:
+            # Only while the socket is still open: the paths above close
+            # it on a timeout or a lost connection, and setting a
+            # timeout on a closed one raises EBADF -- which would then
+            # take the place of the exception we are on our way out
+            # with, and a hangup would read as "Bad file descriptor".
+            if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
     def send(self, data, timeout=None):
@@ -965,7 +1174,12 @@ class Connection(object):
             msg = msg.format(client=self.client)
             raise Exception(msg) from err
         finally:
-            if timeout is not None:
+            # Only while the socket is still open: the paths above close
+            # it on a timeout or a lost connection, and setting a
+            # timeout on a closed one raises EBADF -- which would then
+            # take the place of the exception we are on our way out
+            # with, and a hangup would read as "Bad file descriptor".
+            if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
     def recv(self, recv_buffer=config.socket_receive_buffer, timeout=None):
@@ -993,7 +1207,12 @@ class Connection(object):
             self._close()
             raise Exception(msg) from err
         finally:
-            if timeout is not None:
+            # Only while the socket is still open: the paths above close
+            # it on a timeout or a lost connection, and setting a
+            # timeout on a closed one raises EBADF -- which would then
+            # take the place of the exception we are on our way out
+            # with, and a hangup would read as "Bad file descriptor".
+            if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
     def close(self):

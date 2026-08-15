@@ -1202,6 +1202,7 @@ class ClusterDaemon(OTPmeDaemon):
         if start_cluster_comm:
             self.cluster_comm_child = multiprocessing.start_process(name=self.name,
                                             target=self.start_cluster_communication,
+                                            hard_exit=True,
                                             target_kwargs={'reload':reload})
         # Start in-journal handler.
         if start_in_journal:
@@ -1908,7 +1909,8 @@ class ClusterDaemon(OTPmeDaemon):
         if config.two_node_setup:
             if not self.two_node_handler_child:
                 self.two_node_handler_child = multiprocessing.start_process(name=self.name,
-                                                target=self.start_two_node_handler)
+                                                target=self.start_two_node_handler,
+                                                hard_exit=True)
         else:
             if self.two_node_handler_child:
                 self.two_node_handler_child.terminate()
@@ -2022,16 +2024,19 @@ class ClusterDaemon(OTPmeDaemon):
             if node.name not in self.node_write_connections:
                 proc = multiprocessing.start_process(name=self.name,
                                             target=self.start_node_write_connection,
+                                            hard_exit=True,
                                             target_args=(node.name,))
                 self.node_write_connections[node.name] = proc
             if node.name not in self.node_sessions_connections:
                 proc = multiprocessing.start_process(name=self.name,
                                             target=self.start_node_sessions_connection,
+                                            hard_exit=True,
                                             target_args=(node.name,))
                 self.node_sessions_connections[node.name] = proc
             if node.name not in self.node_last_used_connections:
                 proc = multiprocessing.start_process(name=self.name,
                                             target=self.start_node_last_used_connection,
+                                            hard_exit=True,
                                             target_args=(node.name,))
                 self.node_last_used_connections[node.name] = proc
             multiprocessing.node_connections[node.name] = True
@@ -2497,7 +2502,7 @@ class ClusterDaemon(OTPmeDaemon):
 
             quorum_msg = _("Gained quorum {current} ({required} required)")
             quorum_msg = quorum_msg.format(current=current_votes, required=required_votes)
-            no_quorum_msg = _("Waiting for quorum {current} ({required} required")
+            no_quorum_msg = _("Waiting for quorum {current} ({required} required)")
             no_quorum_msg = no_quorum_msg.format(current=current_votes, required=required_votes)
             if quorum:
                 if not quorum_message_sent:

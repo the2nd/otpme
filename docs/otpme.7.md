@@ -435,6 +435,15 @@ overridden locally. A site can also enforce parameters for all of its
 objects, see **force_site_config_parameters** below. The column *Object
 types* lists on which object types each parameter can be set.
 
+Creating a site writes the default of every parameter into that site, so
+a site keeps the defaults it was created with. Two things follow. A
+parameter that was added to OTPme after a site was created is not listed
+by that site's **show_config** and is simply unset -- what an unset
+parameter means is up to the code reading it, so set it on the site
+rather than relying on it. And raising a default in OTPme itself does
+not reach a site that already carries the old value -- set it on the
+site to change it.
+
 **otpme-site config mysite parameter \[*value*\]**  
 **otpme-site config -d mysite parameter \[*value*\]**
 
@@ -1017,11 +1026,71 @@ Object types: site, unit, share, user, token
 
 ## Daemon Tuning
 
+These are read by the daemon when it starts. A changed value needs a
+full **otpme-controld restart** to take effect: restarting a single
+daemon reads the node object from the cache, which is only flushed on a
+full start.
+
 **authd_workers (int, default: 16)**  
-Number of preforked **authd** worker processes. Increase on busy nodes
-to handle more concurrent authentication requests. The most specific
-match wins (node overrides unit overrides site).  
+Number of preforked **authd** worker processes. These stay for as long
+as the daemon runs, which is what keeps their caches warm, so size this
+for the normal day rather than for the peak -- see **authd_max_workers**
+for the peak. The most specific match wins (node overrides unit
+overrides site). Note that each listening socket gets its own pool, so a
+node listening on a unix socket and on TCP runs two of them.  
 Object types: site, unit, node
+
+**authd_max_workers (int, default: 64)**  
+How far an **authd** worker pool may grow while every one of its workers
+is busy. A worker is busy for as long as its connection lasts, and a
+login lasts until the user has typed their password or OTP, so a whole
+department arriving in the morning needs more workers than the rest of
+the day does. Workers above **authd_workers** are forked when the pool
+runs full and stopped again once it has been unsaturated for a minute,
+so the extra memory is only spent during the rush and the resident
+workers keep seeing enough requests to hold their caches.  
+Connections that arrive while the pool is at its maximum are not
+refused: they wait in the listen backlog (**socket_backlog**) until a
+worker is free. That the maximum was reached is logged, at most once a
+minute:  
+**All 64 workers busy and pool at its maximum. New connections wait in
+the listen backlog**  
+Set this to the same value as **authd_workers** to keep the pool at a
+fixed size.  
+Object types: site, unit, node
+
+**authd_idle_timeout (int, default: 120)**  
+Seconds an **authd** connection may sit there without asking anything
+before it is closed. A worker serves one connection at a time, so a
+client that connects and then says nothing holds one for good --
+**authd_workers** of those and nobody authenticates anywhere in the
+realm any more. Only the wait for the next request is counted, never the
+work on one, so a token that takes its time (a push token waiting for
+the user to confirm) is not affected. Set to **0** to turn it off.  
+A login does wait here: after the server has asked for a password or
+OTP, the next request arrives only once the user has typed it, so this
+cannot be shorter than a person at a prompt needs. The default matches
+the **sshd**(8) **LoginGraceTime** of 120 seconds, and **login**(1)
+gives 60 seconds (**LOGIN_TIMEOUT** in **login.defs**(5)), so nothing
+coming through PAM holds a connection longer than that anyway.  
+Treat this as a reaper for silent and dead connections, not as a defence
+against a deliberate attacker: whatever a real login is allowed here is
+available to anyone who sends one request and then stops talking.  
+Object types: site, unit, node
+
+**socket_backlog (int, default: 1024)**  
+Length of the kernel's accept queue for the listening sockets of the
+OTPme daemons. Connections the kernel has finished on its own wait in
+there until a worker calls accept(). This is what carries a login storm
+while every worker is busy: a client whose connection waits in the queue
+notices nothing but the delay, while one that does not fit in is
+refused. On a unix socket that is an immediate **ECONNREFUSED**; on TCP
+the SYN is dropped and the client retries a few seconds later. The
+kernel caps this at **/proc/sys/net/core/somaxconn**, so raise that too
+if you set a higher value.  
+Read at daemon start, before the sockets are created. A changed value
+needs a full **otpme-controld restart** to take effect.  
+Object types: site, unit, node, host
 
 **ldapd_processes (int, default: 1)**  
 Number of worker processes **ldapd** answers LDAP requests with. A

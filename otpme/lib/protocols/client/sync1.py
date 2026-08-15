@@ -991,6 +991,7 @@ class OTPmeSyncP1(OTPmeClient1):
             w = multiprocessing.start_process(
                                 name=f"sync_worker_{i}",
                                 target=self._process_object_worker_loop,
+                hard_exit=True,
                                 target_args=(self.mass_add_work_queue,
                                             self.mass_add_result_queue,
                                             realm, site,

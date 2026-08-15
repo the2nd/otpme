@@ -312,7 +312,12 @@ class ConnectSocket(object):
             msg = msg.format(error=e, socket_uri=self.socket_uri)
             raise OTPmeException(msg) from e
         finally:
-            if timeout is not None:
+            # Only while the socket is still open: the paths above close
+            # it on a timeout or a lost connection, and setting a
+            # timeout on a closed one raises EBADF -- which would then
+            # take the place of the exception we are on our way out
+            # with, and a hangup would read as "Bad file descriptor".
+            if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
     def sendall(self, data, blocking=None, timeout=None, **kwargs):
@@ -340,7 +345,12 @@ class ConnectSocket(object):
             msg = msg.format(error=e, socket_uri=self.socket_uri)
             raise ConnectionError(msg) from e
         finally:
-            if timeout is not None:
+            # Only while the socket is still open: the paths above close
+            # it on a timeout or a lost connection, and setting a
+            # timeout on a closed one raises EBADF -- which would then
+            # take the place of the exception we are on our way out
+            # with, and a hangup would read as "Bad file descriptor".
+            if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
 
     def recv(self, recv_buffer=config.socket_receive_buffer, blocking=None, timeout=None, **kwargs):
@@ -372,7 +382,12 @@ class ConnectSocket(object):
             config.raise_exception()
             raise ConnectionError(msg) from e
         finally:
-            if timeout is not None:
+            # Only while the socket is still open: the paths above close
+            # it on a timeout or a lost connection, and setting a
+            # timeout on a closed one raises EBADF -- which would then
+            # take the place of the exception we are on our way out
+            # with, and a hangup would read as "Bad file descriptor".
+            if timeout is not None and self.connected:
                 self.set_timeout(org_timeout)
         return data
 

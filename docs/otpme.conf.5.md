@@ -211,6 +211,17 @@ Maximum memory in MB.
 **MEMCACHED_THREADS**  
 Number of threads.
 
+**MEMCACHED_MAXCONN**  
+Maximum number of connections (default: 4096). Memcacheds own default of
+1024 is not enough here: the connection pool holds one connection per
+thread and process and never gives it back, so every daemon, every ldapd
+worker and every forked child adds to the count. Once the limit is
+reached memcached turns new connections away at the door, which reaches
+the client as a connection reset on a cache that is running fine:
+
+> **Memcache get error: ... CONNECTION FAILURE(Connection reset by
+> peer)**
+
 **MEMCACHED_MAX_OBJECT_SIZE**  
 Maximum object size (e.g. "8m"). Increase if role/group objects grow
 large.

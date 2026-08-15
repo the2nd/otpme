@@ -5,11 +5,13 @@ import sys
 import pwd
 import grp
 import mmap
+import atexit
 import psutil
 import signal
 import struct
 import posix_ipc
 import threading
+import traceback
 #import functools
 import setproctitle
 import multiprocessing
@@ -48,6 +50,11 @@ pid = None
 #proc_thread_id = None
 cleanup_methods = []
 atfork_methods = []
+# Methods to run when the process ends. Registered with atexit as
+# usual, and kept here as well so a process leaving through
+# _hard_exit() runs them too -- that one never reaches the atexit
+# callbacks, see there.
+exit_methods = []
 # Posix message queues to close on exit.
 message_queues = []
 # Posix semaphores to close on exit.
@@ -74,6 +81,20 @@ def register():
 def register_cleanup_method(method):
     global cleanup_methods
     cleanup_methods.append(method)
+
+def register_at_exit(method):
+    """ Register a method to run when the process ends.
+
+    Use this instead of atexit.register(): it does that too, but also
+    remembers the method for _hard_exit(), which children use to leave
+    without the interpreter shutdown. Anything registered with atexit
+    alone is skipped on that way out.
+    """
+    global exit_methods
+    if method in exit_methods:
+        return
+    exit_methods.append(method)
+    atexit.register(method)
 
 def register_atfork_method(method):
     global atfork_methods
@@ -557,25 +578,104 @@ def drop_privileges(user=None, group=None, groups=None):
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
 
+def _hard_exit(status):
+    """ Leave the process without letting the interpreter shut down.
+
+    Runs what was registered with register_at_exit() first -- a child
+    that walks off with a lock is worse than one that lingers. Reverse
+    order, like atexit itself: what was set up last is taken down
+    first.
+
+    Only our own exit methods run, not the whole atexit chain. Running
+    that would take atexit._run_exitfuncs(), which is private, and it
+    would also run logging.shutdown(): that closes the RELP handler, to
+    the same syslog server that is not answering, which is the wait we
+    are getting out of here. A child hanging in the normal shutdown
+    reaches none of this anyway -- threading._shutdown() runs before
+    the atexit callbacks -- so leaving this way gives back more than
+    the old way did, not less.
+    """
+    for exit_method in reversed(exit_methods):
+        try:
+            exit_method()
+        except Exception:
+            traceback.print_exc()
+            sys.stderr.flush()
+    os._exit(status)
+
 def start_process(name, target, target_args=None,
     target_kwargs=None, daemon=False,
     start=True, join=False, close=False,
-    new_process_group=False):
-    """ Start new process. """
-    # Wrapper to set new process group if requested.
+    new_process_group=False, hard_exit=False):
+    """ Start new process.
+
+    hard_exit: leave the child with os._exit() once the target is done,
+    instead of returning and letting the interpreter shut itself down.
+    That shutdown joins every thread concurrent.futures knows about,
+    and relppy runs its RELP sender and acker in such pools
+    (client.py:48). A child that logged once therefore has to get its
+    RELP sender to finish before it may end -- with a syslog server
+    that is slow or gone, the join never returns and the child stays
+    alive for good. Threads the child inherited are not the problem:
+    the interpreter stops those itself at fork time. It is the ones the
+    child started that hold it.
+
+    Use this on children that end by themselves. The ones that only end
+    on a signal already leave through the SIGTERM handler above, which
+    does the same thing.
+
+    One thing the child has to take care of itself: a
+    multiprocessing.Queue it writes to. Those hand their items to a
+    feeder thread, which normally gets flushed on the way out, and
+    os._exit() does not wait for it. Close and join such a queue before
+    ending -- register_at_exit() is the place for it. Our own
+    MessageQueue (posix) writes straight through and needs nothing.
+
+    Connections and locks are given back on the way out, see
+    _hard_exit() above.
+    """
+    # Wrapper to set new process group and/or to leave without running
+    # the interpreter shutdown.
     def _target_wrapper(target, target_args, target_kwargs):
         if new_process_group:
             os.setpgrp()
-        if target_args and target_kwargs:
-            return target(*target_args, **target_kwargs)
-        if target_args:
-            return target(*target_args)
-        if target_kwargs:
-            return target(**target_kwargs)
-        return target()
+        try:
+            if target_args and target_kwargs:
+                result = target(*target_args, **target_kwargs)
+            elif target_args:
+                result = target(*target_args)
+            elif target_kwargs:
+                result = target(**target_kwargs)
+            else:
+                result = target()
+        except SystemExit as e:
+            if not hard_exit:
+                raise
+            # Keep the status the child asked for: callers do look at it
+            # (hostd checks sync_child.exitcode, backupd's failure path
+            # exits 1). sys.exit() with no argument means 0, with a
+            # string it means 1 and the string goes to stderr.
+            exit_status = e.code
+            if exit_status is None:
+                exit_status = 0
+            elif not isinstance(exit_status, int):
+                sys.stderr.write(f"{exit_status}\n")
+                sys.stderr.flush()
+                exit_status = 1
+            _hard_exit(exit_status)
+        except Exception:
+            if not hard_exit:
+                raise
+            # Nobody sees a traceback after os._exit(), so write it now.
+            traceback.print_exc()
+            sys.stderr.flush()
+            _hard_exit(1)
+        if hard_exit:
+            _hard_exit(0)
+        return result
 
     proc_kwargs = {}
-    if new_process_group:
+    if new_process_group or hard_exit:
         proc_kwargs['args'] = (target, target_args, target_kwargs)
         actual_target = _target_wrapper
     else:
