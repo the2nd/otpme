@@ -1527,6 +1527,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
                         'client_ip',
                         'creation_time',
                         'timeout',
+                        'temp_pass',
                         'unused_timeout',
                         'last_used',
                         ]
@@ -1556,6 +1557,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
                         "user",
                         "token",
                         "type",
+                        "temp_pass",
                         "accessgroup",
                         "host/client",
                         "host/client ip",
@@ -1568,6 +1570,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
                         "session id",
                         "token",
                         "type",
+                        "temp_pass",
                         "accessgroup",
                         "host/client",
                         "host/client ip",
@@ -1899,6 +1902,12 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             except KeyError:
                 session_type = "N/A"
             x_row.append(session_type)
+
+            try:
+                temp_pass = session_list[session_uuid]['temp_pass'][0]
+            except KeyError:
+                temp_pass = False
+            x_row.append(temp_pass)
 
             # Indent child sessions.
             try:

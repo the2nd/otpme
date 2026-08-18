@@ -367,13 +367,17 @@ class AuthHandler(object):
                 log_msg = _("Token '{token_name}' is disabled. Authentication will fail.", log=True)[1]
                 log_msg = log_msg.format(token_name=self.auth_token.name)
                 self.logger.debug(log_msg)
+                self.auth_message = "AUTH_TOKEN_DISABLED"
                 self.auth_failed = True
+                self.count_fails = False
                 return
             if not self.verify_token.enabled:
                 log_msg = _("Token '{token_path}' is disabled. Authentication will fail.", log=True)[1]
                 log_msg = log_msg.format(token_path=self.verify_token.rel_path)
                 self.logger.debug(log_msg)
+                self.auth_message = "AUTH_TOKEN_DISABLED"
                 self.auth_failed = True
+                self.count_fails = False
                 return
 
         # Make sure login to child accessgroups of SSO accessgroup are not allowed
@@ -1041,8 +1045,9 @@ class AuthHandler(object):
             log_msg = _("User '{user_name}' is disabled.", log=True)[1]
             log_msg = log_msg.format(user_name=self.user.name)
             self.logger.warning(log_msg)
-            self.auth_failed = True
             self.auth_message = "AUTH_USER_DISABLED"
+            self.auth_failed = True
+            self.count_fails = False
             return
 
         # Use user blocked cache.
@@ -2388,6 +2393,7 @@ class AuthHandler(object):
                 session = Session(self.auth_type, self.user.name,
                                 pass_hash=self.password_hash,
                                 pass_hash_params=self.pass_hash_params,
+                                temp_pass=self.temp_password_auth,
                                 slp=session_logout_pass,
                                 token=self.auth_token.uuid,
                                 uuid=self.new_session_uuid,
@@ -2399,14 +2405,7 @@ class AuthHandler(object):
                 # parent session so we need no session.add() here. Child
                 # sessions are always created regardless if sessions are
                 # enabled for each child.
-                timeout = None
-                unused_timeout = None
-                if self.temp_password_auth:
-                    timeout = self.session_timeout
-                    unused_timeout = self.session_unused_timeout
-                add_status = session.create_child_sessions(offline_data_key=self.offline_data_key,
-                                                            timeout=timeout,
-                                                            unused_timeout=unused_timeout)
+                add_status = session.create_child_sessions(offline_data_key=self.offline_data_key)
                 if add_status:
                     # Call exists() to fill in all session variables.
                     session.exists()

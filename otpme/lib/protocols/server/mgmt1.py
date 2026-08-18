@@ -100,6 +100,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.job_exit_status = {}
         self.job_callbacks = {}
         self.use_cached_objects = False
+        self.check_user_disabled = True
+        self.check_token_disabled = True
         # Max jobs per client.
         self.max_jobs = 3
         # Mass add worker pool (populated for the duration of a
@@ -3283,6 +3285,16 @@ class OTPmeMgmtP1(OTPmeServer1):
             if config.daemon_mode:
                 status = status_codes.NEED_USER_AUTH
                 message = _("Please auth first.")
+                return self.build_response(status, message)
+
+        # Check if user session exists.
+        if config.auth_session:
+            session_oid = backend.get_oid(object_type="session",
+                                        uuid=config.auth_session,
+                                        instance=True)
+            if not session_oid:
+                status = False
+                message = _("Permission denied.")
                 return self.build_response(status, message)
 
         # Handle impersonate token.

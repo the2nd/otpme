@@ -6,7 +6,6 @@ import ssl
 import mmap
 import time
 import struct
-import select
 import socket
 import psutil
 import setproctitle
@@ -45,11 +44,19 @@ WORKER_EXIT = 1
 WORKER_SHRINK_DELAY = 60
 # Seconds between two supervisor rounds.
 WORKER_SUPERVISE_INTERVAL = 0.5
+# How long a round of the accept loop takes. accept() returning is the
+# only point at which that loop looks at self.shutdown, and a pool
+# worker at its stop request, so this is how quickly either is noticed.
+ACCEPT_TIMEOUT = 1
+# How long a client may take over the TLS handshake. It runs in the
+# worker that accepted the connection, so a client stalling it holds
+# that worker for this long.
+HANDSHAKE_TIMEOUT = 1
 
 class ListenSocket(object):
     """ Class to start and stop TCP or unix socket. """
     def __init__(self, socket_uri, connection_handler, name,
-        timeout=1, banner=None, socket_handler=None, user=None,
+        timeout=None, banner=None, socket_handler=None, user=None,
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
         proctitle=None, logger=None, max_conn=100, conn_handling="multiprocessing",
@@ -73,7 +80,12 @@ class ListenSocket(object):
         else:
             self.got_logger = False
             self.logger = config.logger
-        # Our timeout.
+        # Timeout for the connections we accept, handed to Connection
+        # below. None means they may wait as long as they have to, which
+        # is what every daemon runs with: how long a connection may sit
+        # idle is decided per daemon (daemon_idle_timeout), on the
+        # single recv() that waits for the next request, not here.
+        # This is not the accept loop's timeout, see ACCEPT_TIMEOUT.
         self.timeout = timeout
         # Our socket URI string. e.g. tcp://127.0.0.1:8080
         self.socket_uri = socket_uri
@@ -185,12 +197,12 @@ class ListenSocket(object):
             if self.protocol == "tcp":
                 self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-        # Set connection timeout.
-        if self.timeout > 0:
-            _timeout = self.timeout
-        else:
-            _timeout = None
-        self._socket.settimeout(_timeout)
+        # Set connection timeout. The listening socket always gets one,
+        # even where connections are meant to have none: accept()
+        # returning is the only point at which the accept loop gets to
+        # look at self.shutdown, and a pool worker at its stop request.
+        # So this also decides how quickly either is noticed.
+        self._socket.settimeout(ACCEPT_TIMEOUT)
 
         # Bind socket (in case of unix socket create socket file).
         try:
@@ -651,15 +663,10 @@ class ListenSocket(object):
 
     def _accept_connection(self, worker_idx=None):
         """ Accept a single connection. Returns (new_connection, client) or (None, None). """
-        # Wait for the listener to become readable with a short timeout so the
-        # accept loop can periodically check self.shutdown even when the
-        # listener socket itself is blocking.
-        try:
-            ready, _w, _x = select.select([self._socket], [], [], 1.0)
-        except (OSError, ValueError):
-            return None, None
-        if not ready:
-            return None, None
+        # accept() returns after ACCEPT_TIMEOUT with a socket.timeout,
+        # see the settimeout() on the listening socket. That is the
+        # point where the loop above comes up for air to check for
+        # shutdown and, in a worker, for its stop request.
         new_client_socket = None
         try:
             new_connection, new_client_socket = self._socket.accept()
@@ -676,7 +683,7 @@ class ListenSocket(object):
             # client that connects but never speaks TLS, which prevents the
             # accept loop from observing self.shutdown.
             if self.use_ssl:
-                handshake_timeout = self.timeout if self.timeout > 0 else 10
+                handshake_timeout = HANDSHAKE_TIMEOUT
                 try:
                     new_connection.settimeout(handshake_timeout)
                     new_connection.do_handshake()
@@ -913,6 +920,7 @@ class ListenSocket(object):
         connection = Connection(connection=client_conn,
                                 client=client,
                                 peer_cert=peer_cert,
+                                timeout=self.timeout,
                                 logger=self.logger,
                                 socket_handler=self.socket_handler)
 
@@ -1084,11 +1092,12 @@ class ListenSocket(object):
 
 class Connection(object):
     """ Class to handle send/recv data. """
-    def __init__(self, connection, client, socket_handler=None, peer_cert=None, logger=None):
+    def __init__(self, connection, client, socket_handler=None,
+        peer_cert=None, timeout=None, logger=None):
         # Our connection.
         self.connection = connection
         # Connection timeout.
-        self.timeout = None
+        self.timeout = timeout
         # Init socket handler.
         self.socket_handler = socket_handler("server", connection)
         # Connected client.

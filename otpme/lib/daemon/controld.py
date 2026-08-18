@@ -475,6 +475,11 @@ class ControlDaemon(UnixDaemon):
     def stop_haproxy(self):
         """ Stop the LDAP load balancer. """
         from otpme.lib.haproxy.utils import stop
+        from otpme.lib.haproxy.utils import status
+        try:
+            status()
+        except Exception:
+            return
         try:
             stop()
         except Exception as e:

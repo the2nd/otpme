@@ -66,6 +66,8 @@ class OTPmeConfig(object):
         # Users token (instance) that was used to authenticate the user of the current
         # connection.
         self.register_config_var("_auth_token", None, None)
+        # Session UUID the user authenticated with.
+        self.register_config_var("auth_session", str, None)
         # Token to impersonate. Needs admin permissions.
         self.register_config_var("impersonate_token", None, None)
         # Audit logger instance.

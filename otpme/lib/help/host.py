@@ -127,6 +127,15 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : _('Usage: otpme-host auto_disable -u {host} {time}'),
+                    'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change auto disable value (e.g "1d" or "09:53 13.06.2023").'),
+                                    '-u'                    : _('Disable object if it was unused for the given time.'),
+                                },
+                },
+
     'mac'       : {
                     '_cmd_usage_help' : _('Usage: otpme-host mac {host} {mac_address}'),
                     'cmd'   :   '<|object|> <mac_address>',

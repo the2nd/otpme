@@ -3,6 +3,7 @@
 import os
 import time
 import string
+import datetime
 from typing import List
 from typing import Union
 
@@ -4511,7 +4512,8 @@ class Token(OTPmeObject):
 
         if self.temp_password_expire:
             if self.verify_acl("view:temp_password_expire"):
-                lines.append(f'TEMP_PASSWORD_EXPIRY="{self.temp_password_expire}"')
+                temp_password_expire = datetime.datetime.fromtimestamp(self.temp_password_expire)
+                lines.append(f'TEMP_PASSWORD_EXPIRY="{temp_password_expire}"')
             else:
                 lines.append('TEMP_PASSWORD_EXPIRY=""')
 
@@ -4615,5 +4617,5 @@ class Token(OTPmeObject):
         lines += config_lines
 
         return super().show_config(config_lines=lines,
-                                                callback=callback,
-                                                **kwargs)
+                                    callback=callback,
+                                    **kwargs)

@@ -1410,7 +1410,7 @@ class OTPmeAgent(UnixDaemon):
             server_sessions = login_session['server_sessions']
             server_session = server_sessions[login_realm][login_site]
         except KeyError as err:
-            log_msg = _("Session does not exists. Cannot renegotiate: {realm}/{site}", log=True)[1]
+            log_msg = _("Session does not exists: {realm}/{site}", log=True)[1]
             log_msg = log_msg.format(realm=realm, site=site)
             self.logger.debug(log_msg)
             raise Exception(log_msg) from err

@@ -260,6 +260,7 @@ class Session(OTPmeLockObject):
         uuid: Union[str,None]=None,
         pass_hash: Union[str,None]=None,
         pass_hash_params: Union[List,None]=None,
+        temp_pass: bool=False,
         session_id: Union[str,None]=None,
         token: Union[str,None]=None,
         client: Union[str,None]=None,
@@ -279,6 +280,7 @@ class Session(OTPmeLockObject):
         self.pass_hash = pass_hash
         self.pass_hash_params = pass_hash_params
         self.slp = slp
+        self.temp_pass = temp_pass
         # Stuff for session renegotiation.
         self.reneg_started = False
         self.last_reneg = False
@@ -507,6 +509,18 @@ class Session(OTPmeLockObject):
         # FIXME: how and when to run a function or method to remove expired sessions from backend?
         #       there may be orphan session (those who have expired without beeing reused after expiry)
         # If session is expired remove it.
+        if self.temp_pass:
+            del_session = False
+            auth_token = backend.get_object(uuid=self.auth_token)
+            if auth_token:
+                if not auth_token.temp_password_hash:
+                    del_session = True
+            else:
+                del_session = True
+            if del_session:
+                self.delete(force=True, recursive=True, verify_acls=False)
+                return False
+
         now = time.time()
         expire_time = self.expire_time()
         if now > expire_time:
@@ -522,6 +536,7 @@ class Session(OTPmeLockObject):
                        client=self.client)
             self.delete(force=True, recursive=True, verify_acls=False)
             return False
+
         # If session is expired remove it and all childs that exist.
         unused_expire_time = self.unused_expire_time()
         if unused_expire_time:
@@ -627,6 +642,7 @@ class Session(OTPmeLockObject):
                                     value=self.offline_data_key,
                                     encryption=config.disk_encryption)
         self.object_config['PASS_HASH_PARAMS'] = self.pass_hash_params
+        self.object_config['TEMP_PASS'] = self.temp_pass
         self.object_config['REALM'] = self.realm
         self.object_config['SITE'] = self.site
         self.object_config['NAME'] = self.name
@@ -705,6 +721,7 @@ class Session(OTPmeLockObject):
         self.pass_hash = self.get_config_parameter('PASS_HASH')
         self.slp = self.get_config_parameter('SLP')
         self.pass_hash_params = self.get_config_parameter('PASS_HASH_PARAMS')
+        self.temp_pass = self.get_config_parameter('TEMP_PASS')
         self.session_type = self.get_config_parameter('SESSION_TYPE')
         self.access_group_uuid = self.get_config_parameter('ACCESS_GROUP_UUID')
         self.client = self.get_config_parameter('CLIENT')
@@ -1223,6 +1240,7 @@ class Session(OTPmeLockObject):
         oidc_session = OIDCSession(username=self.username,
                                 access_group=client_obj.access_group,
                                 token=self.auth_token,
+                                temp_pass=self.temp_pass,
                                 client=client_uuid,
                                 client_ip=self.client_ip,
                                 scope=scope,
@@ -1419,6 +1437,8 @@ class Session(OTPmeLockObject):
             self.add_index("client", self.client)
         if self.client_ip:
             self.add_index("client_ip", self.client_ip)
+        if self.temp_pass:
+            self.add_index("temp_pass", self.temp_pass)
 
         # Write session.
         result = self.write_config()

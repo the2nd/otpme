@@ -160,8 +160,7 @@ class LinkToken(Token):
         # Set password type.
         self.pass_type = "link"
 
-        # If this token supports offline usage depens on the destination token.
-        # Our default is not supported (None).
+        # Link tokens do not support offline logins.
         self.allow_offline = None
         # Set default values.
         self.offline_expiry = 0
@@ -180,21 +179,6 @@ class LinkToken(Token):
 
         # Use parent class method to merge token configs.
         return Token._get_object_config(self, token_config=token_config)
-
-    def set_variables(self):
-        """ Set instance variables """
-        # Run parent class method that may override default values with those
-        # read from config.
-        Token.set_variables(self)
-        # Check for destination token attributes we need to inherit.
-        if self.dst_token:
-            # If self.allow_offline was not modified yet, check if our destination
-            # token supports offline usage.
-            if self.allow_offline is None:
-                # If destination token allows offline usage (!= None) set our
-                # default to disabled (False).
-                if self.dst_token.allow_offline is not None:
-                    self.allow_offline = False
 
     def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. """

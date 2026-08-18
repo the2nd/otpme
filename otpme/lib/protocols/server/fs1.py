@@ -120,6 +120,7 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.share_handler_thread = None
         # Auth token UUID. Needs to be cached because of handle_share_setttings() runs as user.
         self.auth_token_uuid = None
+        self.auth_user_uuid = None
         # Call parent class init.
         OTPmeFsServer1.__init__(self, **kwargs)
 
@@ -160,7 +161,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status, \
                 response = hostd_conn.check_share_access(share_uuid=self.share_uuid,
                                                         host_uuid=self.peer.uuid,
-                                                        token_uuid=self.auth_token_uuid)
+                                                        token_uuid=self.auth_token_uuid,
+                                                        user_uuid=self.auth_user_uuid)
             except Exception as e:
                 log_msg = _("Share access check failed: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -231,6 +233,10 @@ class OTPmeFsP1(OTPmeFsServer1):
         if not self.auth_token_uuid:
             if config.auth_token:
                 self.auth_token_uuid = config.auth_token.uuid
+
+        if not self.auth_user_uuid:
+            if config.auth_user:
+                self.auth_user_uuid = config.auth_user.uuid
 
         if not self.authenticated:
             message, log_msg = _("Please authenticate.", log=True)

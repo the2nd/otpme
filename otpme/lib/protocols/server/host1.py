@@ -50,6 +50,8 @@ class OTPmeHostP1(OTPmeServer1):
         # FIXME: Currently hostd only uses unix sockets so there is no
         #        encryption involved.
         self.require_client_cert = False
+        # Allow on disabled hosts (e.g. for otpme-tool sync).
+        self.check_peer_disabled = False
         # Communication with hostd is only done via unix sockets.
         self.encrypt_session = False
         self.require_master_node = False
@@ -845,6 +847,34 @@ class OTPmeHostP1(OTPmeServer1):
             except Exception:
                 message = {'message':"INCOMPLETE_COMMAND"}
                 status = False
+                return self.build_response(status, message, encrypt=False)
+            try:
+                user_uuid = command_args['user_uuid']
+            except Exception:
+                message = {'message':"INCOMPLETE_COMMAND"}
+                status = False
+                return self.build_response(status, message, encrypt=False)
+            # Check user status.
+            auth_user = backend.get_object(uuid=user_uuid)
+            if not auth_user.enabled:
+                status = True
+                message = {'message':"User disabled.", 'try_other_node':True}
+                return self.build_response(status, message, encrypt=False)
+            # Check token status.
+            auth_token = backend.get_object(uuid=token_uuid)
+            if not auth_token.enabled:
+                status = True
+                message = {'message':"Token disabled.", 'try_other_node':True}
+                return self.build_response(status, message, encrypt=False)
+            # Check host status.
+            peer = backend.get_object(uuid=host_uuid)
+            if not peer:
+                status = True
+                message = {'message':"Peer missing.", 'try_other_node':False}
+                return self.build_response(status, message, encrypt=False)
+            if not peer.enabled:
+                status = True
+                message = {'message':"Peer disabled.", 'try_other_node':False}
                 return self.build_response(status, message, encrypt=False)
             # Check node status.
             this_node = backend.get_object(uuid=config.uuid)

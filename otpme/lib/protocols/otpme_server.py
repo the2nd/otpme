@@ -145,6 +145,14 @@ class OTPmeServer1(object):
             self.check_peer_disabled
         except Exception:
             self.check_peer_disabled = True
+        try:
+            self.check_user_disabled
+        except Exception:
+            self.check_user_disabled = False
+        try:
+            self.check_token_disabled
+        except Exception:
+            self.check_token_disabled = False
 
         # Authorize host?
         self.authorize_host = True
@@ -609,6 +617,22 @@ class OTPmeServer1(object):
                 message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
                 return self.build_response(status, message, encrypt=False)
 
+        # Make sure auth user is enabled.
+        if self.check_user_disabled:
+            if config.auth_user and not config.auth_user.enabled:
+                status = False
+                message = _("Auth user is disabled: {auth_user}")
+                message = message.format(auth_user=config.auth_user.name)
+                return self.build_response(status, message, encrypt=False)
+
+        # Make sure auth token is enabled.
+        if self.check_token_disabled:
+            if config.auth_token and not config.auth_token.enabled:
+                status = False
+                message = _("Auth token is disabled: {auth_token}")
+                message = message.format(auth_token=config.auth_token.rel_path)
+                return self.build_response(status, message, encrypt=False)
+
         enc_key = None
         enc_mod = None
 
@@ -1012,6 +1036,22 @@ class OTPmeServer1(object):
                                             name=username,
                                             run_policies=True,
                                             _no_func_cache=True)
+            if not self.user:
+                status = False
+                message = "AUTH_FAILED"
+                log_msg = _("Unknown user: {username}", log=True)[1]
+                log_msg = log_msg.format(username=username)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message, encrypt=False)
+
+            if not self.user.enabled:
+                status = False
+                message = "AUTH_FAILED"
+                log_msg = _("User disabled: {username}", log=True)[1]
+                log_msg = log_msg.format(username=username)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message, encrypt=False)
+
         # Get accessgroup to auth with.
         if client:
             try:
@@ -2160,7 +2200,11 @@ class OTPmeServer1(object):
                 verify_token = auth_token.dst_token
             else:
                 verify_token = auth_token
-
+            # Set auth session.
+            try:
+                config.auth_session = auth_response['session']
+            except KeyError:
+                pass
             # Set connection status to authenticated.
             self.authenticated = True
             # Set auth token in config module (e.g. used to check ACLs).
@@ -2194,11 +2238,6 @@ class OTPmeServer1(object):
                 object_config = auth_token.get_offline_config()
                 object_config['OID'] = auth_token.oid.full_oid
                 offline_tokens.append(object_config)
-                if auth_token.destination_token:
-                    # Add linked token to offline_tokens.
-                    object_config = verify_token.get_offline_config()
-                    object_config['OID'] = verify_token.oid.full_oid
-                    offline_tokens.append(object_config)
                 # Check if a second factor token is enabled.
                 second_factor_token = None
                 if verify_token.second_factor_token_enabled:

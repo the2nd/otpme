@@ -2882,8 +2882,8 @@ class CommandHandler(object):
                 except Exception as e:
                     error = str(e)
                 finally:
-                    now = time.time()
                     with counter_lock:
+                        now = time.monotonic()
                         login_counter_value.value += 1
                         per_login_time = (now - start_time_value.value) / login_counter_value.value
                         if node:
@@ -2914,7 +2914,7 @@ class CommandHandler(object):
             worker_procs.append(worker)
 
         # Start the clock now that all workers are up.
-        start_time = time.time()
+        start_time = time.monotonic()
         start_time_value.value = start_time
 
         node_counter = 0
@@ -2941,7 +2941,7 @@ class CommandHandler(object):
         for worker in worker_procs:
             worker.join()
 
-        now = time.time()
+        now = time.monotonic()
         duration = now - start_time
         if duration == 0:
             logins_per_second = 0

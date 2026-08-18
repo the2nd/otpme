@@ -56,6 +56,7 @@ read_value_acls = {
                                 "sync_groups",
                                 "dynamic_groups",
                                 "accessgroups",
+                                "auto_disable",
                             ],
             }
 
@@ -69,6 +70,7 @@ write_value_acls = {
                             ],
                 "edit"       : [
                                 "mac",
+                                "auto_disable",
                             ],
                 "remove"    : [
                                 "sync_group",
@@ -726,6 +728,16 @@ commands = {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
                     'job_type'          : 'thread',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
+                    'job_type'          : 'process',
                     },
                 },
             },

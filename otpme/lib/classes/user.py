@@ -333,6 +333,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_auto_disable',
                     'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
                     'job_type'          : 'process',
                     },
                 },

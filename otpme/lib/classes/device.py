@@ -58,12 +58,14 @@ read_value_acls = {
                                     "policy",
                                     "roles",
                                     "accessgroups",
+                                    "auto_disable",
                                 ],
             }
 
 write_value_acls = {
                     "edit"    : [
                                     "mac_address",
+                                    "auto_disable",
                                 ],
             }
 
@@ -212,6 +214,16 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
+                    'oargs'             : ['unused'],
                     'job_type'          : 'process',
                     },
                 },
@@ -544,6 +556,7 @@ class OTPmeDevice(OTPmeObject):
         # List and dict attributes must be set after calling super because
         # self.incremental_update is only available after calling super.
         self.mac_address = None
+        self.track_last_used = True
 
     def authenticate(self, **kwargs):
         """ Wrapper to call auth handler. """

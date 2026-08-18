@@ -971,19 +971,8 @@ class PamHandler(object):
         except Exception:
             raise OTPmeException(_("Unable to find offline login token.")) from None
 
-        # Make sure we use destination token for linked tokens.
-        if self.offline_login_token.destination_token:
-            try:
-                dst_token_uuid = self.offline_login_token.destination_token
-                self.offline_verify_token = self.offline_tokens[dst_token_uuid]
-                log_msg = _("Using destination token: {self.offline_verify_token.rel_path}", log=True)[1]
-                self.logger.debug(log_msg)
-            except Exception:
-                msg = _("Unable to find destination token: {token}")
-                msg = msg.format(token=self.offline_login_token.destination_token)
-                raise OTPmeException(msg) from None
-        else:
-            self.offline_verify_token = self.offline_login_token
+        # Set offline verify token.
+        self.offline_verify_token = self.offline_login_token
 
         if not reload_token:
             log_msg = _("Found offline login token: {path}", log=True)[1]
