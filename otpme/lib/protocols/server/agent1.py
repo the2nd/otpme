@@ -1291,6 +1291,10 @@ class OTPmeAgentP1(object):
                 site = command_args['site']
             except KeyError:
                 site = None
+            try:
+                share = command_args['share']
+            except KeyError:
+                share = None
             if site:
                 try:
                     rsp = self.session['server_sessions'][self.realm][site]['rsp']
@@ -1322,7 +1326,7 @@ class OTPmeAgentP1(object):
                 rsp = self.rsp
             if rsp:
                 rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, rsp)
-                otp = sotp.gen(password_hash=rsp_hash)
+                otp = sotp.gen(password_hash=rsp_hash, share=share)
                 message = {'username':self.login_user, 'sotp':otp}
                 status = True
             else:

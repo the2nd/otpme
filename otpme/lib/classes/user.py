@@ -2639,8 +2639,8 @@ class User(OTPmeObject):
             encrypted = False
         return aes_key, rsa_key, encrypted
 
-    @object_lock()
     @check_acls(['edit:group'])
+    @object_lock()
     @audit_log()
     @object_changelog("change group to {new_group}")
     def change_group(
@@ -5816,7 +5816,7 @@ class User(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog("rename to {new_name}")
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,

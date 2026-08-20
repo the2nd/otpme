@@ -1820,8 +1820,8 @@ class OTPmeBaseObject(OTPmeLockObject):
 
         return callback.ok()
 
-    @object_lock()
     @check_acls(acls=['touch'])
+    @object_lock()
     def touch(self, callback: JobCallback=default_callback, **kwargs):
         return self._write(update_last_modified_by=False,
                             use_index_journal=False,
@@ -3409,7 +3409,7 @@ class OTPmeObject(OTPmeBaseObject):
         encrypted_object_config = object_config.encrypt(enc_key, fake=fake)
         # Encode object config.
         config_string = ujson.dumps(encrypted_object_config, indent=4)
-        return callback.ok(config_string)
+        return callback.ok(config_string, return_value=True)
 
     def get_members(self, **kwargs):
         """ Dummy method, to be overridden by child class. """
@@ -3971,9 +3971,9 @@ class OTPmeObject(OTPmeBaseObject):
 
         return role_uuid
 
+    @check_acls(['add:role'])
     @object_lock()
     @cli.check_rapi_opts()
-    @check_acls(['add:role'])
     @audit_log()
     @object_changelog("add role {role_name}")
     def add_role(
@@ -4061,8 +4061,8 @@ class OTPmeObject(OTPmeBaseObject):
             return role_uuid
         return callback.ok()
 
-    @object_lock()
     @check_acls(['remove:role'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove role {role_name}")
     def remove_role(
@@ -4431,8 +4431,8 @@ class OTPmeObject(OTPmeBaseObject):
             return token.uuid
         return callback.ok()
 
-    @object_lock()
     @check_acls(['remove:token'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove token {token_path}")
     def remove_token(
@@ -5060,8 +5060,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok(result)
 
-    @object_lock()
     @check_acls(['add:dynamic_group'])
+    @object_lock()
     @audit_log()
     @object_changelog("add dynamic group {group_name}")
     def add_dynamic_group(
@@ -5109,8 +5109,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['remove:dynamic_group'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove dynamic group {group_name}")
     def remove_dynamic_group(
@@ -6880,8 +6880,14 @@ class OTPmeObject(OTPmeBaseObject):
         # gone the answer changes nothing, and this reads the site.
         if check_admin_role:
             from otpme.lib.classes.site import get_site_admin_blacklist
-            if self.uuid in get_site_admin_blacklist():
+            site_admin_blacklist = get_site_admin_blacklist()
+            if self.uuid in site_admin_blacklist:
                 check_admin_role = False
+            # Make sure user tokens are blacklisted too.
+            if self.type == "token":
+                if self.owner_uuid in site_admin_blacklist:
+                    check_admin_role = False
+
         result = otpme_acl.verify(uuid=self.uuid, acl_list=self.acls, acl=acl,
                                     check_admin_role=check_admin_role,
                                     check_admin_user=check_admin_user,
@@ -9554,7 +9560,6 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog("rename to {new_oid}")
     def _rename(
         self,
         new_oid: oid.OTPmeOid,

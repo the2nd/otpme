@@ -65,12 +65,11 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.require_master_node = False
         # We need a clean cluster status.
         self.require_cluster_status = True
-        # Allow reuse of SOTPs.
-        self.allow_sotp_reuse = True
         # We check peer status in handle_share_setttings().
         self.check_peer_disabled = False
         # Will hold share name.
         self.share = None
+        self.share_id = None
         self.share_uuid = None
         # Will hold share root.
         self.root = None
@@ -152,7 +151,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             # No share set yet.
             if not self.share:
                 continue
-
+            if not self.share_uuid:
+                continue
             try:
                 hostd_conn = connections.get("hostd")
             except Exception:
@@ -308,6 +308,14 @@ class OTPmeFsP1(OTPmeFsServer1):
             except KeyError:
                 status = status_codes.UNKNOWN_OBJECT
                 message, log_msg = _("Missing share.", log=True)
+                self.logger.warning(log_msg)
+                response = {'try_other_node':False, 'message':message}
+                return self.build_response(status, response)
+            # Make sure we only mount the share auth handler authenticated for.
+            self.share_id = f"{config.site}/{self.share}"
+            if self.auth_share != self.share_id:
+                status = status_codes.PERMISSION_DENIED
+                message, log_msg = _("Permission denied.", log=True)
                 self.logger.warning(log_msg)
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)

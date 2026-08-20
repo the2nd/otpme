@@ -148,11 +148,11 @@ class AgentConn(object):
     #    else:
     #        return False, False
 
-    def get_sotp(self, site=None):
+    def get_sotp(self, site=None, share=None):
         """ Get SOTP from otpme-agent. """
         username = None
         sotp = None
-        command_args = {'site':site}
+        command_args = {'site':site, 'share':share}
         status, status_code, response = self.send("get_sotp", command_args=command_args)
         if status_code != status_codes.OK:
             msg = _("Failed to get SOTP from agent: {response}")

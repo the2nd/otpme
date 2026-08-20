@@ -1162,6 +1162,7 @@ class Group(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,

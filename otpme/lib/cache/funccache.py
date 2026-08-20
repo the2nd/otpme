@@ -538,7 +538,7 @@ class FuncCache(object):
             return wrapped
         return wrapper
 
-    def invalidate(self, cache_name=None, object_type=None):
+    def invalidate(self, cache_name=None, object_type=None, shared=True):
         """ Invalidate the cache. """
         from otpme.lib import config
         if not config.cache_enabled:
@@ -552,16 +552,17 @@ class FuncCache(object):
         trigger_name = cache_name
         if trigger_name is None:
             trigger_name = "all"
-        # Make sure we update the clear trigger to get other processes notified.
-        try:
-            clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
-        except Exception:
-            clear_trigger = {}
-        clear_trigger[trigger_name] = time.time()
-        # Expire clear trigger after 1h. This is required for caches based on
-        # object UUID which would otherwise grow forever.
-        multiprocessing.function_cache_clear_trigger.add(self.name,
-                                                        clear_trigger,
-                                                        expire=3600)
+        if shared:
+            # Make sure we update the clear trigger to get other processes notified.
+            try:
+                clear_trigger = multiprocessing.function_cache_clear_trigger[self.name].copy()
+            except Exception:
+                clear_trigger = {}
+            clear_trigger[trigger_name] = time.time()
+            # Expire clear trigger after 1h. This is required for caches based on
+            # object UUID which would otherwise grow forever.
+            multiprocessing.function_cache_clear_trigger.add(self.name,
+                                                            clear_trigger,
+                                                            expire=3600)
         # Get cache of this thread.
         _cache.clear_cache(cache_name)

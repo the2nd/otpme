@@ -1102,12 +1102,33 @@ its caches warm with — see also **ldap_shared_cache**. The most specific
 match wins (node overrides unit overrides site).  
 Object types: site, unit, node
 
+**ldap_cache (bool, default: true)**  
+Whether the **ldapd** worker processes cache anything at all: the
+entries they built, the searches they answered, and the objects those
+came from. Turning it off makes every search build its entries from the
+backend again, which costs latency on repeated searches -- encoding a
+result entry is more work than everything else a cached search does put
+together.  
+What it buys is that nothing of a search outlives it. A worker that
+answered one large search otherwise keeps those entries for as long as
+they stay valid, so its memory follows the largest search it has seen,
+once per worker. Turn this off where that matters more than search
+latency, or to find out whether a wrong answer comes from a cache.  
+This covers what a worker keeps for itself. What the workers hand each
+other is a separate setting and keeps working with this one off, so turn
+off **ldap_shared_cache** as well to have a worker answer every search
+from the backend. The most specific match wins (node overrides unit
+overrides site).  
+Object types: site, unit, node
+
 **ldap_shared_cache (bool, default: true)**  
 Whether the **ldapd** worker processes share their lookup results with
 each other (search results and resolved search bases). Turning it off
 leaves every worker with its own private caches — useful as a comparison
 baseline when the shared caches are under suspicion. Only meaningful
-when **ldapd_processes** is greater than 1. The most specific match wins
+when **ldapd_processes** is greater than 1. Independent of
+**ldap_cache**: what the workers share with each other is still shared
+with the per-worker caches turned off. The most specific match wins
 (node overrides unit overrides site).  
 Object types: site, unit, node
 

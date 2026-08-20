@@ -3544,9 +3544,9 @@ class Token(OTPmeObject):
                 setattr(self, attr, token_data[attr])
         return True
 
+    @check_acls(['view:token_data'])
     @object_lock()
     @audit_log()
-    @check_acls(['view:token_data'])
     def dump_token_data(
         self,
         verify_acls: bool=True,
@@ -3579,9 +3579,9 @@ class Token(OTPmeObject):
 
         return callback.ok(json_data)
 
+    @check_acls(['edit:token_data'])
     @object_lock()
     @audit_log()
-    @check_acls(['edit:token_data'])
     @object_changelog("set token data")
     def set_token_data(
         self,
@@ -4101,7 +4101,7 @@ class Token(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog("rename to {new_name}")
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,

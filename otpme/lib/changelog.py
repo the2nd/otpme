@@ -140,6 +140,8 @@ def object_changelog(text=None):
                     _ctx.detail = saved_detail
             _ctx.depth = 1
             _ctx.detail = None
+            # Immutable action text (written per method).
+            action = build_action(f, self, f_args, f_kwargs, text)
             try:
                 result = f(self, *f_args, **f_kwargs)
             finally:
@@ -164,8 +166,6 @@ def object_changelog(text=None):
                 enabled = True
             if not enabled:
                 return result
-            # Immutable action text (written per method).
-            action = build_action(f, self, f_args, f_kwargs, text)
             # Immutable detail set by the method via self.set_changelog().
             detail = pending_detail
             # Editable comment from the user's --changelog option.

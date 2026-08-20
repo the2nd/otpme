@@ -169,6 +169,7 @@ class OTPmeFS(fuse.Operations):
         self.add_share_key = False
         self.master_password = None
         self.restore_share = False
+        self.share_id = f"{self.share_site}/{self.share}"
         config.daemon_mode = True
 
     def get_user(self):
@@ -183,7 +184,8 @@ class OTPmeFS(fuse.Operations):
         # Get SOTP from agent
         agent_conn = connections.get(daemon="agent")
         try:
-            sotp = agent_conn.get_sotp(site=self.share_site)[1]
+            sotp = agent_conn.get_sotp(site=self.share_site,
+                                        share=self.share_id)[1]
         except Exception as e:
             msg = _("Unable to get SOTP from agent: {e}")
             msg = msg.format(e=e)
@@ -196,6 +198,7 @@ class OTPmeFS(fuse.Operations):
                                     allow_untrusted=True,
                                     username=self.username,
                                     password=sotp,
+                                    share=self.share_id,
                                     use_ssh_agent=False,
                                     use_smartcard=False,
                                     request_token=False,
@@ -545,13 +548,12 @@ class OTPmeFS(fuse.Operations):
                             tried_nodes.append(node)
                             raise OSError(errno.EACCES, _("No share key received")) from err
                         # Decrypt share key with key script.
-                        share_id = f"{self.share_site}/{self.share}"
                         try:
                             share_key = stuff.decrypt_share_key(self.username,
                                                                 share_key,
                                                                 key_mode=None,
                                                                 encode=False,
-                                                                share=share_id)
+                                                                share=self.share_id)
                         except Exception as e:
                             log_msg = _("Failed to decrypt share key: {share}: {e}", log=True)[1]
                             log_msg = log_msg.format(share=self.share, e=e)

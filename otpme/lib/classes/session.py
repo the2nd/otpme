@@ -938,6 +938,7 @@ class Session(OTPmeLockObject):
         reneg_salt: Union[str,None]=None,
         rsp_hash_type: Union[str,None]=None,
         auth_ag: Union[str,None]=None,
+        auth_share: Union[str,None]=None,
         check_auth: bool=True,
         check_slp: bool=True,
         check_srp: bool=True,
@@ -1151,22 +1152,24 @@ class Session(OTPmeLockObject):
         if check_sotp:
             if auth_type == "clear-text":
                 auth_ag_uuid = None
-                if auth_ag:
-                    # Get sotp auth accessgroup.
-                    result = backend.search(object_type="accessgroup",
-                                            attribute="name",
-                                            value=auth_ag,
-                                            return_type="uuid")
-                    if not result:
-                        log_msg = _("Unknown accessgroup: {auth_ag}", log=True)[1]
-                        log_msg = log_msg.format(auth_ag=auth_ag)
-                        logger.critical(log_msg)
-                        return verify_response
-                    auth_ag_uuid = result[0]
+                if not auth_share:
+                    if auth_ag:
+                        # Get sotp auth accessgroup.
+                        result = backend.search(object_type="accessgroup",
+                                                attribute="name",
+                                                value=auth_ag,
+                                                return_type="uuid")
+                        if not result:
+                            log_msg = _("Unknown accessgroup: {auth_ag}", log=True)[1]
+                            log_msg = log_msg.format(auth_ag=auth_ag)
+                            logger.critical(log_msg)
+                            return verify_response
+                        auth_ag_uuid = result[0]
                 # Check if given password matches an SOTP of this session.
                 sotp_verify_status = sotp.verify(password_hash=session_hash,
                                                 password=password,
-                                                access_group=auth_ag_uuid)
+                                                access_group=auth_ag_uuid,
+                                                share=auth_share)
                 if sotp_verify_status:
                     verify_response = {
                                     'type'      : 'reauth',

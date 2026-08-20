@@ -1472,8 +1472,8 @@ class Client(OTPmeClientObject):
         return result
 
     # FIXME: check if IP is valid!!!
-    @object_lock()
     @check_acls(['add:address'])
+    @object_lock()
     @audit_log()
     @object_changelog("add address {address}")
     def add_address(
@@ -1506,8 +1506,8 @@ class Client(OTPmeClientObject):
         self.radius_reload = True
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['delete:address'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove address {address}")
     def del_address(
@@ -1573,8 +1573,8 @@ class Client(OTPmeClientObject):
             msg = msg.format(uri=uri)
             raise OTPmeException(msg)
 
-    @object_lock()
     @check_acls(['add:oidc_redirect_uri'])
+    @object_lock()
     @audit_log()
     @object_changelog("add OIDC redirect URI {uri}")
     def add_oidc_redirect_uri(
@@ -1607,8 +1607,8 @@ class Client(OTPmeClientObject):
         self.oidc_redirect_uris.append(uri)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['delete:oidc_redirect_uri'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove OIDC redirect URI {uri}")
     def del_oidc_redirect_uri(
@@ -1648,8 +1648,8 @@ class Client(OTPmeClientObject):
         """ Return the list of registered OIDC redirect URIs. """
         return callback.ok(list(self.oidc_redirect_uris))
 
-    @object_lock()
     @check_acls(['add:oidc_logout_redirect_uri'])
+    @object_lock()
     @audit_log()
     @object_changelog("add OIDC logout redirect URI {uri}")
     def add_oidc_logout_redirect_uri(
@@ -1682,8 +1682,8 @@ class Client(OTPmeClientObject):
         self.oidc_logout_redirect_uris.append(uri)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['delete:oidc_logout_redirect_uri'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove OIDC logout redirect URI {uri}")
     def del_oidc_logout_redirect_uri(
@@ -1723,8 +1723,8 @@ class Client(OTPmeClientObject):
         """ Return the list of registered OIDC post-logout redirect URIs. """
         return callback.ok(list(self.oidc_logout_redirect_uris))
 
-    @object_lock()
     @check_acls(['edit:oidc_auth_method'])
+    @object_lock()
     @audit_log()
     @object_changelog("change OIDC auth method to {method}")
     def change_oidc_auth_method(
@@ -1764,8 +1764,8 @@ class Client(OTPmeClientObject):
         self.oidc_token_endpoint_auth_method = method
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['edit:oidc_id_token_alg'])
+    @object_lock()
     @audit_log()
     @object_changelog("change OIDC ID token algorithm to {alg}")
     def change_oidc_id_token_alg(
@@ -1813,8 +1813,8 @@ class Client(OTPmeClientObject):
         self.oidc_id_token_signed_response_alg = alg
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['edit:oidc_subject_type'])
+    @object_lock()
     @audit_log()
     @object_changelog("change OIDC subject type to {subject_type}")
     def change_oidc_subject_type(
@@ -1856,8 +1856,8 @@ class Client(OTPmeClientObject):
         self.oidc_subject_type = subject_type
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['edit:oidc_sector_identifier_uri'])
+    @object_lock()
     @audit_log()
     @object_changelog("change OIDC sector identifier URI {uri}")
     def change_oidc_sector_identifier_uri(
@@ -1924,8 +1924,8 @@ class Client(OTPmeClientObject):
         self.oidc_sector_identifier_uri = new_value
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['edit:oidc_backchannel_logout_uri'])
+    @object_lock()
     @audit_log()
     @object_changelog("change OIDC backchannel logout URI {uri}")
     def change_oidc_backchannel_logout_uri(
@@ -2107,8 +2107,8 @@ class Client(OTPmeClientObject):
         self.oidc_force_backchannel_logout = False
         return self._write(callback=callback)
 
-    @object_lock()
     @check_acls(['edit:oidc_backchannel_ca_cert'])
+    @object_lock()
     @audit_log()
     @object_changelog("change OIDC backchannel CA certificate")
     def change_oidc_backchannel_ca_cert(
@@ -2173,8 +2173,8 @@ class Client(OTPmeClientObject):
         # configuration footgun.
     )
 
-    @object_lock()
     @check_acls(['add:oidc_grant_type'])
+    @object_lock()
     @audit_log()
     @object_changelog("add OIDC grant type {grant_type}")
     def add_oidc_grant_type(
@@ -2208,8 +2208,8 @@ class Client(OTPmeClientObject):
         self.oidc_grant_types.append(grant_type)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['delete:oidc_grant_type'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove OIDC grant type {grant_type}")
     def del_oidc_grant_type(
@@ -2249,8 +2249,8 @@ class Client(OTPmeClientObject):
         """ Return the list of allowed OIDC grant types. """
         return callback.ok(list(self.oidc_grant_types))
 
-    @object_lock()
     @check_acls(['add:oidc_response_type'])
+    @object_lock()
     @audit_log()
     @object_changelog("add OIDC response type {response_type}")
     def add_oidc_response_type(
@@ -2284,8 +2284,8 @@ class Client(OTPmeClientObject):
         self.oidc_response_types.append(response_type)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['delete:oidc_response_type'])
+    @object_lock()
     @audit_log()
     @object_changelog("remove OIDC response type {response_type}")
     def del_oidc_response_type(
@@ -2350,8 +2350,8 @@ class Client(OTPmeClientObject):
                 missing=", ".join(missing))
         return None
 
-    @object_lock()
     @check_acls(['edit:accessgroup'])
+    @object_lock()
     @audit_log()
     @object_changelog("change access group {access_group}")
     def change_access_group(
@@ -2811,8 +2811,8 @@ class Client(OTPmeClientObject):
 
         return self._write(callback=callback)
 
-    @object_lock()
     @check_acls(acls=['edit:login_url'])
+    @object_lock()
     @audit_log()
     @object_changelog("change login URL {login_url}")
     def change_login_url(
@@ -2841,8 +2841,8 @@ class Client(OTPmeClientObject):
 
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(acls=['edit:helper_url'])
+    @object_lock()
     @audit_log()
     @object_changelog("change helper URL {helper_url}")
     def change_helper_url(
@@ -2966,6 +2966,8 @@ class Client(OTPmeClientObject):
                                     **kwargs)
 
     @object_lock(full_lock=True)
+    @backend.transaction
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -3063,8 +3065,8 @@ class Client(OTPmeClientObject):
         self.radius_reload = True
         return callback.ok()
 
-    @object_lock()
     @check_acls(['add:role'])
+    @object_lock()
     def add_role(
         self,
         role_name: str=None,

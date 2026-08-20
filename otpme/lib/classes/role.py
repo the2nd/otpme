@@ -1379,8 +1379,8 @@ class Role(OTPmeObject):
 
         return result
 
-    @object_lock()
     @check_acls(['remove:token'])
+    @object_lock()
     def remove_token(
         self,
         token_path: str,
@@ -2012,7 +2012,7 @@ class Role(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog("rename to {new_name}")
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,

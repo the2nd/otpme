@@ -19,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib import multiprocessing
+from otpme.lib.ldap.server import set_cache
 from otpme.lib.ldap.server import LDAPServer
 from otpme.lib.ldap.server import clear_caches
 from otpme.lib.ldap.server import set_shared_cache
@@ -155,6 +156,13 @@ class LdapDaemon(OTPmeDaemon):
         self.ldapd_processes = self.get_ldapd_processes()
 
         # Before we fork, so every worker starts with the same setting.
+        ldap_cache = self.get_cache()
+        set_cache(ldap_cache)
+        if not ldap_cache:
+            log_msg = _("LDAP caches are turned off.", log=True)[1]
+            self.logger.info(log_msg)
+
+        # Before we fork, so every worker starts with the same setting.
         shared_cache = self.get_shared_cache()
         set_shared_cache(shared_cache)
         if not shared_cache:
@@ -200,6 +208,20 @@ class LdapDaemon(OTPmeDaemon):
         else:
             address, port = listen_socket.rsplit(":", 1)
         return address, port
+
+    def get_cache(self):
+        """ LDAP caches enabled? """
+        try:
+            own_node = backend.get_object(uuid=config.uuid)
+            enabled = own_node.get_config_parameter("ldap_cache")
+        except Exception as e:
+            log_msg = _("Failed to get ldap cache setting: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return True
+        if enabled is None:
+            return True
+        return bool(enabled)
 
     def get_shared_cache(self):
         """ Do our processes hand their search results to each other? """

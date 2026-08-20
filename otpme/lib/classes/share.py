@@ -1549,7 +1549,7 @@ class Share(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
-    @object_changelog("rename to {new_name}")
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -2638,9 +2638,9 @@ class Share(OTPmeObject):
 
         return result
 
+    @check_acls(['add:role'])
     @object_lock()
     @audit_log()
-    @check_acls(['add:role'])
     @object_changelog("add role {role_name}")
     def add_role(
         self,
@@ -2752,9 +2752,9 @@ class Share(OTPmeObject):
 
         return result
 
+    @check_acls(['remove:role'])
     @object_lock()
     @audit_log()
-    @check_acls(['remove:role'])
     @object_changelog("remove role {role_name}")
     def remove_role(
         self,

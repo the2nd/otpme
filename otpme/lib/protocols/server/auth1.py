@@ -1250,7 +1250,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 tried_tokens.append(_verify_token.oid.read_oid)
                 if command == "token_verify_mschap":
                     try:
-                        verify_status = _verify_token.verify(temp=True, **token_verify_parms)
+                        verify_status = _verify_token.verify_mschap_static(temp=True, **token_verify_parms)
                     except Exception as e:
                         log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
                         log_msg = log_msg.format(token_name=_verify_token.name, error=e)

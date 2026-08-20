@@ -50,7 +50,7 @@ def derive_rsp(secret, hash_type, salt, rsp_len=None):
 
 def verify(password_hash, epoch_time=None, validity_range=None,
     reneg=False, password=None, challenge=None, session_uuid=None,
-    response=None, sotp_len=None, access_group=None):
+    response=None, sotp_len=None, access_group=None, share=None):
     """ Verify session OTP. """
     if sotp_len is None:
         sotp_len = config.sotp_len
@@ -78,6 +78,8 @@ def verify(password_hash, epoch_time=None, validity_range=None,
         secret = f"RENEG:{password_hash}:{session_uuid}"
     elif access_group:
         secret = f"{access_group}:{password_hash}"
+    elif share:
+        secret = f"{share}:{password_hash}"
     else:
         secret = password_hash
 
@@ -106,7 +108,7 @@ def verify(password_hash, epoch_time=None, validity_range=None,
         return False, None, None, None
 
 def gen(epoch_time=None, password_hash=None, sotp_len=None, reneg=False,
-    session_uuid=None, rsp_hash_type=None, access_group=None):
+    session_uuid=None, rsp_hash_type=None, access_group=None, share=None):
     """ Generate session OTP. """
     if not epoch_time:
         # We need SOTPs in 1 second timestep because fuse mount
@@ -128,6 +130,8 @@ def gen(epoch_time=None, password_hash=None, sotp_len=None, reneg=False,
         reneg_salt = stuff.gen_secret(32)
     elif access_group:
         secret = f"{access_group}:{password_hash}"
+    elif share:
+        secret = f"{share}:{password_hash}"
     else:
         secret = password_hash
 

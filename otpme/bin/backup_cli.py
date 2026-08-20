@@ -56,8 +56,16 @@ def _ensure_shims():
     sys.modules["otpme.lib.config"] = config_shim
     sys.modules["otpme.lib"].config = config_shim
 
-    # exceptions shim
+    # exceptions shim. It has to carry what backup.py raises: that
+    # module does "from otpme.lib.exceptions import *", so an empty shim
+    # leaves those names undefined and every raise turns into a
+    # NameError instead of the error it meant to report.
     exc_shim = types.ModuleType("otpme.lib.exceptions")
+
+    class OTPmeException(Exception):
+        pass
+
+    exc_shim.OTPmeException = OTPmeException
     sys.modules["otpme.lib.exceptions"] = exc_shim
     sys.modules["otpme.lib"].exceptions = exc_shim
 

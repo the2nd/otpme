@@ -156,6 +156,8 @@ class OTPmeServer1(object):
 
         # Authorize host?
         self.authorize_host = True
+        # Share to auth for.
+        self.auth_share = None
 
         self.session_reneg = False
 
@@ -1986,6 +1988,12 @@ class OTPmeServer1(object):
         except Exception:
             pass
 
+        # Share to auth for.
+        try:
+            share = command_args.pop('share')
+        except KeyError:
+            share = None
+
         # Set auth_mode.
         auth_mode = "auto"
         try:
@@ -2121,6 +2129,7 @@ class OTPmeServer1(object):
                                         authorize_host=self.authorize_host,
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
+                                        share=share,
                                         host_type=login_host_type,
                                         host=login_host,
                                         host_ip=login_host_ip,
@@ -2161,6 +2170,7 @@ class OTPmeServer1(object):
                                         authorize_host=self.authorize_host,
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
+                                        share=share,
                                         user_token=self.token,
                                         src_token=self.src_token,
                                         challenge=challenge,
@@ -2203,6 +2213,11 @@ class OTPmeServer1(object):
             # Set auth session.
             try:
                 config.auth_session = auth_response['session']
+            except KeyError:
+                pass
+            # Set auth share.
+            try:
+                self.auth_share = auth_response['share']
             except KeyError:
                 pass
             # Set connection status to authenticated.

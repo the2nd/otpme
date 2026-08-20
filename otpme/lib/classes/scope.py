@@ -919,10 +919,11 @@ class Scope(OTPmeObject):
                                     _caller=_caller,
                                     **kwargs)
 
-    @object_lock(full_lock=True)
     @check_acls(['rename:object'])
+    @object_lock(full_lock=True)
+    @backend.transaction
     @audit_log()
-    @object_changelog("rename to {new_name}")
+    @object_changelog("rename from {self.name} to {new_name}")
     def rename(
         self,
         new_name: str,
@@ -1127,8 +1128,8 @@ class Scope(OTPmeObject):
         self.del_index("client", client.uuid)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['edit:scope_id'])
+    @object_lock()
     @audit_log()
     @object_changelog("change scope ID to {scope_id}")
     def change_scope_id(
@@ -1143,8 +1144,8 @@ class Scope(OTPmeObject):
         self.add_index("scope_id", scope_id)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['enable:auto_member'])
+    @object_lock()
     @audit_log()
     @object_changelog("enable auto member")
     def enable_auto_member(
@@ -1174,8 +1175,8 @@ class Scope(OTPmeObject):
         self.update_index("auto_member", self.auto_member)
         return self._cache(callback=callback)
 
-    @object_lock()
     @check_acls(['disable:auto_member'])
+    @object_lock()
     @audit_log()
     @object_changelog("disable auto member")
     def disable_auto_member(

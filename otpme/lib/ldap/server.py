@@ -53,7 +53,10 @@ from otpme.lib import otpme_acl
 from otpme.lib import auth_cache
 from otpme.lib import connections
 from otpme.lib import multiprocessing
+from otpme.lib.cache import index_cache
+from otpme.lib.cache import search_cache
 from otpme.lib.cache import ldap_search_cache
+from otpme.lib.cache import index_search_cache
 from otpme.lib.classes.otpme_object import get_ldif
 from otpme.lib.classes.otpme_object import get_ldif_whitelist_id
 from otpme.lib.classes.otpme_object import get_ldif_whitelist_attributes
@@ -137,6 +140,14 @@ def set_shared_cache(enabled):
     """ Turn the caches the ldapd processes share on or off. """
     global shared_cache_enabled
     shared_cache_enabled = bool(enabled)
+
+# Whether ldap caches are enabled.
+ldap_cache_enabled = True
+
+def set_cache(enabled):
+    """ Turn the caches of the ldapd processes on or off. """
+    global ldap_cache_enabled
+    ldap_cache_enabled = bool(enabled)
 
 LDAP_CLIENT_NAME = "LDAP"
 LDAP_ACCESSGROUP = "LDAP"
@@ -742,6 +753,8 @@ def get_ldap_cache(auth_token, whitelist_id, attributes_id, verify_acls,
     were old enough.
     """
     global ldap_cache
+    if not ldap_cache_enabled:
+        return
     token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
                                 verify_acls)
     read_oid = object_id.read_oid
@@ -758,6 +771,8 @@ def update_ldap_cache(auth_token, whitelist_id, attributes_id, verify_acls,
     client, object_id, ldap_entry, checksum):
     """ Add cache entry. """
     global ldap_cache
+    if not ldap_cache_enabled:
+        return
     token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
                                 verify_acls)
     read_oid = object_id.read_oid
@@ -784,6 +799,8 @@ def get_ldap_search_cache(auth_token, whitelist_id, attributes_id, verify_acls,
     written over.
     """
     global ldap_query_cache
+    if not ldap_cache_enabled:
+        return
     token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
                                 verify_acls)
     try:
@@ -799,6 +816,8 @@ def update_ldap_search_cache(auth_token, whitelist_id, attributes_id,
     verify_acls, client, cache_key, entries):
     """ Add cache entry. """
     global ldap_query_cache
+    if not ldap_cache_enabled:
+        return
     token_id = get_cache_token_id(auth_token, whitelist_id, attributes_id,
                                 verify_acls)
     if not token_id in ldap_query_cache:
@@ -974,7 +993,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         # depends on our DN and our attributes, so it is good for as long
         # as we are. Riding along on the entry also means it goes away
         # with us when the object changes, see drop_cached_objects().
-        self.ldap_payloads = {}
+        #
+        # None without the caches: nothing keeps us then, so we are built
+        # anew for every search and would never be asked for a payload we
+        # stored. All it would buy is a dict per entry per search.
+        # send_entry() takes None for "do not bother".
+        if ldap_cache_enabled:
+            self.ldap_payloads = {}
+        else:
+            self.ldap_payloads = None
         # The attributes as the LDIF of our object has them, filled by
         # _load(). See get_entry_attributes().
         self.ldif_values = InsensitiveDict()
@@ -1850,11 +1877,11 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         #count_cache("ldif", False)
 
         # Try to get object data from global cache.
+        do_search = True
         try:
             cache_entry = global_ldif_cache[read_oid]
         except KeyError:
             cache_entry = None
-        do_search = True
         if cache_entry is not None:
             object_data = copy_ldif_data(cache_entry['data'])
             do_search = False
@@ -1988,7 +2015,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     @ldap_search_cache.cache_method()
     def _search_otpme(self, attribute=None, value=None, attributes=None,
         object_type=None, less_than=None, greater_than=None,
-        size_limit=1024, scope="one", verify_acls=True, **kwargs):
+        size_limit=0, scope="one", verify_acls=True, **kwargs):
         """ Search OTPme objects.
 
         The kwargs are for <_no_func_cache>, which the cache decorator
@@ -2138,8 +2165,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         timeLimit=0, typesOnly=0, callback=None):
         """ Start search as thread. """
         from twisted.internet import threads
-        if sizeLimit == 0:
-            sizeLimit = 1024
         # Run search as thread.
         # http://www.ianbicking.org/twisted-and-threads.html
         search_defer = threads.deferToThread(self._search,
@@ -2164,6 +2189,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             """
             for x_entry in entries:
                 callback(x_entry)
+            # Let go of them here. The thread that ran the search keeps
+            # its result until it is handed its next job, and that
+            # result is this list -- a whole search worth of entries
+            # parked in a worker that may not see another search for
+            # hours. Returning an empty list is not enough, the thread
+            # holds the list itself, so it has to be emptied.
+            entries.clear()
             return []
 
         search_defer.addCallback(send_entries)
@@ -2178,6 +2210,10 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         job of our caller, see search().
         """
         from ldaptor.protocols import pureldap
+        global ldap_cache
+        global user_ldif_cache
+        global ldap_query_cache
+        global global_ldif_cache
         results = []
         schema_search = False
 
@@ -2346,6 +2382,16 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             for key in sorted(result_objects):
                 results.append(result_objects[key])
 
+        if not ldap_cache_enabled:
+            ldap_cache.clear()
+            user_ldif_cache.clear()
+            ldap_query_cache.clear()
+            global_ldif_cache.clear()
+            index_cache.invalidate(shared=False)
+            search_cache.invalidate(shared=False)
+            ldap_search_cache.invalidate(shared=False)
+            index_search_cache.invalidate(shared=False)
+
         return results
 
 def otpme_log_translate(conf):
@@ -2496,6 +2542,12 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
             if b"*" not in requested_attributes:
                 send_all = False
 
+        # What actually went out, to tell the client below whether it got
+        # everything. Counted here rather than at the search itself
+        # because that is the one place every path passes, the ones
+        # answered from a cache included.
+        entries_sent = []
+
         def send_entry(entry):
             payloads = getattr(entry, "ldap_payloads", None)
             if payloads is None:
@@ -2529,6 +2581,7 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
                     if len(payloads) < MAX_ENTRY_PAYLOADS:
                         payloads[payload_key] = payload
             response(CachedSearchResultEntry(payload))
+            entries_sent.append(None)
 
         search_defer = base.search(filterObject=request.filter,
                                 attributes=request.attributes,
@@ -2540,6 +2593,18 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
                                 callback=send_entry)
 
         def search_done(_):
+            # A client that hit its own size limit has to be told, or it
+            # takes what it got for the whole answer -- which is how an
+            # address book ends up quietly missing everyone past the
+            # limit. We cut the result at sizeLimit, so having exactly
+            # that many means there may well be more. Saying so when
+            # there is not exactly costs the client nothing: it is the
+            # same "there may be more" either way.
+            if request.sizeLimit and len(entries_sent) >= request.sizeLimit:
+                log_msg = f"Size limit reached: {request.sizeLimit}: {self.peer}"
+                log.msg(log_msg, logLevel=logging.INFO)
+                return pureldap.LDAPSearchResultDone(
+                            resultCode=ldaperrors.LDAPSizeLimitExceeded.resultCode)
             return pureldap.LDAPSearchResultDone(
                             resultCode=ldaperrors.Success.resultCode)
 

@@ -2357,7 +2357,12 @@ def register_config():
     # single process see fewer requests to keep its caches warm with.
     config.register_config_parameter(name="ldapd_processes",
                                     ctype=int,
-                                    default_value=1,
+                                    default_value=4,
+                                    object_types=['site', 'unit', 'node'])
+    # Whether ldapd caches are enabled.
+    config.register_config_parameter(name="ldap_cache",
+                                    ctype=bool,
+                                    default_value=True,
                                     object_types=['site', 'unit', 'node'])
     # Whether the ldapd processes hand what they looked up to each
     # other: the results of their searches and the search bases they
@@ -2690,6 +2695,7 @@ class Site(OTPmeObject):
                             "MGMT_FQDN",
                             "SSO_FQDN",
                             "ou",
+                            "CONFIG_PARAMS:backupd_max_conn",
                             ],
                         'sso_host'  : [
                                 "SSO_KEY",
@@ -2704,7 +2710,6 @@ class Site(OTPmeObject):
                                 "CONFIG_PARAMS:sso_rate_limit_login",
                                 "CONFIG_PARAMS:sso_rate_limit_login_user",
                                 "CONFIG_PARAMS:sso_rate_limit_settings",
-                                "CONFIG_PARAMS:backupd_max_conn",
                                 ],
                         },
 

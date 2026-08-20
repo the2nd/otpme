@@ -370,6 +370,13 @@ class BackupServer:
         self.salt_file     = self.root / "key.salt"
         self.mode_file     = self.root / "mode"
         self.mode          = None  # loaded by _load_mode()
+        # The snapshot we are filling, set by create_snapshot() and
+        # cleared by finalize_snapshot(). It is the only one the writing
+        # methods below accept, so nothing can be written to a snapshot
+        # that is finished, nor to the one somebody else is filling: we
+        # are made per connection, and create_snapshot() refuses a name
+        # that is already there.
+        self.snapshot      = None
         self.file_count    = 0
         self.inode_count   = 0
         self._lock_fd      = None
@@ -1276,7 +1283,18 @@ class BackupServer:
         return zlib.compress(raw, 1)
 
     def create_snapshot(self, name: str) -> None:
-        """Create meta/ directory and index file for a new snapshot."""
+        """Create meta/ directory and index file for a new snapshot.
+
+        A snapshot is written once. Handing out a name that is already
+        there would open it for writing again -- a finished one included,
+        whose entries somebody is relying on -- so a name is taken or it
+        is free, and one that broke off half way is taken as well. A
+        backup that has to be repeated takes a new name.
+        """
+        if self.snap_dir(name).exists():
+            msg = f"Snapshot exists: {name}"
+            raise OTPmeException(msg)
+        self.snapshot = name
         self.file_count = 0
         self.inode_count = 0
         self.ref_count = 0
@@ -1288,8 +1306,25 @@ class BackupServer:
         # Open snap-index session for this snapshot
         self._open_snap_session(name)
 
+    def check_writable(self, name: str) -> None:
+        """Make sure we may write to the given snapshot.
+
+        Ours is the one create_snapshot() opened and finalize_snapshot()
+        has not closed yet. Any other name is either a snapshot that is
+        finished -- whose entries somebody is relying on -- or one that
+        belongs to whoever is filling it.
+        """
+        if name == self.snapshot:
+            return
+        if self.snapshot is None:
+            msg = f"No snapshot to write to: {name}"
+        else:
+            msg = f"Not our snapshot: {name} (we hold {self.snapshot})"
+        raise OTPmeException(msg)
+
     def set_running(self, name: str) -> None:
         """Write a pidfile to mark the snapshot as currently running."""
+        self.check_writable(name)
         pidfile = self.snap_dir(name) / "running"
         pidfile.write_text(str(os.getpid()))
 
@@ -1331,6 +1366,11 @@ class BackupServer:
                           total_bytes: int = 0,
                           stored_bytes: int = 0) -> None:
         """Mark a snapshot as complete and write stats from internal counters."""
+        self.check_writable(name)
+        # From here on it is finished, so we hold nothing we may write
+        # to any more. Done before the work below: whether marking it
+        # complete succeeds or not, it is not ours to write to.
+        self.snapshot = None
         self._close_snap_session()
         if self._pack_db is not None:
             self._pack_db.commit()
@@ -1390,6 +1430,7 @@ class BackupServer:
         defer the call until all files are written (deepest-first) so
         that tree/ directory mtimes are not clobbered.
         """
+        self.check_writable(snap_name)
         self._safe_rel_path(rel_path)
         entry_type = meta["type"]
 
@@ -1471,6 +1512,7 @@ class BackupServer:
             atime, mtime:   float
             acl:            str or None
         """
+        self.check_writable(snap_name)
         if self.mode == "pack":
             return
         self._safe_rel_path(rel_path)
@@ -1515,6 +1557,7 @@ class BackupServer:
         Sorts deepest-first internally so tree/ directory mtimes
         are not clobbered by later operations.
         """
+        self.check_writable(snap_name)
         if self.mode == "pack":
             return
         for rel_path, meta in sorted(dir_entries, key=lambda e: e[0], reverse=True):
@@ -1597,6 +1640,9 @@ class BackupServer:
         meta:       dict to build index entry from (used when metadata changed).
         If neither is given, a minimal fallback entry is written.
         """
+        # Only where it goes. Where it comes from is somebody else's
+        # finished snapshot -- that is the whole point of linking.
+        self.check_writable(to_snap)
         self._safe_rel_path(rel_path)
         if self.mode == "pack":
             # Pack mode: no hardlinks, only write index entry
@@ -1673,6 +1719,8 @@ class BackupServer:
 
         Returns the number of successfully linked entries.
         """
+        # Only where they go, see link_entry().
+        self.check_writable(to_snap)
         linked = 0
 
         if self.mode == "pack":
@@ -2161,6 +2209,14 @@ class BackupServer:
         entries = []
         for s in snaps:
             name = s["name"]
+            if not s["complete"]:
+                # A backup that broke off half way. Counting it would let
+                # it take the slot of the day and push out a snapshot
+                # somebody could actually restore from -- and deleting it
+                # here is not this method's business either. It is left
+                # alone in both directions.
+                logger.warning("Ignoring incomplete snapshot: %s", name)
+                continue
             dt = self._parse_snap_date(name)
             if dt is None:
                 logger.warning("Cannot parse date from snapshot name '%s', keeping it", name)

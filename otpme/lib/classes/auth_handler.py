@@ -744,7 +744,8 @@ class AuthHandler(object):
 
             if self.access_group != config.realm_access_group:
                 kwargs['auth_ag'] = self.access_group
-
+            if self.share:
+                kwargs['auth_share'] = self.share
             # Try to verify session.
             if self.verify_session(session, **kwargs) is not None:
                 if self.auth_session.authorize_host is not None:
@@ -1274,7 +1275,7 @@ class AuthHandler(object):
         # Verify temp password.
         if self.auth_type == "mschap":
             try:
-                verify_status = verify_token.verify(temp=True, **token_verify_parms)
+                verify_status = verify_token.verify_mschap_static(temp=True, **token_verify_parms)
             except Exception as e:
                 log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
                 log_msg = log_msg.format(token_name=token.name, error=e)
@@ -2491,7 +2492,7 @@ class AuthHandler(object):
         access_group=None, user_token=None, src_token=None, count_fails=None,
         host_type=None, host=None, host_ip=None, replace_sessions=None,
         require_token_types=None, require_pass_types=None, redirect_challenge=None,
-        jwt_auth=False, authorize_host=True, allow_sotp_reuse=False,
+        jwt_auth=False, authorize_host=True, share=None, allow_sotp_reuse=False,
         redirect_response=None, gen_jwt=None, jwt_challenge=None,
         rsp_ecdh_client_pub=None, verify_host=True,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
@@ -2589,6 +2590,7 @@ class AuthHandler(object):
         self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data
         self.vlan = None
+        self.share = share
         self.authorize_host = authorize_host
         self.realm_login = realm_login
         self.realm_logout = realm_logout
@@ -3319,6 +3321,10 @@ class AuthHandler(object):
             if self.auth_session:
                 auth_response['session'] = self.auth_session.uuid
                 auth_response['offline_data_key'] = self.offline_data_key
+
+            # Add share we authenticated for.
+            if self.share:
+                auth_response['share'] = self.share
 
             # OIDC /authorize: surface the authcode so the web layer
             # can redirect the RP. The session UUID is internal --

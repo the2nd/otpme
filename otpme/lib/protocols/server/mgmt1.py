@@ -2734,6 +2734,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.build_response(True, response)
 
     def dump_object(self, subcommand, command_args):
+        from otpme.lib.classes.site import get_site_admin_blacklist
         try:
             object_id = command_args['object_id']
             object_id = oid.get(object_id=object_id)
@@ -2748,6 +2749,20 @@ class OTPmeMgmtP1(OTPmeServer1):
         if not backend.object_exists(object_id):
             return self.build_response(False, "Object does not exist.")
         object_config = backend.read_config(object_id)
+        if config.auth_token.uuid != config.admin_token_uuid:
+            if object_id.object_type == "user":
+                if object_id.name == config.admin_user_name:
+                    return self.build_response(False, _("Permission denied."))
+            object_uuid = object_config['UUID']
+            if object_uuid == config.admin_token_uuid:
+                return self.build_response(False, _("Permission denied."))
+            site_admin_blacklist = get_site_admin_blacklist()
+            if object_uuid in site_admin_blacklist:
+                return self.build_response(False, _("Permission denied."))
+            if object_id.object_type == "token":
+                owner_uuid = object_config['OWNER']
+                if owner_uuid in site_admin_blacklist:
+                    return self.build_response(False, _("Permission denied."))
         return self.build_response(True, object_config.copy())
 
     def _cmd_delete_object(self, subcommand, command_args):

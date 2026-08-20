@@ -2240,7 +2240,7 @@ class OTPmeClient1(OTPmeClientBase):
         request_token=None, check_login_status=True, allow_untrusted=False,
         do_preauth=True, check_connected_site=True, verify_preauth=None,
         follow_redirect=True, login_redirect=False, backup_key=None,
-        backup_home_dir=None, **kwargs):
+        backup_home_dir=None, share=None, **kwargs):
         # Init parent class.
         if offline_iterations_by_score is None:
             offline_iterations_by_score = {}
@@ -2290,6 +2290,8 @@ class OTPmeClient1(OTPmeClientBase):
         self.backup_key = backup_key
         # Backup home dir.
         self.backup_home_dir = backup_home_dir
+        # Share to auth for.
+        self.share = share
         # Inidicates that we allow sending of authentication data (passwords etc.)
         # to untrusted sites.
         self.allow_untrusted = allow_untrusted
@@ -3630,6 +3632,9 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Add login interface this request comes from (e.g. tty, gui, ...).
         command_args['login_interface'] = self.login_interface
+        # Share to auth for.
+        if self.share:
+            command_args['share'] = self.share
 
         ## Check if we have to start SSH agent by the given method.
         #if self.peer_auth_types is not None and "ssh_key" in self.peer_auth_types:
