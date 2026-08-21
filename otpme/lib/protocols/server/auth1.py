@@ -172,6 +172,8 @@ class OTPmeAuthP1(OTPmeServer1):
         # Authd does not require any authentication on client connect.
         self.require_auth = None
         self.require_preauth = True
+        # Autodetect in auth handler if SOTP should be checked.
+        self.allow_sotp_auth = None
         # Redirect user to home site.
         self.redirect_user = True
         # Instructs parent class to require a client certificate.

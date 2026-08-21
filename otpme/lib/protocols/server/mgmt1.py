@@ -93,6 +93,9 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.access_group = config.mgmt_access_group
         # Indicates parent class to require a client certificate.
         self.require_client_cert = True
+        # Autodetect in auth handler if SOTP should be checked.
+        self.allow_sotp_auth = None
+        self.sotp_ag_auth = False
         # Will hold all running jobs
         self.jobs = {}
         self.running_jobs = {}
@@ -2604,6 +2607,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 'site':      share.site,
                 'nodes':     node_fqdns,
                 'encrypted': share.encrypted,
+                'sotp_signing': share.sotp_signing,
             }
         }
         return self.build_response(True, shares)

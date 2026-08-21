@@ -223,6 +223,7 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
                                     ignore_args=[
                                                 'error_message_method',
                                                 'ssh_agent_method',
+                                                'sotp_sign_method',
                                                 'password_method',
                                                 'cleanup_method',
                                                 'message_method',

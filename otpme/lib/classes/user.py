@@ -5733,6 +5733,7 @@ class User(OTPmeObject):
                 'limit_hosts': share.limit_by_hosts,
                 'hosts': share_hosts,
                 'encrypted': share.encrypted,
+                'sotp_signing': share.sotp_signing,
                 'tokens': sorted(token_paths),
                 'persist': persist_mount,
             }

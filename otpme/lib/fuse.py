@@ -150,6 +150,7 @@ class OTPmeFS(fuse.Operations):
         logger,
         nodes,
         hard=False,
+        sotp_signing=False,
         ):
         self.use_ns = True
         self.share = share
@@ -169,6 +170,7 @@ class OTPmeFS(fuse.Operations):
         self.add_share_key = False
         self.master_password = None
         self.restore_share = False
+        self.sotp_signing = sotp_signing
         self.share_id = f"{self.share_site}/{self.share}"
         config.daemon_mode = True
 
@@ -192,12 +194,22 @@ class OTPmeFS(fuse.Operations):
             raise OTPmeException(msg) from e
         finally:
             agent_conn.close()
+        sotp_sign_method = None
+        if self.sotp_signing:
+            def sotp_sign_method():
+                sotp_sign = stuff.sign_sotp(self.username,
+                                            sotp,
+                                            key_mode=None,
+                                            encode=False,
+                                            share=self.share_id)
+                return sotp_sign
         try:
             fsd_conn = connections.get(daemon="fsd",
                                     node=node,
                                     allow_untrusted=True,
                                     username=self.username,
                                     password=sotp,
+                                    sotp_sign_method=sotp_sign_method,
                                     share=self.share_id,
                                     use_ssh_agent=False,
                                     use_smartcard=False,
@@ -312,7 +324,11 @@ class OTPmeFS(fuse.Operations):
         A write on a hard mount, because it must not fail. It waits and
         retries like it did before.
         """
-        block = self.encrypted
+        block = False
+        if self.encrypted:
+            block = True
+        if self.sotp_signing:
+            block = True
         if self.hard and command == "fsop_write":
             block = True
         if not BACKGROUND_CONNECT:
@@ -2496,7 +2512,7 @@ def remove_mount_dirs(mountpoints):
             log_msg = log_msg.format(user_dir=user_dir, error=e)
             logger.warning(log_msg)
 
-def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
+def mount_share_proc(share, share_site, mount, nodes, encrypted, sotp_signing, **kwargs):
     logger = config.logger
     new_proctitle = f"otpme-mount {share_site}/{share} {mount}"
     setproctitle.setproctitle(new_proctitle)
@@ -2506,7 +2522,8 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
                                                         share_site,
                                                         mount,
                                                         nodes,
-                                                        encrypted),
+                                                        encrypted,
+                                                        sotp_signing),
                                             target_kwargs=kwargs,
                                             daemon=False,
                                             join=False)
@@ -2523,7 +2540,7 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
         log_msg = log_msg.format(mount=mount, error=e)
         logger.warning(log_msg)
 
-def mount_share(share, share_site, mount, nodes, encrypted=False,
+def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
     hard=False, master_password=None, add_share_key=False,
     foreground=True, logger=None):
     if add_share_key and not master_password:
@@ -2544,6 +2561,7 @@ def mount_share(share, share_site, mount, nodes, encrypted=False,
                                 logger,
                                 nodes,
                                 hard=hard,
+                                sotp_signing=sotp_signing,
                                 master_password=master_password,
                                 add_share_key=add_share_key),
                             mount,
@@ -2552,7 +2570,7 @@ def mount_share(share, share_site, mount, nodes, encrypted=False,
                             fsname=fsname,
                             )
         else:
-            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard),
+            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard, sotp_signing=sotp_signing),
                             mount,
                             foreground=foreground,
                             nothreads=True,

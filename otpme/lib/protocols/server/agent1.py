@@ -562,6 +562,7 @@ class OTPmeAgentP1(object):
                     share_site = shares[share_id]['site']
                     share_nodes = shares[share_id]['nodes']
                     share_encrypted = shares[share_id]['encrypted']
+                    share_sotp_signing = shares[share_id]['sotp_signing']
                     try:
                         mount_share(username=login_user,
                                     share_id=share_id,
@@ -569,6 +570,7 @@ class OTPmeAgentP1(object):
                                     share_name=share_name,
                                     share_nodes=share_nodes,
                                     encrypted=share_encrypted,
+                                    sotp_signing=share_sotp_signing,
                                     session_id=self.session_id,
                                     logger=self.logger)
                     except Exception as e:

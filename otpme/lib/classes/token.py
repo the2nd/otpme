@@ -3081,6 +3081,7 @@ class Token(OTPmeObject):
     def check_password(
         self,
         password: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         ):
         """ Check password via assiged policy. """
@@ -3095,13 +3096,18 @@ class Token(OTPmeObject):
         if not pass_policies:
             return True
 
+        if force:
+            check_callback = default_callback
+        else:
+            check_callback = callback
+
         for x in pass_policies:
             if not x.enabled:
                 continue
             if not x.handle_hook(hook_object=self,
                                 hook_name="check_password",
                                 password=password,
-                                callback=callback):
+                                callback=check_callback):
                 return callback.error()
 
         return callback.ok()
@@ -3287,7 +3293,7 @@ class Token(OTPmeObject):
 
                 if new_password1 == new_password2:
                     password = new_password1
-                    if not self.check_password(password, callback=callback):
+                    if not self.check_password(password, force=force, callback=callback):
                         if force:
                             if not self.verify_acl("force_password"):
                                 msg = _("You are not allowed to force a unsecure password.")
@@ -3307,7 +3313,7 @@ class Token(OTPmeObject):
 
         if not force:
             if not password_checked:
-                if not self.check_password(password, callback=callback):
+                if not self.check_password(password, force=force, callback=callback):
                     if force:
                         if not self.verify_acl("force_password"):
                             msg = _("You are not allowed to force a unsecure password.")
@@ -4015,6 +4021,7 @@ class Token(OTPmeObject):
                 'limit_hosts': share.limit_by_hosts,
                 'hosts': share_hosts,
                 'encrypted': share.encrypted,
+                'sotp_signing': share.sotp_signing,
                 'tokens': [self.rel_path],
                 'persist': persist_mount,
             }

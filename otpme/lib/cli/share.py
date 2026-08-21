@@ -26,6 +26,7 @@ table_headers = [
                 "status",
                 "root_dir",
                 "encrypted",
+                "sotp_signing",
                 "block_size",
                 "read_only",
                 "force_group",
@@ -54,6 +55,7 @@ def register():
                         'read_only',
                         'root_dir',
                         'encrypted',
+                        'sotp_signing',
                         'block_size',
                         'force_group_uuid',
                         'create_mode',
@@ -114,6 +116,10 @@ def row_getter(realm, site, share_order, share_data, acls,
             encrypted = share_data[share_uuid]['encrypted'][0]
         except Exception:
             encrypted = False
+        try:
+            sotp_signing = share_data[share_uuid]['sotp_signing'][0]
+        except Exception:
+            sotp_signing = False
         try:
             block_size = share_data[share_uuid]['block_size'][0]
         except Exception:
@@ -193,6 +199,12 @@ def row_getter(realm, site, share_order, share_data, acls,
         if "encrypted" in output_fields:
             if check_acl("view:encrypted"):
                 row.append(encrypted)
+            else:
+                row.append("-")
+        # SOTP signing.
+        if "sotp_signing" in output_fields:
+            if check_acl("view:sotp_signing"):
+                row.append(sotp_signing)
             else:
                 row.append("-")
         # Blocksize.

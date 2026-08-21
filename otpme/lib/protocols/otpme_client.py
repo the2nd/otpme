@@ -1055,7 +1055,7 @@ class OTPmeClient(OTPmeClientBase):
         try:
             self.connection.send(request, blocking=blocking, timeout=timeout)
         except Exception as e:
-            config.raise_exception()
+            #config.raise_exception()
             error_msg = _("Error while sending: {error}")
             error_msg = error_msg.format(error=e)
             raise ConnectionError(error_msg) from e
@@ -1064,7 +1064,7 @@ class OTPmeClient(OTPmeClientBase):
         try:
             response = self.connection.recv(blocking=blocking, timeout=timeout)
         except Exception as e:
-            config.raise_exception()
+            #config.raise_exception()
             error_msg = _("Error while receiving: {error}")
             error_msg = error_msg.format(error=e)
             raise ConnectionError(error_msg) from e
@@ -2240,7 +2240,7 @@ class OTPmeClient1(OTPmeClientBase):
         request_token=None, check_login_status=True, allow_untrusted=False,
         do_preauth=True, check_connected_site=True, verify_preauth=None,
         follow_redirect=True, login_redirect=False, backup_key=None,
-        backup_home_dir=None, share=None, **kwargs):
+        backup_home_dir=None, sotp_sign_method=None, share=None, **kwargs):
         # Init parent class.
         if offline_iterations_by_score is None:
             offline_iterations_by_score = {}
@@ -2292,6 +2292,9 @@ class OTPmeClient1(OTPmeClientBase):
         self.backup_home_dir = backup_home_dir
         # Share to auth for.
         self.share = share
+        # SOTP sign method.
+        self.sotp_sign_method = sotp_sign_method
+        self.sotp_signing = False
         # Inidicates that we allow sending of authentication data (passwords etc.)
         # to untrusted sites.
         self.allow_untrusted = allow_untrusted
@@ -2750,8 +2753,11 @@ class OTPmeClient1(OTPmeClientBase):
         preauth_args['client'] = self.client
         # Set if redirect is wanted.
         preauth_args['redirect'] = self.follow_redirect
-        # Send pam auth to node.
+        # Tell node if host authorize shoud run..
         preauth_args['authorize_host'] = self.authorize_host
+        # Tell node the share we want to access.
+        if self.share:
+            preauth_args['share'] = self.share
 
         # Add cluster key.
         if config.cluster_key:
@@ -3063,6 +3069,15 @@ class OTPmeClient1(OTPmeClientBase):
                     msg = _("Connected to wrong site: {site}")
                     msg = msg.format(site=self.peer_site)
                     raise OTPmeException(msg)
+
+        try:
+            self.sotp_signing = self.preauth_response['sotp_signing']
+        except Exception:
+            pass
+        else:
+            if self.sotp_signing and not self.sotp_sign_method:
+                msg = _("SOTP signing required.")
+                raise OTPmeException(msg)
 
         # Verify site signature.
         if self.verify_preauth:
@@ -3875,6 +3890,14 @@ class OTPmeClient1(OTPmeClientBase):
             command_args['password'] = password
 
         command_args['auth_type'] = self.auth_type
+        if self.sotp_signing:
+            try:
+                sotp_sign = self.sotp_sign_method()
+            except Exception as e:
+                msg = _("Failed to sign SOTP: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
+            command_args['sotp_signature'] = sotp_sign
 
         # Build auth command.
         if self.login:

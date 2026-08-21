@@ -77,6 +77,7 @@ read_value_acls = {
                                     "policy",
                                     "root_dir",
                                     "encrypted",
+                                    "sotp_signing",
                                     "share_key",
                                     "block_size",
                                     "read_only",
@@ -125,15 +126,18 @@ write_value_acls = {
                                 ],
                     "enable"    : [
                                     "read_only",
+                                    "sotp_signing",
                                     "add_script",
                                     "mount_script",
                                 ],
                     "disable"    : [
                                     "read_only",
+                                    "sotp_signing",
                                     "add_script",
                                     "mount_script",
                                 ],
                     "edit"    : [
+                                    "sign_public_keys",
                                     "root_dir",
                                     "force_group",
                                     "force_create_mode",
@@ -305,6 +309,31 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_ro',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_sotp_signing'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_sotp_signing'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'update_sign_public_keys'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'update_sign_public_keys',
+                    'oargs'             : ['username'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1128,6 +1157,8 @@ class Share(OTPmeObject):
         self.home_share = False
         self.home_share_uid = False
         self.encrypted = False
+        # Require the client to sign the SOTP it authenticates with.
+        self.sotp_signing = False
         self.block_size = 4096
 
         # Call parent class init.
@@ -1173,6 +1204,8 @@ class Share(OTPmeObject):
                             "ROOT_DIR",
                             "READ_ONLY",
                             "ENCRYPTED",
+                            "SOTP_SIGNING",
+                            "SIGN_PUBLIC_KEYS",
                             "TOKENS",
                             "ROLES",
                             ]
@@ -1213,6 +1246,11 @@ class Share(OTPmeObject):
                                                     },
                         'ENCRYPTED'                 : {
                                                         'var_name'  : 'encrypted',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'SOTP_SIGNING'              : {
+                                                        'var_name'  : 'sotp_signing',
                                                         'type'      : bool,
                                                         'required'  : False,
                                                     },
@@ -1272,6 +1310,11 @@ class Share(OTPmeObject):
                                                     },
                         'SHARE_KEYS'                : {
                                                         'var_name'  : 'share_keys',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+                        'SIGN_PUBLIC_KEYS'          : {
+                                                        'var_name'  : 'sign_public_keys',
                                                         'type'      : dict,
                                                         'required'  : False,
                                                     },
@@ -1509,6 +1552,7 @@ class Share(OTPmeObject):
         self.home_share_uid = home_share_uid
         self.encrypted = encrypted
         self.add_index('encrypted', self.encrypted)
+        self.add_index('sotp_signing', self.sotp_signing)
         if self.encrypted:
             self.block_size = block_size
             self.add_index('block_size', self.block_size)
@@ -1817,6 +1861,310 @@ class Share(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    def get_share_token_users(self):
+        """ All users that have a token assigned to the share.
+
+        Includes no mount tokens, just like get_share_tokens(), so a
+        users sign public key is handled like their share key.
+        """
+        share_tokens = self.get_share_tokens()
+        if not share_tokens:
+            return []
+        user_uuids = backend.search(object_type="token",
+                                    attribute="uuid",
+                                    values=share_tokens,
+                                    return_attributes=['owner_uuid'])
+        if not user_uuids:
+            return []
+        user_uuids = sorted(list(set(user_uuids)))
+        return backend.search(object_type="user",
+                            attribute="uuid",
+                            values=user_uuids,
+                            return_type="instance")
+
+    def get_sign_public_key(self, user_uuid: str):
+        """ Get users sign public key stored in this share.
+
+        The key has to come from the share and not from the user
+        object: the users site may be a different one and we do not
+        want it to be able to swap the key that guards our data.
+        """
+        try:
+            return self.sign_public_keys[user_uuid]
+        except KeyError:
+            return None
+
+    def add_sign_public_key(
+        self,
+        user,
+        callback: JobCallback=default_callback,
+        ):
+        """ Store users sign public key in the share. """
+        if not user.sign_public_key:
+            msg = _("User misses sign public key: {user_name}")
+            msg = msg.format(user_name=user.name)
+            return callback.error(msg)
+        if self.sign_public_keys.get(user.uuid) == user.sign_public_key:
+            return True
+        self.sign_public_keys[user.uuid] = user.sign_public_key
+        return True
+
+    def del_sign_public_key(
+        self,
+        token_path: str,
+        callback: JobCallback=default_callback,
+        ):
+        """ Remove users sign public key if their last token was removed.
+
+        Mirrors the share key handling: the key stays as long as any
+        token of the user is still assigned to the share.
+
+        No set_changelog() here: on an encrypted share the share key
+        branch has already set the detail of the running entry and the
+        detail is a single (overwritable) text.
+        """
+        username = token_path.split("/")[0]
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm)
+        if not user:
+            return True
+        if user.uuid not in self.sign_public_keys:
+            return True
+        share_tokens = self.get_share_tokens()
+        for token_uuid in user.get_tokens():
+            if token_uuid not in share_tokens:
+                continue
+            msg = _("Not removing sign public key because of other assigned token.")
+            callback.send(msg)
+            return True
+        self.sign_public_keys.pop(user.uuid)
+        return True
+
+    @check_acls(['enable:sotp_signing'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("enable SOTP signing")
+    def enable_sotp_signing(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Require clients to sign the SOTP they authenticate with. """
+        if self.sotp_signing:
+            return callback.error(_("SOTP signing already enabled."))
+
+        # A role would bring in tokens without us noticing, so their
+        # users sign public keys would be missing.
+        if self.roles:
+            msg = _("SOTP signing does not support roles. Please remove all roles from the share first.")
+            return callback.error(msg)
+
+        # Get sign public keys of all users with a token assigned.
+        share_users = self.get_share_token_users()
+        missing_keys = []
+        for user in share_users:
+            if user.sign_public_key:
+                continue
+            missing_keys.append(user.name)
+        if missing_keys:
+            msg = _("Users without sign public key: {user_names}")
+            msg = msg.format(user_names=",".join(sorted(missing_keys)))
+            return callback.error(msg)
+
+        msg = _("Enable SOTP signing for share '{share_name}'? Clients without a sign key cannot access it anymore.: ")
+        msg = msg.format(share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_sotp_signing",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        for user in share_users:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+
+        self.sotp_signing = True
+
+        self.update_index('sotp_signing', self.sotp_signing)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:sotp_signing'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("disable SOTP signing")
+    def disable_sotp_signing(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Do no longer require clients to sign their SOTP. """
+        if not self.sotp_signing:
+            return callback.error(_("SOTP signing already disabled."))
+
+        msg = _("Disable SOTP signing for share '{share_name}'?: ")
+        msg = msg.format(share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_sotp_signing",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # The stored keys are only used for SOTP signing. Enabling it
+        # again reads them from the users anyway.
+        if self.sign_public_keys:
+            for user_uuid in list(self.sign_public_keys):
+                self.sign_public_keys.pop(user_uuid)
+            self.set_changelog("removed sign public keys")
+
+        self.sotp_signing = False
+
+        self.update_index('sotp_signing', self.sotp_signing)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sign_public_keys'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("update sign public keys")
+    def update_sign_public_keys(
+        self,
+        username: Union[str,None]=None,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Take over the current sign public keys of the token users.
+
+        A user that generates a new key pair cannot reach the copy in
+        the share, so their access breaks until someone with write
+        access to the share takes over the new key. That is on purpose:
+        updating the copy automatically (e.g. from a hook on the user)
+        would hand the users site exactly the control the copy is meant
+        to take away from it.
+        """
+        if not self.sotp_signing:
+            msg = _("SOTP signing not enabled.")
+            return callback.error(msg)
+
+        all_share_users = self.get_share_token_users()
+        share_users = all_share_users
+        if username is not None:
+            share_users = []
+            for user in all_share_users:
+                if user.name != username:
+                    continue
+                share_users.append(user)
+            if not share_users:
+                msg = _("User does not have a token assigned to this share: {user_name}")
+                msg = msg.format(user_name=username)
+                return callback.error(msg)
+
+        # Users whose key differs from the one we have.
+        update_users = []
+        missing_keys = []
+        for user in share_users:
+            if not user.sign_public_key:
+                missing_keys.append(user.name)
+                continue
+            if self.sign_public_keys.get(user.uuid) == user.sign_public_key:
+                continue
+            update_users.append(user)
+
+        if username is not None and missing_keys:
+            msg = _("User misses sign public key: {user_name}")
+            msg = msg.format(user_name=username)
+            return callback.error(msg)
+
+        # Keys without a token on the share. Adding and removing tokens
+        # keeps them in sync, so this is only for leftovers (e.g. from a
+        # token that was deleted instead of removed).
+        orphan_uuids = []
+        if username is None:
+            share_user_uuids = []
+            for user in all_share_users:
+                share_user_uuids.append(user.uuid)
+            for user_uuid in self.sign_public_keys:
+                if user_uuid in share_user_uuids:
+                    continue
+                orphan_uuids.append(user_uuid)
+
+        for user_name in sorted(missing_keys):
+            msg = _("User misses sign public key: {user_name}")
+            msg = msg.format(user_name=user_name)
+            callback.send(msg)
+
+        if not update_users and not orphan_uuids:
+            msg = _("Sign public keys are up to date.")
+            return callback.ok(msg)
+
+        update_names = []
+        for user in update_users:
+            update_names.append(user.name)
+        if orphan_uuids:
+            msg = _("Removing sign public keys without a token: {key_count}")
+            msg = msg.format(key_count=len(orphan_uuids))
+            callback.send(msg)
+
+        if update_names:
+            msg = _("Update sign public keys of share '{share_name}'? Users: {user_names}: ")
+            msg = msg.format(share_name=self.name, user_names=",".join(sorted(update_names)))
+        else:
+            msg = _("Update sign public keys of share '{share_name}'?: ")
+            msg = msg.format(share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("update_sign_public_keys",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        for user in update_users:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+        for user_uuid in orphan_uuids:
+            self.sign_public_keys.pop(user_uuid)
+
+        detail = f"updated {len(update_users)} sign public key(s), removed {len(orphan_uuids)}"
+        self.set_changelog(detail)
+
+        return self._cache(callback=callback)
+
     @object_lock()
     def is_master_password_token(
         self,
@@ -1979,6 +2327,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
             shares[share_id]['tokens'] = [token_path]
             shares[share_id]['persist'] = persist_mount
 
@@ -2249,6 +2598,10 @@ class Share(OTPmeObject):
                                     callback=callback,
                                     verify_acls=False)
 
+        if self.sotp_signing:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+
         self.no_mount_tokens.append(token_uuid)
 
         # Update index.
@@ -2335,6 +2688,9 @@ class Share(OTPmeObject):
                     self.set_changelog("kept share key (home share)")
                 else:
                     self.set_changelog("kept share key")
+
+        if self.sotp_signing:
+            self.del_sign_public_key(token_path, callback=callback)
 
         return self._write(callback=callback)
 
@@ -2439,6 +2795,10 @@ class Share(OTPmeObject):
                                     callback=callback,
                                     verify_acls=False)
 
+        if self.sotp_signing:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+
         # Add token by parent class.
         result = super().add_token(token_path=token_path,
                                 callback=callback, **kwargs)
@@ -2484,6 +2844,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
             shares[share_id]['tokens'] = [token_path]
             shares[share_id]['persist'] = persist_mount
 
@@ -2580,6 +2941,11 @@ class Share(OTPmeObject):
                 else:
                     self.set_changelog("kept share key")
 
+        # The parent class cached the object for writing, so the key we
+        # remove here goes to the backend with it.
+        if self.sotp_signing:
+            self.del_sign_public_key(token_path, callback=callback)
+
         username = token_path.split("/")[0]
         if username == ADMIN_USER:
             return result
@@ -2624,6 +2990,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
             shares[share_id]['tokens'] = [token_path]
             shares[share_id]['persist'] = persist_mount
 
@@ -2655,6 +3022,12 @@ class Share(OTPmeObject):
         """ Check if share is encrypted. """
         if self.encrypted:
             msg = _("Encrypted shares do not support roles.")
+            return callback.error(msg)
+
+        # A role would bring in tokens without us noticing, so their
+        # users sign public keys would be missing.
+        if self.sotp_signing:
+            msg = _("Shares with SOTP signing do not support roles.")
             return callback.error(msg)
 
         # Add role by parent class.
@@ -2714,6 +3087,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
 
             # Collect notifications.
             user_shares = {}
@@ -2770,6 +3144,10 @@ class Share(OTPmeObject):
             msg = _("Encrypted shares do not support roles.")
             return callback.error(msg)
 
+        if self.sotp_signing:
+            msg = _("Shares with SOTP signing do not support roles.")
+            return callback.error(msg)
+
         # Add role by parent class.
         result =  super().remove_role(*args, role_name=role_name,
                                     callback=callback, **kwargs)
@@ -2820,6 +3198,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
 
             # Collect notifications.
             user_shares = {}
@@ -3208,6 +3587,7 @@ class Share(OTPmeObject):
         shares[share_id]['nodes'] = node_fqdns
         shares[share_id]['hosts'] = group_hosts
         shares[share_id]['encrypted'] = self.encrypted
+        shares[share_id]['sotp_signing'] = self.sotp_signing
 
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
@@ -3336,6 +3716,7 @@ class Share(OTPmeObject):
         shares[share_id]['nodes'] = node_fqdns
         shares[share_id]['hosts'] = group_hosts
         shares[share_id]['encrypted'] = self.encrypted
+        shares[share_id]['sotp_signing'] = self.sotp_signing
 
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
@@ -3778,6 +4159,7 @@ class Share(OTPmeObject):
             share_name = self.name
             share_site = self.site
             share_encrypted = self.encrypted
+            share_sotp_signing = self.sotp_signing
             share_limit_by_hosts = self.limit_by_hosts
 
             user_shares = {}
@@ -3804,6 +4186,7 @@ class Share(OTPmeObject):
                     'limit_hosts': share_limit_by_hosts,
                     'hosts': list(share_hosts),
                     'encrypted': share_encrypted,
+                    'sotp_signing': share_sotp_signing,
                     'tokens': tokens,
                     'persist': persist_mount,
                 }
@@ -4144,6 +4527,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
 
             # Collect notifications.
             user_shares = {}
@@ -4239,6 +4623,7 @@ class Share(OTPmeObject):
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
+            shares[share_id]['sotp_signing'] = self.sotp_signing
 
             # Collect notifications.
             user_shares = {}

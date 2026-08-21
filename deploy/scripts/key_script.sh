@@ -29,6 +29,11 @@ fi
 
 cleanup () {
 	rm -rf "$TMP_DIR"
+	# Temp file used for signing (e.g. in /dev/shm) may live outside
+	# of $TMP_DIR.
+	if [ "$SIG_INPUT" != "" ] ; then
+		rm -f "$SIG_INPUT"
+	fi
 }
 trap "cleanup" EXIT
 
@@ -288,7 +293,7 @@ get_opts () {
 }
 
 show_help () {
-	echo "Usage: $BASENAME [sign|verify|encrypt|decrypt|pkey_encrypt|pkey_decrypt] [-u username] [--help]"
+	echo "Usage: $BASENAME [sign|verify|encrypt|decrypt|pkey_encrypt|pkey_decrypt|pkey_sign] [-u username] [--help]"
 	echo
 	echo "Commands:"
 	echo "	gen_keys					Generate users key pair"
@@ -302,6 +307,7 @@ show_help () {
 	echo "	decrypt <enc_file> <file>	Decrypt <enc_file> and write it to <file>"
 	echo "	pkey_encrypt				Encrypt <stdin> with recipient pubkey, write to <stdout>"
 	echo "	pkey_decrypt 				Decrypt <stdin> with private key, write to <stdout>"
+	echo "	pkey_sign	 				Sign <stdin> with private key, write to <stdout>"
 	echo
 	echo "Options:"
 	echo "	-u <username>				Encrypt AES key of encrypted file with RSA public key of <username>"
@@ -957,6 +963,101 @@ case "$COMMAND" in
 			esac
 		fi
 		exit $?
+	;;
+
+	pkey_sign)
+		# Sign <stdin> with the users sign private key and write the
+		# base64 encoded signature to <stdout>. Counterpart to the
+		# "sign" command, which works on files and writes a signature
+		# file (USERNAME=/SIGNATURE=).
+		if [ "$YUBIKEY_PIV" = "true" ] ; then
+			if [ "$USE_AGENT_PIV" = "true" ] ; then
+				USE_AGENT_OPT="--use-agent"
+				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
+					export PIN="$(read_pass_from_tty "Token PIN: ")"
+					if [ "$PIN" = "" ] ; then
+						exit 1
+					fi
+					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
+				fi
+			else
+				export PIN="$(read_pass_from_tty "Token PIN: ")"
+				if [ "$PIN" = "" ] ; then
+					exit 1
+				fi
+				PIN_OPT="--pin env:PIN"
+			fi
+			if ! SIGNATURE="$(cat - | otpme-yk-piv $USE_AGENT_OPT --sign $PIN_OPT | base64 -w 0)" ; then
+				exit 1
+			fi
+		elif [ "$KEY_MODE" = "server" ] ; then
+			SHA256_SUM="$(sha256sum | awk '{ print $1 }')"
+			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
+				if ! SIGNATURE="$(otpme-user $OTPME_OPTS sign_data --digest "$SHA256_SUM" "$_OTPME_KEYSCRIPT_USER")" ; then
+					exit 1
+				fi
+			else
+				if ! SIGNATURE="$(echo "$_OTPME_KEYSCRIPT_KEY_PASS" | $(which otpme-user) $OTPME_OPTS sign_data --digest "$SHA256_SUM" --stdin-pass "$_OTPME_KEYSCRIPT_USER")" ; then
+					exit 1
+				fi
+			fi
+		elif [ "$KEY_MODE" = "client" ] ; then
+			PRIVATE_KEY="$(get_private_key sign)"
+			# Like pkey_encrypt/pkey_decrypt ask the server for the key
+			# algo instead of trusting --algo (which defaults to rsa).
+			SIGN_ALGO="$(otpme-user $OTPME_OPTS get_sign_key_type "$_OTPME_KEYSCRIPT_USER")"
+			if [ -z "$SIGN_ALGO" ] ; then
+				SIGN_ALGO="$ALGO"
+			fi
+			case "$SIGN_ALGO" in
+				rsa)
+					# Sign PKCS1_PSS (PKCS1_v1_5: "openssl dgst -sha256 -sign ...").
+					# Data comes from stdin, so the key goes in via
+					# process substitution (the "sign" command does it
+					# the other way round because it has a file).
+					if ! SIGNATURE="$(openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -sign <(echo "$PRIVATE_KEY") | base64 -w 0)" ; then
+						exit 1
+					fi
+				;;
+				ed25519)
+					# Same as the "sign" command: EdDSA does its own
+					# SHA-512, so we sign the SHA-256 of the data as the
+					# message (matches Ed25519Key.sign(digest=...)).
+					#
+					# "openssl pkeyutl -rawin" needs a seekable -in (a
+					# pipe fails with "unable to determine file size for
+					# oneshot operation"), so the digest has to go to a
+					# temp file. Use /dev/shm to keep it off disk and
+					# create it with mode 600.
+					if ! SIG_INPUT="$(mktemp -p /dev/shm otpme-key-script.XXXXXXXX)" ; then
+						echo "pkey_sign: failed to create temp file in /dev/shm" 1>&2
+						exit 1
+					fi
+					chmod 600 "$SIG_INPUT"
+					sha256sum | awk '{ print $1 }' | xxd -r -p > "$SIG_INPUT"
+					if ! SIGNATURE="$(openssl pkeyutl -sign -rawin \
+						-inkey <(echo "$PRIVATE_KEY") -in "$SIG_INPUT" \
+						| base64 -w 0)" ; then
+						rm -f "$SIG_INPUT"
+						exit 1
+					fi
+					rm -f "$SIG_INPUT"
+				;;
+				x25519)
+					echo "pkey_sign: x25519 is not a signing algorithm" 1>&2
+					exit 1
+				;;
+				*)
+					echo "pkey_sign: unsupported sign algo: $SIGN_ALGO" 1>&2
+					exit 1
+				;;
+			esac
+		fi
+		if [ "$SIGNATURE" = "" ] ; then
+			exit 1
+		fi
+		echo -n "$SIGNATURE"
+		exit 0
 	;;
 
 	sign)

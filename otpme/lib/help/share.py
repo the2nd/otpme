@@ -189,6 +189,32 @@ cmd_help = {
                                 },
                 },
 
+     'enable_sotp_signing'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share enable_sotp_signing {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Require clients to sign the SOTP they authenticate with.'),
+                                },
+                },
+
+
+     'disable_sotp_signing'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share disable_sotp_signing {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Do no longer require clients to sign their SOTP.'),
+                                },
+                },
+
+
+     'update_sign_public_keys'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share update_sign_public_keys {share} [username]'),
+                    'cmd'   :   '<|object|> [username]',
+                    '_help' :   {
+                                    'cmd'                   : _('Take over the current sign public keys of the token users.'),
+                                },
+                },
+
     'get_share_key'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share get_share_key {share} {user}'),
                     'cmd'   :   '<|object|> <username>',

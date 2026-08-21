@@ -3136,6 +3136,9 @@ class ClusterDaemon(OTPmeDaemon):
                                 return True
                             except Exception as e:
                                 self.node_disconnect(node_name)
+                                enabled_nodes = self.get_enabled_nodes()
+                                if node_name not in enabled_nodes:
+                                    os._exit(0)
                                 log_msg = _("Error sending object: {node}: {object_id}: {error}", log=True)[1]
                                 log_msg = log_msg.format(node=node_name, object_id=object_id, error=e)
                                 self.logger.warning(log_msg)
@@ -3685,11 +3688,14 @@ class ClusterDaemon(OTPmeDaemon):
                                 raise ProcessingFailed(msg) from e
                             except Exception as e:
                                 self.node_disconnect(node_name)
+                                cluster_journal_entry.add_failed_node(node_name)
+                                enabled_nodes = self.get_enabled_nodes()
+                                if node_name not in enabled_nodes:
+                                    os._exit(0)
                                 msg, log_msg = _("Error sending object: {node}: {object_id}: {error}", log=True)
                                 msg = msg.format(node=node_name, object_id=object_id, error=e)
                                 log_msg = log_msg.format(node=node_name, object_id=object_id, error=e)
                                 self.logger.warning(log_msg)
-                                cluster_journal_entry.add_failed_node(node_name)
                                 raise ProcessingFailed(msg) from e
                             if write_status != "done":
                                 cluster_journal_entry.add_failed_node(node_name)

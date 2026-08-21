@@ -688,6 +688,7 @@ class AuthHandler(object):
             log_msg = log_msg.format(session_name=session.name)
             self.logger.debug(log_msg)
 
+            check_sotp = False
             password_hash = None
             if session.session_id in realm_session_ids:
                 # We use just one iteration for SOTPs because of performance
@@ -727,6 +728,9 @@ class AuthHandler(object):
                         self.gen_pass_hash(hash_params=session.pass_hash_params)
                     password_hash = self.password_hash
 
+            if self.check_sotp is None:
+                self.check_sotp = check_sotp
+
             if self.session_reneg is not None:
                 do_reneg = self.session_reneg
 
@@ -735,14 +739,17 @@ class AuthHandler(object):
                 'reneg_salt'        : self.reneg_salt,
                 'rsp_hash_type'     : self.rsp_hash_type,
                 'check_auth'        : check_auth,
-                'check_sotp'        : check_sotp,
+                'check_sotp'        : self.check_sotp,
                 'password'          : self.password,
                 'password_hash'     : password_hash,
                 'challenge'         : self.challenge,
                 'response'          : self.response,
                 }
 
-            if self.access_group != config.realm_access_group:
+            if self.sotp_ag_auth is None:
+                if self.access_group != config.realm_access_group:
+                    self.sotp_ag_auth = True
+            if self.sotp_ag_auth:
                 kwargs['auth_ag'] = self.access_group
             if self.share:
                 kwargs['auth_share'] = self.share
@@ -867,7 +874,6 @@ class AuthHandler(object):
                 return
             # Get host.
             self.auth_host = result[0]
-            self.access_group = config.realm_access_group
             # Nothing more to do for host requests.
             return
 
@@ -2493,8 +2499,8 @@ class AuthHandler(object):
         host_type=None, host=None, host_ip=None, replace_sessions=None,
         require_token_types=None, require_pass_types=None, redirect_challenge=None,
         jwt_auth=False, authorize_host=True, share=None, allow_sotp_reuse=False,
-        redirect_response=None, gen_jwt=None, jwt_challenge=None,
-        rsp_ecdh_client_pub=None, verify_host=True,
+        redirect_response=None, gen_jwt=None, jwt_challenge=None, sotp_ag_auth=None,
+        rsp_ecdh_client_pub=None, verify_host=True, check_sotp=None,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
         auth_group=None, auth_client=None, oidc_context=False, oidc_scope="",
         oidc_nonce=None, oidc_redirect_uri=None, oidc_code_challenge=None,
@@ -2587,6 +2593,8 @@ class AuthHandler(object):
         self.response = string_vars['response']
         self.auth_type = string_vars['auth_type']
         self.auth_mode = string_vars['auth_mode']
+        self.check_sotp = check_sotp
+        self.sotp_ag_auth = sotp_ag_auth
         self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data
         self.vlan = None

@@ -6683,12 +6683,14 @@ class CommandHandler(object):
                                     client_type="RAPI")
             mount_error = False
             for share_id in response:
+                sotp_signing = response[share_id]['sotp_signing']
                 encrypted = response[share_id]['encrypted']
                 nodes = response[share_id]['nodes']
                 try:
                     self.mount_share(share_id=share_id,
                                     encrypted=encrypted,
                                     hard=hard,
+                                    sotp_signing=sotp_signing,
                                     nodes=nodes)
                 except Exception as e:
                     msg = _("Failed to mount share: {share_id}: {e}")
@@ -6750,7 +6752,7 @@ class CommandHandler(object):
                                 foreground=foreground)
 
     def mount_share(self, share_id, mount_point=None, encrypted=False,
-        nodes=None, hard=False, master_password_mount=False,
+        nodes=None, hard=False, sotp_signing=False, master_password_mount=False,
         add_share_key=False, foreground=False):
         from otpme.lib import cli
         from otpme.lib import multiprocessing
@@ -6784,6 +6786,7 @@ class CommandHandler(object):
             if nodes is None:
                 nodes = response[share_id]['nodes']
             encrypted = response[share_id]['encrypted']
+            sotp_signing = response[share_id]['sotp_signing']
             if mount_point is None:
                 shares = response
                 try:
@@ -6813,6 +6816,7 @@ class CommandHandler(object):
                         nodes,
                         encrypted,
                         hard=hard,
+                        sotp_signing=sotp_signing,
                         master_password=master_password,
                         add_share_key=add_share_key,
                         foreground=foreground)
@@ -6824,6 +6828,7 @@ class CommandHandler(object):
                                                                     'master_password'   : master_password,
                                                                     'add_share_key'     : add_share_key,
                                                                     'hard'              : hard,
+                                                                    'sotp_signing'      : sotp_signing,
                                                                     'foreground'        : False,
                                                                 },
                                                     daemon=False)
@@ -7879,7 +7884,7 @@ class CommandHandler(object):
 
             if master_node:
                 msg = _("Setting master failover status on current master node: {master_node}")
-                msg = msg.format(master_node)
+                msg = msg.format(master_node=master_node)
                 msg = colored(msg, 'green')
                 print(msg)
                 while True:

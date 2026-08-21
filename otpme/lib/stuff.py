@@ -2019,6 +2019,46 @@ def decrypt_share_key(username, encrypted_share_key,
             decrypted_share_key = decrypted_share_key.decode()
     return decrypted_share_key
 
+def sign_sotp(username, sotp, key_mode, share=None,
+    encode=True, disable_ctrl_c=False):
+    import base64
+    # Make sure sotp is bytes.
+    if isinstance(sotp, str):
+        sotp = sotp.encode()
+    # Command for key script.
+    script_command = [ "pkey_sign" ]
+    # Add key mode.
+    if key_mode == "server":
+        script_command.append("--server-key")
+    # Add key script reason.
+    if share is not None:
+        reason = f"Share auth: {share}"
+        script_command.append("--reason")
+        script_command.append(reason)
+    # Run key script.
+    proc = run_key_script(username=username,
+                        call=False,
+                        return_proc=True,
+                        script_command=script_command,
+                        disable_ctrl_c=disable_ctrl_c)
+    proc.stdin.write(sotp)
+    proc.stdin.flush()
+    proc.stdin.close()
+    proc.wait()
+    sotp_signature = proc.stdout.read()
+    script_stderr = proc.stderr.read()
+    returncode = proc.returncode
+    if returncode != 0:
+        msg = _("Failed to run key script: {script_stderr}")
+        msg = msg.format(script_stderr=script_stderr)
+        raise OTPmeException(msg)
+    if encode:
+        sotp_signature = base64.b64encode(sotp_signature)
+    # Make sure share key is string.
+    if isinstance(sotp_signature, bytes):
+        sotp_signature = sotp_signature.decode()
+    return sotp_signature
+
 #def get_share_key(username, share_name, disable_ctrl_c=False):
 #    import base64
 #    from otpme.lib.classes.command_handler import CommandHandler
@@ -2490,4 +2530,5 @@ def get_user_shares(auth_token, host_uuid):
             shares[share_id]['site'] = share.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['encrypted'] = share.encrypted
+            shares[share_id]['sotp_signing'] = share.sotp_signing
     return shares

@@ -84,7 +84,7 @@ def _load_piv():
     hpke_info_default = _hi
 
 def mount_share(username, share_id, share_site, share_name,
-    share_nodes, encrypted, session_id, logger):
+    share_nodes, encrypted, sotp_signing, session_id, logger):
     try:
         mount_point = prepare_mount_point(username, share_site, share_name)
     except Exception as e:
@@ -106,10 +106,11 @@ def mount_share(username, share_id, share_site, share_name,
                                             share_site,
                                             mount_point,
                                             share_nodes,
-                                            encrypted),
+                                            encrypted,
+                                            sotp_signing),
                                 target_kwargs={
-                                                'logger'    :logger,
-                                                'foreground':False,
+                                                'logger'    : logger,
+                                                'foreground': False,
                                             },
                                 daemon=False,
                                 join=True)
@@ -564,6 +565,7 @@ class OTPmeAgent(UnixDaemon):
                             share_name = data[share_id]['name']
                             share_nodes = data[share_id]['nodes']
                             encrypted = data[share_id]['encrypted']
+                            sotp_signing = data[share_id]['sotp_signing']
                         except KeyError:
                             log_msg = _("Got invalid share data: {share_id}", log=True)[1]
                             log_msg = log_msg.format(share_id=share_id)
@@ -581,6 +583,7 @@ class OTPmeAgent(UnixDaemon):
                                                     share_name=share_name,
                                                     share_nodes=share_nodes,
                                                     encrypted=encrypted,
+                                                    sotp_signing=sotp_signing,
                                                     session_id=session_id,
                                                     logger=self.logger)
                         except AlreadyMounted:

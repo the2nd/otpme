@@ -18,11 +18,12 @@ from otpme.lib import re
 from otpme.lib import log
 from otpme.lib import net
 from otpme.lib import jwt
+from otpme.lib import oid
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
-#from otpme.lib import encryption
+from otpme.lib import encryption
 from otpme.lib import multiprocessing
 from otpme.lib.pki.utils import check_crl
 from otpme.lib.encryption.ec import ECKey
@@ -138,9 +139,20 @@ class OTPmeServer1(object):
             self.process_on_master_failover = False
 
         try:
+            self.allow_sotp_auth
+        except Exception:
+            self.allow_sotp_auth = False
+
+        try:
+            self.sotp_ag_auth
+        except Exception:
+            self.sotp_ag_auth = None
+
+        try:
             self.allow_sotp_reuse
         except Exception:
             self.allow_sotp_reuse = False
+
         try:
             self.check_peer_disabled
         except Exception:
@@ -158,6 +170,10 @@ class OTPmeServer1(object):
         self.authorize_host = True
         # Share to auth for.
         self.auth_share = None
+        # Share instance loaded on preauth for SOTP signature checking.
+        self.share_instance = None
+        # Do SOTP signing?
+        self.sotp_signing = False
 
         self.session_reneg = False
 
@@ -1055,41 +1071,42 @@ class OTPmeServer1(object):
                 return self.build_response(status, message, encrypt=False)
 
         # Get accessgroup to auth with.
-        if client:
-            try:
-                self.access_group = self.get_access_group(client=client)
-            except Exception as e:
-                log_msg = _("Failed to get accessgroup of client: {client}: {error}", log=True)[1]
-                log_msg = log_msg.format(client=client, error=e)
-                self.logger.warning(log_msg)
-                message = _("Unable to get client accessgroup: {client}")
-                message = message.format(client=client)
-                status = False
-                return self.build_response(status, message, encrypt=False)
-        elif client_ip:
-            try:
-                self.access_group = self.get_access_group(client_ip=client_ip)
-            except Exception as e:
-                log_msg = _("Failed to get accessgroup of client: {client}: {error}", log=True)[1]
-                log_msg = log_msg.format(client=client, error=e)
-                self.logger.warning(log_msg)
-                message = _("Unable to get client accessgroup: {client}")
-                message = message.format(client=client)
-                status = False
-                return self.build_response(status, message, encrypt=False)
-        elif self.peer:
-            try:
-                self.access_group = self.get_access_group(host=self.peer.name)
-            except Exception as e:
-                log_msg = _("Failed to get accessgroup of host: {client}: {error}", log=True)[1]
-                log_msg = log_msg.format(client=client, error=e)
-                self.logger.warning(log_msg)
-                message = _("Unable to get host accessgroup: {client}")
-                message = message.format(client=client)
-                status = False
-                return self.build_response(status, message, encrypt=False)
-        else:
-            self.access_group = config.realm_access_group
+        if not self.access_group:
+            if client:
+                try:
+                    self.access_group = self.get_access_group(client=client)
+                except Exception as e:
+                    log_msg = _("Failed to get accessgroup of client: {client}: {error}", log=True)[1]
+                    log_msg = log_msg.format(client=client, error=e)
+                    self.logger.warning(log_msg)
+                    message = _("Unable to get client accessgroup: {client}")
+                    message = message.format(client=client)
+                    status = False
+                    return self.build_response(status, message, encrypt=False)
+            elif client_ip:
+                try:
+                    self.access_group = self.get_access_group(client_ip=client_ip)
+                except Exception as e:
+                    log_msg = _("Failed to get accessgroup of client: {client}: {error}", log=True)[1]
+                    log_msg = log_msg.format(client=client, error=e)
+                    self.logger.warning(log_msg)
+                    message = _("Unable to get client accessgroup: {client}")
+                    message = message.format(client=client)
+                    status = False
+                    return self.build_response(status, message, encrypt=False)
+            elif self.peer:
+                try:
+                    self.access_group = self.get_access_group(host=self.peer.name)
+                except Exception as e:
+                    log_msg = _("Failed to get accessgroup of host: {client}: {error}", log=True)[1]
+                    log_msg = log_msg.format(client=client, error=e)
+                    self.logger.warning(log_msg)
+                    message = _("Unable to get host accessgroup: {client}")
+                    message = message.format(client=client)
+                    status = False
+                    return self.build_response(status, message, encrypt=False)
+            else:
+                self.access_group = config.realm_access_group
 
         # Debug stuff.
         if username and config.debug_enabled:
@@ -1137,6 +1154,11 @@ class OTPmeServer1(object):
             self.authorize_host = preauth_args['authorize_host']
         except Exception:
             pass
+        # Share to auth for.
+        try:
+            share = preauth_args.pop('share')
+        except KeyError:
+            share = None
         # Build preauth response.
         try:
             preauth_response = self.build_preauth_response(challenge=challenge,
@@ -1145,6 +1167,7 @@ class OTPmeServer1(object):
                                 need_token=need_token,
                                 redirect=redirect,
                                 jwt_auth=jwt_auth,
+                                share=share,
                                 login=login,
                                 logout=logout)
             status = True
@@ -1178,9 +1201,26 @@ class OTPmeServer1(object):
         # The outer request is sent unencrypted!
         return self.build_response(status, response, encrypt=False)
 
+    def get_share_instance(self, share):
+        """ Get share instance by share ID (<site>/<share>). """
+        try:
+            share_site, share_name = share.split("/")
+        except Exception:
+            msg = _("Failed to parse share ID: {share}")
+            msg = msg.format(share=share)
+            raise OTPmeException(msg)
+        share_oid = f"share|{config.realm}/{share_site}/{share_name}"
+        share_oid = oid.get(share_oid)
+        share_instance = backend.get_object(share_oid)
+        if not share_instance:
+            msg = _("Unknown share: {share}")
+            msg = msg.format(share=share)
+            raise OTPmeException(msg)
+        return share_instance
+
     def build_preauth_response(self, challenge=None, ecdh_client_pub=None,
         username=None, login=False, logout=False, redirect=True,
-        jwt_auth=False, need_token=False):
+        share=None, jwt_auth=False, need_token=False):
         """ Build preauth response. """
         # Sign preauth challenge.
         preauth_response = None
@@ -1355,6 +1395,10 @@ class OTPmeServer1(object):
                                                     ecdh_server_pub_pem)
             return preauth_response
 
+        if share:
+            self.share_instance = self.get_share_instance(share)
+            self.sotp_signing = self.share_instance.sotp_signing
+
         # If we do not need to check for valid user tokens we are done.
         if not need_token:
             self.preauth_status = True
@@ -1366,6 +1410,7 @@ class OTPmeServer1(object):
                     'status_message'        : "Ready for user authentication",
                     'preauth_response'      : preauth_response,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
+                    'sotp_signing'          : self.sotp_signing,
                     'valid_auth_types'      : [],
                     }
             return preauth_response
@@ -1492,6 +1537,7 @@ class OTPmeServer1(object):
                     'status'                : self.preauth_status,
                     'status_message'        : "Valid user tokens found",
                     'preauth_response'      : preauth_response,
+                    'sotp_signing'          : self.sotp_signing,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     'token_options'         : token_options,
                     'ssh_public_keys'       : ssh_public_keys,
@@ -1994,6 +2040,69 @@ class OTPmeServer1(object):
         except KeyError:
             share = None
 
+        # The share of the auth request decides if the SOTP has to be
+        # signed. Not the one from preauth: the client could have done
+        # its preauth without a share (or with one that does not
+        # require signing) and authenticate for a protected share.
+        if share:
+            if not self.share_instance \
+            or self.share_instance.share_id != share:
+                self.share_instance = self.get_share_instance(share)
+            self.sotp_signing = self.share_instance.sotp_signing
+        else:
+            self.share_instance = None
+            self.sotp_signing = False
+
+        # Try to get SOTP signature.
+        try:
+            sotp_signature = command_args.pop('sotp_signature')
+        except KeyError as err:
+            if self.sotp_signing:
+                msg = "Missing SOTP signature in request."
+                raise OTPmeException(msg) from err
+            sotp_signature = None
+
+        # Handle SOTP signing.
+        if self.sotp_signing:
+            if not password:
+                msg = "Missing SOTP in request."
+                raise OTPmeException(msg)
+            # Decode SOTP signature.
+            try:
+                sotp_signature = decode(sotp_signature, "base64")
+            except Exception as e:
+                msg = _("Unable to decode SOTP signature: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+            # Load user public key. It has to come from the share and
+            # not from the user object: an attacker with access to the
+            # nodes of the users site could swap the key there.
+            sign_public_key = self.share_instance.get_sign_public_key(self.user.uuid)
+            if not sign_public_key:
+                msg = _("Share misses sign public key of user: {user}")
+                msg = msg.format(user=self.user.name)
+                raise OTPmeException(msg)
+            try:
+                key = decode(sign_public_key, "base64")
+                key = encryption.load_public_key(key)
+            except Exception as e:
+                msg = _("Unable to user load public key: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+            # Verify signature.
+            try:
+                verify_status = key.verify(sotp_signature, password)
+            except Exception as e:
+                msg = _("Invalid SOTP signature: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg) from e
+            if not verify_status:
+                msg = _("SOTP signature verification failed.")
+                raise OTPmeException(msg)
+            log_msg = _("SOTP signature verification successful: {user}: {share}", log=True)[1]
+            log_msg = log_msg.format(user=self.user.name, share=share)
+            self.logger.info(log_msg)
+
         # Set auth_mode.
         auth_mode = "auto"
         try:
@@ -2130,6 +2239,8 @@ class OTPmeServer1(object):
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
                                         share=share,
+                                        check_sotp=self.allow_sotp_auth,
+                                        sotp_ag_auth=self.sotp_ag_auth,
                                         host_type=login_host_type,
                                         host=login_host,
                                         host_ip=login_host_ip,
@@ -2171,6 +2282,8 @@ class OTPmeServer1(object):
                                         unlock=auth_unlock,
                                         access_group=self.access_group,
                                         share=share,
+                                        check_sotp=self.allow_sotp_auth,
+                                        sotp_ag_auth=self.sotp_ag_auth,
                                         user_token=self.token,
                                         src_token=self.src_token,
                                         challenge=challenge,

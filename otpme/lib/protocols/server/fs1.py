@@ -57,6 +57,9 @@ class OTPmeFsP1(OTPmeFsServer1):
         # Fsd does require user authentication on client connect.
         self.require_auth = "user"
         self.require_preauth = True
+        # Allow auth via SOTP.
+        self.allow_sotp_auth = True
+        self.sotp_ag_auth = False
         # No additional encryption for fsd.
         self.encrypt_session = False
         # Instructs parent class to require a client certificate.

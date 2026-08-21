@@ -2367,10 +2367,10 @@ class OTPmeConfig(object):
         self.cluster_object_types.append(object_type)
 
     def raise_exception(self, message=None):
-        """ Raise exceptions if requested (-dd) and print info. """
+        """ Raise exceptions if requested (-de) and print info. """
         if not self.raise_exceptions:
             return
-        #import inspect
+        import inspect
         #for i in range(0, len(inspect.stack())):
         #    print(inspect.stack()[i][3])
         msg = _("WARNING!!!!! Raising exceptions is enabled (-dee). This exception would not occur in normal operation mode!")
@@ -2386,6 +2386,16 @@ class OTPmeConfig(object):
         msg = _("Exception daemon: {daemon_name}")
         msg = msg.format(daemon_name=self.daemon_name)
         error_message(msg)
+        # Get the line we where called from.
+        caller_frame = inspect.currentframe()
+        if caller_frame is not None:
+            caller_frame = caller_frame.f_back
+        if caller_frame is not None:
+            msg = _("Exception caller: {file}:{line} ({method})")
+            msg = msg.format(file=caller_frame.f_code.co_filename,
+                            line=caller_frame.f_lineno,
+                            method=caller_frame.f_code.co_name)
+            error_message(msg)
         if message is not None:
             error_message(message)
         #from otpme.lib import debug
