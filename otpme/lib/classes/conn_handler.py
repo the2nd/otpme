@@ -87,7 +87,7 @@ class ConnHandler(object):
             if len(data) == 0:
                 log_msg = _("Received null data from client, closing connection: {client}", log=True)[1]
                 log_msg = log_msg.format(client=self.client)
-                self.logger.warning(log_msg)
+                self.logger.debug(log_msg)
                 break
 
             # If we already have a protocol handler use it

@@ -3350,6 +3350,7 @@ class AuthHandler(object):
             login_token_type = None
             login_token_pass_type = None
             login_token_sso_deploy = None
+            login_token_owns_keys = False
             if self.auth_token:
                 # ``.type`` resolves to the generic OTPmeObject type
                 # ("token"); the specific token type ("fido2", "passkey",
@@ -3362,11 +3363,19 @@ class AuthHandler(object):
                 login_token_rel_path = self.auth_token.rel_path
                 login_token_pass_type = self.auth_token.pass_type
                 login_token_sso_deploy = self.auth_token.sso_deploy
+                if self.auth_token.uuid == self.user.keys_token:
+                    login_token_owns_keys = True
             auth_response['login_token'] = login_token_rel_path
             auth_response['login_token_uuid'] = login_token_uuid
             auth_response['login_token_type'] = login_token_type
             auth_response['login_token_pass_type'] = login_token_pass_type
             auth_response['login_token_sso_deploy'] = login_token_sso_deploy
+            auth_response['login_token_owns_keys'] = login_token_owns_keys
+            # Set private key (yubikey piv only yet) cache time.
+            key_cache_time = 0
+            if self.user and self.user.type == "user":
+                key_cache_time = self.user.key_cache_time
+            auth_response['key_cache_time'] = key_cache_time
 
             login_user_uuid = None
             login_user_name = None

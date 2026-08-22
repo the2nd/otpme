@@ -63,6 +63,7 @@ class OfflineToken(object):
         self.script_dir = None
         self.used_dir = None
         self.login_token_uuid = None
+        self.token_owns_keys = False
         self.session_uuid = None
         self.token_cache_dir = None
         self.offline_tokens = {}
@@ -209,17 +210,20 @@ class OfflineToken(object):
         self.offline_token_pinned_file = f"{self.token_cache_dir}/.pin"
         # Key mode file.
         self.key_mode_file = f"{self.offline_dir}/key_mode"
+        self.key_cache_time_file = f"{self.offline_dir}/key_cache_time"
 
-    def set_login_token(self, uuid, session_uuid):
+    def set_login_token(self, uuid, session_uuid, token_owns_keys=False):
         """ Write login token UUID to cache file. """
         # Set login token and server session UUID.
         self.session_uuid = session_uuid
         self.login_token_uuid = uuid
+        self.token_owns_keys = token_owns_keys
 
         login_config = {
-                        'session_uuid'  : session_uuid,
-                        'login_time'    : time.time(),
-                        'login_token'   : uuid,
+                        'session_uuid'      : session_uuid,
+                        'login_time'        : time.time(),
+                        'login_token'       : uuid,
+                        'token_owns_keys'   : token_owns_keys,
                     }
 
         login_token_uuid_dir = os.path.dirname(self.login_token_uuid_file)
@@ -645,6 +649,7 @@ class OfflineToken(object):
         # Get login token and login time.
         self.login_token_uuid = login_config['login_token']
         self.session_uuid = login_config['session_uuid']
+        self.token_owns_keys = login_config['token_owns_keys']
         login_time = login_config['login_time']
 
         if not stuff.is_uuid(self.login_token_uuid):
@@ -1223,6 +1228,38 @@ class OfflineToken(object):
             self.logger.debug(log_msg)
         except Exception as e:
             msg = _("Error writing key mode file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+
+    @property
+    def key_cache_time(self):
+        """ Read key cache time from file. """
+        # The file is only written if the server sent us a cache time.
+        # No file means no timeout, like a cache time of 0.
+        if not os.path.exists(self.key_cache_time_file):
+            return 0
+        try:
+            key_cache_time = int(filetools.read_file(self.key_cache_time_file))
+        except Exception as e:
+            msg = _("Error reading key cache time file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg) from e
+        return key_cache_time
+
+    @key_cache_time.setter
+    def key_cache_time(self, key_cache_time):
+        """ Save key cache time to file. """
+        try:
+            filetools.create_file(self.key_cache_time_file,
+                                str(key_cache_time),
+                                user=self.username,
+                                mode=0o600,
+                                user_acls=self.file_acls)
+            log_msg = _("Saved key cache time to file: {key_cache_time_file}", log=True)[1]
+            log_msg = log_msg.format(key_cache_time_file=self.key_cache_time_file)
+            self.logger.debug(log_msg)
+        except Exception as e:
+            msg = _("Error writing key cache time file: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
 

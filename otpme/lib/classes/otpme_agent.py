@@ -172,6 +172,8 @@ class OTPmeAgent(UnixDaemon):
         self.create_conf_file()
         # Time in seconds after agent will shutdown if its idle
         self.idle_timeout = 300
+        # Yubikey PIV handler timeout.
+        self.piv_timeout = None
         # Get timeout values from config (default
         # or overridden via command line switch).
         self.connect_timeout = config.connect_timeout
@@ -189,6 +191,7 @@ class OTPmeAgent(UnixDaemon):
         self.comm_queue = None
         self.piv_conn = None
         self.piv_session = None
+        self.piv_start = 0
         # Call parent class init to init UnixDaemon
         super().__init__("otpme-agent", pidfile)
 
@@ -201,6 +204,7 @@ class OTPmeAgent(UnixDaemon):
                 pass
         self.piv_conn = None
         self.piv_session = None
+        self.piv_start = 0
 
     def _check_piv(self):
         """ Check if PIV session is still alive. """
@@ -331,6 +335,7 @@ class OTPmeAgent(UnixDaemon):
             fd.write('#LOGFILE_ROTATE_SIZE="1024"\n')
             fd.write('#LOGFILE_MAX_ROTATE="10"\n')
             fd.write('#IDLE_TIMEOUT="30"\n')
+            fd.write('#YUBIKEY_PIV_TIMEOUT="300"\n')
             fd.close()
         files = {
                 agent_conf_file : 0o600,
@@ -364,6 +369,11 @@ class OTPmeAgent(UnixDaemon):
 
         try:
             self.idle_timeout = conf['IDLE_TIMEOUT']
+        except KeyError:
+            pass
+
+        try:
+            self.piv_timeout = conf['YUBIKEY_PIV_TIMEOUT']
         except KeyError:
             pass
 
@@ -1652,7 +1662,30 @@ class OTPmeAgent(UnixDaemon):
                 msg, log_msg = _("Error getting RSP.", log=True)
                 self.logger.critical(log_msg)
                 raise OTPmeException(msg) from e
+            # Get login session ID.
+            try:
+                session_id = self.login_sessions[login_pid]['session_id']
+            except Exception as e:
+                msg, log_msg = _("Error getting login user.", log=True)
+                self.logger.critical(log_msg)
+                raise OTPmeException(msg) from e
 
+            # Check if we can do SOTP signing.
+            try:
+                token_owns_keys = self.login_sessions[login_pid]['token_owns_keys']
+            except Exception:
+                token_owns_keys = False
+
+            sotp_sign_method = None
+            if token_owns_keys:
+                def sotp_sign_method(sotp):
+                    os.environ['OTPME_LOGIN_SESSION'] = session_id
+                    sotp_sign = stuff.sign_sotp(login_user,
+                                                sotp,
+                                                daemon=daemon,
+                                                key_mode=None,
+                                                encode=False)
+                    return sotp_sign
             # Connect to daemon.
             try:
                 daemon_conn = connections.get(daemon=daemon, realm=realm, site=site,
@@ -1660,6 +1693,7 @@ class OTPmeAgent(UnixDaemon):
                                             timeout=self.timeout, endpoint=False,
                                             use_agent=False, username=login_user,
                                             rsp=rsp, autoconnect=True,
+                                            sotp_sign_method=sotp_sign_method,
                                             auto_auth=True, allow_untrusted=True,
                                             sync_token_data=False)
             except AuthFailed as e:
@@ -1871,12 +1905,20 @@ class OTPmeAgent(UnixDaemon):
                         try:
                             start_thread(name=self.full_name,
                                         target=self.check_idled,
-                                        target_args=(login_pid, login_user,realm,site,),
+                                        target_args=(login_pid, login_user, realm, site,),
                                         daemon=True)
                         except Exception as e:
                             log_msg = _("Failed to start idled connection: {e}", log=True)[1]
                             log_msg = log_msg.format(e=e)
                             self.logger.warning(log_msg)
+                        # Set PIV timeout received from server.
+                        if self.piv_timeout is None:
+                            try:
+                                key_cache_time = self.login_sessions[login_pid]['key_cache_time']
+                            except Exception:
+                                key_cache_time = None
+                            if key_cache_time:
+                                self.piv_timeout = key_cache_time
 
                 elif command == "reneg":
                     # Try to renegotiate realm login session.
@@ -1929,6 +1971,7 @@ class OTPmeAgent(UnixDaemon):
                             else:
                                 message = _("Smartcard PIN verified.")
                                 status_code = status_codes.OK
+                                self.piv_start = time.monotonic()
 
                 elif command == "piv_check":
                     if self._check_piv():
@@ -2579,6 +2622,12 @@ class OTPmeAgent(UnixDaemon):
                 self.config_reload = False
                 log_msg = _("Finished config reload...", log=True)[1]
                 self.logger.info(log_msg)
+
+            if self.piv_timeout and self.piv_conn:
+                now = time.monotonic()
+                piv_age = now - self.piv_start
+                if piv_age > self.piv_timeout:
+                    self._close_piv()
 
             # FIXME: Changing the sleep time also affects the idle timer!
             time.sleep(1)

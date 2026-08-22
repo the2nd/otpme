@@ -25,6 +25,7 @@ table_headers = [
                 "childs",
                 "maxfail",
                 "reset",
+                "sotp_signing",
                 "(sessions",
                 "max",
                 "relogin",
@@ -52,6 +53,7 @@ def register():
                         'timeout_pass_on',
                         'session_timeout',
                         'sessions_enabled',
+                        'sotp_signing',
                         'unused_session_timeout',
                         'acl_inheritance_enabled',
                         ]
@@ -113,6 +115,10 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
         timeout_pass_on = group_data[ag_uuid]['timeout_pass_on'][0]
         sessions_enabled = group_data[ag_uuid]['sessions_enabled'][0]
         unused_session_timeout = group_data[ag_uuid]['unused_session_timeout'][0]
+        try:
+            sotp_signing = group_data[ag_uuid]['sotp_signing'][0]
+        except Exception:
+            sotp_signing = False
         try:
             relogin_timeout = group_data[ag_uuid]['relogin_timeout'][0]
         except Exception:
@@ -190,6 +196,14 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                     max_fail_reset = units.int2time(max_fail_reset,
                                                     time_unit="s")[0]
                 row.append(max_fail_reset)
+            else:
+                row.append("-")
+        # SOTP signing.
+        if "sotp_signing" in output_fields:
+            if check_acl("view:sotp_signing") \
+            or check_acl("enable:sotp_signing") \
+            or check_acl("disable:sotp_signing"):
+                row.append(sotp_signing)
             else:
                 row.append("-")
         # Sessions enabled.

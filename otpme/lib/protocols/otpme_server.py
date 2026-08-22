@@ -149,6 +149,11 @@ class OTPmeServer1(object):
             self.sotp_ag_auth = None
 
         try:
+            self.supports_sotp_signing
+        except Exception:
+            self.supports_sotp_signing = False
+
+        try:
             self.allow_sotp_reuse
         except Exception:
             self.allow_sotp_reuse = False
@@ -172,6 +177,8 @@ class OTPmeServer1(object):
         self.auth_share = None
         # Share instance loaded on preauth for SOTP signature checking.
         self.share_instance = None
+        # Object (share or accessgroup) that holds the sign public keys.
+        self.sotp_sign_object = None
         # Do SOTP signing?
         self.sotp_signing = False
 
@@ -903,10 +910,10 @@ class OTPmeServer1(object):
                 user_auth_response = self.authenticate_user(command, command_args)
                 auth_status = True
             except OTPmeException as e:
-                message, log_msg = _("Error authenticating user: {error}", log=True)
-                message = message.format(error=e)
+                log_msg = _("Error authenticating user: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
-                self.logger.critical(log_msg)
+                self.logger.warning(log_msg)
+                message = _("AUTH_FAILED", log=True)[1]
                 status = False
                 config.raise_exception()
                 return self.build_response(status, message, encrypt=False)
@@ -1218,6 +1225,48 @@ class OTPmeServer1(object):
             raise OTPmeException(msg)
         return share_instance
 
+    def get_accessgroup_instance(self, access_group):
+        """ Get accessgroup instance by name. """
+        ag_instance = backend.get_object(object_type="accessgroup",
+                                        realm=config.realm,
+                                        site=config.site,
+                                        name=access_group)
+        if not ag_instance:
+            msg = _("Unknown accessgroup: {access_group}")
+            msg = msg.format(access_group=access_group)
+            raise OTPmeException(msg)
+        return ag_instance
+
+    def set_sotp_signing(self, share=None):
+        """ Decide if the client has to sign the SOTP it authenticates with.
+
+        The object that guards the resource holds the sign public keys,
+        so it also decides: the share for a share request, else the
+        accessgroup we authenticate against. The accessgroup case only
+        applies to protocols that can handle a signed SOTP.
+        """
+        self.sotp_signing = False
+        self.sotp_sign_object = None
+        if share:
+            if not self.share_instance \
+            or self.share_instance.share_id != share:
+                self.share_instance = self.get_share_instance(share)
+            if self.share_instance.sotp_signing:
+                self.sotp_signing = True
+                self.sotp_sign_object = self.share_instance
+                return
+        else:
+            self.share_instance = None
+        if not self.supports_sotp_signing:
+            return
+        if not self.access_group:
+            return
+        ag_instance = self.get_accessgroup_instance(self.access_group)
+        if not ag_instance.sotp_signing:
+            return
+        self.sotp_signing = True
+        self.sotp_sign_object = ag_instance
+
     def build_preauth_response(self, challenge=None, ecdh_client_pub=None,
         username=None, login=False, logout=False, redirect=True,
         share=None, jwt_auth=False, need_token=False):
@@ -1395,9 +1444,7 @@ class OTPmeServer1(object):
                                                     ecdh_server_pub_pem)
             return preauth_response
 
-        if share:
-            self.share_instance = self.get_share_instance(share)
-            self.sotp_signing = self.share_instance.sotp_signing
+        self.set_sotp_signing(share)
 
         # If we do not need to check for valid user tokens we are done.
         if not need_token:
@@ -2044,14 +2091,7 @@ class OTPmeServer1(object):
         # signed. Not the one from preauth: the client could have done
         # its preauth without a share (or with one that does not
         # require signing) and authenticate for a protected share.
-        if share:
-            if not self.share_instance \
-            or self.share_instance.share_id != share:
-                self.share_instance = self.get_share_instance(share)
-            self.sotp_signing = self.share_instance.sotp_signing
-        else:
-            self.share_instance = None
-            self.sotp_signing = False
+        self.set_sotp_signing(share)
 
         # Try to get SOTP signature.
         try:
@@ -2074,13 +2114,14 @@ class OTPmeServer1(object):
                 msg = _("Unable to decode SOTP signature: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg) from e
-            # Load user public key. It has to come from the share and
-            # not from the user object: an attacker with access to the
-            # nodes of the users site could swap the key there.
-            sign_public_key = self.share_instance.get_sign_public_key(self.user.uuid)
+            # Load user public key. It has to come from the share (or
+            # accessgroup) and not from the user object: an attacker
+            # with access to the nodes of the users site could swap the
+            # key there.
+            sign_public_key = self.sotp_sign_object.get_sign_public_key(self.user.uuid)
             if not sign_public_key:
-                msg = _("Share misses sign public key of user: {user}")
-                msg = msg.format(user=self.user.name)
+                msg = _("Missing sign public key of user: {user}: {sign_object}")
+                msg = msg.format(user=self.user.name, sign_object=self.sotp_sign_object.oid)
                 raise OTPmeException(msg)
             try:
                 key = decode(sign_public_key, "base64")
@@ -2099,8 +2140,8 @@ class OTPmeServer1(object):
             if not verify_status:
                 msg = _("SOTP signature verification failed.")
                 raise OTPmeException(msg)
-            log_msg = _("SOTP signature verification successful: {user}: {share}", log=True)[1]
-            log_msg = log_msg.format(user=self.user.name, share=share)
+            log_msg = _("SOTP signature verification successful: {user}: {sign_object}", log=True)[1]
+            log_msg = log_msg.format(user=self.user.name, sign_object=self.sotp_sign_object.oid)
             self.logger.info(log_msg)
 
         # Set auth_mode.

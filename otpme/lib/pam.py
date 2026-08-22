@@ -1422,7 +1422,8 @@ class PamHandler(object):
             try:
                 agent_conn.set_login_token(self.offline_login_token.rel_path,
                                             self.offline_login_token.token_type,
-                                            self.offline_login_token.pass_type)
+                                            self.offline_login_token.pass_type,
+                                            self.offline_token.token_owns_keys)
             except Exception as e:
                 log_msg = _("Unable to set login token to otpme-agent: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
@@ -1441,7 +1442,8 @@ class PamHandler(object):
                                                 login_time=session['login_time'],
                                                 timeout=session['session_timeout'],
                                                 unused_timeout=session['session_unused_timeout'],
-                                                offline=session['offline_allowed'])
+                                                offline=session['offline_allowed'],
+                                                key_cache_time=self.offline_token.key_cache_time)
                         except Exception as e:
                             log_msg = _("Unable to add RSP to otpme-agent: {error}", log=True)[1]
                             log_msg = log_msg.format(error=e)

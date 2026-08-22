@@ -288,7 +288,7 @@ class AgentConn(object):
         return response
 
     def add_rsp(self, realm, site, rsp, slp, login_time, timeout, unused_timeout,
-        session_uuid=None, session_key=None, offline=False):
+        session_uuid=None, session_key=None, offline=False, key_cache_time=None):
         """ Add RSP to otpme-agent. """
         command_args = {
                         'realm'             : realm,
@@ -301,6 +301,7 @@ class AgentConn(object):
                         'login_time'        : login_time,
                         'timeout'           : timeout,
                         'unused_timeout'    : unused_timeout,
+                        'key_cache_time'    : key_cache_time,
                     }
         status, status_code, response = self.send("add_rsp", command_args)
         if status_code != status_codes.OK:
@@ -324,12 +325,13 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def set_login_token(self, login_token, login_token_type, login_pass_type):
+    def set_login_token(self, login_token, login_token_type, login_pass_type, token_owns_keys):
         """ Set login token to otpme-agent. """
         command_args = {
                         'login_token'       : login_token,
                         'login_token_type'  : login_token_type,
                         'login_pass_type'   : login_pass_type,
+                        'token_owns_keys'   : token_owns_keys,
                     }
         status, status_code, response = self.send("set_login_token", command_args)
         if status_code != status_codes.OK:

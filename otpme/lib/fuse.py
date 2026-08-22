@@ -32,10 +32,10 @@ from otpme.lib.pinentry.pynentry import get_new_password
 
 from otpme.lib.exceptions import *
 
-os.environ['FUSE_NAME'] = "fuse3"
+os.environ['FUSE_LIBRARY_NAME'] = "fuse3"
 
-#import mfusepy as fuse
-from otpme.lib.third_party import mfusepy as fuse
+import mfusepy as fuse
+#from otpme.lib.third_party import mfusepy as fuse
 
 diriv_cache = {}
 filesize_cache = {}
@@ -196,7 +196,7 @@ class OTPmeFS(fuse.Operations):
             agent_conn.close()
         sotp_sign_method = None
         if self.sotp_signing:
-            def sotp_sign_method():
+            def sotp_sign_method(sotp):
                 sotp_sign = stuff.sign_sotp(self.username,
                                             sotp,
                                             key_mode=None,

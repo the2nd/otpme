@@ -838,6 +838,7 @@ class YubikeypivToken(Token):
                                     site=config.site,
                                     return_type="instance")
             user = result[0]
+            user.keys_token = self.uuid
             user.sign_key_type = sign_key_type
             user.encrypt_key_type = encrypt_key_type
             sign_pub_b64 = encode(sign_public_key, "base64")

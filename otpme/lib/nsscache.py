@@ -15,6 +15,7 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import filetools
 from otpme.lib import nsswitch
+from otpme.lib.pidfile import is_running
 from otpme.lib.pidfile import pidfile_handler
 
 from otpme.lib.exceptions import *
@@ -219,6 +220,11 @@ def update_object(object_id, action):
                     user=config.user,
                     group=config.group,
                     mode=0o660)
+
+def status():
+    if is_running(config.nsscache_pidfile):
+        return True
+    return False
 
 @pidfile_handler(config.nsscache_pidfile, proc_name="nsscache")
 def update(realm, site, resync=False, cache_resync=False, lock=None):

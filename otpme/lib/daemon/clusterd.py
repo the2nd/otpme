@@ -2405,7 +2405,7 @@ class ClusterDaemon(OTPmeDaemon):
             # Handle node connections.
             self.handle_node_connections()
             # Handle nsscache sync.
-            if self.nsscache_sync.value:
+            if self.nsscache_sync.value and not nsscache.status():
                 # Skip nsscache sync if last object creation was within the last 30 seconds.
                 min_seconds = 10
                 now = time.time()

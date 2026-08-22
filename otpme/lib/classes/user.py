@@ -28,6 +28,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.idle import notify
 from otpme.lib import encryption
+from otpme.lib.humanize import units
 from otpme.lib.encryption import aes
 from otpme.lib import sign_key_cache
 from otpme.lib.audit import audit_log
@@ -106,6 +107,7 @@ read_value_acls = {
                         "session",
                         "auto_mount",
                         "auto_disable",
+                        "key_cache_time",
                         ],
             "dump"      : [
                         "photo",
@@ -134,6 +136,7 @@ write_value_acls = {
                     "edit"      : [
                                 "group",
                                 "key_mode",
+                                "key_cache_time",
                                 "private_key_pass",
                                 "sign_public_key",
                                 "encrypt_public_key",
@@ -591,6 +594,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_key_mode',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'key_cache_time'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_key_cache_time',
+                    'args'              : ['key_cache_time'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1632,6 +1644,10 @@ class User(OTPmeObject):
         # Users keys can be handled by the key script on client side or by this
         # class.
         self.key_mode = "client"
+        # Time in seconds otpme-agent may cache the users private key
+        # (e.g. keep the yubikey PIV handler open). 0 means no timeout,
+        # so the key stays cached for the lifetime of the agent.
+        self.key_cache_time = 0
         # User holds two asymmetric key pairs: a sign key (verify
         # signatures + derive_password slot) and an encrypt key (wrap
         # secrets for the user). Today both are RSA; later the sign
@@ -1643,6 +1659,8 @@ class User(OTPmeObject):
         self.encrypt_public_key = None
         self.sign_key_type = "rsa"
         self.encrypt_key_type = "rsa"
+        # Token that owns the users keys.
+        self.keys_token = None
         # Indicates if user auto-sign feature is enabled.
         self.autosign_enabled = False
         # The OTPmeScript used to handle users private key.
@@ -1677,6 +1695,7 @@ class User(OTPmeObject):
                             "AUTOSIGN_ENABLED",
                             "ALLOW_DISABLED_LOGIN",
                             "AUTO_MOUNT",
+                            "KEY_CACHE_TIME",
                             "OBJECT_CLASSES",
                             "homeDirectory",
                             "loginShell",
@@ -1699,6 +1718,7 @@ class User(OTPmeObject):
                             "AUTOSIGN_ENABLED",
                             "ALLOW_DISABLED_LOGIN",
                             "AUTO_MOUNT",
+                            "KEY_CACHE_TIME",
                             "OBJECT_CLASSES",
                             "USED_PASS_SALT",
                             "ACLS",
@@ -1759,6 +1779,13 @@ class User(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'KEY_CACHE_TIME'            : {
+                                                        'var_name'  : 'key_cache_time',
+                                                        'type'      : int,
+                                                        'default'   : 0,
+                                                        'required'  : False,
+                                                    },
+
                         'AUTOSIGN_ENABLED'          : {
                                                         'var_name'  : 'autosign_enabled',
                                                         'type'      : bool,
@@ -1803,6 +1830,12 @@ class User(OTPmeObject):
 
                         'ENCRYPT_KEY_TYPE'          : {
                                                         'var_name'  : 'encrypt_key_type',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+
+                        'KEYS_TOKEN'                : {
+                                                        'var_name'  : 'keys_token',
                                                         'type'      : str,
                                                         'required'  : False,
                                                     },
@@ -2591,6 +2624,56 @@ class User(OTPmeObject):
         if key_mode is None:
             key_mode = "client"
         return callback.ok(key_mode)
+
+    @check_acls(['edit:key_cache_time'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("change key cache time to {key_cache_time}")
+    def change_key_cache_time(
+        self,
+        key_cache_time: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Change how long otpme-agent may cache the users private key.
+
+        A value of 0 means no timeout, the key stays cached as long as
+        the agent runs. The agent gets the value with the login
+        session, so a change only takes effect on the next login.
+        """
+        try:
+            new_cache_time = units.time2int(key_cache_time, time_unit="s")
+        except Exception as e:
+            msg = _("Invalid value for key cache time: {error}")
+            msg = msg.format(error=e)
+            return callback.error(msg)
+
+        if new_cache_time < 0:
+            msg = _("Key cache time cannot be negative.")
+            return callback.error(msg)
+
+        if new_cache_time == self.key_cache_time:
+            msg = _("Users key cache time already set to {key_cache_time}")
+            msg = msg.format(key_cache_time=self.key_cache_time)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_key_cache_time",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        self.key_cache_time = new_cache_time
+
+        return self._cache(callback=callback)
 
     def get_sign_key_type(self, callback: JobCallback=default_callback, **kwargs):
         """ Get users sign key type. """
@@ -6734,6 +6817,14 @@ class User(OTPmeObject):
 
         if view_acl or edit_acl:
             lines.append(f"\tkey-mode:\t\t{self.key_mode}\n")
+
+        if view_acl or edit_acl:
+            if self.key_cache_time == 0:
+                key_cache_time = "unlimited"
+            else:
+                key_cache_time = units.int2time(self.key_cache_time,
+                                                time_unit="s")[0]
+            lines.append(f"\tkey-cache-time:\t\t{key_cache_time}\n")
 
         if view_acl or edit_acl:
             if self.sign_public_key:

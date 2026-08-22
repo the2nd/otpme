@@ -3892,7 +3892,7 @@ class OTPmeClient1(OTPmeClientBase):
         command_args['auth_type'] = self.auth_type
         if self.sotp_signing:
             try:
-                sotp_sign = self.sotp_sign_method()
+                sotp_sign = self.sotp_sign_method(password)
             except Exception as e:
                 msg = _("Failed to sign SOTP: {e}")
                 msg = msg.format(e=e)
@@ -4298,8 +4298,6 @@ class OTPmeClient1(OTPmeClientBase):
 
     def _add_login_session(self):
         """ Create login session file and add RSP to otpme-agent. """
-        # Indicates if we have to cache offline tokens.
-        cache_offline_tokens = False
         # Get SLP for this session.
         slp = self.auth_response['slp']
 
@@ -4307,8 +4305,12 @@ class OTPmeClient1(OTPmeClientBase):
         login_token = self.auth_response['login_token']
         login_token_type = self.auth_response['login_token_type']
         login_pass_type = self.auth_response['login_pass_type']
+        token_owns_keys = self.auth_response['login_token_owns_keys']
         try:
-            self.agent_conn.set_login_token(login_token, login_token_type, login_pass_type)
+            self.agent_conn.set_login_token(login_token,
+                                            login_token_type,
+                                            login_pass_type,
+                                            token_owns_keys)
         except Exception as e:
             log_msg = _("Error setting login token to otpme-agent: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -4388,30 +4390,50 @@ class OTPmeClient1(OTPmeClientBase):
             log_msg = log_msg.format(session_unused_timeout=session_unused_timeout)
             self.logger.debug(log_msg)
 
+        # Get key cache time.
+        try:
+            key_cache_time = self.auth_response['key_cache_time']
+        except KeyError:
+            key_cache_time = None
+
         # Do not add offline token on temp pass authentication.
         temp_pass_auth = self.auth_response['temp_pass_auth']
 
         # Check for offline tokens if requested.
-        if self.cache_login_tokens and not temp_pass_auth:
-            if offline_tokens:
-                if self._offline_token.pinned:
+        cache_offline_tokens = False
+        if not temp_pass_auth:
+            if self._offline_token.pinned:
+                if offline_tokens:
                     log_msg = _("Ignoring received offline tokens, keeping pinned tokens.", log=True)[1]
                     self.logger.info(log_msg)
-                else:
-                    log_msg = _("Caching of login tokens enabled and offline tokens received.", log=True)[1]
-                    self.logger.info(log_msg)
-                    cache_offline_tokens = True
-                    # Initialize offline token.
-                    self._offline_token.init()
-                    # Acquire offline token lock.
-                    self._offline_token.lock()
+            else:
+                log_msg = _("Caching of login tokens enabled and offline tokens received.", log=True)[1]
+                self.logger.info(log_msg)
+                # Initialize offline token.
+                self._offline_token.init()
+                # Acquire offline token lock.
+                self._offline_token.lock()
+                # Set offline token caching.
+                if self.cache_login_tokens:
+                    if offline_tokens:
+                        cache_offline_tokens = True
+
+            if key_cache_time is not None:
+                try:
+                    self._offline_token.key_cache_time = key_cache_time
+                except Exception as e:
+                    log_msg = _("Error saving key cache time: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
 
         # Decode offline tokens.
         if cache_offline_tokens:
             # Set login token before adding/decoding offline tokens. This is
             # required to get second factor tokens loaded.
             login_token_uuid = self.auth_response['login_token_uuid']
-            self._offline_token.set_login_token(login_token_uuid, session_uuid)
+            self._offline_token.set_login_token(login_token_uuid,
+                                                session_uuid,
+                                                token_owns_keys)
             try:
                 token_instances = self.decode_offline_token(login_token_uuid,
                                                             offline_tokens)
@@ -4444,7 +4466,8 @@ class OTPmeClient1(OTPmeClientBase):
                             login_time=login_time,
                             timeout=session_timeout,
                             unused_timeout=session_unused_timeout,
-                            offline=keep_offline_session)
+                            offline=keep_offline_session,
+                            key_cache_time=key_cache_time)
         except Exception as e:
             log_msg = _("Error adding RSP to otpme-agent: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)

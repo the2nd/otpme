@@ -172,6 +172,9 @@ Set key mode (client or server).
 .B get_key_mode \fIuser\fR
 Display current key mode.
 .TP
+.B key_cache_time \fIuser\fR \fItime\fR
+Set how long otpme-agent may cache the users private key, e.g. how long it keeps the yubikey PIV handler open after the PIN was entered. Accepts a plain number of seconds or a time string such as \fI5m\fR. The default \fI0\fR means no timeout, the key stays cached as long as the agent runs. The agent gets the value with the login session, so a change takes effect on the next login.
+.TP
 .B key_pass \fIuser\fR
 Change key passphrase.
 .TP

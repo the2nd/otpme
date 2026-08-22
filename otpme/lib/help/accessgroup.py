@@ -474,6 +474,30 @@ cmd_help = {
                                 },
                 },
 
+    'enable_sotp_signing'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup enable_sotp_signing {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Require clients to sign the SOTP they authenticate with.'),
+                                },
+                },
+
+    'disable_sotp_signing'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup disable_sotp_signing {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Do no longer require clients to sign their SOTP.'),
+                                },
+                },
+
+    'update_sign_public_keys'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup update_sign_public_keys {accessgroup} [username]'),
+                    'cmd'   :   '<|object|> [username]',
+                    '_help' :   {
+                                    'cmd'                   : _('Take over the current sign public keys of the token users.'),
+                                },
+                },
+
     'enable_timeout_pass_on'    : {
                     '_cmd_usage_help' : _('Usage: otpme-accessgroup enable_timeout_pass_on {accessgroup}'),
                     'cmd'   :   '<|object|>',

@@ -102,6 +102,14 @@ cmd_help = {
                                 },
                 },
 
+    'key_cache_time'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user key_cache_time {user} {time}'),
+                    'cmd'   :   '<|object|> <key_cache_time>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set time otpme-agent may cache the users private key (0 for unlimited)'),
+                                },
+                },
+
     'get_sign_key_type'    : {
                     '_cmd_usage_help' : _('Usage: otpme-user get_sign_key_type {user}'),
                     'cmd'   :   '<|object|>',

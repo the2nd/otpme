@@ -185,19 +185,51 @@ Disable share mount script.
 **get_share_key *share* *user***  
 Get encrypted share key for a user.
 
+## SOTP Signing
+
+With SOTP signing enabled a client has to sign the SOTP it authenticates
+with using the users sign private key. The share stores a copy of the
+sign public key of every user that has a token assigned, and the node
+verifies the signature against that copy. This keeps a user of another
+site from getting access with an SOTP alone: whoever controls the nodes
+of that site can produce a valid SOTP and can change the users public
+key there, but cannot touch the copy inside the share. Shares with SOTP
+signing do not support roles, because a role would bring in tokens whose
+users sign public keys are missing.
+
+**enable_sotp_signing *share***  
+Require clients to sign the SOTP they authenticate with. Only possible
+if no role is assigned to the share and all users with a token assigned
+have a sign public key. Their keys are copied into the share.
+
+**disable_sotp_signing *share***  
+Do no longer require clients to sign their SOTP. The sign public keys
+stored in the share are removed with it.
+
+**update_sign_public_keys *share* \[*username*\]**  
+Take over the current sign public keys of the users that have a token
+assigned, for all of them or only for *username*. A user who generates a
+new key pair loses access until this is run, which is on purpose:
+updating the copy automatically would hand the users site the control
+over it that the copy is meant to take away. Keys of users without a
+token on the share are removed.
+
 ## Token and Role Management
 
 **add_token *share* *token_path***  
-Add a token to the share.
+Add a token to the share. With SOTP signing enabled the sign public key
+of the tokens user is stored in the share.
 
 **remove_token *share* *token_path***  
-Remove a token from the share.
+Remove a token from the share. The users sign public key is removed with
+their last token, like the share key of an encrypted share.
 
 **list_tokens *share***  
 List tokens assigned to the share.
 
 **add_role *share* *role***  
-Add a role to the share.
+Add a role to the share. Not supported by encrypted shares and by shares
+with SOTP signing enabled.
 
 **remove_role *share* *role***  
 Remove a role from the share.

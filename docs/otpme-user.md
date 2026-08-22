@@ -174,6 +174,14 @@ Set key mode (client or server).
 **get_key_mode *user***  
 Display current key mode.
 
+**key_cache_time *user* *time***  
+Set how long otpme-agent may cache the users private key, e.g. how long
+it keeps the yubikey PIV handler open after the PIN was entered. Accepts
+a plain number of seconds or a time string such as *5m*. The default *0*
+means no timeout, the key stays cached as long as the agent runs. The
+agent gets the value with the login session, so a change takes effect on
+the next login.
+
 **key_pass *user***  
 Change key passphrase.
 

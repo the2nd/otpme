@@ -2020,7 +2020,7 @@ def decrypt_share_key(username, encrypted_share_key,
     return decrypted_share_key
 
 def sign_sotp(username, sotp, key_mode, share=None,
-    encode=True, disable_ctrl_c=False):
+    daemon=None, encode=True, disable_ctrl_c=False):
     import base64
     # Make sure sotp is bytes.
     if isinstance(sotp, str):
@@ -2033,6 +2033,10 @@ def sign_sotp(username, sotp, key_mode, share=None,
     # Add key script reason.
     if share is not None:
         reason = f"Share auth: {share}"
+        script_command.append("--reason")
+        script_command.append(reason)
+    if daemon is not None:
+        reason = f"Daemon auth: {daemon}"
         script_command.append("--reason")
         script_command.append(reason)
     # Run key script.

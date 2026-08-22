@@ -35,6 +35,7 @@ from otpme.lib.protocols import status_codes
 from otpme.lib.job.otpme_job import OTPmeJob
 from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.classes.site import get_site_admin_blacklist
 from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
 
 from otpme.lib.exceptions import *
@@ -96,6 +97,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Autodetect in auth handler if SOTP should be checked.
         self.allow_sotp_auth = None
         self.sotp_ag_auth = False
+        self.supports_sotp_signing = True
         # Will hold all running jobs
         self.jobs = {}
         self.running_jobs = {}
@@ -2738,7 +2740,6 @@ class OTPmeMgmtP1(OTPmeServer1):
         return self.build_response(True, response)
 
     def dump_object(self, subcommand, command_args):
-        from otpme.lib.classes.site import get_site_admin_blacklist
         try:
             object_id = command_args['object_id']
             object_id = oid.get(object_id=object_id)
@@ -3313,7 +3314,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                         instance=True)
             if not session_oid:
                 status = False
-                message = _("Permission denied.")
+                message = "AUTH_FAILED"
                 return self.build_response(status, message)
 
         # Handle impersonate token.
@@ -3350,6 +3351,14 @@ class OTPmeMgmtP1(OTPmeServer1):
                     message = message.format(token=impersonate_token)
                     return self.build_response(False, message)
                 if impersonate_token.uuid == config.admin_token_uuid:
+                    message = _("Permission denied.")
+                    return self.build_response(False, message)
+                # Check site admin blacklist.
+                site_admin_blacklist = get_site_admin_blacklist()
+                if impersonate_token.uuid in site_admin_blacklist:
+                    message = _("Permission denied.")
+                    return self.build_response(False, message)
+                if impersonate_token.owner_uuid in site_admin_blacklist:
                     message = _("Permission denied.")
                     return self.build_response(False, message)
                 if impersonate_token.uuid == auth_token.uuid:

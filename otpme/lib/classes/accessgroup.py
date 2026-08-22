@@ -59,6 +59,7 @@ read_value_acls = {
                             "child_groups",
                             "child_sessions",
                             "sessions_enabled",
+                            "sotp_signing",
                             "timeout_pass_on",
                             "max_fail",
                             "max_fail_reset",
@@ -99,6 +100,7 @@ write_value_acls = {
                             "config",
                             ],
                 "edit"      : [
+                            "sign_public_keys",
                             "max_fail",
                             "max_fail_reset",
                             "max_sessions",
@@ -108,10 +110,12 @@ write_value_acls = {
                             ],
                 "enable"    : [
                             "sessions",
+                            "sotp_signing",
                             "timeout_pass_on",
                             ],
                 "disable"   : [
                             "sessions",
+                            "sotp_signing",
                             "timeout_pass_on",
                             ],
 }
@@ -321,6 +325,31 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_sessions',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_sotp_signing'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_sotp_signing'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'update_sign_public_keys'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'update_sign_public_keys',
+                    'oargs'             : ['username'],
                     'job_type'          : 'process',
                     },
                 },
@@ -887,6 +916,9 @@ def register_hooks():
     config.register_auth_on_action_hook("accessgroup", "change_max_fail_reset")
     config.register_auth_on_action_hook("accessgroup", "enable_sessions")
     config.register_auth_on_action_hook("accessgroup", "disable_sessions")
+    config.register_auth_on_action_hook("accessgroup", "enable_sotp_signing")
+    config.register_auth_on_action_hook("accessgroup", "disable_sotp_signing")
+    config.register_auth_on_action_hook("accessgroup", "update_sign_public_keys")
     config.register_auth_on_action_hook("accessgroup", "enable_timeout_pass_on")
     config.register_auth_on_action_hook("accessgroup", "disable_timeout_pass_on")
     config.register_auth_on_action_hook("accessgroup", "set_config_parameter")
@@ -977,6 +1009,8 @@ class AccessGroup(OTPmeObject):
         self.acl_inheritance_enabled = False
         self.sessions_enabled = False
         self.timeout_pass_on = False
+        # Require the client to sign the SOTP it authenticates with.
+        self.sotp_signing = False
 
         self._sync_fields = {
                     'host'  : {
@@ -994,6 +1028,8 @@ class AccessGroup(OTPmeObject):
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "EXTENSION_ATTRIBUTES",
+                            "SOTP_SIGNING",
+                            "SIGN_PUBLIC_KEYS",
                             "ROLES",
                             "TOKENS",
                             ]
@@ -1012,6 +1048,18 @@ class AccessGroup(OTPmeObject):
                         'PASS_ON_TIMEOUTS'          : {
                                                         'var_name'  : 'timeout_pass_on',
                                                         'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+
+                        'SOTP_SIGNING'              : {
+                                                        'var_name'  : 'sotp_signing',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+
+                        'SIGN_PUBLIC_KEYS'          : {
+                                                        'var_name'  : 'sign_public_keys',
+                                                        'type'      : dict,
                                                         'required'  : False,
                                                     },
 
@@ -1930,6 +1978,402 @@ class AccessGroup(OTPmeObject):
         self.update_index("timeout_pass_on", self.timeout_pass_on)
         return self._cache(callback=callback)
 
+    def get_sign_public_key(self, user_uuid: str):
+        """ Get users sign public key stored in this accessgroup.
+
+        The key has to come from the accessgroup and not from the user
+        object: the users site may be a different one and we do not
+        want it to be able to swap the key that guards our resources.
+        """
+        try:
+            return self.sign_public_keys[user_uuid]
+        except KeyError:
+            return None
+
+    def add_sign_public_key(
+        self,
+        user,
+        callback: JobCallback=default_callback,
+        ):
+        """ Store users sign public key in the accessgroup. """
+        if not user.sign_public_key:
+            msg = _("User misses sign public key: {user_name}")
+            msg = msg.format(user_name=user.name)
+            return callback.error(msg)
+        if self.sign_public_keys.get(user.uuid) == user.sign_public_key:
+            return True
+        self.sign_public_keys[user.uuid] = user.sign_public_key
+        return True
+
+    def del_sign_public_key(
+        self,
+        token_uuid: str,
+        callback: JobCallback=default_callback,
+        ):
+        """ Remove users sign public key if their last token was removed.
+
+        The key stays as long as any token of the user is still
+        assigned to the accessgroup.
+        """
+        token = backend.get_object(object_type="token", uuid=token_uuid)
+        if not token:
+            return True
+        user_uuid = token.owner_uuid
+        if user_uuid not in self.sign_public_keys:
+            return True
+        user = backend.get_object(object_type="user", uuid=user_uuid)
+        if user:
+            for x_uuid in user.get_tokens():
+                if x_uuid not in self.tokens:
+                    continue
+                msg = _("Not removing sign public key because of other assigned token.")
+                callback.send(msg)
+                return True
+        self.sign_public_keys.pop(user_uuid)
+        return True
+
+    @check_acls(['enable:sotp_signing'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("enable SOTP signing")
+    def enable_sotp_signing(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Require clients to sign the SOTP they authenticate with. """
+        if self.sotp_signing:
+            return callback.error(_("SOTP signing already enabled."))
+
+        # A role would bring in tokens without us noticing, so their
+        # users sign public keys would be missing.
+        if self.roles:
+            msg = _("SOTP signing does not support roles. Please remove all roles from the accessgroup first.")
+            return callback.error(msg)
+
+        # Get sign public keys of all users with a token assigned.
+        group_users = self.get_token_users(return_type="instance")
+        missing_keys = []
+        for user in group_users:
+            if user.sign_public_key:
+                continue
+            missing_keys.append(user.name)
+        if missing_keys:
+            msg = _("Users without sign public key: {user_names}")
+            msg = msg.format(user_names=",".join(sorted(missing_keys)))
+            return callback.error(msg)
+
+        msg = _("Enable SOTP signing for accessgroup '{group_name}'? Clients without a sign key cannot authenticate anymore.: ")
+        msg = msg.format(group_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_sotp_signing",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        for user in group_users:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+
+        self.sotp_signing = True
+
+        self.update_index('sotp_signing', self.sotp_signing)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:sotp_signing'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("disable SOTP signing")
+    def disable_sotp_signing(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Do no longer require clients to sign their SOTP. """
+        if not self.sotp_signing:
+            return callback.error(_("SOTP signing already disabled."))
+
+        msg = _("Disable SOTP signing for accessgroup '{group_name}'?: ")
+        msg = msg.format(group_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_sotp_signing",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # The stored keys are only used for SOTP signing. Enabling it
+        # again reads them from the users anyway.
+        if self.sign_public_keys:
+            for user_uuid in list(self.sign_public_keys):
+                self.sign_public_keys.pop(user_uuid)
+            self.set_changelog("removed sign public keys")
+
+        self.sotp_signing = False
+
+        self.update_index('sotp_signing', self.sotp_signing)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sign_public_keys'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("update sign public keys")
+    def update_sign_public_keys(
+        self,
+        username: Union[str,None]=None,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Take over the current sign public keys of the token users.
+
+        A user that generates a new key pair cannot reach the copy in
+        the accessgroup, so their access breaks until someone with
+        write access to the accessgroup takes over the new key. That is
+        on purpose: updating the copy automatically (e.g. from a hook on
+        the user) would hand the users site exactly the control the copy
+        is meant to take away from it.
+        """
+        if not self.sotp_signing:
+            msg = _("SOTP signing not enabled.")
+            return callback.error(msg)
+
+        all_group_users = self.get_token_users(return_type="instance")
+        group_users = all_group_users
+        if username is not None:
+            group_users = []
+            for user in all_group_users:
+                if user.name != username:
+                    continue
+                group_users.append(user)
+            if not group_users:
+                msg = _("User does not have a token assigned to this accessgroup: {user_name}")
+                msg = msg.format(user_name=username)
+                return callback.error(msg)
+
+        # Users whose key differs from the one we have.
+        update_users = []
+        missing_keys = []
+        for user in group_users:
+            if not user.sign_public_key:
+                missing_keys.append(user.name)
+                continue
+            if self.sign_public_keys.get(user.uuid) == user.sign_public_key:
+                continue
+            update_users.append(user)
+
+        if username is not None and missing_keys:
+            msg = _("User misses sign public key: {user_name}")
+            msg = msg.format(user_name=username)
+            return callback.error(msg)
+
+        # Keys without a token in the accessgroup. Adding and removing
+        # tokens keeps them in sync, so this is only for leftovers (e.g.
+        # from a token that was deleted instead of removed).
+        orphan_uuids = []
+        if username is None:
+            group_user_uuids = []
+            for user in all_group_users:
+                group_user_uuids.append(user.uuid)
+            for user_uuid in self.sign_public_keys:
+                if user_uuid in group_user_uuids:
+                    continue
+                orphan_uuids.append(user_uuid)
+
+        for user_name in sorted(missing_keys):
+            msg = _("User misses sign public key: {user_name}")
+            msg = msg.format(user_name=user_name)
+            callback.send(msg)
+
+        if not update_users and not orphan_uuids:
+            msg = _("Sign public keys are up to date.")
+            return callback.ok(msg)
+
+        update_names = []
+        for user in update_users:
+            update_names.append(user.name)
+        if orphan_uuids:
+            msg = _("Removing sign public keys without a token: {key_count}")
+            msg = msg.format(key_count=len(orphan_uuids))
+            callback.send(msg)
+
+        if update_names:
+            msg = _("Update sign public keys of accessgroup '{group_name}'? Users: {user_names}: ")
+            msg = msg.format(group_name=self.name, user_names=",".join(sorted(update_names)))
+        else:
+            msg = _("Update sign public keys of accessgroup '{group_name}'?: ")
+            msg = msg.format(group_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("update_sign_public_keys",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        for user in update_users:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+        for user_uuid in orphan_uuids:
+            self.sign_public_keys.pop(user_uuid)
+
+        detail = f"updated {len(update_users)} sign public key(s), removed {len(orphan_uuids)}"
+        self.set_changelog(detail)
+
+        return self._cache(callback=callback)
+
+    @object_lock()
+    def add_token(
+        self,
+        token_path: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add token to accessgroup. """
+        user = None
+        if self.sotp_signing:
+            if not "/" in token_path:
+                msg = _("Invalid token path: {token_path}")
+                msg = msg.format(token_path=token_path)
+                return callback.error(msg)
+            token_user = token_path.split("/")[0]
+            result = backend.search(object_type="user",
+                                    attribute="name",
+                                    value=token_user,
+                                    realm=config.realm,
+                                    return_type="instance")
+            if not result:
+                msg = _("Unknown user: {token_user}")
+                msg = msg.format(token_user=token_user)
+                return callback.error(msg)
+            user = result[0]
+            # Refuse the token before the parent class adds it. Without
+            # a key its user cannot authenticate anyway.
+            if not user.sign_public_key:
+                msg = _("User misses sign public key: {user_name}")
+                msg = msg.format(user_name=user.name)
+                return callback.error(msg)
+
+        # Add token by parent class.
+        result = super().add_token(token_path=token_path,
+                                callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        # The parent class cached the object for writing, so the key we
+        # add here goes to the backend with it.
+        if user:
+            if not self.add_sign_public_key(user, callback=callback):
+                return callback.error()
+
+        return result
+
+    @object_lock()
+    def remove_token(
+        self,
+        token_path: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove token from accessgroup. """
+        token_uuid = None
+        if self.sotp_signing:
+            token_uuid = self.get_assigned_token_uuid(token_path)
+
+        # Remove token by parent class.
+        result = super().remove_token(token_path=token_path,
+                                    callback=callback, **kwargs)
+
+        if not result:
+            return result
+
+        # The parent class cached the object for writing, so the key we
+        # remove here goes to the backend with it.
+        if token_uuid:
+            self.del_sign_public_key(token_uuid, callback=callback)
+
+        return result
+
+    def get_assigned_token_uuid(self, token_path: str):
+        """ Get UUID of an assigned token by path or UUID. """
+        for token_uuid in self.tokens:
+            if token_uuid == token_path:
+                return token_uuid
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                return_type="uuid")
+        if not result:
+            return None
+        token_uuid = result[0]
+        if token_uuid not in self.tokens:
+            return None
+        return token_uuid
+
+    @object_lock()
+    def add_role(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add role to accessgroup. """
+        # A role would bring in tokens without us noticing, so their
+        # users sign public keys would be missing.
+        if self.sotp_signing:
+            msg = _("Accessgroups with SOTP signing do not support roles.")
+            return callback.error(msg)
+        return super().add_role(*args, callback=callback, **kwargs)
+
+    @object_lock()
+    def remove_role(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove role from accessgroup. """
+        if self.sotp_signing:
+            msg = _("Accessgroups with SOTP signing do not support roles.")
+            return callback.error(msg)
+        return super().remove_role(*args, callback=callback, **kwargs)
+
     @object_lock(full_lock=True)
     @backend.transaction
     @object_changelog("rename from {self.name} to {new_name}")
@@ -1975,6 +2419,7 @@ class AccessGroup(OTPmeObject):
         self.add_index("session_timeout", self.session_timeout)
         self.add_index("timeout_pass_on", self.timeout_pass_on)
         self.add_index("sessions_enabled", self.sessions_enabled)
+        self.add_index("sotp_signing", self.sotp_signing)
         self.add_index("relogin_timeout", self.relogin_timeout)
         self.add_index("unused_session_timeout", self.unused_session_timeout)
         return OTPmeObject.add(self, verbose_level=verbose_level,

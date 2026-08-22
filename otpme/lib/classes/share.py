@@ -998,6 +998,9 @@ def register():
     config.register_auth_on_action_hook("share", "disable_mount_script")
     config.register_auth_on_action_hook("share", "change_mount_script")
     config.register_auth_on_action_hook("share", "show_config_parameters")
+    config.register_auth_on_action_hook("share", "enable_sotp_signing")
+    config.register_auth_on_action_hook("share", "disable_sotp_signing")
+    config.register_auth_on_action_hook("share", "update_sign_public_keys")
 
 def register_hooks():
     config.register_auth_on_action_hook("share", "set_config_parameter")

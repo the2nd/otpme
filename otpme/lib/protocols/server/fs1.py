@@ -60,6 +60,7 @@ class OTPmeFsP1(OTPmeFsServer1):
         # Allow auth via SOTP.
         self.allow_sotp_auth = True
         self.sotp_ag_auth = False
+        self.supports_sotp_signing = True
         # No additional encryption for fsd.
         self.encrypt_session = False
         # Instructs parent class to require a client certificate.

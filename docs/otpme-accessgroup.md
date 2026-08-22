@@ -53,17 +53,19 @@ Re-index the access group to fix potential index problems.
 
 **add_token *accessgroup* *token_path***  
 Add a token to the access group. Tokens in the group are authorized to
-access resources using this group.
+access resources using this group. With SOTP signing enabled the sign
+public key of the tokens user is stored in the access group.
 
 **remove_token *accessgroup* *token_path***  
-Remove a token from the access group.
+Remove a token from the access group. The users sign public key is
+removed with their last token.
 
 **list_tokens *accessgroup***  
 List tokens assigned to the access group.
 
 **add_role *accessgroup* *role***  
 Add a role to the access group. All tokens with this role are
-authorized.
+authorized. Not supported by access groups with SOTP signing enabled.
 
 **remove_role *accessgroup* *role***  
 Remove a role from the access group.
@@ -117,6 +119,39 @@ Pass timeout values to child sessions.
 
 **disable_timeout_pass_on *accessgroup***  
 Do not pass timeout values to child sessions.
+
+## SOTP Signing
+
+With SOTP signing enabled a client has to sign the SOTP it authenticates
+with using the users sign private key. The access group stores a copy of
+the sign public key of every user that has a token assigned, and the
+node verifies the signature against that copy. This keeps a user of
+another site from authenticating with an SOTP alone: whoever controls
+the nodes of that site can produce a valid SOTP and can change the users
+public key there, but cannot touch the copy inside the access group.
+Access groups with SOTP signing do not support roles, because a role
+would bring in tokens whose users sign public keys are missing. Only
+daemons that can handle a signed SOTP enforce this, currently
+**otpme-mgmtd**(1).
+
+**enable_sotp_signing *accessgroup***  
+Require clients to sign the SOTP they authenticate with. Only possible
+if no role is assigned to the access group and all users with a token
+assigned have a sign public key. Their keys are copied into the access
+group. Note that a token which is only valid through a parent access
+group has no key stored and can no longer authenticate.
+
+**disable_sotp_signing *accessgroup***  
+Do no longer require clients to sign their SOTP. The sign public keys
+stored in the access group are removed with it.
+
+**update_sign_public_keys *accessgroup* \[*username*\]**  
+Take over the current sign public keys of the users that have a token
+assigned, for all of them or only for *username*. A user who generates a
+new key pair loses access until this is run, which is on purpose:
+updating the copy automatically would hand the users site the control
+over it that the copy is meant to take away. Keys of users without a
+token in the access group are removed.
 
 ## Timeout Configuration
 

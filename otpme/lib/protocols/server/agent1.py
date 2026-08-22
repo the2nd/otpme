@@ -857,6 +857,12 @@ class OTPmeAgentP1(object):
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
 
+            try:
+                self.token_owns_keys = command_args['token_owns_keys']
+            except Exception:
+                message = "AGENT_INCOMPLETE_COMMAND"
+                status = False
+
             if self.login_token:
                 log_msg = _("Setting login token for user '{user}' (PID: {pid}).", log=True)[1]
                 log_msg = log_msg.format(user=self.login_user, pid=self.login_pid)
@@ -866,6 +872,7 @@ class OTPmeAgentP1(object):
                     self.session['login_token'] = self.login_token
                     self.session['login_token_type'] = self.login_token_type
                     self.session['login_pass_type'] = self.login_pass_type
+                    self.session['token_owns_keys'] = self.token_owns_keys
                     self.login_sessions[self.login_pid] = self.session
                 finally:
                     session_lock.release_lock()
@@ -1004,6 +1011,11 @@ class OTPmeAgentP1(object):
             except Exception:
                 status = False
                 message = "Missing session key."
+            try:
+                key_cache_time = command_args['key_cache_time']
+            except Exception:
+                status = False
+                message = "Missing key cache time."
 
             if status:
                 if realm == self.realm and site == self.site:
@@ -1059,6 +1071,8 @@ class OTPmeAgentP1(object):
                 self.session['site'] = site
                 # Add session public key.
                 self.session['session_key'] = session_key
+                # Private key (yubikey piv) cache time.
+                self.session['key_cache_time'] = key_cache_time
                 # Update login session.
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
