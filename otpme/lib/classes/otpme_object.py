@@ -9433,7 +9433,7 @@ class OTPmeObject(OTPmeBaseObject):
         """ Add default policies to object. """
         # Sites do not inherit policies.
         if self.type == "site":
-            return
+            return callback.ok()
         # Inherit policicies based on DefaultPolicies().
         if self.type == "unit":
             if self.unit_uuid:
@@ -9454,7 +9454,7 @@ class OTPmeObject(OTPmeBaseObject):
             parent_uuid = self.unit_uuid
 
         if not parent_uuid:
-            return
+            return callback.ok()
 
         parent = backend.get_object(uuid=parent_uuid,
                                 object_type=parent_type)
@@ -9467,11 +9467,20 @@ class OTPmeObject(OTPmeBaseObject):
                 x_policy = backend.get_object(uuid=x, object_type="policy")
                 if x_policy.uuid in self.policies:
                     continue
-                self.add_policy(x_policy.name,
-                                force=True,
-                                verify_acls=False,
-                                check_permissions=False,
-                                callback=callback)
+                add_status = self.add_policy(x_policy.name,
+                                            force=True,
+                                            verify_acls=False,
+                                            check_permissions=False,
+                                            callback=callback)
+                # A failed policy assignment must not pass silently. The
+                # object would else end up without the policy (e.g. a user
+                # without the token ACLs policy).
+                if not add_status:
+                    msg = _("Failed to add default policy '{policy_name}' to {object_type} '{object_name}'.")
+                    msg = msg.format(policy_name=x_policy.name,
+                                    object_type=self.type,
+                                    object_name=self.name)
+                    return callback.error(msg)
         return self._cache(callback=callback)
 
     def _run_parent_object_policies(
@@ -9777,7 +9786,10 @@ class OTPmeObject(OTPmeBaseObject):
                                         callback=callback)
 
         # Add default policies.
-        self.add_default_policies(callback=callback)
+        if not self.add_default_policies(callback=callback):
+            msg = _("Unable to add default policies to {object_type} '{object_name}'.")
+            msg = msg.format(object_type=self.type, object_name=self.name)
+            return callback.error(msg)
 
         # Inherit ACLs. Use force because on object add all objects will
         # inherit ACLs.

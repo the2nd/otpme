@@ -4984,7 +4984,16 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 # We create base objects. So no user questions.
                 policy_method_args['force'] = True
-                policy_method(verify_acls=False, **policy_method_args)
+                method_status = policy_method(verify_acls=False,
+                                            **policy_method_args)
+                # A base policy that is not configured completely must not
+                # pass silently.
+                if not method_status:
+                    msg = _("Failed to configure base policy '{policy_name}': {method_name}: {method_args}")
+                    msg = msg.format(policy_name=policy.name,
+                                    method_name=method_name,
+                                    method_args=x[0][method_name])
+                    return callback.error(msg)
 
         # Write objects.
         callback.write_modified_objects()
@@ -5464,7 +5473,9 @@ class Site(OTPmeObject):
         self.add_object_templates(callback=callback)
 
         # Run base policies post methods.
-        self.add_base_policies(callback=callback)
+        if not self.add_base_policies(callback=callback):
+            msg = _("Problem adding base policies.")
+            return callback.error(msg)
         for policy in self._base_policies_post_methods:
             post_methods = self._base_policies_post_methods[policy]
             for x in post_methods:
@@ -5474,7 +5485,16 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 # We create base objects. So no user questions.
                 policy_method_args['force'] = True
-                policy_method(verify_acls=False, **policy_method_args)
+                method_status = policy_method(verify_acls=False,
+                                            **policy_method_args)
+                # A base policy that is not configured completely must not
+                # pass silently.
+                if not method_status:
+                    msg = _("Failed to configure base policy '{policy_name}': {method_name}: {method_args}")
+                    msg = msg.format(policy_name=policy.name,
+                                    method_name=method_name,
+                                    method_args=x[0][method_name])
+                    return callback.error(msg)
 
         # Add default policies to base policies.
         base_policies = config.get_base_objects("policy")
@@ -5486,7 +5506,10 @@ class Site(OTPmeObject):
             if not result:
                 continue
             policy = result[0]
-            policy.add_default_policies(callback=callback)
+            if not policy.add_default_policies(callback=callback):
+                msg = _("Failed to add default policies to policy '{policy_name}'.")
+                msg = msg.format(policy_name=policy.name)
+                return callback.error(msg)
 
         # Write objects.
         callback.write_modified_objects()
@@ -5611,11 +5634,23 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 # We create base objects. So no user questions.
                 policy_method_args['force'] = True
-                policy_method(verify_acls=False, **policy_method_args)
+                method_status = policy_method(verify_acls=False,
+                                            **policy_method_args)
+                # A base policy that is not configured completely must not
+                # pass silently. It would else e.g. result in a policy that
+                # adds no default policies to new objects.
+                if not method_status:
+                    msg = _("Failed to configure base policy '{policy_name}': {method_name}: {method_args}")
+                    msg = msg.format(policy_name=policy.name,
+                                    method_name=method_name,
+                                    method_args=x[0][method_name])
+                    return callback.error(msg)
 
         # Write objects.
         callback.write_modified_objects()
         cache.flush()
+
+        return callback.ok()
 
     @object_lock(full_lock=True)
     def add_base_groups(self, callback: JobCallback=default_callback):

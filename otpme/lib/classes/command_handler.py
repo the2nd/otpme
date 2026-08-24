@@ -735,6 +735,9 @@ class CommandHandler(object):
             if command == "role":
                 register_module("otpme.lib.classes.role")
                 register_module("otpme.lib.cli.role")
+            if command == "script":
+                register_module('otpme.lib.classes.script')
+                register_module('otpme.lib.cli.script')
             if command == "policy":
                 from otpme.lib.register import register_modules
                 # Register modules.

@@ -48,11 +48,27 @@ modules = [
 	'otpme.lib.classes.data_objects',
     ]
 
+def dedup_modules(module_list):
+    """ Remove duplicates from module list without changing the order.
+
+    We must not use set() here. Its iteration order depends on the hash
+    of the module names which python randomizes per process. This would
+    make the registration order of modules without a dependency on each
+    other random.
+    """
+    modules_deduped = []
+    for x in module_list:
+        if x in modules_deduped:
+            continue
+        modules_deduped.append(x)
+    return modules_deduped
+
 def load_mod_files():
     """ Return modules in register order. """
     from otpme.lib import config
     register_dir = os.path.join(config.otpme_lib_dir, "register")
-    mod_files = glob.glob(f"{register_dir}/*")
+    # Sort to get a stable order (glob() returns the directory order).
+    mod_files = sorted(glob.glob(f"{register_dir}/*"))
     module_list = []
     for x in mod_files:
         if x.endswith(".py"):
@@ -73,7 +89,6 @@ def load_mod_files():
             msg = msg.format(x, mod_name)
             raise OTPmeException(msg)
         module_list.append(mod_name)
-    module_list = list(set(module_list))
     return module_list
 
 def get_mod_deps(mod):
@@ -108,8 +123,38 @@ def get_mod_deps(mod):
         msg = _("Missing {} in module: {}")
         msg = msg.format(REGISTER_AFTER, mod)
         raise OTPmeException(msg) from None
+    after = expand_package_deps(after)
     _mod_deps_cache[mod] = (before, after)
     return before, after
+
+def expand_package_deps(mod_list):
+    """ Expand package modules to the modules they register.
+
+    A package (e.g. otpme.lib.classes) registers the modules of its
+    'modules' list. But it is marked as registered before its own
+    register() has finished. So a nested registration that depends on
+    the package via REGISTER_AFTER would not pull in the modules that
+    are still pending. We add them here to get a correct order.
+    """
+    mods_expanded = []
+    for x in mod_list:
+        mods_expanded.append(x)
+        try:
+            x_module = importlib.import_module(x)
+        except ModuleNotFoundError:
+            continue
+        try:
+            x_modules = getattr(x_module, "modules")
+        except AttributeError:
+            continue
+        # Make sure we got a module list and not some other attribute.
+        if not isinstance(x_modules, list):
+            continue
+        for x_mod in x_modules:
+            if x_mod in mods_expanded:
+                continue
+            mods_expanded.append(x_mod)
+    return mods_expanded
 
 def get_modules(_modules):
     """ Return all modules in register order. """
@@ -123,7 +168,7 @@ def get_dep_tree(module_list, seen=None):
     if seen is None:
         seen = []
     order_data = {}
-    module_list = set(module_list)
+    module_list = dedup_modules(module_list)
     for mod_name in module_list:
         if mod_name in seen:
             msg = _("Circular dependency detected: {}: {}")
@@ -146,7 +191,7 @@ def get_dep_tree(module_list, seen=None):
 def sort_modules(module_list):
     """ Return modules in register order. """
     from otpme.lib import stuff
-    module_list = set(module_list)
+    module_list = dedup_modules(module_list)
     order_data = get_dep_tree(module_list)
     ordered_mods = stuff.order_data_by_deps(order_data)
     return ordered_mods
