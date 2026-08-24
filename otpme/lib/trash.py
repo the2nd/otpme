@@ -52,7 +52,7 @@ trash_ids = {}
 
 commands = {
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'oargs'              : [
                                         'max_len',
@@ -68,7 +68,7 @@ commands = {
                 },
             },
     'restore'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'args'              : [
                                         'trash_id',
@@ -82,7 +82,7 @@ commands = {
                 },
             },
     'dump'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'args'              : [
                                         'trash_id',
@@ -93,7 +93,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'args'              : [
                                         'trash_id',
@@ -103,7 +103,7 @@ commands = {
                 },
             },
     'empty'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'oargs'             : [
                                         'full',

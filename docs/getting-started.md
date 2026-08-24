@@ -377,7 +377,7 @@ the setup). For easy testing the password is set to a fixed value here.
 # Add management manager user joe.
 otpme-user add management/users/joe
 otpme-token --type password add -r joe/login
-otpme-token -f --type password password joe/login password
+otpme-token -f --type password password --weak-password joe/login password
 ```
 
 Grant joe the right to create, delete and edit users and their tokens within

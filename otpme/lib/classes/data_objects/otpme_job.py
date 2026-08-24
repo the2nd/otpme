@@ -269,6 +269,7 @@ class OTPmeTreeJob(OTPmeDataObject):
         try:
             status = user.add_attribute(attribute="gidNumber",
                                         ignore_ro=True,
+                                        force=True,
                                         verify_acls=False,
                                         callback=callback)
         except Exception as e:
@@ -325,6 +326,7 @@ class OTPmeTreeJob(OTPmeDataObject):
         try:
             status = role.add_token(token_path=token_path,
                                     callback=callback,
+                                    force=True,
                                     verify_acls=verify_acls,
                                     verify_acls_only=verify_acls_only)
         except Exception as e:
@@ -385,6 +387,7 @@ class OTPmeTreeJob(OTPmeDataObject):
         try:
             status = group.add_token(token_path=token_path,
                                     callback=callback,
+                                    force=True,
                                     verify_acls=verify_acls,
                                     verify_acls_only=verify_acls_only)
         except Exception as e:

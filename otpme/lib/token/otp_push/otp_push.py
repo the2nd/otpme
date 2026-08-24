@@ -83,16 +83,16 @@ recursive_default_acls = []
 
 commands = {
     'password'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_password',
-                    'oargs'             : ['auto_password', 'password'],
+                    'oargs'             : ['auto_password', 'password', 'weak_password'],
                     'job_type'          : 'process',
                     },
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'job_type'          : 'process',
@@ -100,7 +100,7 @@ commands = {
                 },
             },
     'push_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_push_token',
                     'oargs'             : ['push_token'],
@@ -109,7 +109,7 @@ commands = {
                 },
             },
     'phone_number'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_phone_number',
                     'oargs'             : ['phone_number'],
@@ -118,7 +118,7 @@ commands = {
                 },
             },
     'push_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_push_script',
                     'args'              : ['push_script'],
@@ -127,7 +127,7 @@ commands = {
                 },
             },
     'enable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_mschap',
                     'job_type'          : 'thread',
@@ -135,7 +135,7 @@ commands = {
                 },
             },
     'disable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_mschap',
                     'job_type'          : 'thread',
@@ -143,7 +143,7 @@ commands = {
                 },
             },
     'remove_nt_hash'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_nt_hash',
                     'job_type'          : 'thread',
@@ -464,12 +464,18 @@ class OtppushToken(Token):
     def change_push_script(
         self,
         push_script: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change token push script. """
+        msg = _("Change push script of token '{token_path}' to '{script}'?: ")
+        msg = msg.format(token_path=self.rel_path, script=push_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -493,6 +499,7 @@ class OtppushToken(Token):
     def change_push_token(
         self,
         push_token: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -522,6 +529,12 @@ class OtppushToken(Token):
             msg = _("Token '{token}' is not an OTP token.")
             msg = msg.format(token=push_token)
             return callback.error(msg)
+
+        msg = _("Change push token of token '{token_path}' to '{push_token}'?: ")
+        msg = msg.format(token_path=self.rel_path, push_token=push_token)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -544,12 +557,18 @@ class OtppushToken(Token):
     def change_phone_number(
         self,
         phone_number: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change object phone_number. """
+        msg = _("Change phone number of token '{token_path}' to '{phone_number}'?: ")
+        msg = msg.format(token_path=self.rel_path, phone_number=phone_number)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -667,6 +686,7 @@ class OtppushToken(Token):
         self.change_password(password=new_pass,
                             verify_acls=False,
                             force=True,
+                            weak_password=True,
                             callback=callback)
 
         msg = _("Push password: {password}")
@@ -681,7 +701,9 @@ class OtppushToken(Token):
 
         self.push_script_options = ['%USERNAME', '%PHONE_NUMBER', '[OTP]']
 
-        self.change_push_script(default_push_script, callback=callback)
+        self.change_push_script(default_push_script,
+                                force=True,
+                                callback=callback)
 
         return callback.ok(return_message)
 

@@ -43,7 +43,7 @@ def pidfile_handler(pidfile, proc_name="Process"):
     return wrapper
 
 
-def is_running(pidfile):
+def is_running(pidfile, quiet=False):
     if not os.path.exists(pidfile):
         return False
     # Get logger.
@@ -57,9 +57,10 @@ def is_running(pidfile):
         return True
     if stuff.check_pid(pid):
         return pid
-    log_msg = _("Removing stale pidfile: {pidfile}", log=True)[1]
-    log_msg = log_msg.format(pidfile=pidfile)
-    logger.warning(log_msg)
+    if not quiet:
+        log_msg = _("Removing stale pidfile: {pidfile}", log=True)[1]
+        log_msg = log_msg.format(pidfile=pidfile)
+        logger.warning(log_msg)
     try:
         filetools.delete(pidfile)
     except Exception as e:

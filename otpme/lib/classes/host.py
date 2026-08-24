@@ -92,7 +92,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'oargs'             : [
@@ -115,7 +115,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -125,7 +125,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -133,7 +133,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -142,7 +142,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -151,7 +151,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -159,7 +159,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -167,7 +167,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("host"),
                     'args'              : ['realm'],
@@ -199,7 +199,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("host"),
                     'oargs'              : [
@@ -225,7 +225,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -233,7 +233,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -243,7 +243,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -252,7 +252,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'thread',
@@ -260,7 +260,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'thread',
@@ -268,7 +268,7 @@ commands = {
                 },
             },
     'show_ldif'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
                     'oargs'             : ['attributes'],
@@ -277,7 +277,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -287,7 +287,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -295,7 +295,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -303,7 +303,7 @@ commands = {
                 },
             },
     'dump_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_cert',
                     'job_type'          : 'process',
@@ -311,7 +311,7 @@ commands = {
                 },
             },
     'dump_ca_chain'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ca_chain',
                     'job_type'          : 'process',
@@ -319,7 +319,7 @@ commands = {
                 },
             },
     'mac'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_mac',
                     'args'              : ['mac_address'],
@@ -328,7 +328,7 @@ commands = {
                 },
             },
     'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
@@ -338,7 +338,7 @@ commands = {
                 },
             },
     'remove_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
@@ -348,7 +348,7 @@ commands = {
                 },
             },
     'add_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
@@ -357,7 +357,7 @@ commands = {
                 },
             },
     'remove_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
@@ -366,7 +366,7 @@ commands = {
                 },
             },
     'add_dynamic_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_dynamic_group',
                     'args'              : ['group_name'],
@@ -375,7 +375,7 @@ commands = {
                 },
             },
     'remove_dynamic_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_dynamic_group',
                     'args'              : ['group_name'],
@@ -384,7 +384,7 @@ commands = {
                 },
             },
     'add_sync_user'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_sync_user',
                     'args'              : ['user_name'],
@@ -393,7 +393,7 @@ commands = {
                 },
             },
     'remove_sync_user'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_sync_user',
                     'args'              : ['user_name'],
@@ -402,7 +402,7 @@ commands = {
                 },
             },
     'public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_public_key',
                     'oargs'            : ['public_key'],
@@ -411,7 +411,7 @@ commands = {
                 },
             },
     'renew_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'renew_cert',
                     'oargs'            : ['cert_req'],
@@ -420,7 +420,7 @@ commands = {
                 },
             },
     'get_ssh_authorized_keys'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ssh_authorized_keys',
                     'oargs'             : ['user'],
@@ -429,7 +429,7 @@ commands = {
                 },
             },
     'enable_jotp'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_jotp',
                     'job_type'          : 'thread',
@@ -437,7 +437,7 @@ commands = {
                 },
             },
     'disable_jotp'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_jotp',
                     'job_type'          : 'thread',
@@ -445,7 +445,7 @@ commands = {
                 },
             },
     'enable_lotp'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_lotp',
                     'job_type'          : 'thread',
@@ -453,7 +453,7 @@ commands = {
                 },
             },
     'disable_lotp'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_lotp',
                     'job_type'          : 'thread',
@@ -461,7 +461,7 @@ commands = {
                 },
             },
     'enable_jotp_rejoin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_jotp_rejoin',
                     'job_type'          : 'thread',
@@ -469,7 +469,7 @@ commands = {
                 },
             },
     'disable_jotp_rejoin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_jotp_rejoin',
                     'job_type'          : 'thread',
@@ -477,7 +477,7 @@ commands = {
                 },
             },
     'add_sync_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_sync_group',
                     'args'              : ['group_name'],
@@ -486,7 +486,7 @@ commands = {
                 },
             },
     'remove_sync_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_sync_group',
                     'args'              : ['group_name'],
@@ -495,7 +495,7 @@ commands = {
                 },
             },
     'enable_sync_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sync_groups',
                     'job_type'          : 'thread',
@@ -503,7 +503,7 @@ commands = {
                 },
             },
     'disable_sync_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sync_groups',
                     'job_type'          : 'thread',
@@ -511,7 +511,7 @@ commands = {
                 },
             },
     'enable_sync_by_login_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sync_by_login_token',
                     'job_type'          : 'thread',
@@ -519,7 +519,7 @@ commands = {
                 },
             },
     'disable_sync_by_login_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sync_by_login_token',
                     'job_type'          : 'thread',
@@ -527,7 +527,7 @@ commands = {
                 },
             },
     'limit_logins'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'limit_logins',
                     'job_type'          : 'thread',
@@ -535,7 +535,7 @@ commands = {
                 },
             },
     'unlimit_logins'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'unlimit_logins',
                     'job_type'          : 'thread',
@@ -543,7 +543,7 @@ commands = {
                 },
             },
     'list_sync_users'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_sync_users',
                     'oargs'             : ['return_type'],
@@ -553,7 +553,7 @@ commands = {
                 },
             },
     'list_sync_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_sync_groups',
                     'oargs'             : ['return_type'],
@@ -563,7 +563,7 @@ commands = {
                 },
             },
     'list_users'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_token_users',
                     'oargs'             : ['return_type'],
@@ -573,7 +573,7 @@ commands = {
                 },
             },
     'list_tokens'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
@@ -583,7 +583,7 @@ commands = {
                 },
             },
     'list_roles'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
@@ -592,7 +592,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'thread',
@@ -602,7 +602,7 @@ commands = {
                 },
             },
     'list_dynamic_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_dynamic_groups',
                     'job_type'          : 'thread',
@@ -610,7 +610,7 @@ commands = {
                 },
             },
     'add_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_extension',
                     'args'              : ['extension'],
@@ -619,7 +619,7 @@ commands = {
                 },
             },
     'remove_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_extension',
                     'args'              : ['extension'],
@@ -628,7 +628,7 @@ commands = {
                 },
             },
     'add_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
@@ -638,7 +638,7 @@ commands = {
                 },
             },
     'del_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute',
                     'args'              : ['attribute'],
@@ -648,7 +648,7 @@ commands = {
                 },
             },
     'add_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_object_class',
                     'args'              : ['object_class'],
@@ -657,7 +657,7 @@ commands = {
                 },
             },
     'del_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_object_class',
                     'args'              : ['object_class'],
@@ -666,7 +666,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -676,7 +676,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -687,7 +687,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -696,7 +696,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -705,7 +705,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -714,7 +714,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -723,7 +723,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -732,7 +732,7 @@ commands = {
                 },
             },
     'auto_disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auto_disable',
                     'args'              : ['auto_disable'],
@@ -742,7 +742,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -751,7 +751,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -760,7 +760,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -768,7 +768,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -776,7 +776,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -784,7 +784,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -792,7 +792,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -800,7 +800,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -808,7 +808,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -816,7 +816,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -825,7 +825,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -975,6 +975,12 @@ def register_hooks():
     config.register_auth_on_action_hook("host", "disable_jotp_rejoin")
     config.register_auth_on_action_hook("host", "add_dynamic_group")
     config.register_auth_on_action_hook("host", "remove_dynamic_group")
+    config.register_auth_on_action_hook("host", "add_sync_group")
+    config.register_auth_on_action_hook("host", "remove_sync_group")
+    config.register_auth_on_action_hook("host", "enable_sync_groups")
+    config.register_auth_on_action_hook("host", "disable_sync_groups")
+    config.register_auth_on_action_hook("host", "enable_sync_by_login_token")
+    config.register_auth_on_action_hook("host", "disable_sync_by_login_token")
     config.register_auth_on_action_hook("host", "set_config_parameter")
 
 def register_backend():
@@ -1049,6 +1055,7 @@ class Host(OTPmeHost, OTPmeDevice):
                     continue
                 x.add_host(host_name=object_id.name,
                             host_uuid=object_uuid,
+                            force=True,
                             verify_acls=False,
                             changelog=False,
                             callback=callback)
@@ -1313,6 +1320,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_changelog("enable sync by login token")
     def enable_sync_by_login_token(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1321,6 +1329,12 @@ class Host(OTPmeHost, OTPmeDevice):
         """ Enable sync by assigned tokens. """
         if self.sync_by_login_token:
             return callback.error(_("Already enabled."))
+
+        msg = _("Enable sync by login token for host '{host_name}'?: ")
+        msg = msg.format(host_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1341,6 +1355,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_changelog("disable sync by login token")
     def disable_sync_by_login_token(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1349,6 +1364,12 @@ class Host(OTPmeHost, OTPmeDevice):
         """ Disable sync by assigned tokens. """
         if not self.sync_by_login_token:
             return callback.error(_("Already disabled."))
+
+        msg = _("Disable sync by login token for host '{host_name}'?: ")
+        msg = msg.format(host_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1370,6 +1391,7 @@ class Host(OTPmeHost, OTPmeDevice):
     def add_sync_group(
         self,
         group_name: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1392,6 +1414,12 @@ class Host(OTPmeHost, OTPmeDevice):
             msg = _("Sync group already assigned: {group_name}")
             msg = msg.format(group_name=group_name)
             return callback.error(msg)
+
+        msg = _("Add sync group '{group_name}' to host '{host_name}'?: ")
+        msg = msg.format(group_name=group_name, host_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1415,6 +1443,7 @@ class Host(OTPmeHost, OTPmeDevice):
     def remove_sync_group(
         self,
         group_name: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1437,6 +1466,12 @@ class Host(OTPmeHost, OTPmeDevice):
             msg = _("Sync group not assigned: {group_name}")
             msg = msg.format(group_name=group_name)
             return callback.error(msg)
+
+        msg = _("Remove sync group '{group_name}' from host '{host_name}'?: ")
+        msg = msg.format(group_name=group_name, host_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1459,6 +1494,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_changelog("enable sync groups")
     def enable_sync_groups(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1467,6 +1503,12 @@ class Host(OTPmeHost, OTPmeDevice):
         """ Enable sync groups. """
         if self.sync_groups_enabled:
             return callback.error(_("Already enabled."))
+
+        msg = _("Enable sync groups for host '{host_name}'?: ")
+        msg = msg.format(host_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1487,6 +1529,7 @@ class Host(OTPmeHost, OTPmeDevice):
     @object_changelog("disable sync groups")
     def disable_sync_groups(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1495,6 +1538,12 @@ class Host(OTPmeHost, OTPmeDevice):
         """ Disable sync groups. """
         if not self.sync_groups_enabled:
             return callback.error(_("Already disabled."))
+
+        msg = _("Disable sync groups for host '{host_name}'?: ")
+        msg = msg.format(host_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1583,6 +1632,7 @@ class Host(OTPmeHost, OTPmeDevice):
             if result:
                 ag = result[0]
                 ag.add_host(host_name=self.name,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
                 ag._cache(callback=callback)
@@ -1598,6 +1648,7 @@ class Host(OTPmeHost, OTPmeDevice):
             if role:
                 role.add_host(host_name=self.name,
                             host_uuid=self.uuid,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
                 role._cache(callback=callback)
@@ -1624,6 +1675,7 @@ class Host(OTPmeHost, OTPmeDevice):
                                 return_type="instance")
         for ag in result:
             ag.remove_host(host_name=self.name,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
             ag._cache(callback=callback)
@@ -1636,6 +1688,7 @@ class Host(OTPmeHost, OTPmeDevice):
         for role in result:
             role.remove_host(host_name=self.name,
                             host_uuid=self.uuid,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
             role._cache(callback=callback)

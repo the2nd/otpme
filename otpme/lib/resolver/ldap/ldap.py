@@ -87,7 +87,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['ldap_template'],
@@ -100,7 +100,7 @@ commands = {
                 },
             },
     'key_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_attribute',
                     'args'              : ['object_type', 'key_attribute'],
@@ -109,7 +109,7 @@ commands = {
                 },
             },
     'ldap_base'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_ldap_base',
                     'args'              : ['ldap_base'],
@@ -118,7 +118,7 @@ commands = {
                 },
             },
     'login_dn'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_login_dn',
                     'args'              : ['login_dn'],
@@ -127,7 +127,7 @@ commands = {
                 },
             },
     'login_password'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_login_password',
                     'args'              : ['login_password'],
@@ -136,7 +136,7 @@ commands = {
                 },
             },
     'ca_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_ca_data',
                     'oargs'              : ['ca_data'],
@@ -145,7 +145,7 @@ commands = {
                 },
             },
     'add_server'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_server',
                     'args'              : ['server_uri'],
@@ -154,7 +154,7 @@ commands = {
                 },
             },
     'del_server'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_server',
                     'args'               : ['server_uri'],
@@ -163,7 +163,7 @@ commands = {
                 },
             },
     'add_ldap_filter'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_filter',
                     'args'              : ['object_type', 'ldap_filter'],
@@ -172,7 +172,7 @@ commands = {
                 },
             },
     'del_ldap_filter'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_filter',
                     'args'              : ['object_type', 'ldap_filter'],
@@ -181,7 +181,7 @@ commands = {
                 },
             },
     'add_ldap_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute_mapping',
                     'args'              : ['object_type', 'src_attr'],
@@ -191,7 +191,7 @@ commands = {
                 },
             },
     'del_ldap_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute_mapping',
                     'args'              : ['object_type', 'src_attr'],
@@ -419,13 +419,18 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("add server {server_uri}")
-    def add_server(self, server_uri, run_policies=True,
+    def add_server(self, server_uri, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add LDAP server. """
         if not server_uri:
             return callback.error(_("Got empty LDAP server."))
         if server_uri in self.ldap_servers:
             return callback.error(_("LDAP server already added to this resolver."))
+
+        msg = _("Add LDAP server '{server_uri}' to resolver '{resolver_name}'?: ")
+        msg = msg.format(server_uri=server_uri, resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -446,13 +451,18 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("remove server {server_uri}")
-    def del_server(self, server_uri, run_policies=True,
+    def del_server(self, server_uri, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete LDAP server. """
         if not server_uri:
             return callback.error(_("Got empty LDAP server."))
         if server_uri not in self.ldap_servers:
             return callback.error(_("LDAP server not added to this resolver."))
+
+        msg = _("Remove LDAP server '{server_uri}' from resolver '{resolver_name}'?: ")
+        msg = msg.format(server_uri=server_uri, resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -473,8 +483,8 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("add {object_type} filter {ldap_filter}")
-    def add_filter(self, object_type, ldap_filter, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def add_filter(self, object_type, ldap_filter, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Add LDAP filter. """
         if object_type not in self.object_types:
             msg = _("Invalid object type for this resolver: {object_type}")
@@ -482,6 +492,13 @@ class LdapResolver(Resolver):
             return callback.error(msg)
         if not ldap_filter:
             return callback.error(_("Got empty LDAP filter."))
+
+        msg = _("Add {object_type} filter '{ldap_filter}' to resolver '{resolver_name}'?: ")
+        msg = msg.format(object_type=object_type,
+                        ldap_filter=ldap_filter,
+                        resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -504,8 +521,8 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("remove {object_type} filter {ldap_filter}")
-    def del_filter(self, object_type, ldap_filter, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_filter(self, object_type, ldap_filter, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Delete LDAP filter. """
         if not ldap_filter:
             return callback.error(_("Got empty LDAP filter."))
@@ -515,6 +532,13 @@ class LdapResolver(Resolver):
             return callback.error(msg)
         if ldap_filter not in self.ldap_filters[object_type]:
             return callback.error(_("Unknown LDAP filter."))
+
+        msg = _("Remove {object_type} filter '{ldap_filter}' from resolver '{resolver_name}'?: ")
+        msg = msg.format(object_type=object_type,
+                        ldap_filter=ldap_filter,
+                        resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -536,7 +560,8 @@ class LdapResolver(Resolver):
     @audit_log()
     @object_changelog("add {object_type} attribute mapping {src_attr} {dst_attr}")
     def add_attribute_mapping(self, object_type, src_attr, dst_attr=None,
-        run_policies=True, _caller="API", callback=default_callback, **kwargs):
+        force=False, run_policies=True, _caller="API",
+        callback=default_callback, **kwargs):
         """ Add LDAP attribute mapping. """
         if object_type not in self.object_types:
             msg = _("Invalid object type for this resolver: {object_type}")
@@ -544,6 +569,13 @@ class LdapResolver(Resolver):
             return callback.error(msg)
         if not src_attr:
             return callback.error(_("Got no source attribute."))
+
+        msg = _("Add {object_type} attribute mapping '{src_attr}' to resolver '{resolver_name}'?: ")
+        msg = msg.format(object_type=object_type,
+                        src_attr=src_attr,
+                        resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -571,7 +603,7 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("remove {object_type} attribute mapping {src_attr}")
-    def del_attribute_mapping(self, object_type, src_attr,
+    def del_attribute_mapping(self, object_type, src_attr, force=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Delete LDAP attribute mapping. """
@@ -581,6 +613,14 @@ class LdapResolver(Resolver):
             msg = _("No LDAP attribute configured for object type: {object_type}.")
             msg = msg.format(object_type=object_type)
             return callback.error(msg)
+
+        msg = _("Remove {object_type} attribute mapping '{src_attr}' from resolver '{resolver_name}'?: ")
+        msg = msg.format(object_type=object_type,
+                        src_attr=src_attr,
+                        resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -610,11 +650,17 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("change LDAP base to {ldap_base}")
-    def change_ldap_base(self, ldap_base, run_policies=True,
+    def change_ldap_base(self, ldap_base, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP base. """
         if not ldap_base:
             return callback.error(_("Got empty LDAP base."))
+
+        msg = _("Change LDAP base of resolver '{resolver_name}' to '{ldap_base}'?: ")
+        msg = msg.format(resolver_name=self.name, ldap_base=ldap_base)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -633,9 +679,14 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log()
     @object_changelog("change login DN to {login_dn}")
-    def change_login_dn(self, login_dn, run_policies=True,
+    def change_login_dn(self, login_dn, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login DN. """
+        msg = _("Change login DN of resolver '{resolver_name}' to '{login_dn}'?: ")
+        msg = msg.format(resolver_name=self.name, login_dn=login_dn)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -657,9 +708,14 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log(ignore_args=['login_password'])
     @object_changelog("change login password")
-    def change_login_password(self, login_password=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_login_password(self, login_password=None, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login passowrd. """
+        msg = _("Change login password of resolver '{resolver_name}'?: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -683,12 +739,17 @@ class LdapResolver(Resolver):
     @backend.transaction
     @audit_log(ignore_args=['ca_data'])
     @object_changelog("change CA data")
-    def change_ca_data(self, ca_data=None, run_policies=True,
+    def change_ca_data(self, ca_data=None, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set the PEM CA bundle used to verify the LDAP server's TLS
         certificate. The bundle is stored on the resolver object and
         handed to ldap3 inline at connection time, so it travels with
         the resolver to every node that runs it. """
+        msg = _("Change CA data of resolver '{resolver_name}'?: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

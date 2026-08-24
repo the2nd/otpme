@@ -144,6 +144,11 @@ class OTPmeServer1(object):
             self.allow_sotp_auth = False
 
         try:
+            self.require_sotp_auth
+        except Exception:
+            self.require_sotp_auth = False
+
+        try:
             self.sotp_ag_auth
         except Exception:
             self.sotp_ag_auth = None
@@ -604,8 +609,7 @@ class OTPmeServer1(object):
                         return self.build_response(status, message, encrypt=False)
                     self.new_connection = False
 
-        # Try to get peer object from client cert.
-        if not config.use_api:
+            # Try to get peer object from client cert.
             if not self.peer:
                 if self.client.startswith("socket://"):
                     self.peer = backend.get_object(uuid=config.uuid)
@@ -634,13 +638,13 @@ class OTPmeServer1(object):
                     self.logger.warning(log_msg)
                     raise ServerQuit(msg)
 
-        # Make sure peer is not disabled.
-        if self.check_peer_disabled:
-            if self.peer and not self.peer.enabled:
-                status = status_codes.HOST_DISABLED
-                message = _("{peer_type} is disabled: {peer_fqdn}")
-                message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
-                return self.build_response(status, message, encrypt=False)
+            # Make sure peer is not disabled.
+            if self.check_peer_disabled:
+                if self.peer and not self.peer.enabled:
+                    status = status_codes.HOST_DISABLED
+                    message = _("{peer_type} is disabled: {peer_fqdn}")
+                    message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
+                    return self.build_response(status, message, encrypt=False)
 
         # Make sure auth user is enabled.
         if self.check_user_disabled:
@@ -897,6 +901,10 @@ class OTPmeServer1(object):
         or command == "auth_login" \
         or command == "auth_unlock" \
         or command == "auth_logout":
+            if config.host_type != "node":
+                message = "bNo auth on hosts."
+                status = False
+                return self.build_response(status, message, encrypt=False)
             # Notify protocol handler about the auth start.
             try:
                 self._start_user_auth(command, command_args)
@@ -2281,6 +2289,7 @@ class OTPmeServer1(object):
                                         access_group=self.access_group,
                                         share=share,
                                         check_sotp=self.allow_sotp_auth,
+                                        require_sotp_auth=self.require_sotp_auth,
                                         sotp_ag_auth=self.sotp_ag_auth,
                                         host_type=login_host_type,
                                         host=login_host,
@@ -2324,6 +2333,7 @@ class OTPmeServer1(object):
                                         access_group=self.access_group,
                                         share=share,
                                         check_sotp=self.allow_sotp_auth,
+                                        require_sotp_auth=self.require_sotp_auth,
                                         sotp_ag_auth=self.sotp_ag_auth,
                                         user_token=self.token,
                                         src_token=self.src_token,

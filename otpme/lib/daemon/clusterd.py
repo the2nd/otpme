@@ -37,7 +37,6 @@ from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
-from otpme.lib.pidfile import is_running
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 from otpme.lib.daemon.controld import send_daemon_command
@@ -1058,6 +1057,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.min_written_nodes = 3
         self.processed_journal_entries = {}
         self.preferred_master_node_set = False
+        self.last_nsscache_sync = 0
         self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
                                                     random_name=False,
                                                     init=False)
@@ -1100,9 +1100,12 @@ class ClusterDaemon(OTPmeDaemon):
     def node_disabled_check(self):
         if config.master_node:
             return
+        if config.master_failover:
+            return
         try:
             master_node_conn = connections.get("clusterd",
                                             timeout=3,
+                                            connect_timeout=1,
                                             auto_auth=False,
                                             quiet_autoconnect=True,
                                             compress_request=False)
@@ -1273,6 +1276,8 @@ class ClusterDaemon(OTPmeDaemon):
         os._exit(0)
 
     def start_node_disabled_check(self):
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
         # Set proctitle.
         new_proctitle = f"{self.full_name} Cluster node disabled check"
         setproctitle.setproctitle(new_proctitle)
@@ -1496,6 +1501,17 @@ class ClusterDaemon(OTPmeDaemon):
             multiprocessing.peer_nodes_set_online.pop(node_name)
         except KeyError:
             pass
+        # Say goodbye to the peer. Dropping the connection without it
+        # makes the peer log a lost connection. close() sends the quit
+        # command only while the connection is still up, so an already
+        # closed one (e.g. after a timeout) just gets its socket freed.
+        if self.node_conn:
+            try:
+                self.node_conn.close()
+            except Exception as e:
+                log_msg = _("Failed to close node connection: {node}: {error}", log=True)[1]
+                log_msg = log_msg.format(node=node_name, error=e)
+                self.logger.warning(log_msg)
         self.node_conn = None
         # Wakeup cluster out event handler to re-process cluster journal entries.
         if not multiprocessing.cluster_out_event:
@@ -1577,6 +1593,8 @@ class ClusterDaemon(OTPmeDaemon):
 
     def start_interprocess_comm(self):
         """ Start cluster interprocess communication. """
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
         # Set proctitle.
         new_proctitle = f"{self.full_name} (Cluster IPC)"
         setproctitle.setproctitle(new_proctitle)
@@ -2346,6 +2364,9 @@ class ClusterDaemon(OTPmeDaemon):
 
     def start_cluster_communication(self, **kwargs):
         """ Start cluster communication. """
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
         try:
             self._start_cluster_communication(**kwargs)
         except Exception as e:
@@ -2410,8 +2431,14 @@ class ClusterDaemon(OTPmeDaemon):
                 min_seconds = 10
                 now = time.time()
                 data_revision = config.get_data_revision()
+                start_nsscache_sync = False
                 age = now - data_revision
                 if age > min_seconds:
+                    start_nsscache_sync = True
+                age = now - self.last_nsscache_sync
+                if age < 30:
+                    start_nsscache_sync = False
+                if start_nsscache_sync:
                     try:
                         command_handler = CommandHandler()
                         command_handler.start_sync(sync_type="nsscache")
@@ -2422,6 +2449,7 @@ class ClusterDaemon(OTPmeDaemon):
                     else:
                         log_msg = _("Triggered nsscache sync.", log=True)[1]
                         self.logger.info(log_msg)
+                        self.last_nsscache_sync = now
                         self.nsscache_sync.value = False
 
             if self.host_name not in multiprocessing.master_sync_done:
@@ -2705,6 +2733,8 @@ class ClusterDaemon(OTPmeDaemon):
 
     def start_in_journal_handler(self):
         """ Start cluster in-journal handler. """
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
         # Set proctitle.
         new_proctitle = f"{self.full_name} Cluster in-journal"
         setproctitle.setproctitle(new_proctitle)
@@ -2857,7 +2887,7 @@ class ClusterDaemon(OTPmeDaemon):
 
     def check_nsscache_sync(self):
         """ Check if nsscache sync is needed. """
-        if is_running(config.nsscache_pidfile):
+        if nsscache.status():
             return
         data_revision = config.get_data_revision()
         synced_data_revision = nsscache.get_last_synced_revision()
@@ -2871,6 +2901,9 @@ class ClusterDaemon(OTPmeDaemon):
         self.nsscache_sync.value = True
 
     def start_two_node_handler(self):
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
         try:
             self._start_two_node_handler()
         except Exception as e:
@@ -2916,6 +2949,9 @@ class ClusterDaemon(OTPmeDaemon):
 
     def start_node_check_connection(self, node_name):
         """ Start cluster communication with node. """
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
         # Set proctitle.
         new_proctitle = f"{self.full_name} Cluster node check ({node_name})"
         setproctitle.setproctitle(new_proctitle)
@@ -2990,6 +3026,9 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.critical(log_msg)
 
     def start_node_write_connection(self, node_name):
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
         try:
             self._start_node_write_connection(node_name)
         except Exception as e:
@@ -3156,6 +3195,9 @@ class ClusterDaemon(OTPmeDaemon):
             self.reload_haproxy()
 
     def start_node_sessions_connection(self, node_name):
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
         try:
             self._start_node_sessions_connection(node_name)
         except Exception as e:
@@ -3412,6 +3454,9 @@ class ClusterDaemon(OTPmeDaemon):
         os._exit(0)
 
     def start_node_last_used_connection(self, node_name):
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
         try:
             self._start_node_last_used_connection(node_name)
         except Exception as e:

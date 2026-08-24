@@ -602,13 +602,14 @@ cmd_help = {
                 },
 
     'temp_password'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token temp_password [--generate] [--duration 1h] [--remove] {token} [password]'),
-                    'cmd'   :   '--generate :auto_password=True: --duration :duration: --remove :remove=True: <|object|> [password]',
+                    '_cmd_usage_help' : _('Usage: otpme-token temp_password [--generate] [--duration 1h] [--remove] [--weak-password] {token} [password]'),
+                    'cmd'   :   '--generate :auto_password=True: --duration :duration: --remove :remove=True: --weak-password :weak_password=True: <|object|> [password]',
                     '_help' :   {
                                     'cmd'                   : _('Set token temp password.'),
                                     '--duration <1h>'       : _('Temp password validity duration.'),
                                     '--generate'            : _('Generate temp password.'),
                                     '--remove'              : _('Remove temp password.'),
+                                    '--weak-password'       : _('Allow a password the password policy rejects (needs force_password ACL).'),
                                 },
                 },
     }

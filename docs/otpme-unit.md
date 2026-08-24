@@ -37,9 +37,11 @@ Disable a unit without deleting it.
 **rename *unit* *new_name***  
 Rename a unit.
 
-**move \[**-m**\] \[**-k**\] \[**-o** *object_types*\] \[**--keep-acls**\] *unit* *new_unit***  
+**move \[**-m**\] \[**-k**\] \[**-o** *object_types*\] \[**--keep-acls**\] \[**--skip-ca**\] *unit* *new_unit***  
 Move unit to a different unit. Use **-m** to merge objects into
-destination, **-k** to keep source unit.
+destination, **-k** to keep source unit. A CA cannot be moved: with
+**--skip-ca** everything else is moved and the source unit is kept. This
+is not the same as **-f**, which only skips the confirmation.
 
 **touch *unit***  
 Re-index the object to fix potential index problems.

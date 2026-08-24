@@ -1163,7 +1163,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 log_msg = _("Updating realm CA data...", log=True)[1]
                 self.logger.info(log_msg)
                 realm = backend.get_object(uuid=config.realm_uuid)
-                realm.update_ca_data(verify_acls=False)
+                realm.update_ca_data(force=True, verify_acls=False)
 
     def _process_object_worker_loop(self, work_queue, result_queue,
         realm, site, own_realm, own_site, sync_older_objects):

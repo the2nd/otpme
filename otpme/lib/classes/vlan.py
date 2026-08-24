@@ -90,7 +90,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'oargs'             : ['unit', 'vlan_id'],
@@ -104,7 +104,7 @@ commands = {
                 },
             },
     'vlan_id'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_vlan_id',
                     'oargs'             : ['vlan_id'],
@@ -113,7 +113,7 @@ commands = {
                 },
             },
     'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
@@ -122,7 +122,7 @@ commands = {
                 },
             },
     'remove_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
@@ -131,7 +131,7 @@ commands = {
                 },
             },
     'add_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
@@ -140,7 +140,7 @@ commands = {
                 },
             },
     'remove_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
@@ -149,7 +149,7 @@ commands = {
                 },
             },
     'add_host'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_host',
                     'args'              : ['host_name'],
@@ -158,7 +158,7 @@ commands = {
                 },
             },
     'remove_host'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_host',
                     'args'              : ['host_name'],
@@ -167,7 +167,7 @@ commands = {
                 },
             },
     'add_device'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_device',
                     'args'              : ['device_name'],
@@ -176,7 +176,7 @@ commands = {
                 },
             },
     'remove_device'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_device',
                     'args'              : ['device_name'],
@@ -185,7 +185,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -195,7 +195,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -205,7 +205,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -213,7 +213,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -222,7 +222,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -231,7 +231,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -239,7 +239,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -247,7 +247,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("vlan"),
                     'args'              : ['realm'],
@@ -276,7 +276,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("vlan"),
                     'oargs'              : [
@@ -302,7 +302,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -310,7 +310,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -318,7 +318,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -326,7 +326,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -335,7 +335,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -345,7 +345,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -353,7 +353,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -361,7 +361,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'process',
@@ -371,7 +371,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -381,7 +381,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -392,7 +392,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -401,7 +401,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -410,7 +410,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -419,7 +419,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -428,7 +428,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -437,7 +437,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -446,7 +446,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -455,7 +455,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -463,7 +463,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -471,7 +471,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -479,7 +479,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -487,7 +487,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -496,7 +496,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -1026,11 +1026,17 @@ class Vlan(OTPmeObject):
     def change_vlan_id(
         self,
         vlan_id: Union[str,int,None]=None,
+        force: bool=False,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Change VLAN ID. """
+        msg = _("Change VLAN ID of VLAN '{vlan_name}' to '{vlan_id}'?: ")
+        msg = msg.format(vlan_name=self.name, vlan_id=vlan_id)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if vlan_id is None or vlan_id == "":
             self.vlan_id = None
             self.del_index("vlan_id")
@@ -1079,7 +1085,10 @@ class Vlan(OTPmeObject):
             msg = _("Failed to add VLAN.")
             return callback.error(msg)
         if vlan_id is not None:
-            self.change_vlan_id(vlan_id, verify_acls=False, callback=callback)
+            self.change_vlan_id(vlan_id,
+                                force=True,
+                                verify_acls=False,
+                                callback=callback)
         return callback.ok()
 
     @object_lock(full_lock=True)
@@ -1147,11 +1156,17 @@ class Vlan(OTPmeObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Rename VLAN. """
+        msg = _("Rename VLAN '{vlan_name}' to '{new_name}'?: ")
+        msg = msg.format(vlan_name=self.name, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         # Build new OID.
         new_oid = oid.get(object_type="vlan",
                         realm=self.realm,

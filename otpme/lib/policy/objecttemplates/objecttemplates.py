@@ -68,7 +68,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -76,7 +76,7 @@ commands = {
                 },
             },
     'set_template'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_template',
                     'args'              : ['object_type', 'object_name'],
@@ -348,9 +348,19 @@ class ObjecttemplatesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("set {object_type} template {object_name}")
-    def set_template(self, object_type, object_name=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def set_template(self, object_type, object_name=None, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Set object template. """
+        if object_name is None:
+            msg = _("Remove {object_type} template of policy '{policy_name}'?: ")
+        else:
+            msg = _("Set {object_type} template of policy '{policy_name}' to '{object_name}'?: ")
+        msg = msg.format(object_type=object_type,
+                        policy_name=self.name,
+                        object_name=object_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

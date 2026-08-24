@@ -153,7 +153,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'oargs'             : ['unit', 'home_share', 'home_share_uid', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
@@ -167,7 +167,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -177,7 +177,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -185,7 +185,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -193,7 +193,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -202,7 +202,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -211,7 +211,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -219,7 +219,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("share"),
                     'args'              : ['realm'],
@@ -253,7 +253,7 @@ commands = {
                 },
             },
     'root_dir'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_root_dir',
                     'args'              : ['root_dir'],
@@ -262,7 +262,7 @@ commands = {
                 },
             },
     'force_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'force_group',
                     'args'              : ['group_name'],
@@ -271,7 +271,7 @@ commands = {
                 },
             },
     'force_create_mode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'force_create_mode',
                     'args'              : ['create_mode'],
@@ -280,7 +280,7 @@ commands = {
                 },
             },
     'home_share_permissions'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_home_share_permissions',
                     'args'              : ['permissions'],
@@ -289,7 +289,7 @@ commands = {
                 },
             },
     'force_directory_mode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'force_directory_mode',
                     'args'              : ['create_mode'],
@@ -298,7 +298,7 @@ commands = {
                 },
             },
     'enable_ro'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_ro',
                     'job_type'          : 'process',
@@ -306,7 +306,7 @@ commands = {
                 },
             },
     'disable_ro'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_ro',
                     'job_type'          : 'process',
@@ -314,7 +314,7 @@ commands = {
                 },
             },
     'enable_sotp_signing'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sotp_signing',
                     'job_type'          : 'process',
@@ -322,7 +322,7 @@ commands = {
                 },
             },
     'disable_sotp_signing'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sotp_signing',
                     'job_type'          : 'process',
@@ -330,7 +330,7 @@ commands = {
                 },
             },
     'update_sign_public_keys'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'update_sign_public_keys',
                     'oargs'             : ['username'],
@@ -339,7 +339,7 @@ commands = {
                 },
             },
     'add_share_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_share_key',
                     'args'              : ['username', 'share_key'],
@@ -348,7 +348,7 @@ commands = {
                 },
             },
     'del_share_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_share_key',
                     'args'              : ['username'],
@@ -357,7 +357,7 @@ commands = {
                 },
             },
     'get_share_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_share_key',
                     'args'              : ['username'],
@@ -366,7 +366,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("share"),
                     'oargs'              : [
@@ -392,7 +392,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -401,7 +401,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -410,7 +410,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -419,7 +419,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -428,7 +428,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -438,7 +438,7 @@ commands = {
                 },
             },
     'limit_hosts'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'limit_hosts',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -447,7 +447,7 @@ commands = {
                 },
             },
     'unlimit_hosts'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'unlimit_hosts',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -456,7 +456,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -464,7 +464,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -472,7 +472,7 @@ commands = {
                 },
             },
     'add_master_password_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_master_password_token',
                     'args'              : ['token_path'],
@@ -481,7 +481,7 @@ commands = {
                 },
             },
     'remove_master_password_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_master_password_token',
                     'args'              : ['token_path'],
@@ -490,7 +490,7 @@ commands = {
                 },
             },
     'add_root_mount_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_root_mount_token',
                     'args'              : ['token_path'],
@@ -500,7 +500,7 @@ commands = {
                 },
             },
     'remove_root_mount_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_root_mount_token',
                     'args'              : ['token_path'],
@@ -510,7 +510,7 @@ commands = {
                 },
             },
     'add_no_mount_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_no_mount_token',
                     'args'              : ['token_path'],
@@ -519,7 +519,7 @@ commands = {
                 },
             },
     'remove_no_mount_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_no_mount_token',
                     'args'              : ['token_path'],
@@ -529,7 +529,7 @@ commands = {
                 },
             },
     'add_pool'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_pool',
                     'args'              : ['pool_name'],
@@ -538,7 +538,7 @@ commands = {
                 },
             },
     'remove_pool'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_pool',
                     'args'              : ['pool_name'],
@@ -547,7 +547,7 @@ commands = {
                 },
             },
     'add_host'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_host',
                     'args'              : ['host_name'],
@@ -557,7 +557,7 @@ commands = {
                 },
             },
     'remove_host'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_host',
                     'args'              : ['host_name'],
@@ -567,7 +567,7 @@ commands = {
                 },
             },
     'add_node'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_node',
                     'args'              : ['node_name'],
@@ -576,7 +576,7 @@ commands = {
                 },
             },
     'remove_node'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_node',
                     'args'              : ['node_name'],
@@ -585,7 +585,7 @@ commands = {
                 },
             },
     'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
@@ -595,7 +595,7 @@ commands = {
                 },
             },
     'remove_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
@@ -605,7 +605,7 @@ commands = {
                 },
             },
     'add_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
@@ -615,7 +615,7 @@ commands = {
                 },
             },
     'remove_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
@@ -625,7 +625,7 @@ commands = {
                 },
             },
     'add_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_group',
                     'args'              : ['group_name'],
@@ -635,7 +635,7 @@ commands = {
                 },
             },
     'remove_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_group',
                     'args'              : ['group_name'],
@@ -645,7 +645,7 @@ commands = {
                 },
             },
     'list_hosts'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_hosts',
                     'oargs'             : ['return_type'],
@@ -655,7 +655,7 @@ commands = {
                 },
             },
     'list_nodes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_nodes',
                     'oargs'             : ['return_type'],
@@ -665,7 +665,7 @@ commands = {
                 },
             },
     'list_users'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_token_users',
                     'oargs'             : ['return_type'],
@@ -675,7 +675,7 @@ commands = {
                 },
             },
     'list_tokens'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
@@ -685,7 +685,7 @@ commands = {
                 },
             },
     'list_roles'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
@@ -694,7 +694,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'process',
@@ -704,7 +704,7 @@ commands = {
                 },
             },
     'list_pools'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_pools',
                     'oargs'             : ['return_type', 'skip_disabled'],
@@ -714,7 +714,7 @@ commands = {
                 },
             },
     'list_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_groups',
                     'oargs'             : ['return_type'],
@@ -724,7 +724,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -734,7 +734,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -745,7 +745,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -754,7 +754,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -763,7 +763,7 @@ commands = {
                 },
             },
     'mount_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_mount_script',
                     'oargs'             : ['mount_script', 'script_options'],
@@ -772,7 +772,7 @@ commands = {
                 },
             },
     'enable_mount_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_mount_script',
                     'job_type'          : 'process',
@@ -780,7 +780,7 @@ commands = {
                 },
             },
     'disable_mount_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_mount_script',
                     'job_type'          : 'process',
@@ -788,7 +788,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -797,7 +797,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -806,7 +806,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -815,7 +815,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -824,7 +824,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -833,7 +833,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -842,7 +842,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -850,7 +850,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -858,7 +858,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -866,7 +866,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -874,7 +874,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -882,7 +882,7 @@ commands = {
                 },
             },
     'show_ldif'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
                     'oargs'             : ['attributes'],
@@ -891,7 +891,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -899,7 +899,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -907,7 +907,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -916,7 +916,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -925,7 +925,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -1001,6 +1001,14 @@ def register():
     config.register_auth_on_action_hook("share", "enable_sotp_signing")
     config.register_auth_on_action_hook("share", "disable_sotp_signing")
     config.register_auth_on_action_hook("share", "update_sign_public_keys")
+    config.register_auth_on_action_hook("share", "enable_ro")
+    config.register_auth_on_action_hook("share", "disable_ro")
+    config.register_auth_on_action_hook("share", "add_pool")
+    config.register_auth_on_action_hook("share", "remove_pool")
+    config.register_auth_on_action_hook("share", "get_share_key")
+    config.register_auth_on_action_hook("share", "add_share_key")
+    config.register_auth_on_action_hook("share", "del_share_key")
+    config.register_auth_on_action_hook("share", "change_add_script")
 
 def register_hooks():
     config.register_auth_on_action_hook("share", "set_config_parameter")
@@ -1487,6 +1495,7 @@ class Share(OTPmeObject):
                 if not self.add_token(token_path=restore_token,
                                         share_key=share_key,
                                         persist_mount=False,
+                                        force=True,
                                         callback=callback):
                     msg = _("Failed to add token: {token}")
                     msg = msg.format(token=restore_token)
@@ -1498,6 +1507,7 @@ class Share(OTPmeObject):
             self.encrypted = share.encrypted
             if share.force_group_uuid:
                 self.force_group(group_uuid=share.force_group_uuid,
+                                    force=True,
                                     verify_acls=False)
             # Add object using parent class.
             add_result = super().add(verify_acls=verify_acls,
@@ -1507,15 +1517,18 @@ class Share(OTPmeObject):
 
         if force_group:
             self.force_group(group_name=force_group,
+                            force=True,
                             verify_acls=False)
         if force_create_mode:
             if not self.force_create_mode(create_mode=force_create_mode,
                                         callback=callback,
+                                        force=True,
                                         verify_acls=False):
                 return callback.error()
         if force_directory_mode:
             if not self.force_directory_mode(create_mode=force_directory_mode,
                                             callback=callback,
+                                            force=True,
                                             verify_acls=False):
                 return callback.error()
         # Default add script.
@@ -1536,6 +1549,7 @@ class Share(OTPmeObject):
                 msg = msg.format(default_mount_script=default_mount_script)
                 callback.send(msg)
             self.change_mount_script(default_mount_script,
+                                    force=True,
                                     verify_acls=False,
                                     callback=callback)
         # Get root dir.
@@ -1586,6 +1600,7 @@ class Share(OTPmeObject):
                 return callback.error(msg)
             if not self.add_token(token_path=config.auth_token.rel_path,
                             share_key=share_key,
+                            force=True,
                             callback=callback):
                 return callback.error()
         # Add index attributes.
@@ -1600,11 +1615,17 @@ class Share(OTPmeObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Rename share. """
+        msg = _("Rename share '{share_name}' to '{new_name}'?: ")
+        msg = msg.format(share_name=self.name, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         # Build new OID.
         new_oid = oid.get(object_type="share",
                         realm=self.realm,
@@ -1658,12 +1679,17 @@ class Share(OTPmeObject):
         self,
         group_name: str=None,
         group_uuid: str=None,
+        force: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         if not group_name and not group_uuid:
+            msg = _("Remove force group of share '{share_name}'?: ")
+            msg = msg.format(share_name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
             self.del_index('force_group_uuid', self.force_group_uuid)
             self.force_group_uuid = None
             return self._cache(callback=callback)
@@ -1687,6 +1713,12 @@ class Share(OTPmeObject):
             msg = _("Force group already set to: {group}")
             msg = msg.format(group=group)
             return callback.error(msg)
+
+        msg = _("Set force group of share '{share_name}' to '{group_name}'?: ")
+        msg = msg.format(share_name=self.name, group_name=group.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.force_group_uuid = group.uuid
         self.update_index('force_group_uuid', self.force_group_uuid)
         return self._cache(callback=callback)
@@ -1698,6 +1730,7 @@ class Share(OTPmeObject):
     def force_create_mode(
         self,
         create_mode,
+        force: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1710,6 +1743,12 @@ class Share(OTPmeObject):
         if not create_mode.startswith("0o"):
             msg = _("Invalid mode. Use python format, e.g. 0o700")
             return callback.error(msg)
+
+        msg = _("Set create mode of share '{share_name}' to '{create_mode}'?: ")
+        msg = msg.format(share_name=self.name, create_mode=create_mode)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.create_mode = create_mode
         self.update_index('create_mode', create_mode)
         return self._cache(callback=callback)
@@ -1721,6 +1760,7 @@ class Share(OTPmeObject):
     def force_directory_mode(
         self,
         create_mode,
+        force: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1733,6 +1773,12 @@ class Share(OTPmeObject):
         if not create_mode.startswith("0o"):
             msg = _("Invalid mode. Use python format, e.g. 0o700")
             return callback.error(msg)
+
+        msg = _("Set directory mode of share '{share_name}' to '{create_mode}'?: ")
+        msg = msg.format(share_name=self.name, create_mode=create_mode)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.directory_mode = create_mode
         self.update_index('directory_mode', create_mode)
         return self._cache(callback=callback)
@@ -1744,6 +1790,7 @@ class Share(OTPmeObject):
     def set_home_share_permissions(
         self,
         permissions,
+        force: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1775,6 +1822,12 @@ class Share(OTPmeObject):
             msg = _("Mode out of range: {permissions}")
             msg = msg.format(permissions=permissions)
             return callback.error(msg)
+
+        msg = _("Set home share permissions of share '{share_name}' to '{permissions}'?: ")
+        msg = msg.format(share_name=self.name, permissions=permissions)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.home_share_permissions = permissions
         return self._cache(callback=callback)
 
@@ -2192,6 +2245,7 @@ class Share(OTPmeObject):
     def add_master_password_token(
         self,
         token_path: str,
+        force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2221,6 +2275,11 @@ class Share(OTPmeObject):
             msg = _("Token already assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        msg = _("Add master password token '{token_path}' to share '{share_name}'? The token may then mount the share with the master password.: ")
+        msg = msg.format(token_path=token_path, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.master_password_tokens.append(token_uuid)
 
@@ -2352,6 +2411,7 @@ class Share(OTPmeObject):
         token_path: str,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2391,6 +2451,11 @@ class Share(OTPmeObject):
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
 
+        msg = _("Add root mount token '{token_path}' to share '{share_name}'? The token then reaches the home directories of all users.: ")
+        msg = msg.format(token_path=token_path, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.root_mount_tokens.append(token_uuid)
 
         # Update index.
@@ -2420,6 +2485,7 @@ class Share(OTPmeObject):
         token_path: str,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2445,6 +2511,11 @@ class Share(OTPmeObject):
             msg = _("Token not assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        msg = _("Remove root mount token '{token_path}' from share '{share_name}'?: ")
+        msg = msg.format(token_path=token_path, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.root_mount_tokens.remove(token_uuid)
         # Update index.
@@ -2503,6 +2574,7 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         share_key: str=None,
+        force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2534,6 +2606,11 @@ class Share(OTPmeObject):
             msg = _("Token already assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        msg = _("Add no mount token '{token_path}' to share '{share_name}'?: ")
+        msg = msg.format(token_path=token_path, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         token_user = token_path.split("/")[0]
         result = backend.search(object_type="user",
@@ -2598,6 +2675,7 @@ class Share(OTPmeObject):
             if share_key:
                 self.add_share_key(username=user.name,
                                     share_key=share_key,
+                                    force=True,
                                     callback=callback,
                                     verify_acls=False)
 
@@ -2620,6 +2698,7 @@ class Share(OTPmeObject):
         self,
         token_path: str,
         keep_share_key: bool=None,
+        force: bool=False,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2648,6 +2727,11 @@ class Share(OTPmeObject):
             msg = _("Token not assigned to share: {token_path}")
             msg = msg.format(token_path=token_path)
             return callback.error(msg)
+
+        msg = _("Remove no mount token '{token_path}' from share '{share_name}'?: ")
+        msg = msg.format(token_path=token_path, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.no_mount_tokens.remove(token_uuid)
         # Update index.
@@ -2795,6 +2879,7 @@ class Share(OTPmeObject):
             if share_key:
                 self.add_share_key(username=user.name,
                                     share_key=share_key,
+                                    force=True,
                                     callback=callback,
                                     verify_acls=False)
 
@@ -3250,6 +3335,7 @@ class Share(OTPmeObject):
         self,
         username: str,
         share_key: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -3269,6 +3355,11 @@ class Share(OTPmeObject):
             msg = _("Share key already exists: {username}")
             msg = msg.format(username=username)
             return callback.error(msg)
+
+        msg = _("Add share key of user '{username}' to share '{share_name}'?: ")
+        msg = msg.format(username=username, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -3419,6 +3510,11 @@ class Share(OTPmeObject):
             msg = msg.format(object_type=self.type, object_name=self.name)
             return callback.error(msg, exception=exception)
 
+        msg = _("Add pool '{pool_name}' to share '{share_name}'?: ")
+        msg = msg.format(pool_name=pool.name, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3477,6 +3573,11 @@ class Share(OTPmeObject):
             msg = msg.format(object_type=self.type, object_name=self.name)
             return callback.error(msg)
 
+        msg = _("Remove pool '{pool_name}' from share '{share_name}'?: ")
+        msg = msg.format(pool_name=pool.name, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3506,6 +3607,7 @@ class Share(OTPmeObject):
         group_uuid: str=None,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -3526,6 +3628,12 @@ class Share(OTPmeObject):
         if group_uuid in self.groups:
             msg = _("Group already added to share.")
             return callback.error(msg)
+
+        msg = _("Add group '{group_name}' to share '{share_name}'?: ")
+        msg = msg.format(group_name=group_name or group_uuid,
+                        share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -3647,6 +3755,7 @@ class Share(OTPmeObject):
         group_name: str,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -3665,6 +3774,11 @@ class Share(OTPmeObject):
         if group.uuid not in self.groups:
             msg = _("Group not assigned share.")
             return callback.error(msg)
+
+        msg = _("Remove group '{group_name}' from share '{share_name}'?: ")
+        msg = msg.format(group_name=group.name, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4029,6 +4143,7 @@ class Share(OTPmeObject):
         self,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4044,6 +4159,12 @@ class Share(OTPmeObject):
         non-listed hosts. """
         if self.limit_by_hosts:
             return callback.error(_("Share access already limited."))
+
+        msg = _("Limit access to share '{share_name}' to the assigned hosts? The share gets unmounted on all other hosts.: ")
+        msg = msg.format(share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -4070,6 +4191,7 @@ class Share(OTPmeObject):
         self,
         persist_mount: bool=None,
         share_notifications: bool=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4083,6 +4205,12 @@ class Share(OTPmeObject):
         re-evaluate. """
         if not self.limit_by_hosts:
             return callback.error(_("Share access already unlimited."))
+
+        msg = _("Unlimit access to share '{share_name}'? The share may then be mounted on any host.: ")
+        msg = msg.format(share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -4325,6 +4453,7 @@ class Share(OTPmeObject):
     @object_changelog("enable mount script")
     def enable_mount_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4341,6 +4470,11 @@ class Share(OTPmeObject):
             msg = _("Script does not exist: {mount_script}")
             msg = msg.format(mount_script=self.mount_script)
             return callback.error(msg)
+
+        msg = _("Enable mount script '{script_name}' for share '{share_name}'?: ")
+        msg = msg.format(script_name=x.name, share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4371,6 +4505,7 @@ class Share(OTPmeObject):
     @object_changelog("disable mount script")
     def disable_mount_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4381,6 +4516,11 @@ class Share(OTPmeObject):
         if not self.mount_script_enabled:
             msg = _("Mount script already disabled for this share.")
             return callback.error(msg)
+
+        msg = _("Disable mount script for share '{share_name}'?: ")
+        msg = msg.format(share_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4408,6 +4548,7 @@ class Share(OTPmeObject):
         self,
         mount_script: Union[str,None]=None,
         script_options: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4416,6 +4557,12 @@ class Share(OTPmeObject):
         """ Change share add script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        msg = _("Change mount script of share '{share_name}' to '{script}'?: ")
+        msg = msg.format(share_name=self.name, script=mount_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

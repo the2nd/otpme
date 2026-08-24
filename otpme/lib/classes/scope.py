@@ -85,7 +85,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'oargs'             : ['name', 'unit', 'scope_id'],
@@ -98,7 +98,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -108,7 +108,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -116,7 +116,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -125,7 +125,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -134,7 +134,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -142,7 +142,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -150,7 +150,7 @@ commands = {
                 },
             },
     'scope_id'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_scope_id',
                     'args'              : ['scope_id'],
@@ -159,7 +159,7 @@ commands = {
                 },
             },
     'enable_auto_member'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_auto_member',
                     'job_type'          : 'thread',
@@ -167,7 +167,7 @@ commands = {
                 },
             },
     'disable_auto_member'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_auto_member',
                     'job_type'          : 'thread',
@@ -175,7 +175,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("scope"),
                     'args'              : ['realm'],
@@ -203,7 +203,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("scope"),
                     'oargs'              : [
@@ -227,7 +227,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -235,7 +235,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -244,7 +244,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -252,7 +252,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -260,7 +260,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -269,7 +269,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -279,7 +279,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -287,7 +287,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -295,7 +295,7 @@ commands = {
                 },
             },
     'add_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
@@ -304,7 +304,7 @@ commands = {
                 },
             },
     'remove_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
@@ -313,7 +313,7 @@ commands = {
                 },
             },
     'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
@@ -322,7 +322,7 @@ commands = {
                 },
             },
     'remove_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
@@ -331,7 +331,7 @@ commands = {
                 },
             },
     'add_client'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_client',
                     'args'              : ['client_name'],
@@ -340,7 +340,7 @@ commands = {
                 },
             },
     'remove_client'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_client',
                     'args'              : ['client_name'],
@@ -349,7 +349,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'thread',
@@ -359,7 +359,7 @@ commands = {
                 },
             },
     'list_tokens'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
@@ -369,7 +369,7 @@ commands = {
                 },
             },
     'list_roles'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
@@ -378,7 +378,7 @@ commands = {
                 },
             },
     'list_clients'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_clients',
                     'oargs'             : ['return_type'],
@@ -388,7 +388,7 @@ commands = {
                 },
             },
     'list_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_groups',
                     'oargs'             : ['return_type'],
@@ -398,7 +398,7 @@ commands = {
                 },
             },
     'add_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_group',
                     'args'              : ['group_name'],
@@ -407,7 +407,7 @@ commands = {
                 },
             },
     'remove_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_group',
                     'args'              : ['group_name'],
@@ -416,7 +416,7 @@ commands = {
                 },
             },
     #'add_extension'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'add_extension',
     #                'args'              : ['extension'],
@@ -425,7 +425,7 @@ commands = {
     #            },
     #        },
     #'remove_extension'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'remove_extension',
     #                'args'              : ['extension'],
@@ -434,7 +434,7 @@ commands = {
     #            },
     #        },
     #'add_attribute'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'add_attribute',
     #                'args'              : ['attribute'],
@@ -444,7 +444,7 @@ commands = {
     #            },
     #        },
     #'del_attribute'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'del_attribute',
     #                'args'              : ['attribute'],
@@ -454,7 +454,7 @@ commands = {
     #            },
     #        },
     #'add_object_class'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'add_object_class',
     #                'args'              : ['object_class'],
@@ -463,7 +463,7 @@ commands = {
     #            },
     #        },
     #'del_object_class'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'del_object_class',
     #                'args'              : ['object_class'],
@@ -472,7 +472,7 @@ commands = {
     #            },
     #        },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -482,7 +482,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -493,7 +493,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -502,7 +502,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -511,7 +511,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -520,7 +520,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -529,7 +529,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -538,7 +538,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -547,7 +547,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -556,7 +556,7 @@ commands = {
                 },
             },
     #'_show_config'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'show_config',
     #                'job_type'          : 'thread',
@@ -564,7 +564,7 @@ commands = {
     #            },
     #        },
     #'_list_valid_object_classes'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'list_valid_object_classes',
     #                'job_type'          : 'thread',
@@ -572,7 +572,7 @@ commands = {
     #            },
     #        },
     #'_list_valid_attributes'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'list_valid_attributes',
     #                'job_type'          : 'thread',
@@ -580,7 +580,7 @@ commands = {
     #            },
     #        },
     #'_show_attributes'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'show_attributes',
     #                'job_type'          : 'thread',
@@ -588,7 +588,7 @@ commands = {
     #            },
     #        },
     #'_show_object_classes'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'get_object_classes',
     #                'job_type'          : 'thread',
@@ -596,7 +596,7 @@ commands = {
     #            },
     #        },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -604,7 +604,7 @@ commands = {
                 },
             },
     #'_show_supported_acls'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'get_supported_acls',
     #                'job_type'          : 'thread',
@@ -612,7 +612,7 @@ commands = {
     #            },
     #        },
     #'_show_supported_default_acls'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'get_supported_acls',
     #                'args'              : { 'acl_types' : 'default_acls' },
@@ -621,7 +621,7 @@ commands = {
     #            },
     #        },
     #'_show_supported_recursive_default_acls'   : {
-    #        'OTPme-mgmt-1.0'    : {
+    #        'default'    : {
     #            'exists'    : {
     #                'method'            : 'get_supported_acls',
     #                'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -630,7 +630,7 @@ commands = {
     #            },
     #        },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -716,6 +716,8 @@ def register_hooks():
     config.register_auth_on_action_hook("scope", "remove_client")
     config.register_auth_on_action_hook("scope", "add_group")
     config.register_auth_on_action_hook("scope", "remove_group")
+    config.register_auth_on_action_hook("scope", "enable_auto_member")
+    config.register_auth_on_action_hook("scope", "disable_auto_member")
     config.register_auth_on_action_hook("scope", "set_config_parameter")
 
 def register_object_unit():
@@ -927,6 +929,7 @@ class Scope(OTPmeObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -935,6 +938,11 @@ class Scope(OTPmeObject):
         base_scopes = config.get_base_objects("scope")
         if self.name in base_scopes:
             return callback.error("Cannot rename base scope.")
+
+        msg = _("Rename scope '{scope_name}' to '{new_name}'?: ")
+        msg = msg.format(scope_name=self.name, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Build new OID.
         new_oid = oid.get(object_type="scope",
@@ -967,12 +975,12 @@ class Scope(OTPmeObject):
             return callback.error(msg)
         if scope_id is None:
             scope_id = self.name
-        self.change_scope_id(scope_id)
+        self.change_scope_id(scope_id, force=True)
         defaults = BASE_SCOPE_DEFAULTS.get(self.name)
         if defaults:
             auto_member = defaults["auto_member"]
             if auto_member:
-                self.enable_auto_member()
+                self.enable_auto_member(force=True)
         return callback.ok()
 
     @object_lock(full_lock=True)
@@ -1027,6 +1035,7 @@ class Scope(OTPmeObject):
         self,
         client_name: str=None,
         client_uuid: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1063,6 +1072,12 @@ class Scope(OTPmeObject):
             msg = msg.format(sid=self.scope_id, name=o.name)
             return callback.error(msg)
 
+        msg = _("Add client '{client_name}' to scope '{scope_name}'?: ")
+        msg = msg.format(client_name=client_name or client_uuid,
+                        scope_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1092,6 +1107,7 @@ class Scope(OTPmeObject):
     def remove_client(
         self,
         client_name: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1110,6 +1126,11 @@ class Scope(OTPmeObject):
         if client.uuid not in self.clients:
             msg = _("Client not in scope.")
             return callback.error(msg)
+
+        msg = _("Remove client '{client_name}' from scope '{scope_name}'?: ")
+        msg = msg.format(client_name=client_name, scope_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -1135,11 +1156,17 @@ class Scope(OTPmeObject):
     def change_scope_id(
         self,
         scope_id: str,
+        force: bool=False,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Change scope ID. """
+        msg = _("Change scope ID of scope '{scope_name}' to '{scope_id}'?: ")
+        msg = msg.format(scope_name=self.name, scope_id=scope_id)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.scope_id = scope_id
         self.add_index("scope_id", scope_id)
         return self._cache(callback=callback)
@@ -1150,6 +1177,7 @@ class Scope(OTPmeObject):
     @object_changelog("enable auto member")
     def enable_auto_member(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
@@ -1160,6 +1188,11 @@ class Scope(OTPmeObject):
         if self.auto_member:
             msg = _("Auto member already enabled.")
             return callback.error(msg)
+
+        msg = _("Enable auto member for scope '{scope_name}'?: ")
+        msg = msg.format(scope_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -1181,6 +1214,7 @@ class Scope(OTPmeObject):
     @object_changelog("disable auto member")
     def disable_auto_member(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         verbose_level: int=0,
@@ -1191,6 +1225,11 @@ class Scope(OTPmeObject):
         if not self.auto_member:
             msg = _("Auto member already disabled.")
             return callback.error(msg)
+
+        msg = _("Disable auto member for scope '{scope_name}'?: ")
+        msg = msg.format(scope_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -1224,6 +1263,7 @@ class Scope(OTPmeObject):
         self,
         group_name: str=None,
         group_uuid: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1249,6 +1289,12 @@ class Scope(OTPmeObject):
         if group_uuid in self.groups:
             msg = _("Group already added to scope.")
             return callback.error(msg)
+
+        msg = _("Add group '{group_name}' to scope '{scope_name}'?: ")
+        msg = msg.format(group_name=group_name or group_uuid,
+                        scope_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -1277,6 +1323,7 @@ class Scope(OTPmeObject):
     def remove_group(
         self,
         group_name: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1295,6 +1342,11 @@ class Scope(OTPmeObject):
         if grp.uuid not in self.groups:
             msg = _("Group not in scope.")
             return callback.error(msg)
+
+        msg = _("Remove group '{group_name}' from scope '{scope_name}'?: ")
+        msg = msg.format(group_name=group_name, scope_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

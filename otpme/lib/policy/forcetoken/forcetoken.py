@@ -71,7 +71,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -79,7 +79,7 @@ commands = {
                 },
             },
     'force_token_types'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_force_token_types',
                     'args'              : ['token_types'],
@@ -88,7 +88,7 @@ commands = {
                 },
             },
     'force_pass_types'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_force_pass_types',
                     'args'              : ['pass_types'],
@@ -292,8 +292,8 @@ class ForcetokenPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change force token types to {token_types}")
-    def change_force_token_types(self, token_types, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_force_token_types(self, token_types, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed forced token types. """
         try:
             force_token_types = token_types.split(",")
@@ -301,6 +301,11 @@ class ForcetokenPolicy(Policy):
             msg = _("Invalid token types: {}")
             msg = msg.format(token_types)
             return callback.error(msg)
+
+        msg = _("Change forced token types of policy '{policy_name}' to '{token_types}'?: ")
+        msg = msg.format(policy_name=self.name, token_types=token_types)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -322,8 +327,8 @@ class ForcetokenPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change force pass types to {pass_types}")
-    def change_force_pass_types(self, pass_types, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_force_pass_types(self, pass_types, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed pass types. """
         try:
             force_pass_types = pass_types.split(",")
@@ -331,6 +336,11 @@ class ForcetokenPolicy(Policy):
             msg = _("Invalid password types: {}")
             msg = msg.format(pass_types)
             return callback.error(msg)
+
+        msg = _("Change forced pass types of policy '{policy_name}' to '{pass_types}'?: ")
+        msg = msg.format(policy_name=self.name, pass_types=pass_types)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

@@ -214,7 +214,9 @@ class OTPmeHostP1(OTPmeServer1):
             message = message.format(command=command)
             status = False
 
-        elif command in root_only_commands and self.client_user != "root":
+        elif command in root_only_commands \
+        and self.client_user != "root" \
+        and self.client_user != "otpme":
             message = _("Permission denied.")
             status = False
 

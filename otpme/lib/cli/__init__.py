@@ -102,8 +102,12 @@ def check_rapi_opts():
                 commands = self.__class__.commands
                 # Find command that maps to this method.
                 for x in commands:
-                    for s in commands[x][config.server_protocol]:
-                        method = commands[x][config.server_protocol][s]['method']
+                    if config.server_protocol in commands[x]:
+                        proto_key = config.server_protocol
+                    else:
+                        proto_key = "default"
+                    for s in commands[x][proto_key]:
+                        method = commands[x][proto_key][s]['method']
                         if method != func_name:
                             continue
                         command = x

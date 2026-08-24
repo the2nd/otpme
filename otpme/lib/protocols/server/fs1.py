@@ -59,6 +59,8 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.require_preauth = True
         # Allow auth via SOTP.
         self.allow_sotp_auth = True
+        # fsd requires login via SOTP.
+        self.require_sotp_auth = True
         self.sotp_ag_auth = False
         self.supports_sotp_signing = True
         # No additional encryption for fsd.
@@ -687,6 +689,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                                 return self.build_response(status, response)
                             share.add_share_key(username=config.auth_user.name,
                                                 share_key=new_share_key,
+                                                force=True,
                                                 callback=default_callback,
                                                 verify_acls=False)
                             default_callback.write_modified_objects()
@@ -879,6 +882,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 return self.build_response(status, message)
             share.add_token(token_path=config.auth_token.rel_path,
                             share_key=share_key,
+                            force=True,
                             callback=default_callback,
                             verify_acls=False)
             default_callback.write_modified_objects()

@@ -108,7 +108,7 @@ recursive_default_acls = []
 
 commands = {
     'sign_public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sign_public_key',
                     'oargs'             : ['public_key'],
@@ -117,7 +117,7 @@ commands = {
                 },
             },
     'encrypt_public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_encrypt_public_key',
                     'oargs'             : ['public_key'],
@@ -126,7 +126,7 @@ commands = {
                 },
             },
     'dump_sign_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_sign_key',
                     'job_type'          : 'process',
@@ -134,7 +134,7 @@ commands = {
                 },
             },
     'dump_encrypt_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_encrypt_key',
                     'job_type'          : 'process',
@@ -142,7 +142,7 @@ commands = {
                 },
             },
     'ssh_public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_ssh_public_key',
                     'oargs'             : ['ssh_public_key'],
@@ -151,7 +151,7 @@ commands = {
                 },
             },
     'key_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_type',
                     'args'              : ['key_type'],
@@ -160,7 +160,7 @@ commands = {
                 },
             },
     'dump_private_key_backup'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_private_key_backup',
                     'job_type'          : 'process',
@@ -168,7 +168,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
@@ -177,7 +177,7 @@ commands = {
                 },
             },
     'sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'sign',
                     'oargs'             : ['tags', 'stdin_pass'],
@@ -186,7 +186,7 @@ commands = {
                 },
             },
     'resign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'resign',
                     'job_type'          : 'process',
@@ -194,7 +194,7 @@ commands = {
                 },
             },
     'add_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_sign',
                     'oargs'             : ['signature', 'tags'],
@@ -203,7 +203,7 @@ commands = {
                 },
             },
     'del_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_sign',
                     'oargs'             : ['username', 'tags'],
@@ -212,7 +212,7 @@ commands = {
                 },
             },
     'verify_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'verify_sign',
                     'oargs'             : ['username', 'user_uuid', 'tags'],
@@ -221,7 +221,7 @@ commands = {
                 },
             },
     'get_sign_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_sign_data',
                     'oargs'             : ['tags'],
@@ -230,7 +230,7 @@ commands = {
                 },
             },
     'get_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_sign',
                     'oargs'             : ['username', 'user_uuid', 'tags'],
@@ -622,6 +622,7 @@ class YubikeypivToken(Token):
     def change_key_type(
         self,
         key_type: str="rsa",
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -636,6 +637,11 @@ class YubikeypivToken(Token):
             msg = _("Key type already set to: {key_type}")
             msg = msg.format(key_type=key_type)
             return callback.error(msg)
+
+        msg = _("Change key type of token '{token_path}' to '{key_type}'?: ")
+        msg = msg.format(token_path=self.rel_path, key_type=key_type)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

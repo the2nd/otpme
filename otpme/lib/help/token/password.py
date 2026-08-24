@@ -30,11 +30,12 @@ cmd_help = {
                 },
 
     'password'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token password [--generate] {token} [password]'),
-                    'cmd'   :   '--generate :auto_password=True: <|object|> [password]',
+                    '_cmd_usage_help' : _('Usage: otpme-token password [--generate] [--weak-password] {token} [password]'),
+                    'cmd'   :   '--generate :auto_password=True: --weak-password :weak_password=True: <|object|> [password]',
                     '_help' :   {
                                     'cmd'                   : _('Change token password.'),
                                     '--generate'            : _('Generate password.'),
+                                    '--weak-password'       : _('Allow a password the password policy rejects (needs force_password ACL).'),
                                 },
                 },
 

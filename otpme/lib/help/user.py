@@ -50,8 +50,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--password <password>] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}'),
-                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --password :password: --attributes :[ldif_attributes]: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: --mode :mode: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--password <password>] [--weak-password] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}'),
+                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --password :password: --weak-password :weak_password=True: --attributes :[ldif_attributes]: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: --mode :mode: <|object|>',
                     '_help' :   {
                                     'cmd'                                   : _('Add new user.'),
                                     '--group <group>'                       : _('Users default group.'),
@@ -64,6 +64,7 @@ cmd_help = {
                                     '--default-token <token_name>'          : _('Get default token from TOKENSTORE.'),
                                     '--default-token-type <token_type>'     : _('Add default token of type <token_type>.'),
                                     '--password <password>'                 : _('Set password for default token (must be password token).'),
+                                    '--weak-password'                       : _('Allow a password the password policy rejects (needs force_password ACL).'),
                                     '--attributes <attr1=val1,attr2=val2>'  : _('Add LDIF attributes to user.'),
                                     '--template'                            : _('Add user from template.'),
                                     '-t'                                    : _('Add user template.'),
@@ -274,13 +275,14 @@ cmd_help = {
                 },
 
     'add_token'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user add_token [-r] [--no-qrcode] [--enable-mschap] [--token-type <token_type>] [--name <token_name>] [--destination <dst_token>] [--password <password>] {user}'),
-                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: --enable-mschap :enable_mschap=True: --name :token_name: --token-type :token_type: --destination :destination_token: --password :password: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user add_token [-r] [--no-qrcode] [--enable-mschap] [--token-type <token_type>] [--name <token_name>] [--destination <dst_token>] [--password <password>] [--weak-password] {user}'),
+                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: --enable-mschap :enable_mschap=True: --name :token_name: --token-type :token_type: --destination :destination_token: --password :password: --weak-password :weak_password=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
                                     '--name'                : _('Token name.'),
                                     '--token-type'          : _('Token type.'),
                                     '--password <password>' : _('Set token password (for password tokens).'),
+                                    '--weak-password'       : _('Allow a password the password policy rejects (needs force_password ACL).'),
                                     '-r'                    : _('Replace existing token and keep its UUID.'),
                                 },
                 },

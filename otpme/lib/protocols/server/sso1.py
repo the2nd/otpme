@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
@@ -1113,6 +1112,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             token_type="passkey",
                             no_token_infos=True,
                             gen_qrcode=False,
+                            force=True,
                             verify_acls=False,
                             run_policies=True,
                             callback=callback)
@@ -1151,6 +1151,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     continue
                 try:
                     role.add_token(token_path=token_path,
+                                    force=True,
                                     verify_acls=False,
                                     run_policies=False,
                                     callback=callback)
@@ -1166,6 +1167,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     continue
                 try:
                     ag.add_token(token_path=token_path,
+                                force=True,
                                 verify_acls=False,
                                 run_policies=False,
                                 callback=callback)
@@ -1181,6 +1183,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     continue
                 try:
                     grp.add_token(token_path=token_path,
+                                force=True,
                                 verify_acls=False,
                                 run_policies=False,
                                 callback=callback)
@@ -1360,11 +1363,13 @@ class OTPmeSsoP1(OTPmeServer1):
         callback.raise_exception = True
         try:
             if enabled:
-                user.enable_admin_access(verify_acls=False,
+                user.enable_admin_access(force=True,
+                                         verify_acls=False,
                                          run_policies=False,
                                          callback=callback)
             else:
-                user.disable_admin_access(verify_acls=False,
+                user.disable_admin_access(force=True,
+                                          verify_acls=False,
                                           run_policies=False,
                                           callback=callback)
         except Exception as e:
@@ -1408,6 +1413,7 @@ class OTPmeSsoP1(OTPmeServer1):
         callback.raise_exception = True
         try:
             user.change_language(language=language,
+                                 force=True,
                                  verify_acls=False,
                                  callback=callback)
         except Exception as e:
@@ -2173,6 +2179,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                     token_type="password",
                                     no_token_infos=True,
                                     gen_qrcode=False,
+                                    force=True,
                                     verify_acls=False,
                                     enable_mschap=True,
                                     run_policies=True,
@@ -2273,6 +2280,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # role was not done yet.
         try:
             role.add_token(token_path=token.rel_path,
+                            force=True,
                             verify_acls=False,
                             run_policies=False,
                             callback=callback)
@@ -2503,6 +2511,7 @@ class OTPmeSsoP1(OTPmeServer1):
         token_path = f"{user.name}/{token_name}"
         try:
             role.add_token(token_path=token_path,
+                            force=True,
                             verify_acls=False,
                             run_policies=False,
                             callback=callback)

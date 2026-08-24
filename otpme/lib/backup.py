@@ -29,7 +29,7 @@ default_callback = config.get_callback()
 
 commands = {
     'restore_object'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'args'              : ['object_data'],
                     'oargs'             : ['force'],

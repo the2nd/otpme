@@ -190,7 +190,7 @@ recursive_default_acls = [
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['node_name', 'site_fqdn'],
@@ -236,7 +236,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -246,7 +246,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -254,7 +254,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -263,7 +263,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -272,7 +272,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -280,7 +280,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -288,7 +288,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("site"),
                     'args'              : ['realm'],
@@ -315,7 +315,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("site"),
                     'oargs'              : [
@@ -341,7 +341,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -350,7 +350,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -358,7 +358,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -366,7 +366,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -374,7 +374,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'process',
@@ -384,7 +384,7 @@ commands = {
                 },
             },
     'add_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_extension',
                     'args'              : ['extension'],
@@ -393,7 +393,7 @@ commands = {
                 },
             },
     'remove_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_extension',
                     'args'              : ['extension'],
@@ -402,7 +402,7 @@ commands = {
                 },
             },
     'add_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
@@ -412,7 +412,7 @@ commands = {
                 },
             },
     'modify_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'modify_attribute',
                     'args'              : ['attribute', 'old_value', 'new_value'],
@@ -421,7 +421,7 @@ commands = {
                 },
             },
     'del_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute',
                     'args'              : ['attribute'],
@@ -431,7 +431,7 @@ commands = {
                 },
             },
     'add_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_object_class',
                     'args'              : ['object_class'],
@@ -440,7 +440,7 @@ commands = {
                 },
             },
     'del_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_object_class',
                     'args'              : ['object_class'],
@@ -449,7 +449,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'oargs'             : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
@@ -459,7 +459,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -470,7 +470,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -479,7 +479,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -488,7 +488,7 @@ commands = {
                 },
             },
     'address'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_address',
                     'args'              : ['address'],
@@ -497,7 +497,7 @@ commands = {
                 },
             },
     'auth_fqdn'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auth_fqdn',
                     'args'              : ['fqdn'],
@@ -506,7 +506,7 @@ commands = {
                 },
             },
     'mgmt_fqdn'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_mgmt_fqdn',
                     'args'              : ['fqdn'],
@@ -515,7 +515,7 @@ commands = {
                 },
             },
     'sso_fqdn'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sso_fqdn',
                     'args'              : ['fqdn'],
@@ -524,7 +524,7 @@ commands = {
                 },
             },
     'dump_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_cert',
                     'job_type'          : 'process',
@@ -532,7 +532,7 @@ commands = {
                 },
             },
     'dump_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_cert_key',
                     'oargs'              : ['passphrase'],
@@ -541,7 +541,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -550,7 +550,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -559,7 +559,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -568,7 +568,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -577,7 +577,7 @@ commands = {
                 },
             },
     'dump_ca_chain'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ca_chain',
                     'job_type'          : 'process',
@@ -585,7 +585,7 @@ commands = {
                 },
             },
     'dump_ca_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ca_data',
                     'job_type'          : 'process',
@@ -593,7 +593,7 @@ commands = {
                 },
             },
     'update_ca_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'update_ca_data',
                     'job_type'          : 'process',
@@ -601,7 +601,7 @@ commands = {
                 },
             },
     'renew_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'renew_cert',
                     'job_type'          : 'process',
@@ -609,7 +609,7 @@ commands = {
                 },
             },
     'site_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_site_cert',
                     'args'              : ['site_cert'],
@@ -618,7 +618,7 @@ commands = {
                 },
             },
     'radius_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_radius_cert',
                     'oargs'              : ['radius_cert', 'radius_key', 'radius_ca_cert'],
@@ -627,7 +627,7 @@ commands = {
                 },
             },
     'radius_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_radius_key',
                     'oargs'              : ['radius_key'],
@@ -636,7 +636,7 @@ commands = {
                 },
             },
     'radius_ca_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_radius_ca_cert',
                     'oargs'              : ['radius_ca_cert'],
@@ -645,7 +645,7 @@ commands = {
                 },
             },
     'sso_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sso_cert',
                     'oargs'              : ['sso_cert', 'sso_key'],
@@ -654,7 +654,7 @@ commands = {
                 },
             },
     'sso_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sso_key',
                     'oargs'              : ['sso_key'],
@@ -663,7 +663,7 @@ commands = {
                 },
             },
     'sso_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sso_secret',
                     'args'              : ['secret'],
@@ -672,7 +672,7 @@ commands = {
                 },
             },
     'sso_csrf_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sso_csrf_secret',
                     'args'              : ['secret'],
@@ -681,7 +681,7 @@ commands = {
                 },
             },
     'oidc_pairwise_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_pairwise_secret',
                     'oargs'             : ['secret', 'force'],
@@ -690,7 +690,7 @@ commands = {
                 },
             },
     'cluster_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_cluster_key',
                     'args'              : ['cluster_key'],
@@ -699,7 +699,7 @@ commands = {
                 },
             },
     'add_fido2_ca_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_fido2_ca_cert',
                     'args'              : ['ca_cert'],
@@ -708,7 +708,7 @@ commands = {
                 },
             },
     'del_fido2_ca_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_fido2_ca_cert',
                     'args'              : ['subject'],
@@ -717,7 +717,7 @@ commands = {
                 },
             },
     'list_fido2_ca_certs'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_fido2_ca_certs',
                     'job_type'          : 'thread',
@@ -725,7 +725,7 @@ commands = {
                 },
             },
     'add_trust'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_trust',
                     'args'              : ['site_name'],
@@ -734,7 +734,7 @@ commands = {
                 },
             },
     'del_trust'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_trust',
                     'args'              : ['site_name'],
@@ -743,7 +743,7 @@ commands = {
                 },
             },
     'add_sso_host'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_sso_host',
                     'args'              : ['host_name'],
@@ -752,7 +752,7 @@ commands = {
                 },
             },
     'del_sso_host'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_sso_host',
                     'args'              : ['host_name'],
@@ -761,7 +761,7 @@ commands = {
                 },
             },
     'enable_auth'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_auth',
                     'job_type'          : 'process',
@@ -769,7 +769,7 @@ commands = {
                 },
             },
     'disable_auth'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_auth',
                     'job_type'          : 'process',
@@ -777,7 +777,7 @@ commands = {
                 },
             },
     'enable_sync'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sync',
                     'job_type'          : 'process',
@@ -785,7 +785,7 @@ commands = {
                 },
             },
     'disable_sync'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sync',
                     'job_type'          : 'process',
@@ -793,7 +793,7 @@ commands = {
                 },
             },
     'enable_oidc'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_oidc',
                     'job_type'          : 'process',
@@ -801,7 +801,7 @@ commands = {
                 },
             },
     'disable_oidc'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_oidc',
                     'job_type'          : 'process',
@@ -809,7 +809,7 @@ commands = {
                 },
             },
     'renew_oidc_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_oidc_key',
                     'oargs'             : ['key_type', 'kty', 'size', 'alg'],
@@ -818,7 +818,7 @@ commands = {
                 },
             },
     'revoke_oidc_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'revoke_oidc_key',
                     'args'              : ['kid'],
@@ -827,7 +827,7 @@ commands = {
                 },
             },
     'show_oidc_keys'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_oidc_keys',
                     'job_type'          : 'process',
@@ -835,7 +835,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'job_type'          : 'process',
@@ -843,7 +843,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -851,7 +851,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -859,7 +859,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -867,7 +867,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -875,7 +875,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -883,7 +883,7 @@ commands = {
                 },
             },
     'show_ldif'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
                     'oargs'             : ['attributes'],
@@ -892,7 +892,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -900,7 +900,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -908,7 +908,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -917,7 +917,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -926,7 +926,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -2545,6 +2545,17 @@ def register_hooks():
     config.register_auth_on_action_hook("site", "del_trust")
     config.register_auth_on_action_hook("site", "add_sso_host")
     config.register_auth_on_action_hook("site", "del_sso_host")
+    config.register_auth_on_action_hook("site", "enable_oidc")
+    config.register_auth_on_action_hook("site", "disable_oidc")
+    config.register_auth_on_action_hook("site", "change_site_cert")
+    config.register_auth_on_action_hook("site", "change_cluster_key")
+    config.register_auth_on_action_hook("site", "change_radius_cert")
+    config.register_auth_on_action_hook("site", "change_radius_key")
+    config.register_auth_on_action_hook("site", "change_sso_fqdn")
+    config.register_auth_on_action_hook("site", "change_sso_cert")
+    config.register_auth_on_action_hook("site", "change_sso_key")
+    config.register_auth_on_action_hook("site", "change_sso_secret")
+    config.register_auth_on_action_hook("site", "change_sso_csrf_secret")
     config.register_auth_on_action_hook("site", "show_config_parameters")
     config.register_auth_on_action_hook("site", "set_config_parameter")
 
@@ -3060,12 +3071,18 @@ class Site(OTPmeObject):
     def change_site_cert(
         self,
         site_cert: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change site cert. """
+        msg = _("Change certificate of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3087,12 +3104,18 @@ class Site(OTPmeObject):
     def change_address(
         self,
         address: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change site IP address. """
+        msg = _("Change address of site '{site_name}' to '{address}'?: ")
+        msg = msg.format(site_name=self.name, address=address)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3117,12 +3140,18 @@ class Site(OTPmeObject):
     def change_auth_fqdn(
         self,
         fqdn: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change site auth FQDN. """
+        msg = _("Change auth FQDN of site '{site_name}' to '{fqdn}'?: ")
+        msg = msg.format(site_name=self.name, fqdn=fqdn)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3246,6 +3275,11 @@ class Site(OTPmeObject):
                 msg = msg.format(fqdn=fqdn)
                 return callback.error(msg)
 
+        msg = _("Change mgmt FQDN of site '{site_name}' to '{fqdn}'? This also creates a new mgmt certificate.: ")
+        msg = msg.format(site_name=self.name, fqdn=fqdn)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3285,6 +3319,11 @@ class Site(OTPmeObject):
                 msg = msg.format(fqdn=fqdn)
                 return callback.error(msg)
 
+        msg = _("Change SSO FQDN of site '{site_name}' to '{fqdn}'? This also creates a new SSO certificate.: ")
+        msg = msg.format(site_name=self.name, fqdn=fqdn)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3313,12 +3352,18 @@ class Site(OTPmeObject):
         radius_cert: str=None,
         radius_key: str=None,
         radius_ca_cert: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change radius cert. """
+        msg = _("Change RADIUS certificate of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3347,12 +3392,18 @@ class Site(OTPmeObject):
     def change_radius_key(
         self,
         radius_key: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change radius cert. """
+        msg = _("Change RADIUS key of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3376,12 +3427,18 @@ class Site(OTPmeObject):
     def change_radius_ca_cert(
         self,
         radius_ca_cert: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change radius cert. """
+        msg = _("Change RADIUS CA certificate of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3406,12 +3463,18 @@ class Site(OTPmeObject):
         self,
         sso_cert: str=None,
         sso_key: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change sso cert. """
+        msg = _("Change SSO certificate of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3435,12 +3498,18 @@ class Site(OTPmeObject):
     def change_sso_key(
         self,
         sso_key: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change sso cert. """
+        msg = _("Change SSO key of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3833,7 +3902,7 @@ class Site(OTPmeObject):
                 continue
             found_active_key = True
         if not found_active_key:
-            self.gen_oidc_key()
+            self.gen_oidc_key(force=True)
 
         # Auto-generate the per-Site pairwise HMAC key. Without it,
         # subject_type=pairwise collapses to a deterministic value
@@ -3962,6 +4031,11 @@ class Site(OTPmeObject):
                     msg = _("RSA size must be an integer (e.g. 2048): {size}")
                     msg = msg.format(size=size)
                     return callback.error(msg)
+
+        msg = _("Generate new OIDC signing key for site '{site_name}'? The current key gets retired.: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         now = int(time.time())
         try:
@@ -4152,6 +4226,7 @@ class Site(OTPmeObject):
         self,
         valid: Union[int,None]=None,
         key_len: Union[int,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -4159,6 +4234,11 @@ class Site(OTPmeObject):
         **kwargs,
         ):
         """ Renew site certificate """
+        msg = _("Renew certificate of site '{site_name}'? The old certificate gets revoked.: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -4195,6 +4275,7 @@ class Site(OTPmeObject):
             site_ca.exists()
             try:
                 site_ca.revoke_cert(cert=self.cert,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback)
             except Exception as e:
@@ -4289,6 +4370,7 @@ class Site(OTPmeObject):
             try:
                 self.renew_cert(key_len=site_key_len,
                                     valid=site_valid,
+                                    force=True,
                                     callback=callback)
             except Exception as e:
                 config.raise_exception()
@@ -4397,8 +4479,13 @@ class Site(OTPmeObject):
 
         if host_uuid in self.sso_hosts:
             msg = _("Host already added to site: {host_name}")
-            msg = msg.format(host_namhost_name=host_name)
+            msg = msg.format(host_name=host_name)
             return callback.error(msg)
+
+        msg = _("Add SSO host '{host_name}' to site '{site_name}'?: ")
+        msg = msg.format(host_name=host_name, site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4456,6 +4543,11 @@ class Site(OTPmeObject):
             msg = msg.format(site_name=site_name)
             return callback.error(msg)
 
+        msg = _("Trust site '{trusted_site}' from site '{site_name}'? Tokens of the trusted site may then authenticate here.: ")
+        msg = msg.format(trusted_site=site_name, site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -4510,6 +4602,11 @@ class Site(OTPmeObject):
             msg = _("Relationship with site does not exist: {site_name}")
             msg = msg.format(site_name=site_name)
             return callback.error(msg)
+
+        msg = _("Remove trust relationship of site '{site_name}' with site '{trusted_site}'?: ")
+        msg = msg.format(site_name=self.name, trusted_site=site_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4623,6 +4720,7 @@ class Site(OTPmeObject):
 
             # Add token ACLs policy to TOKENSTORE.
             x_user.add_policy("token_acls",
+                            force=True,
                             verify_acls=False,
                             callback=callback)
 
@@ -4763,6 +4861,7 @@ class Site(OTPmeObject):
             if self.uuid != master_site.uuid:
                 realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
                 realm_users_group.add_role(role_uuid=self.user_role_uuid,
+                                            force=True,
                                             callback=callback)
                 # Write role object.
                 callback.write_modified_objects()
@@ -4854,7 +4953,7 @@ class Site(OTPmeObject):
                                     progressbar=pbar)
 
             word_list = spsc.dump(d)
-            dictionary.add_words(word_list)
+            dictionary.add_words(word_list, force=True)
 
         # If we got some dicts add them to the password_strength policy.
         if dictionaries_sorted:
@@ -4883,6 +4982,8 @@ class Site(OTPmeObject):
                 policy_method = getattr(policy, method_name)
                 policy_method_args = dict(x[0][method_name])
                 policy_method_args['callback'] = callback
+                # We create base objects. So no user questions.
+                policy_method_args['force'] = True
                 policy_method(verify_acls=False, **policy_method_args)
 
         # Write objects.
@@ -4931,6 +5032,7 @@ class Site(OTPmeObject):
         for o in view_objects:
             acl = f"role:{realm_user_role.uuid}:++{o}:view_public"
             self.add_acl(acl=acl,
+                        force=True,
                         recursive_acls=True,
                         apply_default_acls=True,
                         object_types=view_objects,
@@ -4943,6 +5045,7 @@ class Site(OTPmeObject):
         for o in view_objects:
             acl = f"role:{realm_user_role.uuid}:++{o}:view:attribute"
             self.add_acl(acl=acl,
+                        force=True,
                         recursive_acls=True,
                         apply_default_acls=True,
                         object_types=view_objects,
@@ -4957,6 +5060,7 @@ class Site(OTPmeObject):
         for r in view_roles:
             acl = f"role:{r.uuid}:view_public"
             self.add_acl(acl=acl,
+                        force=True,
                         recursive_acls=False,
                         apply_default_acls=False,
                         verify_acls=False,
@@ -4975,6 +5079,7 @@ class Site(OTPmeObject):
                                     realm=self.realm,
                                     site=self.name)[0]
             _script.add_acl(acl=acl,
+                        force=True,
                         recursive_acls=False,
                         apply_default_acls=False,
                         verify_acls=False,
@@ -5017,7 +5122,7 @@ class Site(OTPmeObject):
             id_ranges = "uidNumber:s:70000-80000,gidNumber:s:70000-80000"
         id_ranges = id_ranges.split(",")
         for id_range in id_ranges:
-            id_range_policy.add_id_range(id_range=id_range)
+            id_range_policy.add_id_range(id_range=id_range, force=True)
         id_range_policy._write(callback=callback)
         # Create base policies.
         self.add_base_policies(callback=callback)
@@ -5084,7 +5189,7 @@ class Site(OTPmeObject):
                 if policy_objects:
                     if unit.name not in policy_objects:
                         continue
-                unit.add_policy(policy.name, verify_acls=False)
+                unit.add_policy(policy.name, force=True, verify_acls=False)
 
         # Default policies to site.
         default_policies = config.get_default_policies(self.type)
@@ -5103,7 +5208,7 @@ class Site(OTPmeObject):
             policy = result[0]
             if policy.uuid in self.policies:
                 continue
-            self.add_policy(policy.name, verify_acls=False)
+            self.add_policy(policy.name, force=True, verify_acls=False)
 
         # Write objects.
         callback.write_modified_objects()
@@ -5130,58 +5235,76 @@ class Site(OTPmeObject):
             # Do not enable sessions for MGMT and JOIN accessgroups.
             if group.name != config.join_access_group \
             and group.name != config.mgmt_access_group:
-                group.enable_sessions(verify_acls=False, callback=callback)
-                group.change_session_timeout(verify_acls=False,
+                group.enable_sessions(force=True,
+                                    verify_acls=False,
+                                    callback=callback)
+                group.change_session_timeout(force=True,
+                                            verify_acls=False,
                                             timeout="1D",
                                             callback=callback)
-                group.change_unused_session_timeout(verify_acls=False,
+                group.change_unused_session_timeout(force=True,
+                                                    verify_acls=False,
                                                      unused_timeout="1D",
                                                     callback=callback)
             if group.name == config.realm_access_group:
                 realm_access_group = group
                 # Set max sessions for REALM accessgroup.
-                group.change_max_sessions(verify_acls=False,
+                group.change_max_sessions(force=True,
+                                        verify_acls=False,
                                         max_sessions=3,
                                         callback=callback)
                 # Set relogin timeout for REALM accessgroup.
-                group.change_relogin_timeout(verify_acls=False,
+                group.change_relogin_timeout(force=True,
+                                            verify_acls=False,
                                             relogin_timeout="1s",
                                             callback=callback)
                 # Set session timeout values.
-                group.change_session_timeout(verify_acls=False, timeout="1M")
-                group.change_unused_session_timeout(verify_acls=False,
+                group.change_session_timeout(force=True,
+                                            verify_acls=False,
+                                            timeout="1M")
+                group.change_unused_session_timeout(force=True,
+                                                    verify_acls=False,
                                                     unused_timeout="3W")
             if group.name == config.sso_access_group:
                 sso_access_group = group
                 # Set max sessions for SSO portal group to 3.
-                group.change_max_sessions(verify_acls=False,
+                group.change_max_sessions(force=True,
+                                        verify_acls=False,
                                         max_sessions=3,
                                         callback=callback)
                 # Set relogin timeout for SSO portal to 1 second.
-                group.change_relogin_timeout(verify_acls=False,
+                group.change_relogin_timeout(force=True,
+                                            verify_acls=False,
                                             relogin_timeout="1m",
                                             callback=callback)
                 # Set session timeout values.
-                group.change_session_timeout(verify_acls=False, timeout="1M")
-                group.change_unused_session_timeout(verify_acls=False,
+                group.change_session_timeout(force=True,
+                                            verify_acls=False,
+                                            timeout="1M")
+                group.change_unused_session_timeout(force=True,
+                                                    verify_acls=False,
                                                     unused_timeout="1M")
                 # Enable timeout pass on for SSO accessgroup.
-                group.enable_timeout_pass_on(verify_acls=False,
+                group.enable_timeout_pass_on(force=True,
+                                            verify_acls=False,
                                             callback=callback)
             if group.name == config.ldap_access_group:
                 # Set max sessions for ldap (ldaptor) accessgroup.
-                group.change_max_sessions(verify_acls=False,
+                group.change_max_sessions(force=True,
+                                        verify_acls=False,
                                         max_sessions=3,
                                         callback=callback)
                 # Set relogin timeout for ldap accessgroup.
-                group.change_relogin_timeout(verify_acls=False,
+                group.change_relogin_timeout(force=True,
+                                            verify_acls=False,
                                             relogin_timeout="1m",
                                             callback=callback)
             if group.name != config.realm_access_group \
             and group.name != config.sso_access_group \
             and group.name != config.join_access_group:
                 # Add some base groups as child groups of REALM group.
-                realm_access_group.add_child_group(verify_acls=False,
+                realm_access_group.add_child_group(force=True,
+                                                    verify_acls=False,
                                                     group_name=group.name,
                                                     callback=callback)
         # Create base clients.
@@ -5290,6 +5413,7 @@ class Site(OTPmeObject):
 
                 realm_access_group = result[0]
                 realm_access_group.add_role(role_name=role.name,
+                                            force=True,
                                             verify_acls=False,
                                             callback=callback)
             # Set site admin role.
@@ -5308,15 +5432,18 @@ class Site(OTPmeObject):
         if self.uuid == master_site.uuid:
             realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
             realm_users_group.add_role(realm_user_role.name,
+                                        force=True,
                                         verify_acls=False,
                                         callback=callback)
         # Add REALM_USER role to site users group.
         users_group.add_role(realm_user_role.name,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
         users_group._write(callback=callback)
         # Add SSO_USER role to SSO accessgroup.
         sso_access_group.add_role(sso_user_role.name,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
         sso_access_group._write(callback=callback)
@@ -5345,6 +5472,8 @@ class Site(OTPmeObject):
                 policy_method = getattr(policy, method_name)
                 policy_method_args = dict(x[0][method_name])
                 policy_method_args['callback'] = callback
+                # We create base objects. So no user questions.
+                policy_method_args['force'] = True
                 policy_method(verify_acls=False, **policy_method_args)
 
         # Add default policies to base policies.
@@ -5423,6 +5552,7 @@ class Site(OTPmeObject):
                 continue
             # Add SSO user role to default scopes.
             scope.add_role(sso_user_role.name,
+                            force=True,
                             verify_acls=False,
                             run_policies=False,
                             callback=callback)
@@ -5479,6 +5609,8 @@ class Site(OTPmeObject):
                 policy_method = getattr(policy, method_name)
                 policy_method_args = dict(x[0][method_name])
                 policy_method_args['callback'] = callback
+                # We create base objects. So no user questions.
+                policy_method_args['force'] = True
                 policy_method(verify_acls=False, **policy_method_args)
 
         # Write objects.
@@ -5531,6 +5663,7 @@ class Site(OTPmeObject):
                 admin_user.add(add_default_token=True,
                                 gen_qrcode=True,
                                 verify_acls=False,
+                                force=True,
                                 callback=callback)
             except Exception as e:
                 msg = _("Problem adding admin user: {e}")
@@ -5564,6 +5697,7 @@ class Site(OTPmeObject):
 
         # Add admin token to JOIN access group.
         join_accessgroup.add_token(token_path=admin_token.rel_path,
+                                    force=True,
                                     run_policies=False,
                                     verify_acls=False)
 
@@ -5582,6 +5716,7 @@ class Site(OTPmeObject):
 
         if auth_on_action_policy:
             auth_on_action_policy.add_whitelist(token_path=admin_token.rel_path,
+                                                force=True,
                                                 verify_acls=False)
 
         # Write objects.
@@ -5612,6 +5747,13 @@ class Site(OTPmeObject):
         if x_cert.subject.rfc4514_string() in self.fido2_ca_certs:
             msg = _("Cert already added.")
             return callback.error(msg)
+
+        msg = _("Add FIDO2 CA certificate '{subject}' to site '{site_name}'?: ")
+        msg = msg.format(subject=x_cert.subject.rfc4514_string(),
+                        site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.fido2_ca_certs[x_cert.subject.rfc4514_string()] = ca_cert.decode()
         return self._cache(callback=callback)
 
@@ -5626,12 +5768,17 @@ class Site(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        try:
-            self.fido2_ca_certs.pop(subject)
-        except KeyError:
+        if subject not in self.fido2_ca_certs:
             msg = _("Unknown CA cert: {subject}")
             msg = msg.format(subject=subject)
             return callback.error(msg)
+
+        msg = _("Remove FIDO2 CA certificate '{subject}' from site '{site_name}'?: ")
+        msg = msg.format(subject=subject, site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        self.fido2_ca_certs.pop(subject)
         return self._cache(callback=callback)
 
     @check_acls(['view:fido2_ca_cert'])

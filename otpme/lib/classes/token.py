@@ -99,6 +99,8 @@ write_value_acls = {
                                 "config",
                             ],
                     "edit"  : [
+                                "pin",
+                                "password",
                                 "auto_disable",
                                 "token_data",
                             ],
@@ -110,7 +112,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['dict_name'],
@@ -125,7 +127,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -135,7 +137,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -143,7 +145,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -152,7 +154,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -161,7 +163,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -169,7 +171,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -177,7 +179,7 @@ commands = {
                 },
             },
     'dump_token_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_token_data',
                     'job_type'          : 'thread',
@@ -185,7 +187,7 @@ commands = {
                 },
             },
     'set_token_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_token_data',
                     'args'              : ['token_data'],
@@ -194,7 +196,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'job_type'          : 'process',
@@ -202,7 +204,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("token"),
                     'oargs'              : [
@@ -232,7 +234,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("token"),
                     'oargs'              : [
@@ -258,7 +260,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -266,7 +268,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -275,7 +277,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -284,7 +286,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -293,7 +295,7 @@ commands = {
                 },
             },
     'auto_disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auto_disable',
                     'args'              : ['auto_disable'],
@@ -302,7 +304,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -311,7 +313,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_token_path'],
@@ -321,7 +323,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -329,7 +331,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -337,7 +339,7 @@ commands = {
                 },
             },
     'dump'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump',
                     'job_type'          : 'process',
@@ -345,7 +347,7 @@ commands = {
                 },
             },
     'login_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_login_script',
                     'args'              : ['login_script'],
@@ -354,7 +356,7 @@ commands = {
                 },
             },
     'enable_login_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_login_script',
                     'job_type'          : 'process',
@@ -362,7 +364,7 @@ commands = {
                 },
             },
     'disable_login_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_login_script',
                     'job_type'          : 'process',
@@ -370,7 +372,7 @@ commands = {
                 },
             },
     'auth_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auth_script',
                     'args'              : ['auth_script', 'script_options'],
@@ -379,7 +381,7 @@ commands = {
                 },
             },
     'enable_auth_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_auth_script',
                     'job_type'          : 'process',
@@ -387,7 +389,7 @@ commands = {
                 },
             },
     'disable_auth_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_auth_script',
                     'job_type'          : 'process',
@@ -395,7 +397,7 @@ commands = {
                 },
             },
     'enable_offline'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_offline',
                     'job_type'          : 'process',
@@ -403,7 +405,7 @@ commands = {
                 },
             },
     'disable_offline'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_offline',
                     'job_type'          : 'process',
@@ -411,7 +413,7 @@ commands = {
                 },
             },
     'offline_expiry'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_offline_expiry',
                     'args'              : ['expiry'],
@@ -420,7 +422,7 @@ commands = {
                 },
             },
     'offline_unused_expiry'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_offline_unused_expiry',
                     'args'              : ['expiry'],
@@ -429,7 +431,7 @@ commands = {
                 },
             },
     'enable_session_keep'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_session_keep',
                     'job_type'          : 'process',
@@ -437,7 +439,7 @@ commands = {
                 },
             },
     'disable_session_keep'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_session_keep',
                     'job_type'          : 'process',
@@ -445,7 +447,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -455,7 +457,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -466,7 +468,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -475,7 +477,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -484,7 +486,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'thread',
@@ -494,7 +496,7 @@ commands = {
                 },
             },
     'list_hosts'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_hosts',
                     'job_type'          : 'thread',
@@ -504,7 +506,7 @@ commands = {
                 },
             },
     'list_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_groups',
                     'job_type'          : 'thread',
@@ -514,7 +516,7 @@ commands = {
                 },
             },
     'list_accessgroups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_access_groups',
                     'job_type'          : 'thread',
@@ -524,7 +526,7 @@ commands = {
                 },
             },
     'list_nodes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_nodes',
                     'job_type'          : 'thread',
@@ -534,7 +536,7 @@ commands = {
                 },
             },
     'list_roles'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'job_type'          : 'thread',
@@ -544,7 +546,7 @@ commands = {
                 },
             },
     'list_scopes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_scopes',
                     'job_type'          : 'thread',
@@ -554,7 +556,7 @@ commands = {
                 },
             },
     'list_shares'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_shares',
                     'job_type'          : 'thread',
@@ -564,7 +566,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -573,7 +575,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -582,7 +584,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -591,7 +593,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -600,7 +602,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -609,7 +611,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -617,7 +619,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -625,7 +627,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -633,7 +635,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -642,7 +644,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -651,7 +653,7 @@ commands = {
                 },
             },
     '_list_card_types'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_card_types',
                     'job_type'          : 'thread',
@@ -659,7 +661,7 @@ commands = {
                 },
             },
     '_list_otp_formats'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_otp_formats',
                     'job_type'          : 'thread',
@@ -667,7 +669,7 @@ commands = {
                 },
             },
     '_list_modes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_modes',
                     'job_type'          : 'thread',
@@ -675,7 +677,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -685,7 +687,7 @@ commands = {
                 },
             },
     'list_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_acls',
                     'job_type'          : 'process',
@@ -693,16 +695,16 @@ commands = {
                 },
             },
     'temp_password'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_temp_password',
-                    'oargs'             : ['auto_password', 'temp_password', 'duration', 'remove'],
+                    'oargs'             : ['auto_password', 'temp_password', 'duration', 'remove', 'weak_password'],
                     'job_type'          : 'process',
                     },
                 },
             },
     'add_dynamic_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_dynamic_group',
                     'args'              : ['group_name'],
@@ -711,7 +713,7 @@ commands = {
                 },
             },
     'remove_dynamic_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_dynamic_group',
                     'args'              : ['group_name'],
@@ -720,7 +722,7 @@ commands = {
                 },
             },
     'list_dynamic_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_dynamic_groups',
                     'job_type'          : 'thread',
@@ -813,6 +815,15 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "change_otp_format")
     config.register_auth_on_action_hook("token", "add_dynamic_group")
     config.register_auth_on_action_hook("token", "remove_dynamic_group")
+    config.register_auth_on_action_hook("token", "set_temp_password")
+    config.register_auth_on_action_hook("token", "enable_sso_deploy")
+    config.register_auth_on_action_hook("token", "disable_sso_deploy")
+    config.register_auth_on_action_hook("token", "change_validity_time")
+    config.register_auth_on_action_hook("token", "change_timedrift_tolerance")
+    config.register_auth_on_action_hook("token", "change_key_type")
+    config.register_auth_on_action_hook("token", "change_ssh_public_key")
+    config.register_auth_on_action_hook("token", "change_sign_public_key")
+    config.register_auth_on_action_hook("token", "change_encrypt_public_key")
     config.register_auth_on_action_hook("token", "set_config_parameter")
 
 def register_oid():
@@ -1138,6 +1149,7 @@ class Token(OTPmeObject):
                             token_options=x_token_opts,
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
+                            force=True,
                             changelog=False,
                             verify_acls=False)
         token_roles = object_data['token_roles']
@@ -1154,6 +1166,7 @@ class Token(OTPmeObject):
                             token_options=x_token_opts,
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
+                            force=True,
                             changelog=False,
                             verify_acls=False)
 
@@ -2661,6 +2674,7 @@ class Token(OTPmeObject):
     @object_changelog("enable offline usage")
     def enable_offline(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2674,6 +2688,11 @@ class Token(OTPmeObject):
         # Check if offline usage is already enabled.
         if self.allow_offline:
             return callback.error(_("Offline usage already enabled for this token."))
+
+        msg = _("Enable offline usage of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2712,6 +2731,7 @@ class Token(OTPmeObject):
     @object_changelog("disable offline usage")
     def disable_offline(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2725,6 +2745,11 @@ class Token(OTPmeObject):
         # Check if offline usage is already disabled.
         if not self.allow_offline:
             return callback.error(_("Offline usage already disabled for this token."))
+
+        msg = _("Disable offline usage of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Call child class method to do object specific stuff.
         try:
@@ -2764,6 +2789,7 @@ class Token(OTPmeObject):
     def change_offline_expiry(
         self,
         expiry: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2773,6 +2799,11 @@ class Token(OTPmeObject):
         # Check if token supports offline usage.
         if self.allow_offline is None:
             return callback.error(_("Offline usage not supported by this token."))
+
+        msg = _("Change offline expiry of token '{token_path}' to '{expiry}'?: ")
+        msg = msg.format(token_path=self.rel_path, expiry=expiry)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Handle human readable values.
         try:
@@ -2823,6 +2854,7 @@ class Token(OTPmeObject):
     def change_offline_unused_expiry(
         self,
         expiry: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2832,6 +2864,11 @@ class Token(OTPmeObject):
         # Check if token supports offline usage.
         if self.allow_offline is None:
             return callback.error(_("Offline usage not supported by this token."))
+
+        msg = _("Change offline unused expiry of token '{token_path}' to '{expiry}'?: ")
+        msg = msg.format(token_path=self.rel_path, expiry=expiry)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Handle human readable values.
         try:
@@ -2881,6 +2918,7 @@ class Token(OTPmeObject):
     @object_changelog("enable session keep")
     def enable_session_keep(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2894,6 +2932,12 @@ class Token(OTPmeObject):
         # Check if session keeping is already enabled.
         if self.keep_session:
             return callback.error(_("Session keeping is already enabled for this token."))
+
+        msg = _("Enable session keeping for token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2935,6 +2979,7 @@ class Token(OTPmeObject):
     @object_changelog("disable session keep")
     def disable_session_keep(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2948,6 +2993,12 @@ class Token(OTPmeObject):
         # Check if session keeping is already disabled.
         if not self.keep_session:
             return callback.error(_("Session keeping is already disabled for this token."))
+
+        msg = _("Disable session keeping for token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2989,6 +3040,7 @@ class Token(OTPmeObject):
     @object_changelog("enable auth script")
     def enable_auth_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3000,6 +3052,12 @@ class Token(OTPmeObject):
         # Check if auth_script is already enabled
         if self.auth_script_enabled:
             return callback.error(_("Authorization script already enabled for this token."))
+
+        msg = _("Enable authorization script for token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3021,6 +3079,7 @@ class Token(OTPmeObject):
     @object_changelog("disable auth script")
     def disable_auth_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3030,6 +3089,12 @@ class Token(OTPmeObject):
         # Check if auth_script is already disabled.
         if not self.auth_script_enabled:
             return callback.error(_("Authorization script already disabled for this token."))
+
+        msg = _("Disable authorization script for token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3053,6 +3118,7 @@ class Token(OTPmeObject):
         self,
         auth_script: Union[str,None]=None,
         script_options: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3061,6 +3127,12 @@ class Token(OTPmeObject):
         """ Change token auth script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        msg = _("Change authorization script of token '{token_path}' to '{script}'?: ")
+        msg = msg.format(token_path=self.rel_path, script=auth_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3199,6 +3271,7 @@ class Token(OTPmeObject):
         auto_password: bool=False,
         verify_current_pass: bool=False,
         force: bool=False,
+        weak_password: bool=False,
         verify_acls: bool=True,
         temp: bool=False,
         run_policies=True,
@@ -3206,7 +3279,12 @@ class Token(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Change token password. """
+        """ Change token password.
+
+        force skips the confirmation like everywhere else. Setting a
+        password the password policy rejects is a different decision and
+        needs the force_password ACL, so it has its own weak_password.
+        """
         # Use destination token if we have one.
         if self.destination_token:
             # Before changing password of the destination token we have to run
@@ -3225,6 +3303,7 @@ class Token(OTPmeObject):
             return self.dst_token.change_password(password=password,
                                             auto_password=auto_password,
                                             force=force,
+                                            weak_password=weak_password,
                                             verify_acls=verify_acls,
                                             callback=callback,
                                             **kwargs)
@@ -3293,13 +3372,14 @@ class Token(OTPmeObject):
 
                 if new_password1 == new_password2:
                     password = new_password1
-                    if not self.check_password(password, force=force, callback=callback):
-                        if force:
-                            if not self.verify_acl("force_password"):
-                                msg = _("You are not allowed to force a unsecure password.")
-                                return callback.error(msg)
-                        else:
+                    if not self.check_password(password,
+                                            force=weak_password,
+                                            callback=callback):
+                        if not weak_password:
                             return callback.error()
+                        if not self.verify_acl("force_password"):
+                            msg = _("You are not allowed to force a unsecure password.")
+                            return callback.error(msg)
                         password_checked = True
                     break
                 else:
@@ -3311,15 +3391,18 @@ class Token(OTPmeObject):
         if password == "":
             return callback.error(_("Cannot set empty password."))
 
-        if not force:
-            if not password_checked:
-                if not self.check_password(password, force=force, callback=callback):
-                    if force:
-                        if not self.verify_acl("force_password"):
-                            msg = _("You are not allowed to force a unsecure password.")
-                            return callback.error(msg)
-                    else:
-                        return callback.error()
+        # The check also runs with weak_password set: a password the
+        # policy rejects is only allowed with the force_password ACL, and
+        # the old code verified that ACL on the interactive path only.
+        if not password_checked:
+            if not self.check_password(password,
+                                    force=weak_password,
+                                    callback=callback):
+                if not weak_password:
+                    return callback.error()
+                if not self.verify_acl("force_password"):
+                    msg = _("You are not allowed to force a unsecure password.")
+                    return callback.error(msg)
 
         # Create password hash.
         hash_args = self.get_hash_args()
@@ -3368,6 +3451,7 @@ class Token(OTPmeObject):
         auto_password: bool=False,
         duration: str="1h",
         force: bool=False,
+        weak_password: bool=False,
         verify_acls: bool=True,
         remove: bool=False,
         run_policies: bool=True,
@@ -3375,7 +3459,11 @@ class Token(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Set token temp password. """
+        """ Set token temp password.
+
+        See change_password(): force skips the confirmation,
+        weak_password allows a password the policy rejects.
+        """
         if not remove:
             temp_passwords_allowed = self.get_config_parameter('allow_temp_passwords')
             if not temp_passwords_allowed:
@@ -3388,6 +3476,15 @@ class Token(OTPmeObject):
                     msg = _("Permission denied: {token_path}")
                     msg = msg.format(token_path=self.rel_path)
                     return callback.error(msg, exception=PermissionDenied)
+
+        if remove:
+            msg = _("Remove temporary password of token '{token_path}'?: ")
+        else:
+            msg = _("Set temporary password of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         # Use destination token if we have one.
         if self.destination_token:
             # Before changing password of the destination token we have to run
@@ -3403,11 +3500,14 @@ class Token(OTPmeObject):
                 except Exception as e:
                     return callback.error()
 
+            # We asked for confirmation above, so the destination token
+            # must not ask again.
             return self.dst_token.set_temp_password(password=temp_password,
                                             auto_password=auto_password,
                                             remove=remove,
                                             verify_acls=verify_acls,
-                                            force=force,
+                                            force=True,
+                                            weak_password=weak_password,
                                             callback=callback,
                                             **kwargs)
         # Remove temp password.
@@ -3434,7 +3534,8 @@ class Token(OTPmeObject):
         change_result = self.change_password(password=temp_password,
                                             auto_password=auto_password,
                                             verify_acls=False,
-                                            force=force,
+                                            force=True,
+                                            weak_password=weak_password,
                                             temp=True,
                                             callback=callback)
         if not change_result:
@@ -3592,6 +3693,7 @@ class Token(OTPmeObject):
     def set_token_data(
         self,
         token_data: str,
+        force: bool=False,
         verify_acls: bool=True,
         run_policies=True,
         callback: JobCallback=default_callback,
@@ -3604,6 +3706,11 @@ class Token(OTPmeObject):
             msg = _("Token type '{token_type}' does not support token data.")
             msg = msg.format(token_type=self.token_type)
             return callback.error(msg)
+
+        msg = _("Set token data of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Run policies (e.g. auth_on_action).
         if run_policies:
@@ -4112,6 +4219,7 @@ class Token(OTPmeObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -4122,6 +4230,11 @@ class Token(OTPmeObject):
             if not allow_rename:
                 msg = _("Default token rename is not allowed.")
                 return callback.error(msg)
+
+        msg = _("Rename token '{token_path}' to '{new_name}'?: ")
+        msg = msg.format(token_path=self.rel_path, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Build new OID.
         new_oid = oid.get(object_type=self.type,
@@ -4449,7 +4562,10 @@ class Token(OTPmeObject):
         for x in member_objects:
             if x.site != config.site:
                 continue
-            x.remove_token(self.uuid, verify_acls=False, callback=callback)
+            x.remove_token(self.uuid,
+                            force=True,
+                            verify_acls=False,
+                            callback=callback)
 
         # Delete object using parent class.
         return super().delete(verbose_level=verbose_level,

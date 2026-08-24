@@ -76,7 +76,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -84,7 +84,7 @@ commands = {
                 },
             },
     'auto_disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : '_change_auto_disable',
                     'args'              : ['auto_disable'],
@@ -392,7 +392,7 @@ class AutodisablePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change auto disable to {auto_disable}")
-    def _change_auto_disable(self, auto_disable, unused=False,
+    def _change_auto_disable(self, auto_disable, unused=False, force=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Change auto disable value. """
@@ -403,6 +403,11 @@ class AutodisablePolicy(Policy):
             msg = _("Invalid date string: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)
+
+        msg = _("Change auto disable of policy '{policy_name}' to '{auto_disable}'?: ")
+        msg = msg.format(policy_name=self.name, auto_disable=auto_disable)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

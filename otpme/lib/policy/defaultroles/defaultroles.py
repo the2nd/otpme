@@ -73,7 +73,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -81,7 +81,7 @@ commands = {
                 },
             },
     'add_default_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
@@ -90,7 +90,7 @@ commands = {
                 },
             },
     'remove_default_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
@@ -298,6 +298,7 @@ class DefaultrolesPolicy(Policy):
                         callback.raise_exception = True
                         try:
                             role.add_token(default_token,
+                                        force=True,
                                         verify_acls=verify_acls,
                                         callback=callback)
                         except AlreadyExists:
@@ -320,7 +321,7 @@ class DefaultrolesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add role {role_name}")
-    def add_role(self, role_name, run_policies=True,
+    def add_role(self, role_name, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default role. """
         # Get role by name.
@@ -346,6 +347,11 @@ class DefaultrolesPolicy(Policy):
             msg = msg.format(role=role.name)
             return callback.error(msg)
 
+        msg = _("Add default role '{role_name}' to policy '{policy_name}'?: ")
+        msg = msg.format(role_name=role_name, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -365,7 +371,7 @@ class DefaultrolesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove role {role_name}")
-    def remove_role(self, role_name, run_policies=True,
+    def remove_role(self, role_name, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Remove default role. """
         # Get role by name.
@@ -384,6 +390,11 @@ class DefaultrolesPolicy(Policy):
 
         if role_uuid not in self.default_roles:
             return callback.error(_("Role not added for this policy."))
+
+        msg = _("Remove default role '{role_name}' from policy '{policy_name}'?: ")
+        msg = msg.format(role_name=role_name, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

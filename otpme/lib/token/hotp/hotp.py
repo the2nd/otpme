@@ -105,7 +105,7 @@ recursive_default_acls = []
 
 commands = {
     'secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_secret',
                     'oargs'             : ['auto_secret', 'secret'],
@@ -114,7 +114,7 @@ commands = {
                 },
             },
     'pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_pin',
                     'oargs'             : ['auto_pin', 'pin'],
@@ -123,7 +123,7 @@ commands = {
                 },
             },
     'enable_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_pin',
                     'job_type'          : 'process',
@@ -131,7 +131,7 @@ commands = {
                 },
             },
     'disable_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_pin',
                     'job_type'          : 'process',
@@ -139,7 +139,7 @@ commands = {
                 },
             },
     'show_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_secret',
                     'job_type'          : 'process',
@@ -147,7 +147,7 @@ commands = {
                 },
             },
     'show_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_pin',
                     'job_type'          : 'process',
@@ -155,7 +155,7 @@ commands = {
                 },
             },
     'gen'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_otp',
                     'job_type'          : 'process',
@@ -163,7 +163,7 @@ commands = {
                 },
             },
     'gen_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_mschap',
                     'job_type'          : 'process',
@@ -171,7 +171,7 @@ commands = {
                 },
             },
     'gen_qrcode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_qrcode',
                     'oargs'             : ['qrcode_file'],
@@ -180,7 +180,7 @@ commands = {
                 },
             },
     'resync'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'resync',
                     'oargs'             : ['otp'],
@@ -189,7 +189,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
@@ -198,7 +198,7 @@ commands = {
                 },
             },
     'mode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_mode',
                     'args'              : ['new_mode'],
@@ -207,7 +207,7 @@ commands = {
                 },
             },
     'counter_check_range'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_counter_check_range',
                     'oargs'             : ['counter_check_range'],
@@ -216,7 +216,7 @@ commands = {
                 },
             },
     'get_token_counter'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_token_counter',
                     'job_type'          : 'thread',
@@ -845,6 +845,7 @@ class HotpToken(OathToken):
     def resync(
         self,
         otp: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -852,6 +853,11 @@ class HotpToken(OathToken):
         ):
         """ Resync our counter state with token by given OTP. """
         from otpme.lib.otp.oath import hotp
+        msg = _("Resync counter of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if not otp:
             otp = callback.askpass(_("Please enter OTP: "))
 
@@ -998,6 +1004,7 @@ class HotpToken(OathToken):
     @object_changelog("change counter check range {counter_check_range}")
     def change_counter_check_range(
         self,
+        force: bool=False,
         run_policies: bool=True,
         counter_check_range: Union[int,None]=None,
         _caller: str="API",
@@ -1005,6 +1012,11 @@ class HotpToken(OathToken):
         **kwargs,
         ):
         """ Change token counter check range. """
+        msg = _("Change counter check range of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

@@ -32,6 +32,11 @@ from otpme.lib import init_otpme
 from otpme.lib.otpme_config import OTPmeConfig
 config = OTPmeConfig(tool_name="radius_module")
 otpme.lib.config = config
+
+from otpme.lib.register import register_module
+#register_module("otpme.lib.protocols.server")
+register_module("otpme.lib.protocols.otpme_client")
+
 # Init OTPme.
 init_otpme(load_host_data=False)
 
@@ -59,7 +64,6 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.audit import get_audit_logger
 from otpme.lib.audit import get_audit_file_logger
-from otpme.lib.register import register_module
 
 # Get logger.
 logger = config.logger
@@ -74,8 +78,6 @@ logger = config.logger
 # authenticated; eviction/TTL is a separate hardening lift.
 _vlan_cache = {}
 client_cache = {}
-
-register_module("otpme.lib.protocols.otpme_client")
 
 def set_vlan_cache(calling_station_id, username, vlan):
     """ Remember the VLAN for post_auth() (inner tunnel to outer).

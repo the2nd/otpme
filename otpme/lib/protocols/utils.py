@@ -17,16 +17,64 @@ from otpme.lib.protocols.server import get_module as get_module_server
 
 from otpme.lib.exceptions import *
 
+# All commands registered so far. Object classes may be registered before
+# the protocols (e.g. a protocol module that depends on a object class).
+# So we have to remember the commands to register them when the protocol
+# is registered.
+registered_commands = []
+# Commands we already registered per protocol. A protocol may pull in
+# object classes itself while registering. Those register their commands
+# directly and must not be registered again.
+registered_protocol_commands = {}
+
 def register_commands(command, subcommands,
     sub_type=None, sub_type_attribute=None):
     """ Register object commands. """
+    registered_commands.append((command, subcommands,
+                                sub_type, sub_type_attribute))
+    command_id = len(registered_commands) - 1
+    protos = config.get_otpme_protocols(daemon="mgmtd", server=True)
+    for protocol in protos:
+        _register_commands(protocol, command_id)
+
+def register_protocol_commands(protocol):
+    """ Register all commands we know of for the given protocol. """
+    # We may get new commands while registering (e.g. a object class
+    # registered by us). So we cannot use a for loop here.
+    command_id = 0
+    while command_id < len(registered_commands):
+        _register_commands(protocol, command_id)
+        command_id += 1
+
+def _register_commands(protocol, command_id):
+    """ Register object commands for the given protocol. """
+    try:
+        done_commands = registered_protocol_commands[protocol]
+    except KeyError:
+        done_commands = []
+        registered_protocol_commands[protocol] = done_commands
+    if command_id in done_commands:
+        return
+    done_commands.append(command_id)
+    command, \
+    subcommands, \
+    sub_type, \
+    sub_type_attribute = registered_commands[command_id]
+    proto_module = get_module_server(protocol)
+    sub_types = getattr(proto_module, 'sub_types')
+    command_map = getattr(proto_module, 'command_map')
+    valid_commands = getattr(proto_module, 'valid_commands')
     for subcommand in subcommands:
-        for proto in subcommands[subcommand]:
+        # Commands registered for "default" are registered for all
+        # protocols. We handle them last because a protocol specific
+        # command must win over the default one.
+        protos = sorted(subcommands[subcommand],
+                        key=lambda x: x == "default")
+        for proto in protos:
+            if proto != "default":
+                if proto != protocol:
+                    continue
             for state in subcommands[subcommand][proto]:
-                proto_module = get_module_server(proto)
-                sub_types = getattr(proto_module, 'sub_types')
-                command_map = getattr(proto_module, 'command_map')
-                valid_commands = getattr(proto_module, 'valid_commands')
                 # Register sub type attribute.
                 if sub_type_attribute:
                     try:
@@ -45,11 +93,14 @@ def register_commands(command, subcommands,
                 else:
                     if command not in valid_commands:
                         valid_commands.append(command)
-                if not x_type in command_map:
+                if x_type not in command_map:
                     command_map[x_type] = {}
-                if not state in command_map[x_type]:
+                if state not in command_map[x_type]:
                     command_map[x_type][state] = {}
                 if subcommand in command_map[x_type][state]:
+                    # A protocol specific command was already registered.
+                    if proto == "default":
+                        continue
                     msg = _("Command already registered: {x_type}: {subcommand}")
                     msg = msg.format(x_type=x_type, subcommand=subcommand)
                     raise OTPmeException(msg)

@@ -250,7 +250,14 @@ Commands:
 > Add a hook that triggers re-authentication (e.g. change_pin).
 >
 > **remove_hook *policy* *object_type* *hook***  
-> Remove a hook.
+> Remove a hook. The removal is remembered, so **update_hooks** will not
+> add the hook again.
+>
+> **update_hooks *policy***  
+> Add all hooks that were registered after the policy was added (e.g.
+> after an OTPme update). Hooks removed with **remove_hook** are not
+> added again. To get such a hook back use **add_hook**, which also
+> makes the policy forget the removal.
 >
 > **reauth_timeout *policy* *timeout***  
 > Set the re-authentication timeout.

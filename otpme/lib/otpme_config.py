@@ -167,6 +167,10 @@ class OTPmeConfig(object):
         self.register_config_var("object_export_hash_type", str, "Argon2_i",
                                 config_file_parameter="OBJECT_EXPORT_HASH_TYPE",
                                 user_config_file_parameter="OBJECT_EXPORT_HASH_TYPE")
+        # Use pager?
+        self.register_config_var("use_pager", [str,bool], "auto",
+                                config_file_parameter="USE_PAGER",
+                                user_config_file_parameter="USE_PAGER")
         # Default pinentry.
         self.register_config_var("pinentry", str, "/usr/bin/pinentry",
                                 config_file_parameter="PINENTRY",
@@ -2609,6 +2613,7 @@ class OTPmeConfig(object):
             self.logger.debug(log_msg)
             fd = open(conf_file, "w")
             fd.write('#AUTO_SIGN="True"\n')
+            fd.write('#USE_PAGER="auto"\n')
             fd.close()
         if not os.path.exists(_signers_dir):
             log_msg = _("Creating directory: {_signers_dir}", log=True)[1]

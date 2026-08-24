@@ -97,7 +97,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'oargs'             : ['enable_mschap'],
@@ -111,16 +111,16 @@ commands = {
                 },
             },
     'password'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_password',
-                    'oargs'             : ['auto_password', 'password'],
+                    'oargs'             : ['auto_password', 'password', 'weak_password'],
                     'job_type'          : 'thread',
                     },
                 },
             },
     'upgrade_pass_hash'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'upgrade_pass_hash',
                     'oargs'             : ['hash_type', 'hash_args'],
@@ -129,7 +129,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
@@ -138,7 +138,7 @@ commands = {
                 },
             },
     '2f_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_2f_token',
                     'args'              : ['second_factor_token'],
@@ -147,7 +147,7 @@ commands = {
                 },
             },
     'enable_2f'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_2f_token',
                     'job_type'          : 'process',
@@ -155,7 +155,7 @@ commands = {
                 },
             },
     'disable_2f'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_2f_token',
                     'job_type'          : 'process',
@@ -163,7 +163,7 @@ commands = {
                 },
             },
     'enable_sso_deploy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sso_deploy',
                     'oargs'             : ['deploy_token_type'],
@@ -172,7 +172,7 @@ commands = {
                 },
             },
     'disable_sso_deploy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sso_deploy',
                     'job_type'          : 'thread',
@@ -180,7 +180,7 @@ commands = {
                 },
             },
     'enable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_mschap',
                     'job_type'          : 'thread',
@@ -188,7 +188,7 @@ commands = {
                 },
             },
     'disable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_mschap',
                     'job_type'          : 'thread',
@@ -196,7 +196,7 @@ commands = {
                 },
             },
     'gen_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_mschap',
                     'job_type'          : 'thread',
@@ -204,7 +204,7 @@ commands = {
                 },
             },
     'remove_nt_hash'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_nt_hash',
                     'job_type'          : 'thread',
@@ -422,12 +422,19 @@ class PasswordToken(Token):
     def change_2f_token(
         self,
         second_factor_token: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change token second factor token. """
+        msg = _("Change second factor token of token '{token_path}' to '{second_factor_token}'?: ")
+        msg = msg.format(token_path=self.rel_path,
+                        second_factor_token=second_factor_token)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -749,6 +756,7 @@ class PasswordToken(Token):
         password: Union[str,None]=None,
         enable_mschap: bool=False,
         force: bool=False,
+        weak_password: bool=False,
         verify_acls: bool=False,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -766,9 +774,11 @@ class PasswordToken(Token):
         else:
             new_pass = password
 
-        # Set password.
+        # Set password. Adding the token is the confirmed action, so the
+        # password must not ask again.
         self.change_password(password=new_pass,
-                            force=force,
+                            force=True,
+                            weak_password=weak_password,
                             verify_acls=False,
                             callback=callback)
 

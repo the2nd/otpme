@@ -119,7 +119,7 @@ recursive_default_acls = [
                     ]
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -131,7 +131,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -141,7 +141,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -149,7 +149,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -158,7 +158,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -167,7 +167,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -175,7 +175,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -183,7 +183,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("unit"),
                     'oargs'              : [
@@ -210,7 +210,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("unit"),
                     'oargs'              : [
@@ -236,7 +236,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -245,7 +245,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -253,7 +253,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -261,7 +261,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -269,7 +269,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -278,17 +278,17 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
-                    'oargs'             : ['merge', 'keep_acls', 'keep_old_unit', 'object_types'],
+                    'oargs'             : ['merge', 'keep_acls', 'keep_old_unit', 'object_types', 'skip_ca'],
                     'job_type'          : 'process',
                     },
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -296,7 +296,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -304,7 +304,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'process',
@@ -314,7 +314,7 @@ commands = {
                 },
             },
     'add_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_extension',
                     'args'              : ['extension'],
@@ -323,7 +323,7 @@ commands = {
                 },
             },
     'remove_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_extension',
                     'args'              : ['extension'],
@@ -332,7 +332,7 @@ commands = {
                 },
             },
     'add_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
@@ -342,7 +342,7 @@ commands = {
                 },
             },
     'modify_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'modify_attribute',
                     'args'              : ['attribute', 'old_value', 'new_value'],
@@ -351,7 +351,7 @@ commands = {
                 },
             },
     'del_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute',
                     'args'              : ['attribute'],
@@ -361,7 +361,7 @@ commands = {
                 },
             },
     'add_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_object_class',
                     'args'              : ['object_class'],
@@ -370,7 +370,7 @@ commands = {
                 },
             },
     'del_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_object_class',
                     'args'              : ['object_class'],
@@ -379,7 +379,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl'],
@@ -390,7 +390,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -401,7 +401,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -410,7 +410,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -419,7 +419,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -428,7 +428,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -437,7 +437,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -446,7 +446,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -455,7 +455,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'job_type'          : 'process',
@@ -463,7 +463,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -471,7 +471,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -479,7 +479,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -487,7 +487,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -495,7 +495,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -503,7 +503,7 @@ commands = {
                 },
             },
     'show_ldif'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
                     'oargs'             : ['attributes'],
@@ -512,7 +512,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -520,7 +520,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -528,7 +528,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -537,7 +537,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -546,7 +546,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -1031,13 +1031,19 @@ class Unit(OTPmeObject):
         run_policies: bool=True,
         keep_old_unit: bool=False,
         force: bool=False,
+        skip_ca: bool=False,
         keep_acls: Union[bool,None]=None,
         verbose_level: int=0,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Change unit's unit (move). """
+        """ Change unit's unit (move).
+
+        force skips the confirmation like everywhere else. A CA cannot be
+        moved, so moving a unit that holds one is a different decision and
+        has its own skip_ca.
+        """
         if not keep_old_unit:
             base_units = config.get_base_objects("unit")
             if not self.unit and self.rel_path in base_units:
@@ -1076,14 +1082,19 @@ class Unit(OTPmeObject):
             for x in t_members:
                 if x.type != "ca":
                     continue
-                if force:
+                if skip_ca:
                     keep_old_unit = True
                     break
                 msg = _("Unit has CA as a child: {ca_name}")
                 msg = msg.format(ca_name=x)
                 callback.error(msg)
-                msg = "Use <force> to move objects other than CAs and keep unit."
+                msg = "Use <skip_ca> to move objects other than CAs and keep unit."
                 raise OTPmeException(msg)
+
+        msg = _("Move unit '{unit_path}' to '{new_unit}'? All its members are moved with it.: ")
+        msg = msg.format(unit_path=self.rel_path, new_unit=new_unit)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         msg = _("Moving unit {old_path} > {new_path}...")
         msg = msg.format(old_path=self.path, new_path=new_unit)
@@ -1132,13 +1143,16 @@ class Unit(OTPmeObject):
             if child_units:
                 for child_unit in child_units['unit']:
                     new_child_unit_path = f"{_new_unit.path}/{child_unit.name}"
+                    # The move of this unit is the confirmed action, its
+                    # child units and members go with it.
                     child_unit.move(new_child_unit_path,
                                 object_types=object_types,
                                 keep_acls=keep_acls,
                                 run_policies=run_policies,
                                 verbose_level=verbose_level,
                                 callback=callback,
-                                force=force,
+                                force=True,
+                                skip_ca=skip_ca,
                                 _caller=_caller)
 
         # Move all unit members.
@@ -1178,7 +1192,7 @@ class Unit(OTPmeObject):
                         run_policies=run_policies,
                         callback=callback,
                         verbose_level=verbose_level,
-                        force=force,
+                        force=True,
                         _caller=_caller)
             # Reset unit members to initiate re-check.
             unit_members = None
@@ -1192,9 +1206,14 @@ class Unit(OTPmeObject):
     @run_pre_post_add_policies()
     @audit_log()
     @object_changelog("add")
-    def add(self, verify_acls=True, inherit_acls=True,
+    def add(self, verify_acls=True, inherit_acls=True, force=False,
         verbose_level=0, callback=default_callback, **kwargs):
-        """ Add a unit. """
+        """ Add a unit.
+
+        We take force as a parameter to prevent it from ending up in kwargs.
+        The methods we call while adding the unit get force=True explicitly
+        and would else get it twice.
+        """
         # Run parent class stuff e.g. verify ACLs.
         # When adding a sub unit we need a exact matching ACL because we
         # dont want a global "add" ACL to allow adding of sub units.
@@ -1251,6 +1270,7 @@ class Unit(OTPmeObject):
             try:
                 self.add_acl(acl=_acl.id,
                             owner_uuid=_acl.owner_uuid,
+                            force=True,
                             verify_acls=False,
                             verbose_level=verbose_level,
                             callback=callback,

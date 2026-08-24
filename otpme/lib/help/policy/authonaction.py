@@ -41,6 +41,14 @@ cmd_help = {
                                 },
                 },
 
+    'update_hooks'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy update_hooks {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add hooks registered after the policy was added (e.g. after an update). Hooks removed by hand are not added again.'),
+                                },
+                },
+
     'reauth_timeout'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy reauth_timeout {policy} {reauth_timeout}'),
                     'cmd'   :   '<|object|> <reauth_timeout>',

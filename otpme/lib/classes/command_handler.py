@@ -349,25 +349,28 @@ class CommandHandler(object):
 
         # Make sure we start pager (less) if result exceeds terminal size.
         if daemon == "mgmtd" and client_type == "CLIENT":
-            try:
-                lines = config.term_size['lines']
-                columns = config.term_size['columns']
-            except Exception:
-                pass
-            else:
-                if not isinstance(response, str):
-                    response = pprint.pformat(response)
-                response_split = response.split("\n")
-                response_len = len(response_split)
-                for line in response_split:
-                    line_len = len(line)
-                    if line_len <= columns:
-                        continue
-                    line_lines = line_len / columns
-                    response_len += line_lines
-                if response_len > lines:
-                    pydoc.pager(response)
-                    return
+            if config.use_pager is True:
+                pydoc.pager(response)
+            elif config.use_pager == "auto":
+                try:
+                    lines = config.term_size['lines']
+                    columns = config.term_size['columns']
+                except Exception:
+                    pass
+                else:
+                    if not isinstance(response, str):
+                        response = pprint.pformat(response)
+                    response_split = response.split("\n")
+                    response_len = len(response_split)
+                    for line in response_split:
+                        line_len = len(line)
+                        if line_len <= columns:
+                            continue
+                        line_lines = line_len / columns
+                        response_len += line_lines
+                    if response_len > lines:
+                        pydoc.pager(response)
+                        return
 
         return response
 
@@ -560,7 +563,6 @@ class CommandHandler(object):
         if config.use_api:
             # We need to register controld to get e.g. config.daemon_shutdown.
             register_module("otpme.lib.daemon.controld")
-            register_module("otpme.lib.protocols.server.mgmt1")
             register_module("otpme.lib.policy.autodisable.autodisable")
         # Add newline to command output?
         self.newline = True
@@ -673,9 +675,9 @@ class CommandHandler(object):
                 msg = "Cache not started."
                 raise OTPmeException(msg)
 
-            from otpme.lib.register import register_modules
-            # Register modules.
-            register_modules()
+            #from otpme.lib.register import register_modules
+            #register_modules()
+
             #register_module('otpme.lib.host')
             #register_module('otpme.lib.cache')
             #register_module('otpme.lib.multiprocessing')
@@ -693,6 +695,7 @@ class CommandHandler(object):
             if not (command == "realm" and subcommand == "init"):
                 self.init(use_backend=True)
 
+            register_module("otpme.lib.protocols.server")
             register_module("otpme.lib.classes.data_objects.otpme_job")
 
             if command == "token":

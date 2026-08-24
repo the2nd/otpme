@@ -53,7 +53,7 @@ SESSIONS_DIR = f"{config.data_dir}/sessions"
 
 commands = {
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_sessions,
                     'oargs'             : [
@@ -73,7 +73,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_sessions,
                     'oargs'             : [
@@ -96,7 +96,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'job_type'          : 'process',
@@ -104,7 +104,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'oargs'             : ['recursive', 'force'],

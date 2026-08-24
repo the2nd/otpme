@@ -216,7 +216,10 @@ Commands:
 Add a hook that triggers re-authentication (e.g. change_pin).
 .TP
 .B remove_hook \fIpolicy\fR \fIobject_type\fR \fIhook\fR
-Remove a hook.
+Remove a hook. The removal is remembered, so \fBupdate_hooks\fR will not add the hook again.
+.TP
+.B update_hooks \fIpolicy\fR
+Add all hooks that were registered after the policy was added (e.g. after an OTPme update). Hooks removed with \fBremove_hook\fR are not added again. To get such a hook back use \fBadd_hook\fR, which also makes the policy forget the removal.
 .TP
 .B reauth_timeout \fIpolicy\fR \fItimeout\fR
 Set the re-authentication timeout.

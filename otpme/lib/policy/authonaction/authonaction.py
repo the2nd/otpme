@@ -87,7 +87,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -95,7 +95,7 @@ commands = {
                 },
             },
     'add_hook'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_hook',
                     'args'              : ['object_type', 'hook_name'],
@@ -104,7 +104,7 @@ commands = {
                 },
             },
     'remove_hook'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_hook',
                     'args'              : ['object_type', 'hook_name'],
@@ -112,8 +112,16 @@ commands = {
                     },
                 },
             },
+    'update_hooks'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'update_hooks',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'reauth_timeout'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_reauth_timeout',
                     'args'              : ['reauth_timeout'],
@@ -122,7 +130,7 @@ commands = {
                 },
             },
     'reauth_expiry'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_reauth_expiry',
                     'args'              : ['reauth_expiry'],
@@ -131,7 +139,7 @@ commands = {
                 },
             },
     'whitelist_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_whitelist',
                     'args'              : ['token_path'],
@@ -140,7 +148,7 @@ commands = {
                 },
             },
     'unwhitelist_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_whitelist',
                     'args'              : ['token_path'],
@@ -149,7 +157,7 @@ commands = {
                 },
             },
     'whitelist_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_whitelist',
                     'args'              : ['role_path'],
@@ -158,7 +166,7 @@ commands = {
                 },
             },
     'unwhitelist_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_whitelist',
                     'args'              : ['role_path'],
@@ -227,6 +235,9 @@ def register():
 def register_hooks():
     config.register_auth_on_action_hook("policy", "add_hook")
     config.register_auth_on_action_hook("policy", "remove_hook")
+    config.register_auth_on_action_hook("policy", "update_hooks")
+    config.register_auth_on_action_hook("policy", "add_whitelist")
+    config.register_auth_on_action_hook("policy", "remove_whitelist")
     config.register_auth_on_action_hook("policy", "change_reauth_expiry")
     config.register_auth_on_action_hook("policy", "change_reauth_timeout")
     config.register_auth_on_action_hook("policy", "show_config_parameters")
@@ -289,6 +300,9 @@ class AuthonactionPolicy(Policy):
 
         # Set default values.
         #self.hooks = {}
+        # Hooks the admin removed by hand. They are remembered to not re-add
+        # them on update_hooks().
+        #self.removed_hooks = {}
         self.object_types = config.tree_object_types
 
         # For units we have to support the "add" hook for each in-tree object.
@@ -356,6 +370,11 @@ class AuthonactionPolicy(Policy):
         policy_config = {
             'HOOKS'  : {
                                             'var_name'      : 'hooks',
+                                            'type'          : dict,
+                                            'required'      : False,
+                                        },
+            'REMOVED_HOOKS'  : {
+                                            'var_name'      : 'removed_hooks',
                                             'type'          : dict,
                                             'required'      : False,
                                         },
@@ -532,9 +551,14 @@ class AuthonactionPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change reauth timeout to {reauth_timeout}")
-    def change_reauth_timeout(self, reauth_timeout=0, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_reauth_timeout(self, reauth_timeout=0, force=False,
+        run_policies=True, _caller="API", callback=default_callback, **kwargs):
         """ Change reauth timeout for this policy. """
+        msg = _("Change reauth timeout of policy '{policy_name}' to '{reauth_timeout}'?: ")
+        msg = msg.format(policy_name=self.name, reauth_timeout=reauth_timeout)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         try:
             reauth_timeout = units.time2int(reauth_timeout, time_unit="s")
         except Exception as e:
@@ -568,9 +592,14 @@ class AuthonactionPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change reauth expiry to {reauth_expiry}")
-    def change_reauth_expiry(self, reauth_expiry=0, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_reauth_expiry(self, reauth_expiry=0, force=False,
+        run_policies=True, _caller="API", callback=default_callback, **kwargs):
         """ Change reauth expiry for this policy. """
+        msg = _("Change reauth expiry of policy '{policy_name}' to '{reauth_expiry}'?: ")
+        msg = msg.format(policy_name=self.name, reauth_expiry=reauth_expiry)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         try:
             reauth_expiry = units.time2int(reauth_expiry, time_unit="s")
         except Exception as e:
@@ -604,7 +633,7 @@ class AuthonactionPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add hook {hook_name} for {object_type}")
-    def add_hook(self, object_type, hook_name, run_policies=True,
+    def add_hook(self, object_type, hook_name, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add hook. """
         if object_type not in self.object_types:
@@ -628,6 +657,13 @@ class AuthonactionPolicy(Policy):
                 msg = msg.format(object_type=object_type, hook_name=hook_name, name=self.name)
                 return callback.error(msg)
 
+        msg = _("Add hook '{hook_name}' for {object_type} to policy '{policy_name}'?: ")
+        msg = msg.format(hook_name=hook_name,
+                        object_type=object_type,
+                        policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -644,6 +680,13 @@ class AuthonactionPolicy(Policy):
 
         self.hooks[object_type].append(hook_name)
 
+        # The hook is wanted again. So forget that it was removed by hand.
+        if object_type in self.removed_hooks:
+            if hook_name in self.removed_hooks[object_type]:
+                self.removed_hooks[object_type].remove(hook_name)
+            if not self.removed_hooks[object_type]:
+                self.removed_hooks.pop(object_type)
+
         return self._cache(callback=callback)
 
     @check_acls(['remove:hook'])
@@ -651,8 +694,8 @@ class AuthonactionPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove hook {hook_name} of {object_type}")
-    def remove_hook(self, object_type, hook_name, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def remove_hook(self, object_type, hook_name, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Remove hook. """
         if object_type not in self.object_types:
             msg = _("Invalid object type for this policy: {object_type}")
@@ -673,6 +716,13 @@ class AuthonactionPolicy(Policy):
             if hook_name not in self.hooks[object_type]:
                 return callback.error(_("Hook not added for this object type."))
 
+        msg = _("Remove hook '{hook_name}' for {object_type} from policy '{policy_name}'?: ")
+        msg = msg.format(hook_name=hook_name,
+                        object_type=object_type,
+                        policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -686,14 +736,100 @@ class AuthonactionPolicy(Policy):
 
         self.hooks[object_type].remove(hook_name)
 
+        # Remember the removal. The admin decided that this hook is not
+        # wanted, so update_hooks() must not add it again.
+        if not object_type in self.removed_hooks:
+            self.removed_hooks[object_type] = []
+        if hook_name not in self.removed_hooks[object_type]:
+            self.removed_hooks[object_type].append(hook_name)
+
         return self._cache(callback=callback)
+
+    def get_missing_hooks(self):
+        """ Get all registered hooks not added to this policy. """
+        missing_hooks = {}
+        for object_type in self.object_types:
+            try:
+                object_type_hooks = config.auth_on_action_hooks[object_type]
+            except KeyError:
+                continue
+            if object_type in self.hooks:
+                current_hooks = self.hooks[object_type]
+            else:
+                current_hooks = []
+            if object_type in self.removed_hooks:
+                removed_hooks = self.removed_hooks[object_type]
+            else:
+                removed_hooks = []
+            for hook in object_type_hooks:
+                if hook in current_hooks:
+                    continue
+                # Hooks the admin removed by hand stay removed.
+                if hook in removed_hooks:
+                    continue
+                if object_type not in missing_hooks:
+                    missing_hooks[object_type] = []
+                missing_hooks[object_type].append(hook)
+        return missing_hooks
+
+    @check_acls(['add:hook'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    @object_changelog("update hooks")
+    def update_hooks(self, force=False, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Add hooks registered after the policy was added. """
+        missing_hooks = self.get_missing_hooks()
+        if not missing_hooks:
+            msg = _("No new hooks to add.")
+            return callback.ok(msg)
+
+        hooks_list = []
+        for object_type in missing_hooks:
+            x_hooks = ",".join(missing_hooks[object_type])
+            hooks_list.append(f"{object_type}:[{x_hooks}]")
+        hooks_string = " ".join(hooks_list)
+
+        msg = _("Add the following hooks to policy '{policy_name}': {hooks}: ")
+        msg = msg.format(policy_name=self.name, hooks=hooks_string)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("update_hooks",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        hooks_added = 0
+        for object_type in missing_hooks:
+            for hook in missing_hooks[object_type]:
+                # Policies are already run above and the ACL is checked by
+                # this method.
+                self.add_hook(object_type=object_type,
+                            hook_name=hook,
+                            force=True,
+                            run_policies=False,
+                            verify_acls=False,
+                            callback=callback)
+                hooks_added += 1
+
+        msg = _("Hooks added: {hook_count}")
+        msg = msg.format(hook_count=hooks_added)
+        return callback.ok(msg)
 
     @check_acls(['add:whitelist'])
     @object_lock()
     @backend.transaction
     @audit_log()
     @object_changelog("add whitelist entry {token_path} {role_path}")
-    def add_whitelist(self, token_path=None, role_path=None,
+    def add_whitelist(self, token_path=None, role_path=None, force=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Add token/role to whitelist. """
@@ -737,6 +873,13 @@ class AuthonactionPolicy(Policy):
             msg = msg.format(type_cap=f"{o.type[0].upper()}{o.type[1:]}")
             return callback.error(msg)
 
+        msg = _("Whitelist {object_type} '{object_name}' in policy '{policy_name}'? It is then exempt from the reauth.: ")
+        msg = msg.format(object_type=o.type,
+                        object_name=token_path or role_path,
+                        policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -760,7 +903,7 @@ class AuthonactionPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove whitelist entry {token_path} {role_path}")
-    def remove_whitelist(self, token_path=None, role_path=None,
+    def remove_whitelist(self, token_path=None, role_path=None, force=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Remove token/role to whitelist. """
@@ -804,6 +947,13 @@ class AuthonactionPolicy(Policy):
             msg = msg.format(type_cap=f"{o.type[0].upper()}{o.type[1:]}")
             return callback.error(msg)
 
+        msg = _("Remove {object_type} '{object_name}' from whitelist of policy '{policy_name}'?: ")
+        msg = msg.format(object_type=o.type,
+                        object_name=token_path or role_path,
+                        policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -821,14 +971,13 @@ class AuthonactionPolicy(Policy):
 
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
-        for object_type in self.object_types:
-            try:
-                object_type_hooks = config.auth_on_action_hooks[object_type]
-            except KeyError:
-                continue
-            for hook in object_type_hooks:
+        missing_hooks = self.get_missing_hooks()
+        for object_type in missing_hooks:
+            for hook in missing_hooks[object_type]:
                 self.add_hook(object_type=object_type,
                             hook_name=hook,
+                            force=True,
+                            verify_acls=False,
                             callback=callback)
         return callback.ok()
 
@@ -840,7 +989,8 @@ class AuthonactionPolicy(Policy):
 
         lines = []
         hooks = []
-        if self.verify_acl("view:hook") \
+        removed_hooks = []
+        if self.verify_acl("view:hooks") \
         or self.verify_acl("add:hook") \
         or self.verify_acl("remove:hook"):
            for object_type in self.hooks:
@@ -850,7 +1000,15 @@ class AuthonactionPolicy(Policy):
                 hook_string = f"{object_type}:[{','.join(x_hooks)}]"
                 hooks.append(hook_string)
 
+           for object_type in self.removed_hooks:
+                x_hooks = []
+                for hook in self.removed_hooks[object_type]:
+                    x_hooks.append(hook)
+                hook_string = f"{object_type}:[{','.join(x_hooks)}]"
+                removed_hooks.append(hook_string)
+
         lines.append(f'HOOKS="{",".join(hooks)}"')
+        lines.append(f'REMOVED_HOOKS="{",".join(removed_hooks)}"')
 
         whitelist = []
         if self.verify_acl("view:whitelist") \

@@ -33,7 +33,9 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.protocols import status_codes
 from otpme.lib.job.otpme_job import OTPmeJob
+#from otpme.lib.register import register_module
 from otpme.lib.protocols.utils import send_msg
+from otpme.lib.protocols.utils import register_protocol_commands
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.classes.site import get_site_admin_blacklist
 from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
@@ -79,6 +81,9 @@ PROTOCOL_VERSION = "OTPme-mgmt-1.0"
 
 def register():
     config.register_otpme_protocol("mgmtd", PROTOCOL_VERSION, server=True)
+    # Object classes may be registered before us. So we have to register
+    # their commands now.
+    register_protocol_commands(PROTOCOL_VERSION)
 
 class OTPmeMgmtP1(OTPmeServer1):
     """ Class that implements OTPme-mgmt-1.0 """
@@ -96,6 +101,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.require_client_cert = True
         # Autodetect in auth handler if SOTP should be checked.
         self.allow_sotp_auth = None
+        # mgmtd requires login via SOTP.
+        self.require_sotp_auth = True
         self.sotp_ag_auth = False
         self.supports_sotp_signing = True
         # Will hold all running jobs
@@ -1570,7 +1577,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                     policy_oid = oid.get(policy_oid)
                     if not backend.object_exists(policy_oid):
                         continue
-                    move_object.add_policy(policy_name, verify_acls=False)
+                    move_object.add_policy(policy_name,
+                                        force=True,
+                                        verify_acls=False)
                 move_object._write()
                 moved_objects[x_src_oid.full_oid] = {}
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
@@ -1616,7 +1625,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                     policy_oid = oid.get(policy_oid)
                     if not backend.object_exists(policy_oid):
                         continue
-                    move_object.add_policy(policy_name, verify_acls=False)
+                    move_object.add_policy(policy_name,
+                                        force=True,
+                                        verify_acls=False)
                 move_object._write()
                 moved_objects[x_src_oid.full_oid] = {}
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
@@ -1680,7 +1691,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                     policy_oid = oid.get(policy_oid)
                     if not backend.object_exists(policy_oid):
                         continue
-                    move_object.add_policy(policy_name, verify_acls=False)
+                    move_object.add_policy(policy_name,
+                                        force=True,
+                                        verify_acls=False)
                 move_object._write()
                 moved_objects[x_src_oid.full_oid] = {}
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid

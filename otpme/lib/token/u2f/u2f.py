@@ -91,7 +91,7 @@ recursive_default_acls = []
 
 commands = {
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'job_type'          : 'thread',

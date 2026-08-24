@@ -1389,7 +1389,8 @@ class HostDaemon(OTPmeDaemon):
             if crl_age < 86400:
                 continue
             callback = config.get_callback()
-            ca.update_crl(verify_acls=False,
+            ca.update_crl(force=True,
+                        verify_acls=False,
                         no_audit_log=True,
                         callback=callback)
             if not config.master_node:
@@ -1562,6 +1563,7 @@ class HostDaemon(OTPmeDaemon):
             callback.disable()
             resolver.run(daemon_run=True,
                         interactive=False,
+                        force=True,
                         verify_acls=False,
                         callback=callback)
         # Do some cleanup.

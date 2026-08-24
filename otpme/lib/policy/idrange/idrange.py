@@ -83,7 +83,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -91,7 +91,7 @@ commands = {
                 },
             },
     'add_id_range'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_id_range',
                     'args'              : ['id_range'],
@@ -100,7 +100,7 @@ commands = {
                 },
             },
     'del_id_range'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_id_range',
                     'args'              : ['id_range'],
@@ -109,7 +109,7 @@ commands = {
                 },
             },
     'enable_id_check'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_id_check',
                     'job_type'          : 'thread',
@@ -117,7 +117,7 @@ commands = {
                 },
             },
     'disable_id_check'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_id_check',
                     'job_type'          : 'thread',
@@ -125,7 +125,7 @@ commands = {
                 },
             },
     'enable_id_range_recheck'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_id_range_recheck',
                     'job_type'          : 'thread',
@@ -133,7 +133,7 @@ commands = {
                 },
             },
     'disable_id_range_recheck'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_id_range_recheck',
                     'job_type'          : 'thread',
@@ -333,11 +333,17 @@ class IdrangePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("enable ID check")
-    def enable_id_check(self, callback=default_callback, **kwargs):
+    def enable_id_check(self, force=False, callback=default_callback, **kwargs):
         """ Enable ID check. """
         if self.verify_new_id:
             msg = _("ID check already enabled.")
             return callback.error(msg)
+
+        msg = _("Enable ID check for policy '{policy_name}'?: ")
+        msg = msg.format(policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.verify_new_id = True
         return self._cache(callback=callback)
 
@@ -346,11 +352,17 @@ class IdrangePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("disable ID check")
-    def disable_id_check(self, callback=default_callback, **kwargs):
+    def disable_id_check(self, force=False, callback=default_callback, **kwargs):
         """ Disable ID check. """
         if not self.verify_new_id:
             msg = _("ID check already disabled.")
             return callback.error(msg)
+
+        msg = _("Disable ID check for policy '{policy_name}'?: ")
+        msg = msg.format(policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.verify_new_id = False
         return self._cache(callback=callback)
 
@@ -359,11 +371,18 @@ class IdrangePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("enable ID range recheck")
-    def enable_id_range_recheck(self, callback=default_callback, **kwargs):
+    def enable_id_range_recheck(self, force=False,
+        callback=default_callback, **kwargs):
         """ Enable ID range re-check. """
         if self.recheck_id_ranges:
             msg = _("ID range re-check already enabled.")
             return callback.error(msg)
+
+        msg = _("Enable ID range recheck for policy '{policy_name}'?: ")
+        msg = msg.format(policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.recheck_id_ranges = True
         return self._cache(callback=callback)
 
@@ -372,11 +391,18 @@ class IdrangePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("disable ID range recheck")
-    def disable_id_range_recheck(self, callback=default_callback, **kwargs):
+    def disable_id_range_recheck(self, force=False,
+        callback=default_callback, **kwargs):
         """ Disable ID range re-check. """
         if not self.recheck_id_ranges:
             msg = _("ID range re-check already disabled.")
             return callback.error(msg)
+
+        msg = _("Disable ID range recheck for policy '{policy_name}'?: ")
+        msg = msg.format(policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.recheck_id_ranges = False
         return self._cache(callback=callback)
 
@@ -728,11 +754,16 @@ class IdrangePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add ID range {id_range}")
-    def add_id_range(self, id_range, run_policies=True,
+    def add_id_range(self, id_range, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add ID range. """
         if not id_range:
             return callback.error(_("Got empty ID range."))
+
+        msg = _("Add ID range '{id_range}' to policy '{policy_name}'?: ")
+        msg = msg.format(id_range=id_range, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -782,11 +813,16 @@ class IdrangePolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove ID range {id_range}")
-    def del_id_range(self, id_range, run_policies=True,
+    def del_id_range(self, id_range, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete ID range. """
         if not id_range:
             return callback.error(_("Got empty ID range."))
+
+        msg = _("Remove ID range '{id_range}' from policy '{policy_name}'?: ")
+        msg = msg.format(id_range=id_range, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         try:
             attribute = id_range.split(":")[0]

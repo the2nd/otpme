@@ -97,7 +97,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -105,7 +105,7 @@ commands = {
                 },
             },
     'strength_checker'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_strength_checker',
                     'args'              : ['strength_checker'],
@@ -114,7 +114,7 @@ commands = {
                 },
             },
     'strength_checker_opts'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_strength_checker_opts',
                     'args'              : ['options'],
@@ -123,7 +123,7 @@ commands = {
                 },
             },
     'enable_require_number'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_require_number',
                     'job_type'          : 'process',
@@ -131,7 +131,7 @@ commands = {
                 },
             },
     'disable_require_number'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_require_number',
                     'job_type'          : 'process',
@@ -139,7 +139,7 @@ commands = {
                 },
             },
     'enable_require_upper'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_require_upper',
                     'job_type'          : 'process',
@@ -147,7 +147,7 @@ commands = {
                 },
             },
     'disable_require_upper'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_require_upper',
                     'job_type'          : 'process',
@@ -155,7 +155,7 @@ commands = {
                 },
             },
     'enable_require_lower'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_require_lower',
                     'job_type'          : 'process',
@@ -163,7 +163,7 @@ commands = {
                 },
             },
     'disable_require_lower'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_require_lower',
                     'job_type'          : 'process',
@@ -171,7 +171,7 @@ commands = {
                 },
             },
     'enable_require_special'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_require_special',
                     'job_type'          : 'process',
@@ -179,7 +179,7 @@ commands = {
                 },
             },
     'disable_require_special'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_require_special',
                     'job_type'          : 'process',
@@ -187,7 +187,7 @@ commands = {
                 },
             },
     'enable_strength_checker'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_strength_checker',
                     'job_type'          : 'process',
@@ -195,7 +195,7 @@ commands = {
                 },
             },
     'disable_strength_checker'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_strength_checker',
                     'job_type'          : 'process',
@@ -203,7 +203,7 @@ commands = {
                 },
             },
     'pin_min_len'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_pin_min_len',
                     'args'              : ['pin_min_len'],
@@ -212,7 +212,7 @@ commands = {
                 },
             },
     'password_min_len'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_password_min_len',
                     'args'              : ['password_min_len'],
@@ -221,7 +221,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password', 'pin'],
@@ -289,6 +289,14 @@ def register():
 def register_hooks():
     config.register_auth_on_action_hook("policy", "enable_strength_checker")
     config.register_auth_on_action_hook("policy", "disable_strength_checker")
+    config.register_auth_on_action_hook("policy", "enable_require_number")
+    config.register_auth_on_action_hook("policy", "disable_require_number")
+    config.register_auth_on_action_hook("policy", "enable_require_upper")
+    config.register_auth_on_action_hook("policy", "disable_require_upper")
+    config.register_auth_on_action_hook("policy", "enable_require_lower")
+    config.register_auth_on_action_hook("policy", "disable_require_lower")
+    config.register_auth_on_action_hook("policy", "enable_require_special")
+    config.register_auth_on_action_hook("policy", "disable_require_special")
     config.register_auth_on_action_hook("policy", "change_password_min_len")
     config.register_auth_on_action_hook("policy", "change_pin_min_len")
     config.register_auth_on_action_hook("policy", "change_strength_checker")
@@ -654,11 +662,17 @@ class PasswordPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change password min length to {password_min_len}")
-    def change_password_min_len(self, password_min_len, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_password_min_len(self, password_min_len, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change min password length. """
         if password_min_len < 3:
             return callback.error(_("Password min length too short."))
+
+        msg = _("Change password min length of policy '{policy_name}' to '{password_min_len}'?: ")
+        msg = msg.format(policy_name=self.name,
+                        password_min_len=password_min_len)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -680,11 +694,16 @@ class PasswordPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change PIN min length to {pin_min_len}")
-    def change_pin_min_len(self, pin_min_len, run_policies=True,
+    def change_pin_min_len(self, pin_min_len, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change min PIN length. """
         if pin_min_len < 3:
             return callback.error(_("Password min length too short."))
+
+        msg = _("Change PIN min length of policy '{policy_name}' to '{pin_min_len}'?: ")
+        msg = msg.format(policy_name=self.name, pin_min_len=pin_min_len)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -706,13 +725,20 @@ class PasswordPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change strength checker to {strength_checker}")
-    def change_strength_checker(self, strength_checker, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_strength_checker(self, strength_checker, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change strength checker. """
         if not strength_checker in config.supported_pass_strength_checker:
             msg = _("Unknown password strength checker: {strength_checker}")
             msg = msg.format(strength_checker=strength_checker)
             return callback.error(msg)
+
+        msg = _("Change strength checker of policy '{policy_name}' to '{strength_checker}'?: ")
+        msg = msg.format(policy_name=self.name,
+                        strength_checker=strength_checker)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -733,9 +759,14 @@ class PasswordPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change strength checker options to {options}")
-    def change_strength_checker_opts(self, options, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_strength_checker_opts(self, options, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change strength checker options. """
+        msg = _("Change strength checker options of policy '{policy_name}'?: ")
+        msg = msg.format(policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

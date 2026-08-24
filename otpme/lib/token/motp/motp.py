@@ -97,7 +97,7 @@ recursive_default_acls = []
 
 commands = {
     'secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_secret',
                     'oargs'             : ['auto_secret', 'secret'],
@@ -106,7 +106,7 @@ commands = {
                 },
             },
     'pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_pin',
                     'oargs'             : ['auto_pin', 'pin'],
@@ -115,7 +115,7 @@ commands = {
                 },
             },
     'validity_time'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_validity_time',
                     'oargs'             : ['validity_time'],
@@ -124,7 +124,7 @@ commands = {
                 },
             },
     'timedrift_tolerance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_timedrift_tolerance',
                     'oargs'             : ['timedrift_tolerance'],
@@ -133,7 +133,7 @@ commands = {
                 },
             },
     'show_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_secret',
                     'job_type'          : 'process',
@@ -141,7 +141,7 @@ commands = {
                 },
             },
     'show_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_pin',
                     'job_type'          : 'process',
@@ -149,7 +149,7 @@ commands = {
                 },
             },
     'gen'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_otp',
                     'job_type'          : 'process',
@@ -157,7 +157,7 @@ commands = {
                 },
             },
     'gen_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_mschap',
                     'job_type'          : 'process',
@@ -165,7 +165,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
@@ -174,7 +174,7 @@ commands = {
                 },
             },
     'enable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_mschap',
                     'job_type'          : 'process',
@@ -182,7 +182,7 @@ commands = {
                 },
             },
     'disable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_mschap',
                     'job_type'          : 'process',
@@ -423,6 +423,7 @@ class MotpToken(Token):
     @object_changelog("change validity time {validity_time}")
     def change_validity_time(
         self,
+        force: bool=False,
         run_policies: bool=True,
         validity_time: Union[int,None]=None,
         _caller: str="API",
@@ -430,6 +431,11 @@ class MotpToken(Token):
         **kwargs,
         ):
         """ Change token validity time. """
+        msg = _("Change validity time of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -465,6 +471,7 @@ class MotpToken(Token):
     @object_changelog("change timedrift tolerance {timedrift_tolerance}")
     def change_timedrift_tolerance(
         self,
+        force: bool=False,
         run_policies: bool=True,
         timedrift_tolerance: Union[int,None]=None,
         _caller: str="API",
@@ -472,6 +479,11 @@ class MotpToken(Token):
         **kwargs,
         ):
         """ Change token timedrift tolerance. """
+        msg = _("Change timedrift tolerance of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

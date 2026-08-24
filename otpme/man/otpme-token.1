@@ -149,8 +149,8 @@ Dump the info text to stdout.
 .B test \fItoken\fR \fR[\fIotp|password\fR]
 Test if given OTP/password can be verified by the token.
 .TP
-.B temp_password \fR[\fB\-\-generate\fR] [\fB\-\-duration\fR \fItime\fR] [\fB\-\-remove\fR] \fItoken\fR \fR[\fIpassword\fR]
-Set, generate or remove a temporary password.
+.B temp_password \fR[\fB\-\-generate\fR] [\fB\-\-duration\fR \fItime\fR] [\fB\-\-remove\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
+Set, generate or remove a temporary password. With \fB\-\-weak\-password\fR a password the password policy rejects is accepted, which needs the \fIforce_password\fR ACL. This is not the same as \fB\-f\fR, which only skips the confirmation.
 .SS VLAN Assignment
 A token is not assigned a VLAN with a command of its own. Either the VLAN
 names the token, so that the assignment belongs to the site that runs the
@@ -418,8 +418,8 @@ Change OTP validity time.
 Change OTP timedrift tolerance.
 .SS Password Token
 .TP
-.B password \fR[\fB\-\-generate\fR] \fItoken\fR \fR[\fIpassword\fR]
-Change token password.
+.B password \fR[\fB\-\-generate\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
+Change token password. With \fB\-\-weak\-password\fR a password the password policy rejects is accepted, which needs the \fIforce_password\fR ACL. This is not the same as \fB\-f\fR, which only skips the confirmation.
 .TP
 .B 2f_token \fItoken\fR \fIsecond_factor_token\fR
 Change second factor token.
@@ -452,8 +452,8 @@ Set card type of SSH token (e.g. gpg).
 .B key_type \fItoken\fR \fIkey_type\fR
 Set SSH key type (e.g. rsa).
 .TP
-.B password \fR[\fB\-\-generate\fR] \fItoken\fR \fR[\fIpassword\fR]
-Change token password.
+.B password \fR[\fB\-\-generate\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
+Change token password. With \fB\-\-weak\-password\fR a password the password policy rejects is accepted, which needs the \fIforce_password\fR ACL. This is not the same as \fB\-f\fR, which only skips the confirmation.
 .TP
 .B 2f_token \fItoken\fR \fIsecond_factor_token\fR
 Change second factor token.

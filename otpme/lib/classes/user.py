@@ -175,11 +175,11 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'password', 'ldif_attributes'],
+                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'password', 'weak_password', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -189,7 +189,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -199,7 +199,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -207,7 +207,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -216,7 +216,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -225,7 +225,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -233,7 +233,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -241,7 +241,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("user"),
                     'oargs'              : [
@@ -267,7 +267,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("user"),
                     'oargs'              : [
@@ -297,7 +297,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -305,7 +305,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -314,7 +314,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -323,7 +323,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'oargs'             : ['share_notifications', 'persist_mount'],
@@ -332,7 +332,7 @@ commands = {
                 },
             },
     'auto_disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auto_disable',
                     'args'              : ['auto_disable'],
@@ -342,7 +342,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -351,7 +351,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -361,7 +361,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -369,7 +369,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -377,7 +377,7 @@ commands = {
                 },
             },
     'group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_group',
                     'args'              : ['new_group'],
@@ -386,7 +386,7 @@ commands = {
                 },
             },
     'enable_auto_mount'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_auto_mount',
                     'job_type'          : 'thread',
@@ -394,7 +394,7 @@ commands = {
                 },
             },
     'disable_auto_mount'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_auto_mount',
                     'job_type'          : 'thread',
@@ -402,7 +402,7 @@ commands = {
                 },
             },
     'enable_admin_access'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_admin_access',
                     'job_type'          : 'thread',
@@ -410,7 +410,7 @@ commands = {
                 },
             },
     'disable_admin_access'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_admin_access',
                     'job_type'          : 'thread',
@@ -418,7 +418,7 @@ commands = {
                 },
             },
     'enable_disabled_login'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_disabled_login',
                     'job_type'          : 'thread',
@@ -426,7 +426,7 @@ commands = {
                 },
             },
     'disable_disabled_login'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_disabled_login',
                     'job_type'          : 'thread',
@@ -434,7 +434,7 @@ commands = {
                 },
             },
     'enable_autosign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_autosign',
                     'job_type'          : 'process',
@@ -442,7 +442,7 @@ commands = {
                 },
             },
     'disable_autosign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_autosign',
                     'job_type'          : 'process',
@@ -450,7 +450,7 @@ commands = {
                 },
             },
     'unblock'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'unblock',
                     'oargs'             : ['access_group'],
@@ -459,7 +459,7 @@ commands = {
                 },
             },
     'disable_sessions'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sessions',
                     'job_type'          : 'process',
@@ -467,7 +467,7 @@ commands = {
                 },
             },
     'key_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_script',
                     'oargs'             : ['key_script', 'script_options'],
@@ -476,7 +476,7 @@ commands = {
                 },
             },
     'get_key_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_key_script',
                     'oargs'             : ['return_type'],
@@ -485,7 +485,7 @@ commands = {
                 },
             },
     'get_ssh_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ssh_script',
                     'oargs'             : ['return_type'],
@@ -494,7 +494,7 @@ commands = {
                 },
             },
     'agent_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_agent_script',
                     'oargs'             : ['agent_script', 'script_options'],
@@ -503,7 +503,7 @@ commands = {
                 },
             },
     'login_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_login_script',
                     'oargs'             : ['login_script', 'script_options'],
@@ -512,7 +512,7 @@ commands = {
                 },
             },
     'enable_login_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_login_script',
                     'job_type'          : 'process',
@@ -520,7 +520,7 @@ commands = {
                 },
             },
     'disable_login_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_login_script',
                     'job_type'          : 'process',
@@ -528,7 +528,7 @@ commands = {
                 },
             },
     'auth_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auth_script',
                     'oargs'             : ['auth_script', 'script_options'],
@@ -537,7 +537,7 @@ commands = {
                 },
             },
     'enable_auth_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_auth_script',
                     'job_type'          : 'process',
@@ -545,7 +545,7 @@ commands = {
                 },
             },
     'disable_auth_script'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_auth_script',
                     'job_type'          : 'process',
@@ -553,7 +553,7 @@ commands = {
                 },
             },
     'deploy_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'deploy_token',
                     'oargs'             : ['token_name', 'token_type', 'smartcard_type', 'deploy_data', 'pre_deploy', 'pre_deploy_args', 'replace'],
@@ -563,17 +563,17 @@ commands = {
                 },
             },
     'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_name'],
-                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'mode', 'enable_mschap', 'password', 'public_key'],
+                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'mode', 'enable_mschap', 'password', 'weak_password', 'public_key'],
                     'job_type'          : 'process',
                     },
                 },
             },
     'del_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_token',
                     'args'              : ['token_name'],
@@ -582,7 +582,7 @@ commands = {
                 },
             },
     'key_mode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_mode',
                     'args'              : ['key_mode'],
@@ -591,7 +591,7 @@ commands = {
                 },
             },
     'get_key_mode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_key_mode',
                     'job_type'          : 'thread',
@@ -599,7 +599,7 @@ commands = {
                 },
             },
     'key_cache_time'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_cache_time',
                     'args'              : ['key_cache_time'],
@@ -608,7 +608,7 @@ commands = {
                 },
             },
     'get_sign_key_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_sign_key_type',
                     'job_type'          : 'thread',
@@ -616,7 +616,7 @@ commands = {
                 },
             },
     'get_enc_key_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_enc_key_type',
                     'job_type'          : 'thread',
@@ -624,7 +624,7 @@ commands = {
                 },
             },
     'gen_keys'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_keys',
                     'oargs'         : [
@@ -642,7 +642,7 @@ commands = {
                 },
             },
     'del_keys'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_keys',
                     'job_type'          : 'thread',
@@ -650,7 +650,7 @@ commands = {
                 },
             },
     'key_pass'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_pass',
                     'job_type'          : 'process',
@@ -658,7 +658,7 @@ commands = {
                 },
             },
     'sign_private_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sign_private_key',
                     'oargs'             : ['private_key'],
@@ -667,7 +667,7 @@ commands = {
                 },
             },
     'encrypt_private_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_encrypt_private_key',
                     'oargs'             : ['private_key'],
@@ -676,7 +676,7 @@ commands = {
                 },
             },
     'sign_public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sign_public_key',
                     'oargs'             : ['public_key'],
@@ -685,7 +685,7 @@ commands = {
                 },
             },
     'encrypt_public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_encrypt_public_key',
                     'oargs'             : ['public_key'],
@@ -694,7 +694,7 @@ commands = {
                 },
             },
     'import_sign_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'import_sign_key',
                     'args'              : ['private_key'],
@@ -704,7 +704,7 @@ commands = {
                 },
             },
     'import_encrypt_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'import_encrypt_key',
                     'args'              : ['private_key'],
@@ -714,7 +714,7 @@ commands = {
                 },
             },
     'dump_sign_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_sign_key',
                     'oargs'             : ['private', 'decrypt', 'aes_key'],
@@ -723,7 +723,7 @@ commands = {
                 },
             },
     'dump_encrypt_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_encrypt_key',
                     'oargs'             : ['private', 'decrypt', 'aes_key'],
@@ -732,7 +732,7 @@ commands = {
                 },
             },
     'sign_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'sign_data',
                     'oargs'             : ['data', 'digest', 'aes_key'],
@@ -741,7 +741,7 @@ commands = {
                 },
             },
     'verify'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'verify',
                     'oargs'             : ['data', 'digest'],
@@ -750,7 +750,7 @@ commands = {
                 },
             },
     'encrypt'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'encrypt',
                     'oargs'             : ['data'],
@@ -759,7 +759,7 @@ commands = {
                 },
             },
     'decrypt'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'decrypt',
                     'oargs'             : ['data', 'aes_key'],
@@ -768,7 +768,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'thread',
@@ -778,7 +778,7 @@ commands = {
                 },
             },
     'list_groups'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_groups',
                     'job_type'          : 'thread',
@@ -788,7 +788,7 @@ commands = {
                 },
             },
     'list_tokens'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_tokens',
                     'job_type'          : 'thread',
@@ -798,7 +798,7 @@ commands = {
                 },
             },
     'list_roles'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'job_type'          : 'thread',
@@ -808,7 +808,7 @@ commands = {
                 },
             },
     'add_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_extension',
                     'args'              : ['extension'],
@@ -817,7 +817,7 @@ commands = {
                 },
             },
     'remove_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_extension',
                     'args'              : ['extension'],
@@ -826,7 +826,7 @@ commands = {
                 },
             },
     'add_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
@@ -836,7 +836,7 @@ commands = {
                 },
             },
     'modify_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'modify_attribute',
                     'args'              : ['attribute', 'old_value', 'new_value'],
@@ -845,7 +845,7 @@ commands = {
                 },
             },
     'del_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute',
                     'args'              : ['attribute'],
@@ -855,7 +855,7 @@ commands = {
                 },
             },
     'add_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_object_class',
                     'args'              : ['object_class'],
@@ -864,7 +864,7 @@ commands = {
                 },
             },
     'del_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_object_class',
                     'args'              : ['object_class'],
@@ -873,7 +873,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -883,7 +883,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -894,7 +894,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -903,7 +903,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -912,7 +912,7 @@ commands = {
                 },
             },
     'language'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_language',
                     'oargs'             : ['language'],
@@ -921,7 +921,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -930,7 +930,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -939,7 +939,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -948,7 +948,7 @@ commands = {
                 },
             },
     'photo'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_photo',
                     'args'              : ['image_data'],
@@ -957,7 +957,7 @@ commands = {
                 },
             },
     'dump_photo'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_photo',
                     'job_type'          : 'thread',
@@ -965,7 +965,7 @@ commands = {
                 },
             },
     'del_photo'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_photo',
                     'job_type'          : 'thread',
@@ -973,7 +973,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -982,7 +982,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -991,7 +991,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -999,7 +999,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -1007,7 +1007,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -1015,7 +1015,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -1023,7 +1023,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -1031,7 +1031,7 @@ commands = {
                 },
             },
     'show_ldif'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
                     'oargs'             : ['attributes'],
@@ -1040,7 +1040,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -1048,7 +1048,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -1056,7 +1056,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -1065,7 +1065,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -1074,7 +1074,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -1210,15 +1210,26 @@ def register_dn():
     config.register_dn_attribute("user", "uid")
 
 def register_hooks():
-    config.register_auth_on_action_hook("user", "unlock")
+    config.register_auth_on_action_hook("user", "unblock")
     config.register_auth_on_action_hook("user", "gen_keys")
     config.register_auth_on_action_hook("user", "del_keys")
+    config.register_auth_on_action_hook("user", "sign")
+    config.register_auth_on_action_hook("user", "verify")
+    config.register_auth_on_action_hook("user", "encrypt")
+    config.register_auth_on_action_hook("user", "decrypt")
     config.register_auth_on_action_hook("user", "add_token")
     config.register_auth_on_action_hook("user", "del_token")
     config.register_auth_on_action_hook("user", "pre_add_token")
     config.register_auth_on_action_hook("user", "deploy_token")
     config.register_auth_on_action_hook("user", "change_group")
     config.register_auth_on_action_hook("user", "change_key_pass")
+    config.register_auth_on_action_hook("user", "change_key_cache_time")
+    config.register_auth_on_action_hook("user", "enable_admin_access")
+    config.register_auth_on_action_hook("user", "disable_admin_access")
+    config.register_auth_on_action_hook("user", "enable_disabled_login")
+    config.register_auth_on_action_hook("user", "disable_disabled_login")
+    config.register_auth_on_action_hook("user", "enable_auto_mount")
+    config.register_auth_on_action_hook("user", "disable_auto_mount")
     config.register_auth_on_action_hook("user", "enable_autosign")
     config.register_auth_on_action_hook("user", "disable_autosign")
     config.register_auth_on_action_hook("user", "change_sign_private_key")
@@ -2281,6 +2292,7 @@ class User(OTPmeObject):
                                         return_type="name")
         for policy_name in user_policies:
             self.remove_policy(policy_name=policy_name,
+                                force=True,
                                 verify_acls=False)
         self.update_object_config()
         object_config = self.object_config.copy()
@@ -2299,6 +2311,7 @@ class User(OTPmeObject):
                                                 return_type="name")
             for policy_name in token_policies:
                 token.remove_policy(policy_name=policy_name,
+                                    force=True,
                                     verify_acls=False)
                 token.update_object_config()
             objects[token.oid.full_oid]['policies'] = token_policies
@@ -2469,11 +2482,17 @@ class User(OTPmeObject):
     def add_photo(
         self,
         image_data: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        msg = _("Add photo to user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2506,8 +2525,8 @@ class User(OTPmeObject):
 
         self.photo = image_base64
 
-        self.del_attribute(attribute="jpegPhoto")
-        self.add_attribute(attribute="jpegPhoto", value=self.photo)
+        self.del_attribute(attribute="jpegPhoto", force=True)
+        self.add_attribute(attribute="jpegPhoto", value=self.photo, force=True)
 
         return self._write(callback=callback)
 
@@ -2517,11 +2536,17 @@ class User(OTPmeObject):
     @object_changelog("remove photo")
     def del_photo(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        msg = _("Remove photo of user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2536,7 +2561,7 @@ class User(OTPmeObject):
                 return callback.error(msg)
 
         self.photo = None
-        self.del_attribute(attribute="jpegPhoto")
+        self.del_attribute(attribute="jpegPhoto", force=True)
 
         return self._write(callback=callback)
 
@@ -2589,13 +2614,23 @@ class User(OTPmeObject):
         return super()._write(**kwargs)
 
     @check_acls(['edit:language'])
-    def change_language(self, language, callback: JobCallback=default_callback, **kwargs):
+    @object_lock()
+    @audit_log()
+    @object_changelog("change language to {language}")
+    def change_language(self, language, force: bool=False,
+        callback: JobCallback=default_callback, **kwargs):
         """ Change users localization. """
         if self.language_set:
             if language == self.language:
                 msg = _("Users language already set to {language}")
                 msg = msg.format(language=self.language)
                 return callback.error(msg)
+
+        msg = _("Change language of user '{user_name}' to '{language}'?: ")
+        msg = msg.format(user_name=self.name, language=language)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if language == "default":
             self.language = "en"
             self.language_set = False
@@ -2609,12 +2644,22 @@ class User(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['edit:key_mode'])
-    def change_key_mode(self, key_mode, callback: JobCallback=default_callback, **kwargs):
+    @object_lock()
+    @audit_log()
+    @object_changelog("change key mode to {key_mode}")
+    def change_key_mode(self, key_mode, force: bool=False,
+        callback: JobCallback=default_callback, **kwargs):
         """ Change users key mode. """
         if key_mode == self.key_mode:
             msg = _("Users key mode already set to {key_mode}")
             msg = msg.format(key_mode=self.key_mode)
             return callback.error(msg)
+
+        msg = _("Change key mode of user '{user_name}' to '{key_mode}'?: ")
+        msg = msg.format(user_name=self.name, key_mode=key_mode)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.key_mode = key_mode
         return self._cache(callback=callback)
 
@@ -2632,6 +2677,7 @@ class User(OTPmeObject):
     def change_key_cache_time(
         self,
         key_cache_time: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2658,6 +2704,11 @@ class User(OTPmeObject):
             msg = _("Users key cache time already set to {key_cache_time}")
             msg = msg.format(key_cache_time=self.key_cache_time)
             return callback.error(msg)
+
+        msg = _("Change key cache time of user '{user_name}' to '{key_cache_time}'?: ")
+        msg = msg.format(user_name=self.name, key_cache_time=key_cache_time)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2729,6 +2780,7 @@ class User(OTPmeObject):
     def change_group(
         self,
         new_group: str,
+        force: bool=False,
         verbose_level: int=0,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -2749,6 +2801,11 @@ class User(OTPmeObject):
             msg = msg.format(new_group=new_group)
             return callback.error(msg)
         group_uuid = result[0]
+
+        msg = _("Change group of user '{user_name}' to '{new_group}'?: ")
+        msg = msg.format(user_name=self.name, new_group=new_group)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2800,10 +2857,12 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
         if getattr(self, attr) is not None:
-            msg = _("Replace existing {role} private key?: ")
-            msg = msg.format(role=key_role)
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                return callback.abort()
+            msg = _("Replace existing {role} private key of user '{user_name}'?: ")
+        else:
+            msg = _("Set {role} private key of user '{user_name}'?: ")
+        msg = msg.format(role=key_role, user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         if private_key == "":
             setattr(self, attr, {})
         else:
@@ -2870,10 +2929,12 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
         if getattr(self, attr) is not None:
-            msg = _("Replace existing {role} public key?: ")
-            msg = msg.format(role=key_role)
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                return callback.abort()
+            msg = _("Replace existing {role} public key of user '{user_name}'?: ")
+        else:
+            msg = _("Set {role} public key of user '{user_name}'?: ")
+        msg = msg.format(role=key_role, user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         if public_key == "":
             setattr(self, attr, None)
         else:
@@ -2899,7 +2960,7 @@ class User(OTPmeObject):
         if not verify_acls:
             check_acl = False
         if config.auth_token:
-            if config.auth_token.uuid == self.uuid:
+            if config.auth_token.owner_uuid == self.uuid:
                 check_acl = False
         if check_acl:
             acl = "edit:sign_public_key"
@@ -2928,7 +2989,7 @@ class User(OTPmeObject):
         if not verify_acls:
             check_acl = False
         if config.auth_token:
-            if config.auth_token.uuid == self.uuid:
+            if config.auth_token.owner_uuid == self.uuid:
                 check_acl = False
         if check_acl:
             acl = "edit:encrypt_public_key"
@@ -3029,11 +3090,16 @@ class User(OTPmeObject):
         aes_key: Union[str,None],
         callback: JobCallback,
         _caller: str,
+        check_acl: bool=True,
         ):
-        """ Implementation shared by get_sign_key / get_encrypt_key. """
+        """ Implementation shared by get_sign_key / get_encrypt_key.
+
+        Our caller decides if ACLs have to be checked (e.g. no check if
+        the auth token belongs to the key owner).
+        """
         priv_attr = self._key_attr(key_role, private=True)
         pub_attr = self._key_attr(key_role, private=False)
-        if private:
+        if private and check_acl:
             if not self.verify_acl(f"view_all:{priv_attr}"):
                 msg = ("Permission denied.")
                 return callback.error(msg, exception=PermissionDenied)
@@ -3075,7 +3141,7 @@ class User(OTPmeObject):
         if not verify_acls:
             check_acl = False
         if config.auth_token:
-            if config.auth_token.uuid == self.uuid:
+            if config.auth_token.owner_uuid == self.uuid:
                 check_acl = False
         if not private:
             check_acl = False
@@ -3087,7 +3153,8 @@ class User(OTPmeObject):
                 msg = _("Permission denied.")
                 return callback.error(msg)
         return self._get_key_dispatch("sign", private, decrypt, aes_key,
-                                        callback, _caller)
+                                        callback, _caller,
+                                        check_acl=check_acl)
 
     def get_encrypt_key(
         self,
@@ -3105,7 +3172,7 @@ class User(OTPmeObject):
         if not verify_acls:
             check_acl = False
         if config.auth_token:
-            if config.auth_token.uuid == self.uuid:
+            if config.auth_token.owner_uuid == self.uuid:
                 check_acl = False
         if not private:
             check_acl = False
@@ -3117,7 +3184,8 @@ class User(OTPmeObject):
                 msg = _("Permission denied.")
                 return callback.error(msg)
         return self._get_key_dispatch("encrypt", private, decrypt, aes_key,
-                                        callback, _caller)
+                                        callback, _caller,
+                                        check_acl=check_acl)
 
     @check_acls(['gen_keys'])
     @check_special_user()
@@ -3303,6 +3371,7 @@ class User(OTPmeObject):
             acls.append(acl)
             if acl in acls:
                 self.add_acl(acl=acl,
+                            force=True,
                             recursive_acls=False,
                             apply_default_acls=False,
                             verify_acls=False,
@@ -3397,10 +3466,12 @@ class User(OTPmeObject):
         priv_attr = self._key_attr(key_role, private=True)
         pub_attr = self._key_attr(key_role, private=False)
         if getattr(self, priv_attr) or getattr(self, pub_attr):
-            msg = _("Replace existing {role} user key?: ")
-            msg = msg.format(role=key_role)
-            if not self.ask_change_confirmation(msg, force=force, callback=callback):
-                return callback.abort()
+            msg = _("Replace existing {role} key of user '{user_name}'?: ")
+        else:
+            msg = _("Import {role} key for user '{user_name}'?: ")
+        msg = msg.format(role=key_role, user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if aes_key and not aes_key_enc:
             msg = "Need 'aes_key_enc' when 'aes_key' is set."
@@ -3454,7 +3525,7 @@ class User(OTPmeObject):
         if not verify_acls:
             check_acl = False
         if config.auth_token:
-            if config.auth_token.uuid == self.uuid:
+            if config.auth_token.owner_uuid == self.uuid:
                 check_acl = False
         if check_acl:
             if not self.verify_acl("edit:sign_private_key"):
@@ -3477,6 +3548,7 @@ class User(OTPmeObject):
         aes_key_enc: Union[str,None]=None,
         pass_hash_type: str="PBKDF2",
         force: bool=False,
+        verify_acls: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -3488,7 +3560,7 @@ class User(OTPmeObject):
         if not verify_acls:
             check_acl = False
         if config.auth_token:
-            if config.auth_token.uuid == self.uuid:
+            if config.auth_token.owner_uuid == self.uuid:
                 check_acl = False
         if check_acl:
             if not self.verify_acl("edit:encrypt_private_key"):
@@ -3550,6 +3622,7 @@ class User(OTPmeObject):
     @object_changelog("change key password")
     def change_key_pass(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -3561,6 +3634,11 @@ class User(OTPmeObject):
         if self.key_mode != "server":
             msg = ("Private key is not handled by server.")
             return callback.error(msg)
+
+        msg = _("Change key password of user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4485,12 +4563,18 @@ class User(OTPmeObject):
     def unblock(
         self,
         access_group: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Unblock user. """
+        msg = _("Unblock user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -4735,6 +4819,7 @@ class User(OTPmeObject):
         no_token_infos: bool=False,
         enable_mschap: bool=False,
         force: bool=False,
+        weak_password: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
         verbose_level: int=0,
@@ -4848,7 +4933,8 @@ class User(OTPmeObject):
         if new_token:
             if password is not None:
                 new_token.change_password(password=password,
-                                        force=force,
+                                        force=True,
+                                        weak_password=weak_password,
                                         verify_acls=False,
                                         callback=callback)
         else:
@@ -4885,6 +4971,7 @@ class User(OTPmeObject):
                                     destination_token_uuid=destination_token_uuid,
                                     verbose_level=verbose_level,
                                     force=force,
+                                    weak_password=weak_password,
                                     callback=callback,
                                     _caller=_caller,
                                     **kwargs)
@@ -4899,6 +4986,7 @@ class User(OTPmeObject):
             callback.send(msg)
             for x in cur_token.acls:
                 new_token.add_acl(raw_acl=x,
+                                force=True,
                                 verify_acls=False,
                                 ignore_unknown_owner=True,
                                 callback=callback)
@@ -4920,6 +5008,7 @@ class User(OTPmeObject):
                 msg = msg.format(acl=x)
                 callback.send(msg)
                 new_token.del_acl(raw_acl=x,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback)
 
@@ -4929,6 +5018,7 @@ class User(OTPmeObject):
                 para_val = cur_token.get_config_parameter(para_name)
                 new_token.set_config_param(parameter=para_name,
                                             value=para_val,
+                                            force=True,
                                             verify_acls=False,
                                             callback=callback)
 
@@ -5047,7 +5137,14 @@ class User(OTPmeObject):
                     if dst_token.uuid == config.auth_token.uuid:
                         return callback.error(msg)
 
-        if not keep_token:
+        if keep_token:
+            # Deleting the token asks for confirmation by itself, keeping
+            # it does not.
+            msg = _("Remove token '{token_name}' from user '{user_name}'?: ")
+            msg = msg.format(token_name=token_name, user_name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+        else:
             # Delete token.
             del_status = token.delete(callback=callback,
                                     run_policies=run_policies,
@@ -5063,7 +5160,7 @@ class User(OTPmeObject):
         # Del ACL with view access to the token owner for the deleted token.
         kwargs['verify_acls'] = False
         acl = f"token:{token.uuid}:view"
-        self.del_acl(acl=acl, callback=callback, **kwargs)
+        self.del_acl(acl=acl, force=True, callback=callback, **kwargs)
 
         # Remove token UUID from tokens variable of this user.
         try:
@@ -5081,12 +5178,18 @@ class User(OTPmeObject):
     @object_changelog("enable auto mount")
     def enable_auto_mount(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Enable user disabled login. """
+        msg = _("Enable auto mount for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5110,12 +5213,18 @@ class User(OTPmeObject):
     @object_changelog("disable auto mount")
     def disable_auto_mount(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Disable user disabled login. """
+        msg = _("Disable auto mount for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5195,6 +5304,7 @@ class User(OTPmeObject):
     @object_changelog("enable admin access")
     def enable_admin_access(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5209,6 +5319,11 @@ class User(OTPmeObject):
         if self.admin_access_enabled():
             msg = _("Admin access already enabled for this user.")
             return callback.error(msg)
+
+        msg = _("Enable admin access for user '{user_name}'? The admin access role may then set temporary passwords for this user.: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5228,11 +5343,13 @@ class User(OTPmeObject):
             return callback.error(err)
 
         self.set_config_param("allow_temp_passwords", True,
+                              force=True,
                               verify_acls=False,
                               run_policies=False,
                               callback=callback)
         acl = f"role:{role.uuid}:set_temp_password"
         self.add_acl(acl=acl,
+                     force=True,
                      recursive_acls=False,
                      apply_default_acls=False,
                      verify_acls=False,
@@ -5266,6 +5383,7 @@ class User(OTPmeObject):
     @object_changelog("disable admin access")
     def disable_admin_access(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5281,6 +5399,11 @@ class User(OTPmeObject):
         if not self.admin_access_enabled():
             msg = _("Admin access is not enabled for this user.")
             return callback.error(msg)
+
+        msg = _("Disable admin access for user '{user_name}'? This also removes any active temporary password.: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5301,11 +5424,13 @@ class User(OTPmeObject):
 
         self.set_config_param("allow_temp_passwords",
                               delete=True,
+                              force=True,
                               verify_acls=False,
                               run_policies=False,
                               callback=callback)
         acl = f"role:{role.uuid}:set_temp_password"
         self.del_acl(acl=acl,
+                     force=True,
                      recursive_acls=False,
                      apply_default_acls=False,
                      verify_acls=False,
@@ -5339,6 +5464,7 @@ class User(OTPmeObject):
     @object_changelog("enable disabled login")
     def enable_disabled_login(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5348,6 +5474,12 @@ class User(OTPmeObject):
         if self.allow_disabled_login:
             msg = _("Disabled login already enabled for this user.")
             return callback.error(msg)
+
+        msg = _("Enable disabled login for user '{user_name}'? The user can then log in even if the account, its unit, the access group, the client, the site or the realm is disabled.: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5371,6 +5503,7 @@ class User(OTPmeObject):
     @object_changelog("disable disabled login")
     def disable_disabled_login(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5380,6 +5513,11 @@ class User(OTPmeObject):
         if not self.allow_disabled_login:
             msg = _("Disabled login already disabled for this user.")
             return callback.error(msg)
+
+        msg = _("Disable disabled login for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5404,12 +5542,18 @@ class User(OTPmeObject):
     @object_changelog("enable autosign")
     def enable_autosign(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Enable user auto-sign feature. """
+        msg = _("Enable autosign for user '{user_name}'? Objects the user changes get signed automatically.: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5433,12 +5577,18 @@ class User(OTPmeObject):
     @object_changelog("disable autosign")
     def disable_autosign(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Disable user auto-sign feature. """
+        msg = _("Disable autosign for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5462,6 +5612,7 @@ class User(OTPmeObject):
     @object_changelog("enable auth script")
     def enable_auth_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5478,6 +5629,11 @@ class User(OTPmeObject):
             msg = _("Script does not exist: {auth_script}")
             msg = msg.format(auth_script=self.auth_script)
             return callback.error(msg)
+
+        msg = _("Enable authorization script '{script_name}' for user '{user_name}'?: ")
+        msg = msg.format(script_name=x.name, user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5508,6 +5664,7 @@ class User(OTPmeObject):
     @object_changelog("disable auth script")
     def disable_auth_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5518,6 +5675,11 @@ class User(OTPmeObject):
         if not self.auth_script_enabled:
             msg = _("Authorization script already disabled for this user.")
             return callback.error(msg)
+
+        msg = _("Disable authorization script for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5543,6 +5705,7 @@ class User(OTPmeObject):
     @object_changelog("enable login script")
     def enable_login_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5563,6 +5726,11 @@ class User(OTPmeObject):
         if self.login_script_enabled:
             msg = _("Login script already enabled for this user.")
             return callback.error(msg)
+
+        msg = _("Enable login script '{script_name}' for user '{user_name}'?: ")
+        msg = msg.format(script_name=x.name, user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5587,6 +5755,7 @@ class User(OTPmeObject):
     @object_changelog("disable login script")
     def disable_login_script(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5597,6 +5766,11 @@ class User(OTPmeObject):
         if not self.login_script_enabled:
             msg = _("Login script already disabled for this user.")
             return callback.error(msg)
+
+        msg = _("Disable login script for user '{user_name}'?: ")
+        msg = msg.format(user_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5624,6 +5798,7 @@ class User(OTPmeObject):
         self,
         key_script: Union[str,None]=None,
         script_options: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5632,6 +5807,12 @@ class User(OTPmeObject):
         """ Change user key script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        msg = _("Change key script of user '{user_name}' to '{script}'?: ")
+        msg = msg.format(user_name=self.name, script=key_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5660,6 +5841,7 @@ class User(OTPmeObject):
         self,
         agent_script: Union[str,None]=None,
         script_options: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5668,6 +5850,12 @@ class User(OTPmeObject):
         """ Change user agent script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        msg = _("Change agent script of user '{user_name}' to '{script}'?: ")
+        msg = msg.format(user_name=self.name, script=agent_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5696,6 +5884,7 @@ class User(OTPmeObject):
         self,
         login_script: Union[str,None]=None,
         script_options: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5704,6 +5893,12 @@ class User(OTPmeObject):
         """ Change user login script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        msg = _("Change login script of user '{user_name}' to '{script}'?: ")
+        msg = msg.format(user_name=self.name, script=login_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5732,6 +5927,7 @@ class User(OTPmeObject):
         self,
         auth_script: Union[str,None]=None,
         script_options: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5740,6 +5936,12 @@ class User(OTPmeObject):
         """ Change user auth script. """
         if script_options:
             script_options = script_options.split(" ")
+
+        msg = _("Change authorization script of user '{user_name}' to '{script}'?: ")
+        msg = msg.format(user_name=self.name, script=auth_script)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5904,6 +6106,7 @@ class User(OTPmeObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -5930,6 +6133,11 @@ class User(OTPmeObject):
         sessions = backend.get_sessions(user=self.uuid)
         if len(sessions) > 0:
             return callback.error("Cannot rename user with active sessions.")
+
+        msg = _("Rename user '{user_name}' to '{new_name}'?: ")
+        msg = msg.format(user_name=self.name, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Build new OID.
         new_oid = oid.get(object_type="user",
@@ -5973,6 +6181,7 @@ class User(OTPmeObject):
         password: Union[str,None]=None,
         run_policies: bool=True,
         force: bool=False,
+        weak_password: bool=False,
         verify_acls: bool=True,
         groups: Union[List,None]=None,
         default_roles: Union[List,None]=None,
@@ -6329,6 +6538,7 @@ class User(OTPmeObject):
 
         # Make sure user has displayName attribute.
         self.add_attribute(attribute="displayName",
+                        force=True,
                         verify_acls=verify_acls,
                         callback=callback)
 
@@ -6355,6 +6565,7 @@ class User(OTPmeObject):
                 msg = msg.format(default_key_script=default_key_script)
                 callback.send(msg)
             self.change_key_script(default_key_script,
+                                    force=True,
                                     verify_acls=False,
                                     callback=callback)
 
@@ -6381,6 +6592,7 @@ class User(OTPmeObject):
                 msg = msg.format(default_agent_script=default_agent_script)
                 callback.send(msg)
             self.change_agent_script(default_agent_script,
+                                    force=True,
                                     verify_acls=False,
                                     callback=callback)
 
@@ -6407,14 +6619,15 @@ class User(OTPmeObject):
                 msg = msg.format(default_login_script=default_login_script)
                 callback.send(msg)
             self.change_login_script(default_login_script,
+                                    force=True,
                                     verify_acls=False,
                                     callback=callback)
             # Set login script enabled status.
             if template and template.login_script_enabled != self.login_script_enabled:
                 if template.login_script_enabled:
-                    self.enable_login_script()
+                    self.enable_login_script(force=True)
                 else:
-                    self.disable_login_script()
+                    self.disable_login_script(force=True)
 
         # Set default auth script.
         default_auth_script = None
@@ -6439,13 +6652,14 @@ class User(OTPmeObject):
                 msg = msg.format(default_auth_script=default_auth_script)
                 callback.send(msg)
             self.change_auth_script(default_auth_script,
+                                    force=True,
                                     verify_acls=False,
                                     callback=callback)
             if template and template.auth_script_enabled != self.auth_script_enabled:
                 if template.auth_script_enabled:
-                    self.enable_auth_script()
+                    self.enable_auth_script(force=True)
                 else:
-                    self.disable_auth_script()
+                    self.disable_auth_script(force=True)
 
         # Handle auto sign setting
         if template and template.autosign_enabled != self.autosign_enabled:
@@ -6461,12 +6675,14 @@ class User(OTPmeObject):
             if default_token:
                 new_token_path = f"{self.name}/{default_token_name}"
                 _default_token.move(new_token_path,
+                                    force=True,
                                     verify_acls=verify_acls,
                                     callback=callback)
                 # Set default token password
                 if password is not None:
                     _default_token.change_password(password=password,
-                                                force=force,
+                                                force=True,
+                                                weak_password=weak_password,
                                                 verify_acls=False,
                                                 callback=callback)
             else:
@@ -6476,13 +6692,15 @@ class User(OTPmeObject):
                                 gen_qrcode=gen_qrcode,
                                 password=password,
                                 verify_acls=False,
-                                force=force,
+                                force=True,
+                                weak_password=weak_password,
                                 callback=callback)
                 _default_token = self.token(default_token_name)
             # Add default token to default roles.
             for role in _default_roles:
                 if role.realm == config.realm and role.site == config.site:
                     role.add_token(token_path=_default_token.rel_path,
+                                    force=True,
                                     verify_acls=verify_acls,
                                     callback=callback)
                 else:
@@ -6505,6 +6723,7 @@ class User(OTPmeObject):
                 for _group in _groups:
                     if _group.realm == config.realm and _group.site == config.site:
                         _group.add_token(token_path=_default_token.rel_path,
+                                        force=True,
                                         verify_acls=verify_acls,
                                         callback=callback)
                     else:
@@ -6542,8 +6761,8 @@ class User(OTPmeObject):
         # Run post policies ALSO BEFORE adding token (e.g. tokenacls).
         if run_policies:
             super()._run_post_add_policies(verify_acls=verify_acls,
-                                                    verbose_level=verbose_level,
-                                                    callback=callback, **kwargs)
+                                        verbose_level=verbose_level,
+                                        callback=callback, **kwargs)
 
         # Non-admin users are done here.
         if self.name != config.admin_user_name:
@@ -6567,6 +6786,7 @@ class User(OTPmeObject):
         site_admin_role = result[0]
 
         site_admin_role.add_token(token_path=admin_token.rel_path,
+                                    force=True,
                                     verify_acls=verify_acls,
                                     callback=callback)
 
@@ -6574,6 +6794,7 @@ class User(OTPmeObject):
         mysite = backend.get_object(object_type="site", uuid=config.site_uuid)
         acl = f"token:{admin_token.uuid}:all"
         mysite.add_acl(acl=acl,
+                    force=True,
                     recursive_acls=False,
                     apply_default_acls=False,
                     verify_acls=False,

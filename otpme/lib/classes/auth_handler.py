@@ -380,6 +380,13 @@ class AuthHandler(object):
                 self.count_fails = False
                 return
 
+        if self.require_sotp_auth and not self.found_sotp:
+            log_msg = _("SOTP auth required and not SOTP found. Auth will fail.", log=True)[1]
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_FAILED"
+            return
+
         # Make sure login to child accessgroups of SSO accessgroup are not allowed
         # if the token is assigned to the SSO accessgroup.
         master_group = self.auth_group.get_master_group()
@@ -2441,6 +2448,7 @@ class AuthHandler(object):
         self.logger.info(log_msg)
         try:
             self.user.unblock(self.access_group,
+                            force=True,
                             verify_acls=False,
                             run_policies=False)
         except Exception as e:
@@ -2500,7 +2508,7 @@ class AuthHandler(object):
         require_token_types=None, require_pass_types=None, redirect_challenge=None,
         jwt_auth=False, authorize_host=True, share=None, allow_sotp_reuse=False,
         redirect_response=None, gen_jwt=None, jwt_challenge=None, sotp_ag_auth=None,
-        rsp_ecdh_client_pub=None, verify_host=True, check_sotp=None,
+        rsp_ecdh_client_pub=None, verify_host=True, check_sotp=None, require_sotp_auth=False,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True,
         auth_group=None, auth_client=None, oidc_context=False, oidc_scope="",
         oidc_nonce=None, oidc_redirect_uri=None, oidc_code_challenge=None,
@@ -2594,6 +2602,7 @@ class AuthHandler(object):
         self.auth_type = string_vars['auth_type']
         self.auth_mode = string_vars['auth_mode']
         self.check_sotp = check_sotp
+        self.require_sotp_auth = require_sotp_auth
         self.sotp_ag_auth = sotp_ag_auth
         self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data

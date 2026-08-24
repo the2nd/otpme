@@ -265,13 +265,14 @@ cmd_help = {
 
 
     'move'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit move [-m] [-k] [-o user,group,...] [--keep-acls] {unit} {new_unit}'),
-                    'cmd'   :   '-m :merge=True: -k :keep_old_unit=True: --keep-acls :keep_acls=True: -o :[object_types]: <|object|> <new_unit>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit move [-m] [-k] [-o user,group,...] [--keep-acls] [--skip-ca] {unit} {new_unit}'),
+                    'cmd'   :   '-m :merge=True: -k :keep_old_unit=True: --keep-acls :keep_acls=True: --skip-ca :skip_ca=True: -o :[object_types]: <|object|> <new_unit>',
                     '_help' :   {
                                     'cmd'                   : _('Change unit\'s unit.'),
                                     '-m'                    : _('Merge objects from src unit into dst unit.'),
                                     '-k'                    : _('Keep source unit.'),
                                     '--keep-acls'           : _('Keep object ACLs.'),
+                                    '--skip-ca'             : _('Move objects other than CAs and keep the source unit.'),
                                     '-o <user,group,...>'   : _('Move only given object types.'),
                                 },
                 },

@@ -145,8 +145,11 @@ Dump the info text to stdout.
 **test *token* \[*otp\|password*\]**  
 Test if given OTP/password can be verified by the token.
 
-**temp_password \[**--generate**\] \[**--duration** *time*\] \[**--remove**\] *token* \[*password*\]**  
-Set, generate or remove a temporary password.
+**temp_password \[**--generate**\] \[**--duration** *time*\] \[**--remove**\] \[**--weak-password**\] *token* \[*password*\]**  
+Set, generate or remove a temporary password. With **--weak-password** a
+password the password policy rejects is accepted, which needs the
+*force_password* ACL. This is not the same as **-f**, which only skips
+the confirmation.
 
 ## VLAN Assignment
 
@@ -442,8 +445,10 @@ Change OTP timedrift tolerance.
 
 ## Password Token
 
-**password \[**--generate**\] *token* \[*password*\]**  
-Change token password.
+**password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
+Change token password. With **--weak-password** a password the password
+policy rejects is accepted, which needs the *force_password* ACL. This
+is not the same as **-f**, which only skips the confirmation.
 
 **2f_token *token* *second_factor_token***  
 Change second factor token.
@@ -477,8 +482,10 @@ Set card type of SSH token (e.g. gpg).
 **key_type *token* *key_type***  
 Set SSH key type (e.g. rsa).
 
-**password \[**--generate**\] *token* \[*password*\]**  
-Change token password.
+**password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
+Change token password. With **--weak-password** a password the password
+policy rejects is accepted, which needs the *force_password* ACL. This
+is not the same as **-f**, which only skips the confirmation.
 
 **2f_token *token* *second_factor_token***  
 Change second factor token.

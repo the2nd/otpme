@@ -88,7 +88,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [
@@ -111,7 +111,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -121,7 +121,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -129,7 +129,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -138,7 +138,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -147,7 +147,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -155,7 +155,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -163,7 +163,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("ca"),
                     'args'              : ['realm'],
@@ -192,7 +192,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("ca"),
                     'oargs'              : [
@@ -218,7 +218,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -226,7 +226,7 @@ commands = {
                 },
             },
     'create_client_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'create_client_cert',
                     'args'              : [
@@ -249,7 +249,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -258,7 +258,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -266,7 +266,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -274,7 +274,7 @@ commands = {
                 },
             },
     'dump_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_cert',
                     'job_type'          : 'process',
@@ -282,7 +282,7 @@ commands = {
                 },
             },
     'dump_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_cert_key',
                     'args'              : ['passphrase'],
@@ -291,7 +291,7 @@ commands = {
                 },
             },
     'dump_ca_chain'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_ca_chain',
                     'job_type'          : 'process',
@@ -299,7 +299,7 @@ commands = {
                 },
             },
     'dump_crl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_crl',
                     'job_type'          : 'process',
@@ -307,7 +307,7 @@ commands = {
                 },
             },
     'crl_validity'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_crl_validity',
                     'args'              : ['crl_validity'],
@@ -316,7 +316,7 @@ commands = {
                 },
             },
     'update_crl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'update_crl',
                     'job_type'          : 'process',
@@ -324,7 +324,7 @@ commands = {
                 },
             },
     'revoke'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'revoke_cert',
                     'args'              : ['object_unit'],
@@ -333,7 +333,7 @@ commands = {
                 },
             },
     'renew'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'renew_cert',
                     'args'              : ['object_unit'],
@@ -342,7 +342,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'process',
@@ -352,7 +352,7 @@ commands = {
                 },
             },
     'add_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_extension',
                     'args'              : ['extension'],
@@ -361,7 +361,7 @@ commands = {
                 },
             },
     'remove_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_extension',
                     'args'              : ['extension'],
@@ -370,7 +370,7 @@ commands = {
                 },
             },
     'add_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
@@ -380,7 +380,7 @@ commands = {
                 },
             },
     'del_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute',
                     'args'              : ['attribute'],
@@ -390,7 +390,7 @@ commands = {
                 },
             },
     'add_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_object_class',
                     'args'              : ['object_class'],
@@ -399,7 +399,7 @@ commands = {
                 },
             },
     'del_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_object_class',
                     'args'              : ['object_class'],
@@ -408,7 +408,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -418,7 +418,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -429,7 +429,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -438,7 +438,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -447,7 +447,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -456,7 +456,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -465,7 +465,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -474,7 +474,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -483,7 +483,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -492,7 +492,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -500,7 +500,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -508,7 +508,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -516,7 +516,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -524,7 +524,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -532,7 +532,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -540,7 +540,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -548,7 +548,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -557,7 +557,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -566,7 +566,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -732,6 +732,7 @@ def register_hooks():
     config.register_auth_on_action_hook("ca", "create_server_cert")
     config.register_auth_on_action_hook("ca", "create_client_cert")
     config.register_auth_on_action_hook("ca", "update_crl")
+    config.register_auth_on_action_hook("ca", "set_crl")
     config.register_auth_on_action_hook("ca", "revoke_cert")
     config.register_auth_on_action_hook("ca", "set_config_parameter")
 
@@ -929,6 +930,7 @@ class Ca(OTPmeObject):
     def set_crl_validity(
         self,
         crl_validity: int,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -937,6 +939,12 @@ class Ca(OTPmeObject):
         except Exception:
             msg = "CRL validity must be <int>."
             return callback.error(msg)
+
+        msg = _("Set CRL validity of CA '{ca_name}' to '{crl_validity}'?: ")
+        msg = msg.format(ca_name=self.name, crl_validity=crl_validity)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.crl_validity = crl_validity
         return self._cache(callback=callback)
 
@@ -1179,6 +1187,7 @@ class Ca(OTPmeObject):
         ou: Union[str,None]=None,
         locality: Union[str,None]=None,
         email: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -1189,6 +1198,12 @@ class Ca(OTPmeObject):
             key_len = config.default_client_key_len
         if valid is None:
             valid = config.default_client_validity
+
+        msg = _("Create client certificate '{cn}' with CA '{ca_name}'?: ")
+        msg = msg.format(cn=cn, ca_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("create_client_cert",
@@ -1357,6 +1372,7 @@ class Ca(OTPmeObject):
     def update_crl(
         self,
         sign_algo: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         timezone: Union[str,None]=None,
         _caller: str="API",
@@ -1364,6 +1380,11 @@ class Ca(OTPmeObject):
         **kwargs,
         ):
         """ Remove outdated revoked certs from CA's CRL. """
+        msg = _("Update CRL of CA '{ca_name}'?: ")
+        msg = msg.format(ca_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1426,7 +1447,8 @@ class Ca(OTPmeObject):
         realm = backend.get_object(uuid=config.realm_uuid,
                                     object_type="realm")
         try:
-            realm.update_ca_data(verify_acls=False,
+            realm.update_ca_data(force=True,
+                                verify_acls=False,
                                 callback=callback)
         except Exception as e:
             config.raise_exception()
@@ -1456,12 +1478,18 @@ class Ca(OTPmeObject):
         cert: str,
         crl_sign_algo: str=None,
         timezone: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Revoke certificate. """
+        msg = _("Revoke certificate with CA '{ca_name}'?: ")
+        msg = msg.format(ca_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1510,7 +1538,7 @@ class Ca(OTPmeObject):
         # If certificate was revoked successful update CRL and call
         # Realm().update_ca_data()
         self.crl = new_crl
-        self.update_crl(verify_acls=False, callback=callback)
+        self.update_crl(force=True, verify_acls=False, callback=callback)
 
         # Write our config before updating realm CA data.
         self._cache(callback=callback)
@@ -1590,6 +1618,7 @@ class Ca(OTPmeObject):
                                                 verify_acls=False,
                                                 callback=callback)
                 self.revoke_cert(cert=cert,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback)
             except Exception as e:

@@ -97,7 +97,7 @@ recursive_default_acls = []
 
 commands = {
     'uv'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_uv',
                     'args'              : ['uv'],
@@ -106,7 +106,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'job_type'          : 'thread',
@@ -413,11 +413,21 @@ class Fido2Token(Token):
         fido2_server = Fido2Server(rp_data, attestation="direct")
         return fido2_server
 
-    def set_uv(self, uv, callback=default_callback, **kwargs):
+    @object_lock()
+    @audit_log()
+    @object_changelog("change user verification to {uv}")
+    def set_uv(self, uv, force: bool=False,
+        callback=default_callback, **kwargs):
         if uv not in ['discouraged', 'preferred', 'required']:
             msg = _("Invalid uv: {uv}")
             msg = msg.format(uv=uv)
             return callback.error(msg)
+
+        msg = _("Change user verification of token '{token_path}' to '{uv}'?: ")
+        msg = msg.format(token_path=self.rel_path, uv=uv)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.uv = uv
         return self._cache(callback=callback)
 
@@ -478,7 +488,9 @@ class Fido2Token(Token):
             msg = _("Failed to load registration data.")
             return callback.error(msg)
         # Set uv.
-        self.set_uv(self.reg_state['user_verification'], callback=callback)
+        self.set_uv(self.reg_state['user_verification'],
+                    force=True,
+                    callback=callback)
         # Get hmac supported.
         try:
             self.hmac_supported = registration_data['clientExtensionResults']['hmacCreateSecret']

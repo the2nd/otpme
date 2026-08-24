@@ -447,6 +447,11 @@ def register_config_parameters():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=config.tree_object_types)
+    # Allow changelog clearing?
+    config.register_config_parameter(name="allow_changelog_clearing",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=config.tree_object_types)
     # Site only: config parameters the site enforces for all of its objects.
     # For each parameter listed here the site's own value overrides the value
     # set on the object (or inherited from its unit). See
@@ -1822,7 +1827,12 @@ class OTPmeBaseObject(OTPmeLockObject):
 
     @check_acls(acls=['touch'])
     @object_lock()
-    def touch(self, callback: JobCallback=default_callback, **kwargs):
+    def touch(self, force: bool=False,
+        callback: JobCallback=default_callback, **kwargs):
+        msg = _("Touch {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         return self._write(update_last_modified_by=False,
                             use_index_journal=False,
                             full_index_update=True,
@@ -3210,10 +3220,12 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['edit:changelog'])
     @object_lock()
     @backend.transaction
+    @object_changelog("edit changelog entry {entry_id}")
     def edit_changelog(
         self,
         entry_id,
         comment,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3227,6 +3239,14 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Unknown changelog entry: {entry_id}")
             msg = msg.format(entry_id=entry_id)
             return callback.error(msg)
+
+        msg = _("Edit changelog entry '{entry_id}' of {object_type} '{object_name}'?: ")
+        msg = msg.format(entry_id=entry_id,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         # Update the nested field in place (tracked incrementally via dict_path).
         self.changelog[entry_key]['comment'] = comment
         return self._cache(callback=callback)
@@ -3234,9 +3254,11 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['edit:changelog'])
     @object_lock()
     @backend.transaction
+    @object_changelog("delete changelog comment {entry_id}")
     def del_changelog(
         self,
         entry_id,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3250,14 +3272,24 @@ class OTPmeObject(OTPmeBaseObject):
         if entry.get('comment', None) is None:
             msg = _("Changelog entry has no comment.")
             return callback.error(msg)
+
+        msg = _("Delete comment of changelog entry '{entry_id}' of {object_type} '{object_name}'?: ")
+        msg = msg.format(entry_id=entry_id,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         del self.changelog[entry_key]['comment']
         return self._cache(callback=callback)
 
     @check_acls(['clear:changelog'])
     @object_lock()
     @backend.transaction
+    @object_changelog("clear changelog")
     def clear_changelog(
         self,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3265,6 +3297,24 @@ class OTPmeObject(OTPmeBaseObject):
         if not self.changelog:
             msg = _("Changelog is already empty.")
             return callback.error(msg)
+
+        changelog_clearing = None
+        if config.auth_token:
+            changelog_clearing = config.auth_token.get_config_parameter("allow_changelog_clearing")
+        if changelog_clearing is None:
+            changelog_clearing = self.get_config_parameter("allow_changelog_clearing")
+        if changelog_clearing is None:
+            allow_changelog_clearing = False
+        else:
+            allow_changelog_clearing = changelog_clearing
+        if not allow_changelog_clearing:
+            msg = _("Changelog clearing not allowed.")
+            return callback.error(msg)
+
+        msg = _("Clear complete changelog of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         # Assigning an empty dict records an incremental delete for every entry
         # (dict prop setter), so the cleared changelog syncs correctly.
         self.changelog = {}
@@ -3472,6 +3522,7 @@ class OTPmeObject(OTPmeBaseObject):
         extension: str,
         default_attributes: dict=None,
         ignore_missing_attributes: List=None,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         _caller: str="API",
@@ -3497,6 +3548,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Extension '{ext}' not valid for this object type.")
             msg = msg.format(ext=extension)
             return callback.error(msg)
+
+        msg = _("Add extension '{ext}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(ext=extension,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -3540,6 +3598,7 @@ class OTPmeObject(OTPmeBaseObject):
     def remove_extension(
         self,
         extension: str,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -3564,6 +3623,13 @@ class OTPmeObject(OTPmeBaseObject):
             # FIXME: log user messages?
             #logger.critical(msg)
             return callback.error(msg)
+
+        msg = _("Remove extension '{ext}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(ext=extension,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -3824,6 +3890,7 @@ class OTPmeObject(OTPmeBaseObject):
         return attr_list
 
     @object_lock()
+    @object_changelog("add sync user {user_name}")
     def add_sync_user(
         self,
         user_name: str,
@@ -3858,6 +3925,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = "User already added to object."
             return callback.error(msg)
 
+        msg = _("Add sync user '{user_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(user_name=user.name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3884,6 +3958,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    @object_changelog("remove sync user {user_name}")
     def remove_sync_user(
         self,
         user_name: str,
@@ -3909,7 +3984,7 @@ class OTPmeObject(OTPmeBaseObject):
         # FIXME: we also need to allow to remove UUIDs of user that do not exists anymore!!!!!       
         # Allow removal of orphan user UUIDs.
         if stuff.is_uuid(user_name):
-            user = backend.get_object(object_type="user", uuid=user_ame)
+            user = backend.get_object(object_type="user", uuid=user_name)
         else:
             user = backend.get_object(object_type="user",
                                     realm=config.realm,
@@ -3923,6 +3998,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("User is not assigned to {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
+
+        msg = _("Remove sync user '{user_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(user_name=user_name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -3981,6 +4063,7 @@ class OTPmeObject(OTPmeBaseObject):
         role_name: str=None,
         role_uuid: str=None,
         return_uuid: bool=False,
+        force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -4009,6 +4092,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Role is already a member of {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
+
+        msg = _("Add role '{role_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(role_name=role_name or role_uuid,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4068,6 +4158,7 @@ class OTPmeObject(OTPmeBaseObject):
     def remove_role(
         self,
         role_name: str,
+        force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -4116,6 +4207,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Role is not a member of {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
+
+        msg = _("Remove role '{role_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(role_name=role_name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4214,6 +4312,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Orphan token: Unknown user: {owner_uuid}")
             msg = msg.format(owner_uuid=token.owner_uuid)
             return callback.error(msg)
+
+        msg = _("Add token '{token_path}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(token_path=token_path,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4403,6 +4508,7 @@ class OTPmeObject(OTPmeBaseObject):
                 try:
                     sign_status = token.sign(tags=add_tags,
                                             sign_ref=self.uuid,
+                                            force=True,
                                             callback=callback)
                     if sign_status is False:
                         msg = _("Signing error.")
@@ -4517,6 +4623,7 @@ class OTPmeObject(OTPmeBaseObject):
                     token.del_sign(user_uuid=user_uuid,
                                     tags=signature.tags,
                                     sign_id=sign_id,
+                                    force=True,
                                     run_policies=run_policies,
                                     _caller=_caller,
                                     callback=callback)
@@ -4551,6 +4658,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         host_name: str=None,
         host_uuid: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -4576,6 +4684,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Host is already assigned to {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
+
+        msg = _("Add host '{host_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(host_name=host_name or host_uuid,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4603,6 +4718,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         host_name: str=None,
         host_uuid: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -4635,6 +4751,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Host not in {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
+
+        msg = _("Remove host '{host_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(host_name=host.name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4719,6 +4842,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         device_name: str=None,
         device_uuid: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -4744,6 +4868,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Host already added to {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
+
+        msg = _("Add device '{device_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(device_name=device_name or device_uuid,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4771,6 +4902,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         device_name: str=None,
         device_uuid: str=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -4804,6 +4936,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Host not in {object_type}.")
             msg = msg.format(object_type=self.type)
             return callback.error(msg)
+
+        msg = _("Remove device '{device_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(device_name=device.name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -4878,6 +5017,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @object_lock()
+    @object_changelog("add node {node_name}")
     def add_node(
         self,
         node_name: str,
@@ -4915,6 +5055,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg, exception=exception)
 
+        msg = _("Add node '{node_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(node_name=node.name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -4938,6 +5085,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    @object_changelog("remove node {node_name}")
     def remove_node(
         self,
         node_name: str,
@@ -4973,6 +5121,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Node is not assigned to {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
+
+        msg = _("Remove node '{node_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(node_name=node.name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5105,6 +5260,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Cannot add OTPme group as dynamic group.")
             return callback.error(msg)
 
+        msg = _("Add dynamic group '{group_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(group_name=group_name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         self.dynamic_groups.append(group_name)
 
         return self._cache(callback=callback)
@@ -5133,6 +5295,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(object_type=self.type, object_name=self.name)
             return callback.error(msg)
 
+        msg = _("Remove dynamic group '{group_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(group_name=group_name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -5157,6 +5326,7 @@ class OTPmeObject(OTPmeBaseObject):
     def add_policy(
         self,
         policy_name: str,
+        force: bool=False,
         check_permissions: bool=True,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -5212,6 +5382,13 @@ class OTPmeObject(OTPmeBaseObject):
             if policy.uuid in self.policies:
                 msg = _("Policy already enabled for this object.")
                 return callback.error(msg)
+
+        msg = _("Add policy '{policy_name}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(policy_name=policy_name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5283,6 +5460,7 @@ class OTPmeObject(OTPmeBaseObject):
     def remove_policy(
         self,
         policy_name: str,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -5306,6 +5484,13 @@ class OTPmeObject(OTPmeBaseObject):
         if policy.uuid not in self.policies:
             msg = ("Policy not enabled for this object.")
             return callback.error(msg)
+
+        msg = _("Remove policy '{policy_name}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(policy_name=policy_name,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -6108,6 +6293,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         attribute: str,
         value: Union[str,int,float,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         ignore_ro: bool=False,
         position: int=-1,
@@ -6130,6 +6316,14 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg, exception=PermissionDenied)
         if ignore_missing_attributes is None:
             ignore_missing_attributes = []
+
+        msg = _("Add attribute '{attribute}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(attribute=attribute,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -6193,6 +6387,7 @@ class OTPmeObject(OTPmeBaseObject):
         attribute: str,
         old_value: Union[str,int,float],
         new_value: Union[str,int,float],
+        force: bool=False,
         run_policies: bool=True,
         ignore_ro: bool=False,
         verify_acls: bool=True,
@@ -6207,6 +6402,14 @@ class OTPmeObject(OTPmeBaseObject):
             if not self.verify_acl(f"edit:attribute:{attribute}"):
                 msg = _("Permission denied.")
                 return callback.error(msg, exception=PermissionDenied)
+
+        msg = _("Modify attribute '{attribute}' of {object_type} '{object_name}'?: ")
+        msg = msg.format(attribute=attribute,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -6270,6 +6473,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         attribute: str,
         value: Union[str,int,float,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         ignore_ro: bool=False,
         ignore_missing: bool=False,
@@ -6284,6 +6488,14 @@ class OTPmeObject(OTPmeBaseObject):
             if not self.verify_acl(f"delete:attribute:{attribute}"):
                 msg = _("Permission denied.")
                 return callback.error(msg, exception=PermissionDenied)
+
+        msg = _("Delete attribute '{attribute}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(attribute=attribute,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -6379,6 +6591,7 @@ class OTPmeObject(OTPmeBaseObject):
     def add_object_class(
         self,
         object_class: str,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -6386,6 +6599,13 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Add object_class to object """
+        msg = _("Add object class '{object_class}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(object_class=object_class,
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -7160,6 +7380,7 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 add_status = self.add_acl(acl=recursive_apply_id,
                                         owner_uuid=acl.owner_uuid,
+                                        force=True,
                                         verify_acls=verify_acls,
                                         raise_exception=True,
                                         verbose_level=verbose_level,
@@ -7179,6 +7400,7 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 add_status = self.add_acl(acl=apply_id,
                                         owner_uuid=acl.owner_uuid,
+                                        force=True,
                                         verify_acls=verify_acls,
                                         raise_exception=True,
                                         verbose_level=verbose_level,
@@ -7235,6 +7457,7 @@ class OTPmeObject(OTPmeBaseObject):
             del_acl = f"{acl.owner_type}:{acl.owner_uuid}:{recursive_apply_id}"
             try:
                 del_status = self.del_acl(acl=del_acl,
+                                        force=True,
                                         verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback,
@@ -7249,6 +7472,7 @@ class OTPmeObject(OTPmeBaseObject):
             del_acl = f"{acl.owner_type}:{acl.owner_uuid}:{apply_id}"
             try:
                 del_status = self.del_acl(acl=del_acl,
+                                        force=True,
                                         verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback,
@@ -7386,8 +7610,23 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock()
-    def add_acl(self, *args, callback=default_callback, **kwargs):
+    @object_changelog("add acl {acl}")
+    def add_acl(self, acl: str=None, *args,
+        callback=default_callback, **kwargs):
         """ Add ACL to object. """
+        if acl is not None:
+            kwargs['acl'] = acl
+        # Ask here and not in handle_acl(): recursive ACLs and default
+        # ACLs call handle_acl() once per object, this method once per
+        # command.
+        msg = _("Add ACL '{acl}' to {object_type} '{object_name}'?: ")
+        msg = msg.format(acl=acl or kwargs.get("raw_acl"),
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg,
+                                        force=kwargs.get("force", False),
+                                        callback=callback):
+            return callback.abort()
         try:
             recursive_acls = kwargs['recursive_acls']
         except Exception:
@@ -7411,8 +7650,23 @@ class OTPmeObject(OTPmeBaseObject):
         return result
 
     @object_lock()
-    def del_acl(self, *args, callback=default_callback, **kwargs):
+    @object_changelog("del acl {acl}")
+    def del_acl(self, acl: str=None, *args,
+        callback=default_callback, **kwargs):
         """ Delete ACL from object. """
+        if acl is not None:
+            kwargs['acl'] = acl
+        # Ask here and not in handle_acl(): recursive ACLs and default
+        # ACLs call handle_acl() once per object, this method once per
+        # command.
+        msg = _("Delete ACL '{acl}' from {object_type} '{object_name}'?: ")
+        msg = msg.format(acl=acl or kwargs.get("raw_acl"),
+                        object_type=self.type,
+                        object_name=self.name)
+        if not self.ask_change_confirmation(msg,
+                                        force=kwargs.get("force", False),
+                                        callback=callback):
+            return callback.abort()
         try:
             recursive_acls = kwargs['recursive_acls']
         except Exception:
@@ -7765,6 +8019,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         auto_disable: Union[str, int],
         unused: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -7779,6 +8034,13 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = _("Invalid date string: {error}")
                 msg = msg.format(error=e)
                 return callback.error(msg)
+
+        msg = _("Change auto disable of {object_type} '{object_name}' to '{auto_disable}'?: ")
+        msg = msg.format(object_type=self.type,
+                        object_name=self.name,
+                        auto_disable=auto_disable)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -7816,12 +8078,18 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         secret: str=None,
         auto_secret: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change object secret """
+        msg = _("Change secret of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -7841,6 +8109,7 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             x = self._change_secret(secret=secret,
                                     pre=True,
+                                    force=force,
                                     callback=callback,
                                     **kwargs)
             if isinstance(x, str):
@@ -7880,7 +8149,10 @@ class OTPmeObject(OTPmeBaseObject):
         # Run child class method (e.g. handle token specific stuff when
         # changing the secret)
         try:
-            if not self._change_secret(secret=secret, callback=callback, **kwargs):
+            if not self._change_secret(secret=secret,
+                                    force=force,
+                                    callback=callback,
+                                    **kwargs):
                 return callback.abort()
         except Exception:
             pass
@@ -8032,6 +8304,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Permission denied: {unit_path}")
             msg = msg.format(unit_path=_new_unit.path)
             return callback.error(msg)
+
+        msg = _("Move {object_type} '{object_name}' to unit '{new_unit}'?: ")
+        msg = msg.format(object_type=self.type,
+                        object_name=self.name,
+                        new_unit=new_unit)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         _new_unit.acquire_lock(lock_caller=lock_caller)
         try:
@@ -8368,6 +8647,11 @@ class OTPmeObject(OTPmeBaseObject):
         if not config.auth_token:
             msg = "Not logged in."
             raise NotLoggedIn(msg)
+
+        msg = _("Renew all your signatures of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
         # Get current script signatures of the logged in user.
         auth_user_uuid = config.auth_token.owner_uuid
         script_signs = self.search_sign(user_uuid=auth_user_uuid,
@@ -8565,6 +8849,14 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
 
+        # Asked here and not in sign(): that one hands the signature over
+        # to us, so this is the single place where a signature actually
+        # lands on the object.
+        msg = _("Add signature to {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         sign_id = signature.sign_id
         # Check if a valid signature already exists (via sign ID).
         if not force:
@@ -8591,6 +8883,7 @@ class OTPmeObject(OTPmeBaseObject):
                     try:
                         self.del_sign(user_uuid=config.auth_user.uuid,
                                         sign_id=sign_id,
+                                        force=True,
                                         verify_acls=False,
                                         callback=callback)
                     except Exception as e:
@@ -8633,6 +8926,7 @@ class OTPmeObject(OTPmeBaseObject):
         user_uuid: Union[str,None]=None,
         tags: Union[List,None]=None,
         sign_id: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -8641,6 +8935,11 @@ class OTPmeObject(OTPmeBaseObject):
         """ Delete object signature. """
         if not self.signable:
             return callback.error(_("Object is not signable."))
+
+        msg = _("Delete signature of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -9019,6 +9318,7 @@ class OTPmeObject(OTPmeBaseObject):
     def change_description(
         self,
         description: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
@@ -9026,6 +9326,11 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Change object description. """
+        msg = _("Change description of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -9061,6 +9366,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         info: str=None,
         language: str="en",
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
@@ -9068,6 +9374,11 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Change object info. """
+        msg = _("Change info of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -9157,6 +9468,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if x_policy.uuid in self.policies:
                     continue
                 self.add_policy(x_policy.name,
+                                force=True,
                                 verify_acls=False,
                                 check_permissions=False,
                                 callback=callback)
@@ -9264,6 +9576,7 @@ class OTPmeObject(OTPmeBaseObject):
                                             uuid=x)
                 if x in self.policies:
                     self.remove_policy(policy_name=policy.name,
+                                        force=True,
                                         verify_acls=False,
                                         callback=callback)
                     continue
@@ -9271,6 +9584,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = msg.format(policy_name=policy.name)
                 callback.send(msg)
                 self.add_policy(policy_name=policy.name,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback)
 
@@ -9419,6 +9733,7 @@ class OTPmeObject(OTPmeBaseObject):
                 self.add_extension(extension=e,
                                 default_attributes=e_default_attributes,
                                 ignore_missing_attributes=ignore_missing_attributes,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback,
                                 verbose_level=verbose_level)
@@ -9431,7 +9746,7 @@ class OTPmeObject(OTPmeBaseObject):
             for x in template.get_object_classes():
                 if x in ocs:
                     continue
-                self.add_object_class(x)
+                self.add_object_class(x, force=True)
 
             # Add attributes from template.
             for ext in template.extensions:
@@ -9446,6 +9761,7 @@ class OTPmeObject(OTPmeBaseObject):
                         if x not in x_auto_val:
                             self.add_attribute(attribute=attr,
                                                 value=x,
+                                                force=True,
                                                 ignore_ro=True,
                                                 ignore_missing_attributes=ignore_missing_attributes,
                                                 verify_acls=verify_acls,
@@ -9454,6 +9770,7 @@ class OTPmeObject(OTPmeBaseObject):
                         if attr in x_attrs:
                             continue
                         self.add_attribute(attribute=attr,
+                                        force=True,
                                         ignore_ro=True,
                                         ignore_missing_attributes=ignore_missing_attributes,
                                         verify_acls=verify_acls,
@@ -9697,6 +10014,7 @@ class OTPmeObject(OTPmeBaseObject):
                     try:
                         self.del_sign(user_uuid=user_uuid,
                                         sign_id=sign_id,
+                                        force=True,
                                         callback=callback)
                     except Exception as e:
                         msg = _("Failed to revoke signature: {exception}")
@@ -9768,6 +10086,7 @@ class OTPmeObject(OTPmeBaseObject):
                 callback.send(msg)
             object_changed = True
             self.del_acl(raw_acl=i,
+                        force=True,
                         verify_acls=False,
                         callback=callback)
 
@@ -10714,6 +11033,7 @@ class OTPmeClientObject(OTPmeObject):
     @object_changelog("limit logins")
     def limit_logins(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -10722,6 +11042,12 @@ class OTPmeClientObject(OTPmeObject):
         """ Limit logins. """
         if self.logins_limited:
             return callback.error(_("Logins already limited."))
+
+        msg = _("Limit logins of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -10742,6 +11068,7 @@ class OTPmeClientObject(OTPmeObject):
     @object_changelog("unlimit logins")
     def unlimit_logins(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -10750,6 +11077,12 @@ class OTPmeClientObject(OTPmeObject):
         """ Unlimit logins. """
         if not self.logins_limited:
             return callback.error(_("Logins already unlimited."))
+
+        msg = _("Unlimit logins of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",

@@ -96,7 +96,7 @@ LOCK_TYPE = "resolver.ldap.sync"
 
 commands = {
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -106,7 +106,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -114,7 +114,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -123,7 +123,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -132,7 +132,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -140,7 +140,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -148,7 +148,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("resolver"),
                     'oargs'              : [
@@ -175,7 +175,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("resolver"),
                     'oargs'              : [
@@ -201,7 +201,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -209,7 +209,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -217,7 +217,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -225,7 +225,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -234,7 +234,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -244,7 +244,7 @@ commands = {
                 },
             },
     'sync_interval'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_sync_interval',
                     'args'              : ['sync_interval'],
@@ -253,7 +253,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -261,7 +261,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -269,7 +269,7 @@ commands = {
                 },
             },
     'run'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'run',
                     'oargs'             : ['object_types'],
@@ -278,7 +278,7 @@ commands = {
                 },
             },
     'enable_deletions'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_deletions',
                     'job_type'          : 'process',
@@ -286,7 +286,7 @@ commands = {
                 },
             },
     'disable_deletions'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_deletions',
                     'job_type'          : 'process',
@@ -294,7 +294,7 @@ commands = {
                 },
             },
     'enable_sync_units'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sync_units',
                     'job_type'          : 'process',
@@ -302,7 +302,7 @@ commands = {
                 },
             },
     'disable_sync_units'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sync_units',
                     'job_type'          : 'process',
@@ -310,7 +310,7 @@ commands = {
                 },
             },
     'delete_objects'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete_objects',
                     'oargs'               : ['object_types'],
@@ -319,7 +319,7 @@ commands = {
                 },
             },
     'get_objects'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_resolver_objects',
                     'oargs'              : ['object_type'],
@@ -328,7 +328,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['object_types'],
@@ -337,7 +337,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls'],
@@ -348,7 +348,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -359,7 +359,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -368,7 +368,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -377,7 +377,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'process',
@@ -387,7 +387,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -396,7 +396,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -405,7 +405,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -414,7 +414,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -423,7 +423,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'job_type'          : 'process',
@@ -431,7 +431,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -439,7 +439,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -447,7 +447,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -455,7 +455,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -464,7 +464,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -473,7 +473,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -548,6 +548,8 @@ def register_hooks():
     config.register_auth_on_action_hook("resolver", "disable_deletions")
     config.register_auth_on_action_hook("resolver", "change_key_attribute")
     config.register_auth_on_action_hook("resolver", "get_resolver_objects")
+    config.register_auth_on_action_hook("resolver", "enable_sync_units")
+    config.register_auth_on_action_hook("resolver", "disable_sync_units")
     config.register_auth_on_action_hook("resolver", "show_config_parameters")
     config.register_auth_on_action_hook("resolver", "set_config_parameter")
 
@@ -775,6 +777,12 @@ class Resolver(OTPmeObject):
         if self.sync_units:
             msg = "Sync of units already enabled."
             return callback.error(msg)
+
+        msg = _("Enable sync of units for resolver '{resolver_name}'?: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -805,6 +813,12 @@ class Resolver(OTPmeObject):
         if not self.sync_units:
             msg = "Sync of units already disabled."
             return callback.error(msg)
+
+        msg = _("Disable sync of units for resolver '{resolver_name}'?: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -835,6 +849,12 @@ class Resolver(OTPmeObject):
         if self.sync_deletions:
             msg = "Sync of deletions already enabled."
             return callback.error(msg)
+
+        msg = _("Enable deletions for resolver '{resolver_name}'? Objects missing on the resolver site get deleted on the next run.: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -865,6 +885,12 @@ class Resolver(OTPmeObject):
         if not self.sync_deletions:
             msg = "Sync of deletions already disabled."
             return callback.error(msg)
+
+        msg = _("Disable deletions for resolver '{resolver_name}'?: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -947,6 +973,7 @@ class Resolver(OTPmeObject):
     def run(
         self,
         object_types: Union[List,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         daemon_run: bool=False,
@@ -955,6 +982,11 @@ class Resolver(OTPmeObject):
         **kwargs,
         ):
         """ Run the resolver. """
+        msg = _("Run resolver '{resolver_name}'? This adds, changes and (if enabled) deletes objects.: ")
+        msg = msg.format(resolver_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("run",
@@ -1542,7 +1574,9 @@ class Resolver(OTPmeObject):
                         if not test:
                             # Try to rename object.
                             try:
-                                x_object.rename(new_name=x_name, verify_acls=False)
+                                x_object.rename(new_name=x_name,
+                                                force=True,
+                                                verify_acls=False)
                             except Exception as e:
                                 sync_status = False
                                 object_failed = True
@@ -1632,6 +1666,7 @@ class Resolver(OTPmeObject):
                                 # so the ID range does not apply here.
                                 x_object.add_attribute(attribute=oa,
                                                         value=av,
+                                                        force=True,
                                                         verify_acls=False,
                                                         verify_id_range=False)
                             except Exception as e:
@@ -1669,6 +1704,7 @@ class Resolver(OTPmeObject):
                             try:
                                 x_object.del_attribute(attribute=oa,
                                                         value=dv,
+                                                        force=True,
                                                         verify_acls=False)
                             except MandatoryAttribute as e:
                                 pass
@@ -1702,6 +1738,7 @@ class Resolver(OTPmeObject):
                     if not test:
                         try:
                             x_object.del_attribute(attribute=a,
+                                                force=True,
                                                 verify_acls=False)
                         except MandatoryAttribute as e:
                             pass
@@ -1868,11 +1905,17 @@ class Resolver(OTPmeObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Rename resolver. """
+        msg = _("Rename resolver '{resolver_name}' to '{new_name}'?: ")
+        msg = msg.format(resolver_name=self.name, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         # Check if resolver is in use.
         try:
             rename_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
@@ -1903,6 +1946,7 @@ class Resolver(OTPmeObject):
     def set_sync_interval(
         self,
         sync_interval: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1913,6 +1957,11 @@ class Resolver(OTPmeObject):
             msg = _("Invalid sync interval: {sync_interval}")
             msg = msg.format(sync_interval=sync_interval)
             return callback.error(msg)
+
+        msg = _("Set sync interval of resolver '{resolver_name}' to '{sync_interval}'?: ")
+        msg = msg.format(resolver_name=self.name, sync_interval=sync_interval)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.sync_interval = interval
         return self._cache(callback=callback)

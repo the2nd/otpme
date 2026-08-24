@@ -74,7 +74,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -82,7 +82,7 @@ commands = {
                 },
             },
     'add_default_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_default_policy',
                     'args'              : ['object_type', 'policy_name'],
@@ -91,7 +91,7 @@ commands = {
                 },
             },
     'remove_default_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_default_policy',
                     'args'              : ['object_type', 'policy_name'],
@@ -302,7 +302,7 @@ class DefaultpoliciesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add default policy {policy_name} for {object_type}")
-    def add_default_policy(self, object_type, policy_name,
+    def add_default_policy(self, object_type, policy_name, force=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Add default policy. """
@@ -328,6 +328,14 @@ class DefaultpoliciesPolicy(Policy):
             if policy.uuid in self.default_policies[object_type]:
                 return callback.error("Policy already added for "
                                         "this object type.")
+
+        msg = _("Add default policy '{default_policy}' for {object_type} to policy '{policy_name}'?: ")
+        msg = msg.format(default_policy=policy_name,
+                        object_type=object_type,
+                        policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -356,7 +364,7 @@ class DefaultpoliciesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove default policy {policy_name} of {object_type}")
-    def remove_default_policy(self, object_type, policy_name,
+    def remove_default_policy(self, object_type, policy_name, force=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Remove default policy. """
@@ -381,6 +389,13 @@ class DefaultpoliciesPolicy(Policy):
         if object_type in self.default_policies:
             if policy.uuid not in self.default_policies[object_type]:
                 return callback.error(_("Policy not added for this object type."))
+
+        msg = _("Remove default policy '{default_policy}' for {object_type} from policy '{policy_name}'?: ")
+        msg = msg.format(default_policy=policy_name,
+                        object_type=object_type,
+                        policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

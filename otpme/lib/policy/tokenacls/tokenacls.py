@@ -82,7 +82,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -90,7 +90,7 @@ commands = {
                 },
             },
     'add_user_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_user_acl',
                     'args'              : ['acl'],
@@ -99,7 +99,7 @@ commands = {
                 },
             },
     'del_user_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_user_acl',
                     'args'              : ['acl'],
@@ -108,7 +108,7 @@ commands = {
                 },
             },
     'add_token_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token_acl',
                     'args'              : ['acl'],
@@ -117,7 +117,7 @@ commands = {
                 },
             },
     'del_token_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_token_acl',
                     'args'              : ['acl'],
@@ -126,7 +126,7 @@ commands = {
                 },
             },
     'add_creator_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_creator_acl',
                     'args'              : ['acl'],
@@ -135,7 +135,7 @@ commands = {
                 },
             },
     'del_creator_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_creator_acl',
                     'args'              : ['acl'],
@@ -332,6 +332,7 @@ class TokenaclsPolicy(Policy):
                                             owner_uuid=token.uuid,
                                             owner_type="token",
                                             ignore_unknown_owner=True,
+                                            force=True,
                                             verify_acls=False,
                                             callback=callback)
             except Exception as e:
@@ -362,6 +363,7 @@ class TokenaclsPolicy(Policy):
                                             owner_uuid=token.uuid,
                                             owner_type="token",
                                             ignore_unknown_owner=True,
+                                            force=True,
                                             verify_acls=False,
                                             callback=callback)
             except Exception as e:
@@ -389,6 +391,7 @@ class TokenaclsPolicy(Policy):
                                 owner_uuid=x_token.uuid,
                                 owner_type="token",
                                 ignore_unknown_owner=True,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback)
             except Exception as e:
@@ -420,6 +423,7 @@ class TokenaclsPolicy(Policy):
                                 owner_uuid=config.auth_token.uuid,
                                 owner_type="token",
                                 ignore_unknown_owner=True,
+                                force=True,
                                 verify_acls=False,
                                 callback=callback)
                 acl_status = True
@@ -495,7 +499,7 @@ class TokenaclsPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add user ACL {acl}")
-    def add_user_acl(self, acl, run_policies=True,
+    def add_user_acl(self, acl, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add user ACL. """
         if acl in self.user_acls:
@@ -514,6 +518,11 @@ class TokenaclsPolicy(Policy):
             msg = msg.format(acl=acl)
             return callback.error(msg)
 
+        msg = _("Add user ACL '{acl}' to policy '{policy_name}'?: ")
+        msg = msg.format(acl=acl, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -531,12 +540,17 @@ class TokenaclsPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove user ACL {acl}")
-    def del_user_acl(self, acl, run_policies=True,
+    def del_user_acl(self, acl, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Del token ACL. """
         if not acl in self.user_acls:
             msg = _("Unknown ACL.")
             return callback.error(msg)
+
+        msg = _("Remove user ACL '{acl}' from policy '{policy_name}'?: ")
+        msg = msg.format(acl=acl, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -587,7 +601,7 @@ class TokenaclsPolicy(Policy):
         return self._del_token_acl(acl, acl_type="creator", **kwargs)
 
     @object_lock()
-    def _add_token_acl(self, acl, acl_type, run_policies=True,
+    def _add_token_acl(self, acl, acl_type, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add token ACL. """
         if acl_type != "token" and acl_type != "creator":
@@ -617,6 +631,11 @@ class TokenaclsPolicy(Policy):
             msg = msg.format(acl=acl)
             return callback.error(msg)
 
+        msg = _("Add {acl_type} ACL '{acl}' to policy '{policy_name}'?: ")
+        msg = msg.format(acl_type=acl_type, acl=acl, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -630,7 +649,7 @@ class TokenaclsPolicy(Policy):
         return self._cache(callback=callback)
 
     @object_lock()
-    def _del_token_acl(self, acl, acl_type, run_policies=True,
+    def _del_token_acl(self, acl, acl_type, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Del token ACL. """
         if acl_type != "token" and acl_type != "creator":
@@ -646,6 +665,11 @@ class TokenaclsPolicy(Policy):
         if not acl in acl_list:
             msg = _("Unknown ACL.")
             return callback.error(msg)
+
+        msg = _("Remove {acl_type} ACL '{acl}' from policy '{policy_name}'?: ")
+        msg = msg.format(acl_type=acl_type, acl=acl, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

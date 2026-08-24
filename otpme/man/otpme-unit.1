@@ -32,8 +32,8 @@ Disable a unit without deleting it.
 .B rename \fIunit\fR \fInew_name\fR
 Rename a unit.
 .TP
-.B move \fR[\fB\-m\fR] [\fB\-k\fR] [\fB\-o\fR \fIobject_types\fR] [\fB\-\-keep\-acls\fR] \fIunit\fR \fInew_unit\fR
-Move unit to a different unit. Use \fB\-m\fR to merge objects into destination, \fB\-k\fR to keep source unit.
+.B move \fR[\fB\-m\fR] [\fB\-k\fR] [\fB\-o\fR \fIobject_types\fR] [\fB\-\-keep\-acls\fR] [\fB\-\-skip\-ca\fR] \fIunit\fR \fInew_unit\fR
+Move unit to a different unit. Use \fB\-m\fR to merge objects into destination, \fB\-k\fR to keep source unit. A CA cannot be moved: with \fB\-\-skip\-ca\fR everything else is moved and the source unit is kept. This is not the same as \fB\-f\fR, which only skips the confirmation.
 .TP
 .B touch \fIunit\fR
 Re-index the object to fix potential index problems.

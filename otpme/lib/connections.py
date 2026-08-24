@@ -263,7 +263,8 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
 
             if response == "pong":
                 return conn
-        connections[proc_id][daemon].pop(conn_key)
+            connections[proc_id][daemon].pop(conn_key)
+            conn.close()
 
     # Handle agent connections.
     if daemon == "agent":

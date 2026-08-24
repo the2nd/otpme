@@ -302,7 +302,7 @@ class JoinHandler(object):
 
         # Create site certificate if needed.
         if not self._my_site.cert or not self._my_site.key:
-            self._my_site.renew_cert(verify_acls=False)
+            self._my_site.renew_cert(force=True, verify_acls=False)
             # Save changes.
             cache.flush()
             # Update site certificate on remote site.
@@ -457,14 +457,14 @@ class JoinHandler(object):
                                                 object_id=object_id)
                     if not x_site.sync_enabled:
                         try:
-                            x_site.enable_sync(verify_acls=False)
+                            x_site.enable_sync(force=True, verify_acls=False)
                         except Exception as e:
                             log_msg = _("Error enabling sync with site: {site}: {error}", log=True)[1]
                             log_msg = log_msg.format(site=x_site, error=e)
                             logger.warning(log_msg)
                     if not x_site.auth_enabled:
                         try:
-                            x_site.enable_auth(verify_acls=False)
+                            x_site.enable_auth(force=True, verify_acls=False)
                         except Exception as e:
                             log_msg = _("Error enabling auth of site: {site}: {error}", log=True)[1]
                             log_msg = log_msg.format(site=x_site, error=e)

@@ -100,7 +100,7 @@ recursive_default_acls = []
 
 commands = {
     'secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_secret',
                     'oargs'             : ['auto_secret', 'secret'],
@@ -109,7 +109,7 @@ commands = {
                 },
             },
     'pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_pin',
                     'oargs'             : ['auto_pin', 'pin'],
@@ -118,7 +118,7 @@ commands = {
                 },
             },
     'enable_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_pin',
                     'job_type'          : 'process',
@@ -126,7 +126,7 @@ commands = {
                 },
             },
     'disable_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_pin',
                     'job_type'          : 'process',
@@ -134,7 +134,7 @@ commands = {
                 },
             },
     'show_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_secret',
                     'job_type'          : 'process',
@@ -142,7 +142,7 @@ commands = {
                 },
             },
     'show_pin'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_pin',
                     'job_type'          : 'process',
@@ -150,7 +150,7 @@ commands = {
                 },
             },
     'gen'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_otp',
                     'job_type'          : 'process',
@@ -158,7 +158,7 @@ commands = {
                 },
             },
     'gen_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_mschap',
                     'job_type'          : 'process',
@@ -166,7 +166,7 @@ commands = {
                 },
             },
     'gen_qrcode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'gen_qrcode',
                     'oargs'             : ['qrcode_file'],
@@ -175,7 +175,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
@@ -184,7 +184,7 @@ commands = {
                 },
             },
     'mode'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_mode',
                     'args'              : ['new_mode'],

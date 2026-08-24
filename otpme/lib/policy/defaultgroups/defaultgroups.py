@@ -77,7 +77,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -85,7 +85,7 @@ commands = {
                 },
             },
     'add_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_group',
                     'args'              : ['group_name'],
@@ -94,7 +94,7 @@ commands = {
                 },
             },
     'remove_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_group',
                     'args'              : ['group_name'],
@@ -103,7 +103,7 @@ commands = {
                 },
             },
     'default_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_default_group',
                     'args'              : ['group_name'],
@@ -314,6 +314,7 @@ class DefaultgroupsPolicy(Policy):
                     if child_object.group != default_group:
                         try:
                             child_object.change_group(default_group,
+                                                    force=True,
                                                     callback=callback)
                         except Exception as e:
                             msg = str(e)
@@ -334,7 +335,7 @@ class DefaultgroupsPolicy(Policy):
                         if not group:
                             continue
                         try:
-                            group.add_token(default_token)
+                            group.add_token(default_token, force=True)
                         except AlreadyExists:
                             continue
                         except Exception as e:
@@ -352,11 +353,15 @@ class DefaultgroupsPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change default group to {group_name}")
-    def change_default_group(self, group_name, run_policies=True,
+    def change_default_group(self, group_name, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default group. """
         # Unset default group.
         if group_name == "":
+            msg = _("Unset default group of policy '{policy_name}'?: ")
+            msg = msg.format(policy_name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
             self.default_group = None
             return self._cache(callback=callback)
         # Get group by name.
@@ -382,6 +387,11 @@ class DefaultgroupsPolicy(Policy):
             msg = msg.format(group=group.name)
             return callback.error(msg)
 
+        msg = _("Change default group of policy '{policy_name}' to '{group_name}'?: ")
+        msg = msg.format(policy_name=self.name, group_name=group_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -401,7 +411,7 @@ class DefaultgroupsPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add group {group_name}")
-    def add_group(self, group_name, run_policies=True,
+    def add_group(self, group_name, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default group. """
         # Get group by name.
@@ -427,6 +437,11 @@ class DefaultgroupsPolicy(Policy):
             msg = msg.format(group=group.name)
             return callback.error(msg)
 
+        msg = _("Add group '{group_name}' to policy '{policy_name}'?: ")
+        msg = msg.format(group_name=group_name, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -446,7 +461,7 @@ class DefaultgroupsPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("remove group {group_name}")
-    def remove_group(self, group_name, run_policies=True,
+    def remove_group(self, group_name, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Remove default group. """
         # Get group by name.
@@ -465,6 +480,11 @@ class DefaultgroupsPolicy(Policy):
 
         if group_uuid not in self.default_groups:
             return callback.error(_("Group not added for this policy."))
+
+        msg = _("Remove group '{group_name}' from policy '{policy_name}'?: ")
+        msg = msg.format(group_name=group_name, policy_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

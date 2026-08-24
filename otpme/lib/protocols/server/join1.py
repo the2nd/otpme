@@ -46,6 +46,8 @@ class OTPmeJoinP1(OTPmeServer1):
         # We may need an authenticated user if no JOTP was given.
         self.require_auth = "user"
         self.require_preauth = True
+        # No node/host exists on join.
+        self.require_host = False
         # The joining node does not have our site cert that is needed to
         # negotiate the a session key.
         self.encrypt_session = False

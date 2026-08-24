@@ -71,7 +71,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -79,7 +79,7 @@ commands = {
                 },
             },
     'login_times'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_login_times',
                     'args'              : ['login_times'],
@@ -88,7 +88,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'args'              : ['object_type', 'test_object', 'token'],
@@ -382,11 +382,16 @@ class LogintimesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("change login times to {login_times}")
-    def change_login_times(self, login_times, run_policies=True,
+    def change_login_times(self, login_times, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change login times. """
         if not login_times:
             return callback.error(_("Got empty login times."))
+
+        msg = _("Change login times of policy '{policy_name}' to '{login_times}'?: ")
+        msg = msg.format(policy_name=self.name, login_times=login_times)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

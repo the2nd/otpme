@@ -545,6 +545,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("enable JOTP")
     def enable_jotp(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -553,6 +554,12 @@ class OTPmeHost(OTPmeClientObject):
         """ Enable JOTP usage. """
         if self.jotp_enabled:
             return callback.error(_("JOTP already enabled."))
+
+        msg = _("Enable JOTP for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -578,6 +585,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("disable JOTP")
     def disable_jotp(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -586,6 +594,12 @@ class OTPmeHost(OTPmeClientObject):
         """ Disable JOTP usage. """
         if not self.jotp_enabled:
             return callback.error(_("JOTP already disabled."))
+
+        msg = _("Disable JOTP for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -606,6 +620,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("enable LOTP")
     def enable_lotp(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -614,6 +629,12 @@ class OTPmeHost(OTPmeClientObject):
         """ Enable LOTP usage. """
         if self.lotp_enabled:
             return callback.error(_("LOTP already enabled."))
+
+        msg = _("Enable LOTP for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -639,6 +660,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("disable LOTP")
     def disable_lotp(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -647,6 +669,12 @@ class OTPmeHost(OTPmeClientObject):
         """ Disable LOTP usage. """
         if not self.lotp_enabled:
             return callback.error(_("LOTP already disabled."))
+
+        msg = _("Disable LOTP for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -667,6 +695,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("enable JOTP rejoin")
     def enable_jotp_rejoin(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -675,6 +704,12 @@ class OTPmeHost(OTPmeClientObject):
         """ Enable JOTP rejoining. """
         if self.allow_jotp_rejoin:
             return callback.error(_("LOTP rejoin already enabled."))
+
+        msg = _("Enable JOTP rejoin for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -700,6 +735,7 @@ class OTPmeHost(OTPmeClientObject):
     @object_changelog("disable JOTP rejoin")
     def disable_jotp_rejoin(
         self,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -708,6 +744,12 @@ class OTPmeHost(OTPmeClientObject):
         """ Disable JOTP rejoining. """
         if not self.allow_jotp_rejoin:
             return callback.error(_("LOTP rejoin already disabled."))
+
+        msg = _("Disable JOTP rejoin for {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -730,12 +772,18 @@ class OTPmeHost(OTPmeClientObject):
     def change_public_key(
         self,
         public_key: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change host public key. """
+        msg = _("Change public key of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -813,6 +861,7 @@ class OTPmeHost(OTPmeClientObject):
         # Try to revoke our certificate.
         try:
             ca.revoke_cert(cert=self.cert,
+                            force=True,
                             verify_acls=False,
                             _caller=_caller,
                             callback=callback)
@@ -840,6 +889,7 @@ class OTPmeHost(OTPmeClientObject):
         self,
         cert_req: str,
         cert_valid: Union[int,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
         _caller: str="API",
@@ -857,6 +907,11 @@ class OTPmeHost(OTPmeClientObject):
             log_msg = log_msg.format(error=e)
             logger.warning(log_msg)
             return callback.error(msg)
+
+        msg = _("Renew certificate of {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -1094,6 +1149,7 @@ class OTPmeHost(OTPmeClientObject):
                 host_key, \
                 host_cert = self.renew_cert(cert_req=cert_req,
                                             cert_valid=cert_valid,
+                                            force=True,
                                             verify_acls=False,
                                             callback=callback)
             except Exception as e:
@@ -1202,11 +1258,17 @@ class OTPmeHost(OTPmeClientObject):
         cert_valid: Union[int,None]=None,
         public_key: Union[str,None]=None,
         enabled: bool=False,
+        force: bool=False,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
         **kwargs,
         ):
-        """ Add a host. """
+        """ Add a host.
+
+        We take force as a parameter to prevent it from ending up in kwargs.
+        The methods we call while adding the host get force=True explicitly
+        and would else get it twice.
+        """
         # Check FQDN.
         try:
             self.check_fqdn()
@@ -1255,6 +1317,7 @@ class OTPmeHost(OTPmeClientObject):
         if cert_req:
             self.renew_cert(cert_req=cert_req,
                             valid=cert_valid,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
 
@@ -1262,13 +1325,15 @@ class OTPmeHost(OTPmeClientObject):
         if config.auth_token:
             if not config.auth_token.is_admin():
                 if not self.add_acl(acl="join", owner_uuid=config.auth_token.uuid,
-                                    verify_acls=False, apply_default_acls=False,
+                                    force=True, verify_acls=False,
+                                    apply_default_acls=False,
                                     callback=callback, **kwargs):
                     msg = _("Unable to add ACL 'join' to new {host_type}.")
                     msg = msg.format(host_type=self.type)
                     callback.send(msg)
                 if not self.add_acl(acl="leave", owner_uuid=config.auth_token.uuid,
-                                    verify_acls=False, apply_default_acls=False,
+                                    force=True, verify_acls=False,
+                                    apply_default_acls=False,
                                     callback=callback, **kwargs):
                     msg = _("Unable to add ACL 'leave' to new {host_type}.")
                     msg = msg.format(host_type=self.type)

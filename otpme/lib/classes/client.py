@@ -151,7 +151,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
@@ -165,7 +165,7 @@ commands = {
                 },
             },
     'get_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_config_parameter',
                     'args'              : ['parameter'],
@@ -175,7 +175,7 @@ commands = {
                 },
             },
     'changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_changelog',
                     'job_type'          : 'process',
@@ -183,7 +183,7 @@ commands = {
                 },
             },
     'edit_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'edit_changelog',
                     'args'              : ['entry_id', 'comment'],
@@ -192,7 +192,7 @@ commands = {
                 },
             },
     'del_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_changelog',
                     'args'              : ['entry_id'],
@@ -201,7 +201,7 @@ commands = {
                 },
             },
     'clear_changelog'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'clear_changelog',
                     'job_type'          : 'process',
@@ -209,7 +209,7 @@ commands = {
                 },
             },
     'touch'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'touch',
                     'job_type'          : 'process',
@@ -217,7 +217,7 @@ commands = {
                 },
             },
     'show'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.show_getter("client"),
                     'args'              : ['realm'],
@@ -247,7 +247,7 @@ commands = {
                 },
             },
     'list'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : cli.list_getter("client"),
                     'oargs'              : [
@@ -273,7 +273,7 @@ commands = {
                 },
             },
     'del'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
@@ -281,7 +281,7 @@ commands = {
                 },
             },
     'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
@@ -290,7 +290,7 @@ commands = {
                 },
             },
     'enable_oidc'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_oidc',
                     'job_type'          : 'thread',
@@ -298,7 +298,7 @@ commands = {
                 },
             },
     'disable_oidc'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_oidc',
                     'job_type'          : 'thread',
@@ -306,7 +306,7 @@ commands = {
                 },
             },
     'enable_dot1x'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_dot1x',
                     'job_type'          : 'thread',
@@ -314,7 +314,7 @@ commands = {
                 },
             },
     'disable_dot1x'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_dot1x',
                     'job_type'          : 'thread',
@@ -322,7 +322,7 @@ commands = {
                 },
             },
     'enable_oidc_force_backchannel_logout'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_oidc_force_backchannel_logout',
                     'job_type'          : 'thread',
@@ -330,7 +330,7 @@ commands = {
                 },
             },
     'disable_oidc_force_backchannel_logout'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_oidc_force_backchannel_logout',
                     'job_type'          : 'thread',
@@ -338,7 +338,7 @@ commands = {
                 },
             },
     'auth_cache_timeout'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_auth_cache_timeout',
                     'args'              : ['timeout'],
@@ -347,7 +347,7 @@ commands = {
                 },
             },
     'enable_auth_cache'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_auth_cache',
                     'job_type'          : 'thread',
@@ -355,7 +355,7 @@ commands = {
                 },
             },
     'disable_auth_cache'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_auth_cache',
                     'job_type'          : 'thread',
@@ -363,7 +363,7 @@ commands = {
                 },
             },
     'enable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
                     'job_type'          : 'process',
@@ -371,7 +371,7 @@ commands = {
                 },
             },
     'disable'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
                     'job_type'          : 'process',
@@ -379,7 +379,7 @@ commands = {
                 },
             },
     'rename'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'rename',
                     'args'              : ['new_name'],
@@ -388,7 +388,7 @@ commands = {
                 },
             },
     'move'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
@@ -398,7 +398,7 @@ commands = {
                 },
             },
     'enable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_acl_inheritance',
                     'job_type'          : 'process',
@@ -406,7 +406,7 @@ commands = {
                 },
             },
     'disable_acl_inheritance'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
@@ -414,7 +414,7 @@ commands = {
                 },
             },
     'secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_secret',
                     'oargs'             : ['auto_secret', 'secret'],
@@ -423,7 +423,7 @@ commands = {
                 },
             },
     'show_secret'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_secret',
                     'job_type'          : 'process',
@@ -431,7 +431,7 @@ commands = {
                 },
             },
     'sso_logo'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_sso_logo',
                     'args'              : ['image_data'],
@@ -440,7 +440,7 @@ commands = {
                 },
             },
     'dump_sso_logo'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_sso_logo',
                     'job_type'          : 'thread',
@@ -448,7 +448,7 @@ commands = {
                 },
             },
     'del_sso_logo'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_sso_logo',
                     'job_type'          : 'thread',
@@ -456,7 +456,7 @@ commands = {
                 },
             },
     'enable_sso'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sso',
                     'job_type'          : 'thread',
@@ -464,7 +464,7 @@ commands = {
                 },
             },
     'disable_sso'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sso',
                     'job_type'          : 'thread',
@@ -472,7 +472,7 @@ commands = {
                 },
             },
     'sso_name'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_sso_name',
                     'oargs'             : ['sso_name'],
@@ -481,7 +481,7 @@ commands = {
                 },
             },
     'login_url'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_login_url',
                     'oargs'             : ['login_url'],
@@ -490,7 +490,7 @@ commands = {
                 },
             },
     'helper_url'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_helper_url',
                     'oargs'             : ['helper_url'],
@@ -499,7 +499,7 @@ commands = {
                 },
             },
     'enable_sso_popup'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_sso_popup',
                     'job_type'          : 'thread',
@@ -507,7 +507,7 @@ commands = {
                 },
             },
     'disable_sso_popup'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sso_popup',
                     'job_type'          : 'thread',
@@ -515,7 +515,7 @@ commands = {
                 },
             },
     'access_group'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_access_group',
                     'args'              : ['access_group'],
@@ -524,7 +524,7 @@ commands = {
                 },
             },
     'add_address'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_address',
                     'args'              : ['address'],
@@ -533,7 +533,7 @@ commands = {
                 },
             },
     'del_address'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_address',
                     'args'              : ['address'],
@@ -542,7 +542,7 @@ commands = {
                 },
             },
     'add_oidc_redirect_uri'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_oidc_redirect_uri',
                     'args'              : ['uri'],
@@ -551,7 +551,7 @@ commands = {
                 },
             },
     'del_oidc_redirect_uri'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_oidc_redirect_uri',
                     'args'              : ['uri'],
@@ -560,7 +560,7 @@ commands = {
                 },
             },
     'show_oidc_redirect_uris'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_oidc_redirect_uris',
                     'job_type'          : 'process',
@@ -568,7 +568,7 @@ commands = {
                 },
             },
     'add_oidc_logout_redirect_uri'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_oidc_logout_redirect_uri',
                     'args'              : ['uri'],
@@ -577,7 +577,7 @@ commands = {
                 },
             },
     'del_oidc_logout_redirect_uri'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_oidc_logout_redirect_uri',
                     'args'              : ['uri'],
@@ -586,7 +586,7 @@ commands = {
                 },
             },
     'show_oidc_logout_redirect_uris'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_oidc_logout_redirect_uris',
                     'job_type'          : 'process',
@@ -594,7 +594,7 @@ commands = {
                 },
             },
     'oidc_auth_method'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_auth_method',
                     'args'              : ['method'],
@@ -603,7 +603,7 @@ commands = {
                 },
             },
     'oidc_id_token_alg'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_id_token_alg',
                     'args'              : ['alg'],
@@ -612,7 +612,7 @@ commands = {
                 },
             },
     'oidc_subject_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_subject_type',
                     'args'              : ['subject_type'],
@@ -621,7 +621,7 @@ commands = {
                 },
             },
     'oidc_sector_identifier_uri'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_sector_identifier_uri',
                     'oargs'             : ['uri', 'validate', 'clear'],
@@ -630,7 +630,7 @@ commands = {
                 },
             },
     'oidc_backchannel_logout_uri'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_backchannel_logout_uri',
                     'oargs'             : ['uri', 'clear'],
@@ -639,7 +639,7 @@ commands = {
                 },
             },
     'enable_oidc_backchannel_tls_verify'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_oidc_backchannel_tls_verify',
                     'job_type'          : 'thread',
@@ -647,7 +647,7 @@ commands = {
                 },
             },
     'disable_oidc_backchannel_tls_verify'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_oidc_backchannel_tls_verify',
                     'job_type'          : 'thread',
@@ -655,7 +655,7 @@ commands = {
                 },
             },
     'oidc_backchannel_ca_cert'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_backchannel_ca_cert',
                     'oargs'             : ['ca_cert', 'clear'],
@@ -664,7 +664,7 @@ commands = {
                 },
             },
     'add_oidc_grant_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_oidc_grant_type',
                     'args'              : ['grant_type'],
@@ -673,7 +673,7 @@ commands = {
                 },
             },
     'del_oidc_grant_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_oidc_grant_type',
                     'args'              : ['grant_type'],
@@ -682,7 +682,7 @@ commands = {
                 },
             },
     'show_oidc_grant_types'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_oidc_grant_types',
                     'job_type'          : 'process',
@@ -690,7 +690,7 @@ commands = {
                 },
             },
     'add_oidc_response_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_oidc_response_type',
                     'args'              : ['response_type'],
@@ -699,7 +699,7 @@ commands = {
                 },
             },
     'del_oidc_response_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_oidc_response_type',
                     'args'              : ['response_type'],
@@ -708,7 +708,7 @@ commands = {
                 },
             },
     'show_oidc_response_types'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_oidc_response_types',
                     'job_type'          : 'process',
@@ -716,7 +716,7 @@ commands = {
                 },
             },
     'add_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_role',
                     'args'              : ['role_name'],
@@ -725,7 +725,7 @@ commands = {
                 },
             },
     'remove_role'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
@@ -734,7 +734,7 @@ commands = {
                 },
             },
     'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
@@ -744,7 +744,7 @@ commands = {
                 },
             },
     'remove_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
@@ -754,7 +754,7 @@ commands = {
                 },
             },
     'limit_logins'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'limit_logins',
                     'job_type'          : 'thread',
@@ -762,7 +762,7 @@ commands = {
                 },
             },
     'unlimit_logins'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'unlimit_logins',
                     'job_type'          : 'thread',
@@ -770,7 +770,7 @@ commands = {
                 },
             },
     'list_policies'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_policies',
                     'job_type'          : 'thread',
@@ -780,7 +780,7 @@ commands = {
                 },
             },
     'list_tokens'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_tokens',
                     'oargs'             : ['return_type', 'token_types'],
@@ -790,7 +790,7 @@ commands = {
                 },
             },
     'list_roles'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_roles',
                     'oargs'             : ['recursive'],
@@ -799,7 +799,7 @@ commands = {
                 },
             },
     'list_scopes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_scopes',
                     'job_type'          : 'thread',
@@ -809,7 +809,7 @@ commands = {
                 },
             },
     'add_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_extension',
                     'args'              : ['extension'],
@@ -818,7 +818,7 @@ commands = {
                 },
             },
     'remove_extension'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_extension',
                     'args'              : ['extension'],
@@ -827,7 +827,7 @@ commands = {
                 },
             },
     'add_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
@@ -837,7 +837,7 @@ commands = {
                 },
             },
     'del_attribute'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_attribute',
                     'args'              : ['attribute'],
@@ -847,7 +847,7 @@ commands = {
                 },
             },
     'add_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_object_class',
                     'args'              : ['object_class'],
@@ -856,7 +856,7 @@ commands = {
                 },
             },
     'del_object_class'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_object_class',
                     'args'              : ['object_class'],
@@ -865,7 +865,7 @@ commands = {
                 },
             },
     'add_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
@@ -875,7 +875,7 @@ commands = {
                 },
             },
     'del_acl'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl'],
@@ -886,7 +886,7 @@ commands = {
                 },
             },
     'add_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_policy',
                     'args'              : ['policy_name'],
@@ -895,7 +895,7 @@ commands = {
                 },
             },
     'remove_policy'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_policy',
                     'args'              : ['policy_name'],
@@ -904,7 +904,7 @@ commands = {
                 },
             },
     'description'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_description',
                     'oargs'             : ['description'],
@@ -913,7 +913,7 @@ commands = {
                 },
             },
     'info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_info',
                     'oargs'             : ['info', 'language'],
@@ -922,7 +922,7 @@ commands = {
                 },
             },
     'dump_info'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'dump_info',
                     'oargs'             : ['language'],
@@ -931,7 +931,7 @@ commands = {
                 },
             },
     'export'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'export_config',
                     'oargs'             : ['password'],
@@ -940,7 +940,7 @@ commands = {
                 },
             },
     'remove_orphans'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'remove_orphans',
                     'oargs'             : ['recursive'],
@@ -949,7 +949,7 @@ commands = {
                 },
             },
     '_show_config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_config',
                     'job_type'          : 'thread',
@@ -957,7 +957,7 @@ commands = {
                 },
             },
     '_list_valid_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_object_classes',
                     'job_type'          : 'thread',
@@ -965,7 +965,7 @@ commands = {
                 },
             },
     '_list_valid_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'list_valid_attributes',
                     'job_type'          : 'thread',
@@ -973,7 +973,7 @@ commands = {
                 },
             },
     '_show_attributes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'show_attributes',
                     'job_type'          : 'thread',
@@ -981,7 +981,7 @@ commands = {
                 },
             },
     '_show_object_classes'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_object_classes',
                     'job_type'          : 'thread',
@@ -989,7 +989,7 @@ commands = {
                 },
             },
     'show_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_acls',
                     'job_type'          : 'thread',
@@ -997,7 +997,7 @@ commands = {
                 },
             },
     '_show_supported_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'job_type'          : 'thread',
@@ -1005,7 +1005,7 @@ commands = {
                 },
             },
     '_show_supported_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'default_acls' },
@@ -1014,7 +1014,7 @@ commands = {
                 },
             },
     '_show_supported_recursive_default_acls'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_supported_acls',
                     'args'              : { 'acl_types' : 'recursive_default_acls' },
@@ -1023,7 +1023,7 @@ commands = {
                 },
             },
     'config'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
@@ -1134,6 +1134,7 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "disable_sso_popup")
     config.register_auth_on_action_hook("client", "change_helper_url")
     config.register_auth_on_action_hook("client", "change_access_group")
+    config.register_auth_on_action_hook("client", "change_sso_name")
     config.register_auth_on_action_hook("client", "show_secret")
     config.register_auth_on_action_hook("client", "limit_logins")
     config.register_auth_on_action_hook("client", "unlimit_logins")
@@ -1241,6 +1242,7 @@ class Client(OTPmeClientObject):
         self.access_group_uuid = None
         if access_group:
             self.change_access_group(access_group=access_group,
+                                    force=True,
                                     verify_acls=False)
 
         self.secret = None
@@ -1479,6 +1481,7 @@ class Client(OTPmeClientObject):
     def add_address(
         self,
         address: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1489,6 +1492,12 @@ class Client(OTPmeClientObject):
             msg = _("Address '{address}' already added to this client.")
             msg = msg.format(address=address)
             return callback.error(msg)
+
+        msg = _("Add address '{address}' to client '{client_name}'?: ")
+        msg = msg.format(address=address, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1513,6 +1522,7 @@ class Client(OTPmeClientObject):
     def del_address(
         self,
         address: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1523,6 +1533,12 @@ class Client(OTPmeClientObject):
             msg = _("Address '{address}' is not an address of this client.")
             msg = msg.format(address=address)
             return callback.error(msg)
+
+        msg = _("Remove address '{address}' from client '{client_name}'?: ")
+        msg = msg.format(address=address, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1580,6 +1596,7 @@ class Client(OTPmeClientObject):
     def add_oidc_redirect_uri(
         self,
         uri: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1594,6 +1611,12 @@ class Client(OTPmeClientObject):
             msg = _("Redirect URI '{uri}' already added to this client.")
             msg = msg.format(uri=uri)
             return callback.error(msg)
+
+        msg = _("Add OIDC redirect URI '{uri}' to client '{client_name}'?: ")
+        msg = msg.format(uri=uri, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1614,6 +1637,7 @@ class Client(OTPmeClientObject):
     def del_oidc_redirect_uri(
         self,
         uri: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1624,6 +1648,12 @@ class Client(OTPmeClientObject):
             msg = _("Redirect URI '{uri}' is not registered for this client.")
             msg = msg.format(uri=uri)
             return callback.error(msg)
+
+        msg = _("Remove OIDC redirect URI '{uri}' from client '{client_name}'?: ")
+        msg = msg.format(uri=uri, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1655,6 +1685,7 @@ class Client(OTPmeClientObject):
     def add_oidc_logout_redirect_uri(
         self,
         uri: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1669,6 +1700,12 @@ class Client(OTPmeClientObject):
             msg = _("Logout redirect URI '{uri}' already added to this client.")
             msg = msg.format(uri=uri)
             return callback.error(msg)
+
+        msg = _("Add OIDC logout redirect URI '{uri}' to client '{client_name}'?: ")
+        msg = msg.format(uri=uri, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1689,6 +1726,7 @@ class Client(OTPmeClientObject):
     def del_oidc_logout_redirect_uri(
         self,
         uri: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1699,6 +1737,12 @@ class Client(OTPmeClientObject):
             msg = _("Logout redirect URI '{uri}' is not registered for this client.")
             msg = msg.format(uri=uri)
             return callback.error(msg)
+
+        msg = _("Remove OIDC logout redirect URI '{uri}' from client '{client_name}'?: ")
+        msg = msg.format(uri=uri, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1730,6 +1774,7 @@ class Client(OTPmeClientObject):
     def change_oidc_auth_method(
         self,
         method: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1751,6 +1796,12 @@ class Client(OTPmeClientObject):
             msg = _("OIDC auth method already set to '{method}'.")
             msg = msg.format(method=method)
             return callback.error(msg)
+
+        msg = _("Change OIDC auth method of client '{client_name}' to '{method}'?: ")
+        msg = msg.format(client_name=self.name, method=method)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1771,6 +1822,7 @@ class Client(OTPmeClientObject):
     def change_oidc_id_token_alg(
         self,
         alg: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1800,6 +1852,12 @@ class Client(OTPmeClientObject):
             msg = _("OIDC ID token alg already set to '{alg}'.")
             msg = msg.format(alg=alg)
             return callback.error(msg)
+
+        msg = _("Change OIDC ID token algorithm of client '{client_name}' to '{alg}'?: ")
+        msg = msg.format(client_name=self.name, alg=alg)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1820,6 +1878,7 @@ class Client(OTPmeClientObject):
     def change_oidc_subject_type(
         self,
         subject_type: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1843,6 +1902,12 @@ class Client(OTPmeClientObject):
             msg = _("OIDC subject type already set to '{subject_type}'.")
             msg = msg.format(subject_type=subject_type)
             return callback.error(msg)
+
+        msg = _("Change OIDC subject type of client '{client_name}' to '{subject_type}'?: ")
+        msg = msg.format(client_name=self.name, subject_type=subject_type)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1865,6 +1930,7 @@ class Client(OTPmeClientObject):
         uri: str=None,
         validate: bool=False,
         clear: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1911,6 +1977,12 @@ class Client(OTPmeClientObject):
             msg = _("Sector identifier URI already set to '{uri}'.")
             msg = msg.format(uri=new_value)
             return callback.error(msg)
+
+        msg = _("Change OIDC sector identifier URI of client '{client_name}' to '{uri}'?: ")
+        msg = msg.format(client_name=self.name, uri=new_value)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1932,6 +2004,7 @@ class Client(OTPmeClientObject):
         self,
         uri: str=None,
         clear: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1978,6 +2051,12 @@ class Client(OTPmeClientObject):
             msg = _("Backchannel logout URI already set to '{uri}'.")
             msg = msg.format(uri=new_value)
             return callback.error(msg)
+
+        msg = _("Change OIDC backchannel logout URI of client '{client_name}' to '{uri}'?: ")
+        msg = msg.format(client_name=self.name, uri=new_value)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1997,6 +2076,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable OIDC backchannel TLS verification")
     def enable_oidc_backchannel_tls_verify(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2006,6 +2086,12 @@ class Client(OTPmeClientObject):
         if self.oidc_backchannel_tls_verify:
             msg = _("Backchannel TLS verification already enabled.")
             return callback.error(msg)
+
+        msg = _("Enable OIDC backchannel TLS verification for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2025,6 +2111,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable OIDC backchannel TLS verification")
     def disable_oidc_backchannel_tls_verify(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2038,6 +2125,12 @@ class Client(OTPmeClientObject):
         if not self.oidc_backchannel_tls_verify:
             msg = _("Backchannel TLS verification already disabled.")
             return callback.error(msg)
+
+        msg = _("Disable OIDC backchannel TLS verification for client '{client_name}'? The logout token is then sent without verifying the peer certificate.: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2057,6 +2150,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable OIDC force backchannel logout")
     def enable_oidc_force_backchannel_logout(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2066,6 +2160,12 @@ class Client(OTPmeClientObject):
         if self.oidc_force_backchannel_logout:
             msg = _("Backchannel logout already forced.")
             return callback.error(msg)
+
+        msg = _("Force OIDC backchannel logout for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2085,6 +2185,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable OIDC force backchannel logout")
     def disable_oidc_force_backchannel_logout(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2094,6 +2195,12 @@ class Client(OTPmeClientObject):
         if not self.oidc_force_backchannel_logout:
             msg = _("Forced backchannel logout already disabled.")
             return callback.error(msg)
+
+        msg = _("Stop forcing OIDC backchannel logout for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2115,6 +2222,7 @@ class Client(OTPmeClientObject):
         self,
         ca_cert: str=None,
         clear: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2143,6 +2251,12 @@ class Client(OTPmeClientObject):
         if new_value == self.oidc_backchannel_ca_cert:
             msg = _("Backchannel CA cert unchanged.")
             return callback.error(msg)
+
+        msg = _("Change OIDC backchannel CA certificate of client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2180,6 +2294,7 @@ class Client(OTPmeClientObject):
     def add_oidc_grant_type(
         self,
         grant_type: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2195,6 +2310,12 @@ class Client(OTPmeClientObject):
             msg = _("Grant type '{grant_type}' already enabled for this client.")
             msg = msg.format(grant_type=grant_type)
             return callback.error(msg)
+
+        msg = _("Add OIDC grant type '{grant_type}' to client '{client_name}'?: ")
+        msg = msg.format(grant_type=grant_type, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2215,6 +2336,7 @@ class Client(OTPmeClientObject):
     def del_oidc_grant_type(
         self,
         grant_type: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2225,6 +2347,12 @@ class Client(OTPmeClientObject):
             msg = _("Grant type '{grant_type}' is not enabled for this client.")
             msg = msg.format(grant_type=grant_type)
             return callback.error(msg)
+
+        msg = _("Remove OIDC grant type '{grant_type}' from client '{client_name}'?: ")
+        msg = msg.format(grant_type=grant_type, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2256,6 +2384,7 @@ class Client(OTPmeClientObject):
     def add_oidc_response_type(
         self,
         response_type: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2271,6 +2400,12 @@ class Client(OTPmeClientObject):
             msg = _("Response type '{response_type}' already enabled for this client.")
             msg = msg.format(response_type=response_type)
             return callback.error(msg)
+
+        msg = _("Add OIDC response type '{response_type}' to client '{client_name}'?: ")
+        msg = msg.format(response_type=response_type, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2291,6 +2426,7 @@ class Client(OTPmeClientObject):
     def del_oidc_response_type(
         self,
         response_type: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2301,6 +2437,12 @@ class Client(OTPmeClientObject):
             msg = _("Response type '{response_type}' is not enabled for this client.")
             msg = msg.format(response_type=response_type)
             return callback.error(msg)
+
+        msg = _("Remove OIDC response type '{response_type}' from client '{client_name}'?: ")
+        msg = msg.format(response_type=response_type, client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2357,6 +2499,7 @@ class Client(OTPmeClientObject):
     def change_access_group(
         self,
         access_group: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2368,6 +2511,12 @@ class Client(OTPmeClientObject):
             msg = _("Group '{access_group}' is already access group of this client.")
             msg = msg.format(access_group=access_group)
             return callback.error(msg)
+
+        msg = _("Change access group of client '{client_name}' to '{access_group}'?: ")
+        msg = msg.format(client_name=self.name, access_group=access_group)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2407,12 +2556,18 @@ class Client(OTPmeClientObject):
     def change_auth_cache_timeout(
         self,
         timeout: int=60,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Enable auth cache. """
+        msg = _("Change auth cache timeout of client '{client_name}' to '{timeout}'?: ")
+        msg = msg.format(client_name=self.name, timeout=timeout)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2435,6 +2590,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable dot1x")
     def enable_dot1x(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2444,6 +2600,11 @@ class Client(OTPmeClientObject):
         if self.dot1x_auth:
             msg = (_("Dot1x auth already enabled."))
             return callback.error(msg)
+
+        msg = _("Enable dot1x auth for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2467,6 +2628,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable dot1x")
     def disable_dot1x(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2476,6 +2638,11 @@ class Client(OTPmeClientObject):
         if not self.dot1x_auth:
             msg = (_("Dot1x auth already disabled."))
             return callback.error(msg)
+
+        msg = _("Disable dot1x auth for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2499,6 +2666,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable OIDC")
     def enable_oidc(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2508,6 +2676,11 @@ class Client(OTPmeClientObject):
         if self.oidc_auth:
             msg = (_("OIDC auth already enabled."))
             return callback.error(msg)
+
+        msg = _("Enable OIDC auth for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2531,6 +2704,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable OIDC")
     def disable_oidc(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2540,6 +2714,11 @@ class Client(OTPmeClientObject):
         if not self.oidc_auth:
             msg = (_("OIDC auth already disabled."))
             return callback.error(msg)
+
+        msg = _("Disable OIDC auth for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2563,6 +2742,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable auth cache")
     def enable_auth_cache(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2572,6 +2752,11 @@ class Client(OTPmeClientObject):
         if self.auth_cache_enabled:
             msg = (_("Auth cache already enabled."))
             return callback.error(msg)
+
+        msg = _("Enable auth cache for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2595,6 +2780,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable auth cache")
     def disable_auth_cache(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2604,6 +2790,11 @@ class Client(OTPmeClientObject):
         if not self.auth_cache_enabled:
             msg = (_("Auth cache already disabled."))
             return callback.error(msg)
+
+        msg = _("Disable auth cache for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2628,11 +2819,17 @@ class Client(OTPmeClientObject):
     def add_sso_logo(
         self,
         image_data: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        msg = _("Set SSO logo of client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2665,11 +2862,17 @@ class Client(OTPmeClientObject):
     @object_changelog("remove SSO logo")
     def del_sso_logo(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        msg = _("Remove SSO logo of client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2719,11 +2922,17 @@ class Client(OTPmeClientObject):
     def change_sso_name(
         self,
         sso_name: str,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        msg = _("Change SSO name of client '{client_name}' to '{sso_name}'?: ")
+        msg = msg.format(client_name=self.name, sso_name=sso_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2745,6 +2954,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable SSO")
     def enable_sso(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2762,6 +2972,11 @@ class Client(OTPmeClientObject):
         if not self.helper_url:
             msg = _("Helper URL not configured.")
             return callback.error(msg)
+
+        msg = _("Enable SSO portal app for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2785,6 +3000,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable SSO")
     def disable_sso(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2794,6 +3010,11 @@ class Client(OTPmeClientObject):
         if not self.sso_enabled:
             msg = (_("SSO already disabled."))
             return callback.error(msg)
+
+        msg = _("Disable SSO portal app for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2818,12 +3039,18 @@ class Client(OTPmeClientObject):
     def change_login_url(
         self,
         login_url: bool=False,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change object login_url """
+        msg = _("Change login URL of client '{client_name}' to '{login_url}'?: ")
+        msg = msg.format(client_name=self.name, login_url=login_url)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2848,12 +3075,18 @@ class Client(OTPmeClientObject):
     def change_helper_url(
         self,
         helper_url: str=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change object helper_url """
+        msg = _("Change helper URL of client '{client_name}' to '{helper_url}'?: ")
+        msg = msg.format(client_name=self.name, helper_url=helper_url)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -2877,6 +3110,7 @@ class Client(OTPmeClientObject):
     @object_changelog("enable SSO popup")
     def enable_sso_popup(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2894,6 +3128,11 @@ class Client(OTPmeClientObject):
         if not self.helper_url:
             msg = _("Helper URL not configured.")
             return callback.error(msg)
+
+        msg = _("Enable SSO popup for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2916,6 +3155,7 @@ class Client(OTPmeClientObject):
     @object_changelog("disable SSO popup")
     def disable_sso_popup(
         self,
+        force: bool=False,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -2925,6 +3165,11 @@ class Client(OTPmeClientObject):
         if not self.sso_popup:
             msg = (_("SSO popup already disabled."))
             return callback.error(msg)
+
+        msg = _("Disable SSO popup for client '{client_name}'?: ")
+        msg = msg.format(client_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -2971,6 +3216,7 @@ class Client(OTPmeClientObject):
     def rename(
         self,
         new_name: str,
+        force: bool=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -2979,6 +3225,11 @@ class Client(OTPmeClientObject):
         base_clients = config.get_base_objects("client")
         if self.name in base_clients:
             return callback.error("Cannot rename base client.")
+
+        msg = _("Rename client '{client_name}' to '{new_name}'?: ")
+        msg = msg.format(client_name=self.name, new_name=new_name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         # Build new OID.
         new_oid = oid.get(object_type="client",
@@ -3028,11 +3279,11 @@ class Client(OTPmeClientObject):
             return callback.error(msg)
 
         if address:
-            self.add_address(address)
+            self.add_address(address, force=True)
             msg = f"Radius secret: {self.secret}"
             callback.send(msg)
         if enable_oidc:
-            self.enable_oidc()
+            self.enable_oidc(force=True)
             # Resolve scopes:
             #   --scopes <list>      -> replaces defaults entirely
             #   --no-default-scopes  -> drops defaults
@@ -3057,6 +3308,7 @@ class Client(OTPmeClientObject):
                 scope_objs.append(scope)
             for scope in scope_objs:
                 scope.add_client(client_name=self.name,
+                                force=True,
                                 callback=callback)
         elif scopes or add_scopes:
             msg = _("Warning: --scopes/--add-scopes ignored because --enable-oidc was not set.")
@@ -3102,6 +3354,7 @@ class Client(OTPmeClientObject):
             if not scope.auto_member:
                 continue
             scope.add_role(role_name=role_oid.name,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
         if return_uuid:
@@ -3145,6 +3398,7 @@ class Client(OTPmeClientObject):
             if not scope.auto_member:
                 continue
             scope.add_token(token_path=token_oid.rel_path,
+                            force=True,
                             verify_acls=False,
                             callback=callback)
         if return_uuid:

@@ -108,7 +108,7 @@ recursive_default_acls = []
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'oargs'             : ['public_key'],
@@ -122,16 +122,16 @@ commands = {
                 },
             },
     'password'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_password',
-                    'oargs'             : ['auto_password', 'password'],
+                    'oargs'             : ['auto_password', 'password', 'weak_password'],
                     'job_type'          : 'process',
                     },
                 },
             },
     'ssh_public_key'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_ssh_public_key',
                     'oargs'             : ['ssh_public_key'],
@@ -140,7 +140,7 @@ commands = {
                 },
             },
     'test'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'test',
                     'oargs'             : ['password'],
@@ -149,7 +149,7 @@ commands = {
                 },
             },
     '2f_token'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_2f_token',
                     'args'              : ['second_factor_token'],
@@ -158,7 +158,7 @@ commands = {
                 },
             },
     'enable_2f'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'enable_2f_token',
                     'job_type'          : 'process',
@@ -166,7 +166,7 @@ commands = {
                 },
             },
     'disable_2f'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'disable_2f_token',
                     'job_type'          : 'process',
@@ -174,7 +174,7 @@ commands = {
                 },
             },
     'card_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_card_type',
                     'args'              : ['card_type'],
@@ -183,7 +183,7 @@ commands = {
                 },
             },
     'key_type'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'change_key_type',
                     'args'              : ['key_type'],
@@ -192,7 +192,7 @@ commands = {
                 },
             },
     'sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'sign',
                     'oargs'             : ['tags', 'stdin_pass'],
@@ -201,7 +201,7 @@ commands = {
                 },
             },
     'resign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'resign',
                     'job_type'          : 'process',
@@ -209,7 +209,7 @@ commands = {
                 },
             },
     'add_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'add_sign',
                     'oargs'             : ['signature', 'tags'],
@@ -218,7 +218,7 @@ commands = {
                 },
             },
     'del_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'del_sign',
                     'oargs'             : ['username', 'tags'],
@@ -227,7 +227,7 @@ commands = {
                 },
             },
     'verify_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'verify_sign',
                     'oargs'             : ['username', 'user_uuid', 'tags'],
@@ -236,7 +236,7 @@ commands = {
                 },
             },
     'get_sign_data'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_sign_data',
                     'oargs'             : ['tags'],
@@ -245,7 +245,7 @@ commands = {
                 },
             },
     'get_sign'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'get_sign',
                     'oargs'             : ['username', 'user_uuid', 'tags'],
@@ -548,6 +548,7 @@ class SshToken(Token):
     def change_card_type(
         self,
         card_type: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -563,6 +564,11 @@ class SshToken(Token):
                 msg = _("Card type already set to: {card_type}")
                 msg = msg.format(card_type=card_type)
                 return callback.error(msg)
+
+        msg = _("Change card type of token '{token_path}' to '{card_type}'?: ")
+        msg = msg.format(token_path=self.rel_path, card_type=card_type)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -586,6 +592,7 @@ class SshToken(Token):
     def change_key_type(
         self,
         key_type: str="rsa",
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -600,6 +607,11 @@ class SshToken(Token):
             msg = _("Key type already set to: {key_type}")
             msg = msg.format(key_type=key_type)
             return callback.error(msg)
+
+        msg = _("Change key type of token '{token_path}' to '{key_type}'?: ")
+        msg = msg.format(token_path=self.rel_path, key_type=key_type)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -623,12 +635,18 @@ class SshToken(Token):
     def change_ssh_public_key(
         self,
         ssh_public_key: Union[str,None]=None,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change token SSH public key. """
+        msg = _("Change SSH public key of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -856,12 +874,19 @@ class SshToken(Token):
     def change_2f_token(
         self,
         second_factor_token: str,
+        force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
         """ Change token second factor token. """
+        msg = _("Change second factor token of token '{token_path}' to '{second_factor_token}'?: ")
+        msg = msg.format(token_path=self.rel_path,
+                        second_factor_token=second_factor_token)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1027,6 +1052,7 @@ class SshToken(Token):
         self.card_type = card_type
         self.ssh_public_key = public_key
         self.change_ssh_public_key(ssh_public_key=public_key,
+                                    force=True,
                                     run_policies=False)
 
         return self._cache(callback=callback)
@@ -1039,15 +1065,26 @@ class SshToken(Token):
     def change_key_password(
         self,
         force: bool=False,
+        weak_password: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Change private key encryption password. """
+        """ Change private key encryption password.
+
+        force skips the confirmation, weak_password lets an admin set a
+        password the checks reject (see Token.change_password()).
+        """
         if not self.ssh_private_key:
             msg = _("No private key set for this token.")
             return callback.error(msg)
+
+        msg = _("Change private key password of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1075,7 +1112,7 @@ class SshToken(Token):
         password_checked = False
         while True:
             new_password1 = callback.askpass(_("New password: "))
-            if not force or not is_admin:
+            if not weak_password or not is_admin:
                 if not self.check_password(new_password1,
                                         callback=callback):
                     return callback.error()
@@ -1093,12 +1130,12 @@ class SshToken(Token):
         if password == "":
             return callback.error(_("Cannot set empty password."))
 
-        if not force or not is_admin:
+        if not weak_password or not is_admin:
             if not password_checked:
                  if not self.check_password(password, callback=callback):
                     return callback.error()
 
-        if not force or not is_admin:
+        if not weak_password or not is_admin:
             if len(password) < self.password_min_len:
                 msg = _("Password too short ({password_min_len}).")
                 msg = msg.format(password_min_len=self.password_min_len)

@@ -79,7 +79,7 @@ recursive_default_acls = default_acls
 
 commands = {
     'add'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'missing'    : {
                     'method'            : 'add',
                     'job_type'          : 'process',
@@ -87,7 +87,7 @@ commands = {
                 },
             },
     'set_unit'   : {
-            'OTPme-mgmt-1.0'    : {
+            'default'    : {
                 'exists'    : {
                     'method'            : 'set_default_unit',
                     'args'              : ['object_type'],
@@ -289,9 +289,19 @@ class DefaultunitsPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("set default unit for {object_type} {unit_path}")
-    def set_default_unit(self, object_type, unit_path=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def set_default_unit(self, object_type, unit_path=None, force=False,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Set default unit. """
+        if unit_path is None:
+            msg = _("Unset default unit for {object_type} of policy '{policy_name}'?: ")
+        else:
+            msg = _("Set default unit for {object_type} of policy '{policy_name}' to '{unit_path}'?: ")
+        msg = msg.format(object_type=object_type,
+                        policy_name=self.name,
+                        unit_path=unit_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
         if unit_path is None:
             self.default_units.pop(object_type)
         else:
