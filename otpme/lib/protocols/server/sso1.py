@@ -4,6 +4,8 @@ import os
 import time
 import base64
 import hashlib
+import hmac
+import traceback
 import setproctitle
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
@@ -37,6 +39,31 @@ from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.exceptions import *
 
 DEPLOY_NAME = "sso-deploy"
+
+# Max age (in seconds) of an SSO session's reauth_time for a sensitive
+# self-service action to count as "step-up freshly verified" without
+# requiring another trip through /reauth. Kept short so a forgotten-
+# unlocked-portal window doesn't stay indefinitely open for account-
+# recovery-relevant changes. Sudo-mode style: refresh happens by re-
+# authenticating, not by extending the window.
+STEP_UP_MAX_AGE = 60
+
+# Byte length of the raw SSO-token recovery secret. 32 bytes = 256 bits
+# after hex-encoding gives a 64-char URL parameter -- fits well into a
+# short mail link and provides plenty of entropy against guessing.
+# Persistent storage is a SHA256 hash of this value; the raw form only
+# lives in the recovery mail body and the user's browser URL.
+SSO_RECOVERY_TOKEN_BYTES = 32
+
+# Token types the SSO-token recovery deploy flow knows how to
+# provision credentials for. The admin's per-user/unit/site
+# ``allow_sso_token_recovery`` list is authoritative for *whether*
+# recovery is allowed; this list tracks *which* provisioning paths
+# the deploy handlers actually implement (TOTP secret+QR, WebAuthn
+# attestation, plain-password change). Adding a new token type =
+# add a branch in ``recovery_deploy_begin`` +
+# ``recovery_deploy_verify`` + this tuple.
+SSO_RECOVERY_DEPLOY_TYPES = ("totp", "fido2", "password")
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
@@ -158,8 +185,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                         auto_preauth=True,
                                         auto_auth=False)
         except Exception as e:
-            log_msg = _("Redirect connection failed: {e}", log=True)[1]
-            log_msg = log_msg.format(e=e)
+            log_msg = _("Redirect connection failed for command '{command}' (user '{user}' site '{site}' mgmt={mgmt}): {e}", log=True)[1]
+            log_msg = log_msg.format(command=command,
+                                    user=user.name,
+                                    site=user.site,
+                                    mgmt=mgmt,
+                                    e=e)
             self.logger.warning(log_msg)
             auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
             return self.build_response(False, auth_response)
@@ -175,14 +206,23 @@ class OTPmeSsoP1(OTPmeServer1):
             binary_data = ssod_conn.send(command=command,
                                         command_args=forward_args)
         except Exception as e:
-            log_msg = _("Failed to redirect command: {command}", log=True)[1]
-            log_msg = log_msg.format(command=command)
-            log_msg = f"{log_msg}: {e}"
+            log_msg = _("Failed to redirect command '{command}' (user '{user}' site '{site}' mgmt={mgmt}): {e}", log=True)[1]
+            log_msg = log_msg.format(command=command,
+                                    user=user.name,
+                                    site=user.site,
+                                    mgmt=mgmt,
+                                    e=e)
             self.logger.warning(log_msg)
             auth_response = {'message':'REDIRECT_CONN_FAILED', 'status':False}
             return self.build_response(False, auth_response)
         finally:
             ssod_conn.close()
+        log_msg = _("Redirect '{command}' to site '{site}' returned status={status} status_code={status_code}.", log=True)[1]
+        log_msg = log_msg.format(command=command,
+                                site=user.site,
+                                status=status,
+                                status_code=status_code)
+        self.logger.debug(log_msg)
         return self.build_response(status, deploy_data)
 
     def verify_sso_jwt(self, username, sso_jwt):
@@ -383,11 +423,14 @@ class OTPmeSsoP1(OTPmeServer1):
                                             command_args=command_args,
                                             mgmt=True)
         # Gate per-type deploy via config parameters (site/unit/user/token
-        # walk). Default True keeps legacy behaviour; unknown token_type
-        # falls through and is rejected later by add_token().
+        # walk). Default True for totp/fido2 keeps legacy behaviour;
+        # password defaults False (weaker credential, admin has to opt
+        # in). Unknown token_type falls through and is rejected later
+        # by add_token().
         allow_param = {
-            "totp":  "sso_allow_totp_deploy",
-            "fido2": "sso_allow_fido2_deploy",
+            "totp":     "sso_allow_totp_deploy",
+            "fido2":    "sso_allow_fido2_deploy",
+            "password": "sso_allow_password_deploy",
         }.get(token_type)
         if allow_param is not None \
         and not user.get_config_parameter(allow_param):
@@ -397,6 +440,19 @@ class OTPmeSsoP1(OTPmeServer1):
         # Prepare deploy.
         login_token = config.auth_token
         login_token_name = login_token.name
+        # Password: no staging token at all. The user's chosen
+        # credential is the ONLY password we ever set; deploy_verify
+        # creates the token with add_token(replace=True) in one step.
+        # No placeholder, no double policy check, no cleanup path.
+        if token_type == "password":
+            response = {
+                        'token_type'                : token_type,
+                        'deploy_login_token_name'   : login_token_name,
+                    }
+            log_msg = _("SSO deploy started for user '{user_name}', token type 'password' (no staging token).", log=True)[1]
+            log_msg = log_msg.format(user_name=user.name)
+            self.logger.info(log_msg)
+            return self.build_response(True, response)
         # Remove old sso-deploy token if it exists (e.g. from a previous attempt).
         old_deploy = user.token(DEPLOY_NAME)
         callback = self.get_callback()
@@ -409,7 +465,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             add_to_trash=add_to_trash,
                             callback=callback)
             user._write(callback=callback)
-        # Create sso-deploy token under the user.
+        # Create sso-deploy token (OATH or FIDO2) under the user.
         try:
             user.add_token(token_name=DEPLOY_NAME,
                             token_type=token_type,
@@ -438,7 +494,7 @@ class OTPmeSsoP1(OTPmeServer1):
                     'deploy_token_name'         : DEPLOY_NAME,
                     'deploy_login_token_name'   : login_token_name,
                 }
-        # For FIDO2 tokens, use the WebAuthn registration flow.
+        # FIDO2: setup via WebAuthn dance, no secret/QR here.
         if token_type == "fido2":
             return self.build_response(True, response)
         deploy_token._write(callback=callback)
@@ -486,8 +542,9 @@ class OTPmeSsoP1(OTPmeServer1):
                                     user=user,
                                     command_args=command_args,
                                     mgmt=True)
-        gates = (("totp",  "sso_allow_totp_deploy"),
-                 ("fido2", "sso_allow_fido2_deploy"))
+        gates = (("totp",     "sso_allow_totp_deploy"),
+                 ("fido2",    "sso_allow_fido2_deploy"),
+                 ("password", "sso_allow_password_deploy"))
         allowed = [tt for tt, param in gates
                    if user.get_config_parameter(param)]
         return self.build_response(True,
@@ -531,13 +588,50 @@ class OTPmeSsoP1(OTPmeServer1):
                                             user=user,
                                             command_args=command_args,
                                             mgmt=True)
-        # Load the sso-deploy token.
+        # Password recovery: no DEPLOY_NAME staging. Create a new
+        # password token at the login-token slot with the user's
+        # chosen password in one shot (add_token replace=True handles
+        # both same-type overwrite and cross-type replacement).
+        # add_token bubbles a real policy error message if the
+        # password is too weak -- that's exactly what we want to
+        # surface to the user.
+        token_type_hint = token_data.get('token_type')
+        if token_type_hint == "password":
+            new_password = token_data.get('password')
+            confirm = token_data.get('password_confirm')
+            if not isinstance(new_password, str) or not new_password:
+                response = {'message':'Password required.', 'status':False}
+                return self.build_response(False, response)
+            if confirm is not None and confirm != new_password:
+                response = {'message':'Passwords do not match.', 'status':False}
+                return self.build_response(False, response)
+            callback = self.get_callback()
+            callback.raise_exception = True
+            try:
+                user.add_token(token_name=login_token_name,
+                                token_type="password",
+                                replace=True,
+                                password=new_password,
+                                no_token_infos=True,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=True,
+                                callback=callback)
+                user._write(callback=callback)
+            except Exception as e:
+                log_msg = _("SSO deploy password set failed for user '{user_name}': {e}", log=True)[1]
+                log_msg = log_msg.format(user_name=user.name, e=e)
+                self.logger.warning(log_msg)
+                response = {'message': str(e), 'status':False}
+                return self.build_response(False, response)
+            response = {'message':'Token deployment successful.', 'status':True}
+            return self.build_response(True, response)
+        # OATH / FIDO2: verify the DEPLOY_NAME staging token, then
+        # move it into the login-token slot.
         deploy_token = user.token(DEPLOY_NAME)
         if not deploy_token:
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
-        # FIDO2 tokens are verified by the WebAuthn registration itself.
-        # OATH tokens need OTP verification.
         if deploy_token.token_type == "fido2":
             if not deploy_token.credential_data:
                 response = {'message':'Security key not registered yet.', 'status':False}
@@ -559,7 +653,7 @@ class OTPmeSsoP1(OTPmeServer1):
             if not verify_result:
                 response = {'message':'Invalid OTP. Please try again.', 'status':False}
                 return self.build_response(False, response)
-        # OTP verified - move sso-deploy token to replace the login token.
+        # Credential verified - move sso-deploy token to replace the login token.
         target_path = f"{user.name}/{login_token_name}"
         try:
             deploy_token.move(target_path,
@@ -1380,6 +1474,818 @@ class OTPmeSsoP1(OTPmeServer1):
                             {'message': str(e), 'status': False})
         user._write(callback=callback)
         return self.build_response(True, {'enabled': enabled, 'status': True})
+
+    def _require_fresh_step_up(self, user, session_uuid, max_age=STEP_UP_MAX_AGE):
+        """ Verify that the SSO session ``session_uuid`` was step-up-
+        reauth'ed within the last ``max_age`` seconds. Runs on the
+        originator site (the SSO session lives there, never crosses
+        to the user's home site -- ``ssod_redirect_command`` strips
+        ``session_uuid``). Used to gate sensitive self-service actions
+        (recovery mail change, ...) behind a fresh proof-of-possession
+        via /reauth, so a forgotten-unlocked browser cannot silently
+        pivot into an account-takeover setting.
+
+        Raises OTPmeException("STEP_UP_REQUIRED") on any failure --
+        the caller returns that verbatim so the web layer can drive
+        the user through /reauth?next=... and retry. """
+        if not session_uuid:
+            raise OTPmeException("STEP_UP_REQUIRED")
+        session = backend.get_object(uuid=session_uuid)
+        if not session:
+            raise OTPmeException("STEP_UP_REQUIRED")
+        if session.user_uuid != user.uuid:
+            raise OTPmeException("STEP_UP_REQUIRED")
+        if not session.reauth_time:
+            raise OTPmeException("STEP_UP_REQUIRED")
+        if time.time() - session.reauth_time > max_age:
+            raise OTPmeException("STEP_UP_REQUIRED")
+
+    def get_recovery_mail(self, username, sso_jwt, command_args):
+        """ Return the user's recovery e-mail address (LDIF attribute
+        ``otpmeRecoveryMail`` on the user object), plus the step-up
+        max-age so the UI knows how long a fresh /reauth stays valid.
+        Foreign users get redirected to their home site so the read
+        is authoritative on the site that owns the write, matching
+        the ``list_device_tokens`` / ``get_admin_access_state``
+        pattern. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="get_recovery_mail",
+                                            user=user,
+                                            command_args=command_args)
+        values = user.get_attribute("otpmeRecoveryMail") or []
+        recovery_mail = values[0] if values else None
+        return self.build_response(True, {
+                'recovery_mail':   recovery_mail,
+                'step_up_max_age': STEP_UP_MAX_AGE,
+                'status':          True,
+            })
+
+    def set_recovery_mail(self, username, sso_jwt, command_args):
+        """ Self-service write of the user's recovery e-mail address.
+        Gated behind a fresh step-up reauth on the originator site
+        (``session.reauth_time`` within ``STEP_UP_MAX_AGE``), then
+        forwarded to the user's home site for the actual attribute
+        write. Empty/None ``recovery_mail`` clears the attribute.
+
+        Cross-site: step-up is verified on the originator (the SSO
+        session lives there and never crosses via
+        ``ssod_redirect_command``). Home accepts the peer-forwarded
+        write when the ``_step_up_verified`` marker is set and the
+        peer is a cluster node -- the same infrastructure trust
+        already implicit in every cluster op. """
+        raw_value = command_args.get('recovery_mail')
+        if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
+            new_value = None
+        elif isinstance(raw_value, str):
+            new_value = raw_value.strip()
+        else:
+            new_value = raw_value
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        is_cluster_peer = (not self.client.startswith("socket://")
+                           and self.peer is not None
+                           and self.peer.type == "node")
+        peer_verified = command_args.get('_step_up_verified')
+        skip_step_up_check = bool(is_cluster_peer and peer_verified)
+        if not skip_step_up_check:
+            # Originator (or direct socket): the SSO session lives here,
+            # so the reauth freshness is checked here. On failure the
+            # web layer drives the user through /reauth and retries.
+            try:
+                self._require_fresh_step_up(user,
+                                            command_args.get('session_uuid'))
+            except OTPmeException:
+                return self.build_response(False, {
+                        'message': 'STEP_UP_REQUIRED',
+                        'status':  False,
+                    })
+        if new_value is not None and not stuff.is_email(new_value):
+            return self.build_response(False, {
+                    'message': 'INVALID_RECOVERY_MAIL',
+                    'status':  False,
+                })
+        if user.site != config.site:
+            # Originator -> forward to home. Step-up already verified
+            # above; tell home to accept the write without re-checking
+            # (session_uuid does not cross sites anyway).
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
+            return self.ssod_redirect_command(command="set_recovery_mail",
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            existing = user.get_attribute("otpmeRecoveryMail") or []
+            if existing:
+                user.del_attribute("otpmeRecoveryMail",
+                                    force=True,
+                                    verify_acls=False,
+                                    ignore_missing=True,
+                                    callback=callback)
+            if new_value is not None:
+                user.add_attribute("otpmeRecoveryMail",
+                                    new_value,
+                                    force=True,
+                                    verify_acls=False,
+                                    callback=callback)
+        except Exception as e:
+            log_msg = _("Recovery-mail change failed for user '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message': str(e), 'status': False})
+        user._write(callback=callback)
+        return self.build_response(True, {
+                'recovery_mail': new_value,
+                'status':        True,
+            })
+
+    # ---- SSO-token recovery (unauth "forgot my token" flow) ------------
+    #
+    # Design notes:
+    #   * All state (recovery_token hash + created timestamp) lives on
+    #     the user object -- cluster-replicated, survives node restart,
+    #     any node can validate.
+    #   * The raw token never touches persistent storage: only the
+    #     SHA256 hash is written. The raw form lives briefly in the
+    #     mail body and the user's browser URL.
+    #   * Every command runs on the user's home site. Foreign users
+    #     trigger a cluster-peer ssod redirect so token generation and
+    #     mail send happen on home (never on the calling partner
+    #     site's operator-triggered code path).
+    #   * The recovery-mail link URL is constructed on home from the
+    #     calling peer's site FQDN -- never from an A-supplied
+    #     parameter. That closes the "A operator with node access can
+    #     inject an attacker-controlled link" vector: the peer is a
+    #     cluster peer whose identity we already trust structurally.
+    #   * Every observable code path (unknown user, no default SSO
+    #     token, disallowed type, missing recovery mail, missing
+    #     mail_from, SMTP failure) returns the same generic-OK
+    #     response so an attacker cannot enumerate users or infer
+    #     their recovery state through response-shape differences.
+    #   * Prerequisite checks are ordered admin-config → user-config →
+    #     heavy work (token gen + user write + mail send). Missing
+    #     admin config means recovery is disabled for the whole site,
+    #     so short-circuit there before touching per-user state.
+
+    def _recovery_generic_ok(self):
+        """ Enum-safe generic response used for every path in
+        request_sso_token_recovery. """
+        return self.build_response(True, {'status': True, 'message': 'OK'})
+
+    def _recovery_invalid(self):
+        """ Uniform response for every failed recovery-token validation
+        (unknown user, wrong token, expired token, disallowed type).
+        Same shape regardless of *why* it failed. """
+        return self.build_response(False, {'valid': False, 'status': False})
+
+    def _recovery_link_host(self):
+        """ FQDN for the recovery-mail link URL. Derived from the peer
+        site (cluster-peer-forwarded case) or the local site
+        (same-site request). Never from a request parameter -- see
+        the design notes above. Emits a DEBUG line naming which site
+        was checked so a missing sso_fqdn is diagnosable without
+        leaking to the client.
+
+        ``self.peer.site`` holds a site NAME (matches the convention
+        used by admin_access_trusts / sso_allow_passkeys_trusts etc.
+        elsewhere in this file), so we look it up by name. Local-site
+        fallback uses ``config.site`` (also a name). """
+        site = None
+        if (self.peer is not None
+                and self.peer.type == "node"
+                and self.peer.site
+                and self.peer.site != config.site):
+            result = backend.search(object_type="site",
+                                    attribute="name",
+                                    value=self.peer.site,
+                                    realm=config.realm,
+                                    return_type="instance")
+            if result:
+                site = result[0]
+        if site is None:
+            site = backend.get_object(object_type="site",
+                                     uuid=config.site_uuid)
+        if site is None:
+            log_msg = _("SSO-token recovery: link-host site lookup failed (peer={p}, local uuid={u}).", log=True)[1]
+            log_msg = log_msg.format(p=getattr(self.peer, 'site', None),
+                                     u=config.site_uuid)
+            self.logger.debug(log_msg)
+            return None
+        if not site.sso_fqdn:
+            log_msg = _("SSO-token recovery: site '{s}' has no sso_fqdn set (fix with 'otpme-site sso_fqdn {s} <fqdn>').", log=True)[1]
+            log_msg = log_msg.format(s=site.name)
+            self.logger.debug(log_msg)
+            return None
+        return site.sso_fqdn
+
+    def _recovery_lookup_target_token(self, user):
+        """ Return the user's configured SSO token instance (from
+        default_sso_token_name), or None if not present. """
+        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        if not sso_token_name:
+            return None
+        return user.token(sso_token_name)
+
+    def _recovery_type_allowed(self, user, sso_token):
+        """ True iff:
+              * the SSO-token type is one the recovery deploy flow
+                actually implements (SSO_RECOVERY_DEPLOY_TYPES), and
+              * the user's site/unit/user cascade lists that type in
+                ``allow_sso_token_recovery``.
+        The admin's cascade is authoritative for policy; the
+        implementation gate only refuses types the deploy handlers
+        don't have a branch for. Default cascade (empty list)
+        disables recovery entirely. """
+        if sso_token is None:
+            return False
+        if sso_token.token_type not in SSO_RECOVERY_DEPLOY_TYPES:
+            return False
+        allowed = user.get_config_parameter("allow_sso_token_recovery") or []
+        return sso_token.token_type in allowed
+
+    def _recovery_hash(self, raw_token):
+        """ Persistent storage form of a raw recovery token. """
+        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    def _recovery_verify_stored(self, user, raw_token):
+        """ Constant-time compare of the presented raw token against
+        the stored SHA256 hash + TTL check. Returns True on match+fresh
+        only. """
+        if not user.recovery_token or not user.recovery_token_created:
+            return False
+        ttl = user.get_config_parameter("sso_recovery_link_ttl", apply_getter=False) or 900
+        if time.time() - user.recovery_token_created > ttl:
+            return False
+        computed = self._recovery_hash(raw_token)
+        return hmac.compare_digest(computed, user.recovery_token)
+
+    def request_sso_token_recovery(self, username, sso_jwt, command_args):
+        """ Unauth: emit an SSO-token recovery mail for the named user.
+        Runs on user home (cross-site forward for foreign users). See
+        the design notes above.
+
+        Every early-return path stays enum-safe (generic OK to the
+        client) but logs an admin-only DEBUG line naming the reason
+        so a broken deployment can be diagnosed without leaking the
+        state to attackers.
+        """
+        def _skip(reason):
+            log_msg = _("SSO-token recovery skipped: {reason}", log=True)[1]
+            log_msg = log_msg.format(reason=reason)
+            self.logger.debug(log_msg)
+            return self._recovery_generic_ok()
+
+        if not isinstance(username, str) or not username:
+            return _skip("empty username")
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm)
+        if user is None:
+            return _skip(f"unknown user '{username}'")
+        # Foreign user: forward to home so token generation + mail send
+        # happen where the user's object and config actually live.
+        if user.site != config.site:
+            self.logger.debug(_("SSO-token recovery: forwarding to home site for user '{u}'.", log=True)[1].format(u=user.name))
+            return self.ssod_redirect_command(command="request_sso_token_recovery",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not user.get_config_parameter("allow_sso_account_recovery"):
+            return _skip(f"allow_sso_account_recovery=False for user '{user.name}'")
+        # ---- Admin-config prerequisites (site level) --------------------
+        # Missing anything in this block means the site's admin has not
+        # wired up recovery at all -- short-circuit here so we do not
+        # generate + persist a token that no one can act on.
+        mail_from = user.get_config_parameter("sso_recovery_mail_from")
+        if not mail_from:
+            return _skip(f"sso_recovery_mail_from not configured for '{user.name}'")
+        smtp_server = user.get_config_parameter("smtp_relay_server")
+        if not smtp_server:
+            return _skip(f"smtp_relay_server not configured for '{user.name}'")
+        smtp_port = user.get_config_parameter("smtp_relay_port") or 25
+        smtp_starttls = bool(user.get_config_parameter("smtp_relay_starttls"))
+        smtp_auth = bool(user.get_config_parameter("smtp_relay_auth"))
+        smtp_username = None
+        smtp_password = None
+        if smtp_auth:
+            smtp_username = user.get_config_parameter("smtp_relay_username")
+            smtp_password = user.get_config_parameter("smtp_relay_password")
+            if not smtp_username or not smtp_password:
+                return _skip(f"smtp_relay_auth=True but username/password not set for '{user.name}'")
+        link_host = self._recovery_link_host()
+        if not link_host:
+            return _skip(f"could not derive sso_fqdn for link host (user '{user.name}')")
+        # ---- User-config prerequisites ---------------------------------
+        sso_token = self._recovery_lookup_target_token(user)
+        if sso_token is None:
+            sso_token_name = user.get_config_parameter("default_sso_token_name")
+            return _skip(f"user '{user.name}' has no token named '{sso_token_name}' (default_sso_token_name)")
+        if not self._recovery_type_allowed(user, sso_token):
+            allowed = user.get_config_parameter("allow_sso_token_recovery") or []
+            return _skip(f"SSO token '{sso_token.name}' type '{sso_token.token_type}' for user '{user.name}' not in allow_sso_token_recovery={allowed} (deploy-supported: {list(SSO_RECOVERY_DEPLOY_TYPES)})")
+        values = user.get_attribute("otpmeRecoveryMail") or []
+        recovery_mail = values[0] if values else None
+        if not recovery_mail:
+            return _skip(f"user '{user.name}' has no otpmeRecoveryMail attribute set")
+        # ---- Heavy path: generate, persist, send -----------------------
+        raw_token = stuff.gen_secret(len=SSO_RECOVERY_TOKEN_BYTES)
+        token_hash = self._recovery_hash(raw_token)
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.recovery_token = token_hash
+            user.recovery_token_created = int(time.time())
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("SSO-token recovery: failed to persist token for user '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self._recovery_generic_ok()
+        ttl = user.get_config_parameter("sso_recovery_link_ttl", apply_getter=False) or 900
+        reset_url = (f"https://{link_host}/recover/complete"
+                     f"?t={raw_token}&u={user.name}")
+        subject = _("SSO token recovery")
+        body_template = _("Hello,\n\nwe received a request to recover the SSO token for the account '{user_name}'.\n\nTo set up a fresh SSO token, open the following link within the next {minutes} minutes:\n\n{reset_url}\n\nIf you did not request this, you can ignore this message -- your existing token stays untouched.\n")
+        body = body_template.format(user_name=user.name,
+                                    minutes=max(1, ttl // 60),
+                                    reset_url=reset_url)
+        try:
+            from otpme.lib.mail import send_mail
+            send_mail(mail_from=mail_from,
+                      mail_to=recovery_mail,
+                      subject=subject,
+                      message=body,
+                      server=smtp_server,
+                      port=smtp_port,
+                      starttls=smtp_starttls,
+                      username=smtp_username,
+                      password=smtp_password)
+        except Exception as e:
+            log_msg = _("SSO-token recovery: failed to send mail for user '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            # Response stays generic -- attacker shouldn't be able to
+            # infer whether the mail actually went out. Admin sees the
+            # failure in logs.
+            return self._recovery_generic_ok()
+        log_msg = _("SSO-token recovery: mail dispatched for user '{u}'.", log=True)[1]
+        log_msg = log_msg.format(u=user.name)
+        self.logger.info(log_msg)
+        return self._recovery_generic_ok()
+
+    def get_sso_token_recovery_info(self, username, sso_jwt, command_args):
+        """ Unauth: validate a raw recovery token against the stored
+        hash+TTL and return the SSO-token metadata needed to render
+        the deploy form. All failure paths return the same 'invalid'
+        response shape -- no distinguishing state for attackers. """
+        raw_token = command_args.get('recovery_token')
+        if not isinstance(username, str) or not username:
+            return self._recovery_invalid()
+        if not isinstance(raw_token, str) or not raw_token:
+            return self._recovery_invalid()
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm)
+        if user is None:
+            return self._recovery_invalid()
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="get_sso_token_recovery_info",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not user.get_config_parameter("allow_sso_account_recovery"):
+            return self._recovery_invalid()
+        if not self._recovery_verify_stored(user, raw_token):
+            return self._recovery_invalid()
+        sso_token = self._recovery_lookup_target_token(user)
+        if not self._recovery_type_allowed(user, sso_token):
+            return self._recovery_invalid()
+        # Deploy-time type choices: same site/unit/user gate map as
+        # the auth-flow get_allowed_deploy_token_types uses, so the
+        # recovery-complete UI renders the same button set the
+        # regular /deploy page would.
+        gates = (("totp",     "sso_allow_totp_deploy"),
+                 ("fido2",    "sso_allow_fido2_deploy"),
+                 ("password", "sso_allow_password_deploy"))
+        allowed_deploy_types = [tt for tt, param in gates
+                                if user.get_config_parameter(param)]
+        return self.build_response(True, {
+                'valid':                True,
+                'status':               True,
+                'sso_token_name':       sso_token.name,
+                'sso_token_type':       sso_token.token_type,
+                'allowed_deploy_types': allowed_deploy_types,
+            })
+
+    def _recovery_gate(self, username, command_args):
+        """ Shared prelude for every recovery-deploy command: input
+        validation + user lookup. Returns ``(user, err_response)``:
+        on failure ``user`` is None and the caller returns
+        ``err_response`` verbatim; on success ``err_response`` is
+        None and the caller proceeds (cross-site forwarding + the
+        recovery-token/hash/TTL check happen in the per-handler
+        continuation via ``_recovery_gate_home``). """
+        raw_token = command_args.get('recovery_token')
+        if not isinstance(username, str) or not username:
+            return None, self._recovery_invalid()
+        if not isinstance(raw_token, str) or not raw_token:
+            return None, self._recovery_invalid()
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm)
+        if user is None:
+            return None, self._recovery_invalid()
+        return user, None
+
+    def _recovery_gate_home(self, user, command_args):
+        """ Second half of the gate, only called after any cross-site
+        forwarding was already resolved by the caller. Verifies the
+        stored token hash + freshness and returns the SSO target
+        token (never None on success). """
+        if not user.get_config_parameter("allow_sso_account_recovery"):
+            return None, self._recovery_invalid()
+        raw_token = command_args.get('recovery_token')
+        if not self._recovery_verify_stored(user, raw_token):
+            return None, self._recovery_invalid()
+        sso_token = self._recovery_lookup_target_token(user)
+        if not self._recovery_type_allowed(user, sso_token):
+            return None, self._recovery_invalid()
+        return sso_token, None
+
+    def recovery_deploy_begin(self, username, sso_jwt, command_args):
+        """ Unauth deploy-begin variant driven by a valid recovery
+        token. Recovery-gated equivalent of ``deploy_begin``: creates
+        an sso-deploy token of the requested type under the user, so
+        the user can provision it (secret+QR for OATH, WebAuthn
+        register-begin/complete for FIDO2) before
+        ``recovery_deploy_verify`` moves it in place of the user's
+        default_sso_token_name. """
+        token_type = command_args.get('token_type')
+        if not isinstance(token_type, str) or not token_type:
+            return self._recovery_invalid()
+        user, err = self._recovery_gate(username, command_args)
+        if err is not None:
+            return err
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="recovery_deploy_begin",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        sso_token, err = self._recovery_gate_home(user, command_args)
+        if err is not None:
+            return err
+        # Type gate: user may pick any type the site admin has enabled
+        # via sso_allow_*_deploy -- deliberately independent of the
+        # SSO-token's own type, so a fido2 user can recover as
+        # password (or vice versa) when admin policy allows it.
+        allow_param = {
+            "totp":     "sso_allow_totp_deploy",
+            "fido2":    "sso_allow_fido2_deploy",
+            "password": "sso_allow_password_deploy",
+        }.get(token_type)
+        if allow_param is None or not user.get_config_parameter(allow_param):
+            return self._recovery_invalid()
+        # Password: no staging token. recovery_deploy_verify creates
+        # the token with the user's chosen credential in one shot via
+        # add_token(replace=True). No placeholder, no double-policy-
+        # check hack, no cleanup path.
+        if token_type == "password":
+            response = {
+                        'token_type'                : token_type,
+                        'deploy_login_token_name'   : sso_token.name,
+                        'status'                    : True,
+                    }
+            log_msg = _("Recovery deploy started for user '{u}' (type 'password', no staging token).", log=True)[1]
+            log_msg = log_msg.format(u=user.name)
+            self.logger.info(log_msg)
+            return self.build_response(True, response)
+        callback = self.get_callback()
+        callback.raise_exception = True
+        # Remove leftover sso-deploy token from a previous attempt.
+        old_deploy = user.token(DEPLOY_NAME)
+        if old_deploy:
+            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+            try:
+                user.del_token(token_name=DEPLOY_NAME,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=True,
+                                add_to_trash=add_to_trash,
+                                callback=callback)
+                user._write(callback=callback)
+            except Exception as e:
+                log_msg = _("Recovery deploy: failed to clear stale sso-deploy token for '{u}': {e}", log=True)[1]
+                log_msg = log_msg.format(u=user.name, e=e)
+                self.logger.warning(log_msg)
+                return self._recovery_invalid()
+        try:
+            user.add_token(token_name=DEPLOY_NAME,
+                            token_type=token_type,
+                            no_token_infos=True,
+                            mode="mode1",
+                            gen_qrcode=False,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            tb = traceback.format_exc()
+            log_msg = _("Recovery deploy: add_token failed for '{u}' (type '{t}'): {e}\n{tb}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, t=token_type, e=e, tb=tb)
+            self.logger.warning(log_msg)
+            return self._recovery_invalid()
+        deploy_token = user.token(DEPLOY_NAME)
+        if not deploy_token:
+            return self._recovery_invalid()
+        response = {
+                    'token_type'                : token_type,
+                    'deploy_token_name'         : DEPLOY_NAME,
+                    'deploy_login_token_name'   : sso_token.name,
+                    'status'                    : True,
+                }
+        # FIDO2: WebAuthn dance provides the credential, no secret/QR.
+        if token_type == "fido2":
+            return self.build_response(True, response)
+        # TOTP: return the shared secret + PIN + QR image.
+        deploy_token._write(callback=callback)
+        try:
+            secret = deploy_token.get_secret(pin=deploy_token.pin,
+                                             encoding="base32")
+            qrcode_data = deploy_token.gen_qrcode(pin=deploy_token.pin,
+                                                  fmt="svg",
+                                                  run_policies=False,
+                                                  verify_acls=False)
+            if isinstance(qrcode_data, bytes):
+                qrcode_data = qrcode_data.decode('utf-8')
+            qrcode_data_uri = ("data:image/svg+xml;base64,"
+                    + base64.b64encode(qrcode_data.encode()).decode())
+        except Exception as e:
+            log_msg = _("Recovery deploy: QR/secret gen failed for '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self._recovery_invalid()
+        response['secret'] = secret
+        response['pin'] = deploy_token.pin
+        response['qrcode_img'] = qrcode_data_uri
+        log_msg = _("Recovery deploy started for user '{u}' (type '{t}').", log=True)[1]
+        log_msg = log_msg.format(u=user.name, t=token_type)
+        self.logger.info(log_msg)
+        return self.build_response(True, response)
+
+    def recovery_fido2_register_begin(self, username, sso_jwt, command_args):
+        """ Unauth FIDO2 register-begin variant for the recovery flow.
+        Analogous to ``fido2_register_begin`` with ``is_deploy=True``:
+        finds the sso-deploy FIDO2 token created by
+        ``recovery_deploy_begin`` (credential_data still empty),
+        starts a WebAuthn registration, stashes the reg state under
+        an opaque id in the per-host fido2_reg_states shared dict.
+        begin and complete land on the same node because both are
+        forwarded with mgmt=True (master node)."""
+        rp_id = command_args.get('rp_id')
+        if not isinstance(rp_id, str) or not rp_id:
+            return self._recovery_invalid()
+        user, err = self._recovery_gate(username, command_args)
+        if err is not None:
+            return err
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="recovery_fido2_register_begin",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        sso_token, err = self._recovery_gate_home(user, command_args)
+        if err is not None:
+            return err
+        del sso_token  # metadata not needed on the fido2 register path
+        # Locate the empty FIDO2 sso-deploy token for this user.
+        user_tokens = backend.search(object_type="token",
+                                    attribute="owner_uuid",
+                                    value=user.uuid,
+                                    return_type="instance")
+        fido2_token = None
+        for token in user_tokens:
+            if token.token_type != "fido2":
+                continue
+            if not token.credential_data and fido2_token is None:
+                fido2_token = token
+        if not fido2_token:
+            return self._recovery_invalid()
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        fido2_server = Fido2Server(rp_data, attestation="direct")
+        user_data = {"id": user.name.encode(),
+                    "name": user.name,
+                    "displayName": user.name}
+        # is_deploy semantics: no existing-credentials list; the user
+        # is intentionally re-using their authenticator to replace the
+        # login token they lost access to.
+        create_options, reg_state = fido2_server.register_begin(
+            user_data,
+            credentials=[],
+            user_verification=fido2_token.uv or "preferred",
+            authenticator_attachment="cross-platform",
+        )
+        fido2_state_id = stuff.gen_secret(len=32)
+        multiprocessing.fido2_reg_states.add(
+                key=fido2_state_id,
+                value={'state':      reg_state,
+                       'token_uuid': fido2_token.uuid},
+                expire=300)
+        return self.build_response(True, {
+                    'create_options': dict(create_options),
+                    'fido2_state_id': fido2_state_id,
+                    'status':         True,
+                })
+
+    def recovery_fido2_register_complete(self, username, sso_jwt, command_args):
+        """ Unauth FIDO2 register-complete variant. Stores the
+        attested credential on the sso-deploy FIDO2 token. Does NOT
+        move the token to the login-token slot yet -- that happens
+        in ``recovery_deploy_verify`` so the same code path handles
+        OATH and FIDO2 uniformly. """
+        rp_id = command_args.get('rp_id')
+        fido2_state_id = command_args.get('fido2_state_id')
+        registration_data = command_args.get('registration_data')
+        if not isinstance(rp_id, str) or not rp_id:
+            return self._recovery_invalid()
+        if not isinstance(fido2_state_id, str) or not fido2_state_id:
+            return self._recovery_invalid()
+        if not registration_data:
+            return self._recovery_invalid()
+        user, err = self._recovery_gate(username, command_args)
+        if err is not None:
+            return err
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="recovery_fido2_register_complete",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        sso_token, err = self._recovery_gate_home(user, command_args)
+        if err is not None:
+            return err
+        del sso_token  # metadata not needed on the fido2 register path
+        try:
+            state_data = multiprocessing.fido2_reg_states.delete(fido2_state_id)
+        except KeyError:
+            return self._recovery_invalid()
+        reg_state = state_data['state']
+        token_uuid = state_data['token_uuid']
+        fido2_token = backend.get_object(uuid=token_uuid)
+        if not fido2_token:
+            return self._recovery_invalid()
+        if fido2_token.owner_uuid != user.uuid:
+            return self._recovery_invalid()
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        fido2_server = Fido2Server(rp_data, attestation="direct")
+        try:
+            auth_data = fido2_server.register_complete(reg_state,
+                                                        registration_data)
+        except Exception as e:
+            log_msg = _("Recovery FIDO2 registration failed for '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self._recovery_invalid()
+        # Attestation cert check mirrors the regular register_complete
+        # path so the recovery flow enforces the same policy.
+        check_attestation_cert = user.get_config_parameter("check_fido2_attestation_cert")
+        if check_attestation_cert:
+            from otpme.lib.token.fido2.fido2 import verify_attestation_cert
+            try:
+                info_messages, \
+                attestation_cert = verify_attestation_cert(registration_data)
+            except OTPmeException as e:
+                log_msg = _("Recovery FIDO2 attestation verification failed for '{u}': {e}", log=True)[1]
+                log_msg = log_msg.format(u=user.name, e=e)
+                self.logger.warning(log_msg)
+                return self._recovery_invalid()
+            for info_msg in info_messages:
+                self.logger.info(info_msg)
+            fido2_token.attestation_cert = attestation_cert
+        fido2_token.rp = rp_id
+        fido2_token.credential_data = encode(auth_data.credential_data, "hex")
+        fido2_token._write(callback=self.get_callback())
+        return self.build_response(True, {'status': True})
+
+    def recovery_deploy_verify(self, username, sso_jwt, command_args):
+        """ Unauth deploy-verify variant driven by a valid recovery
+        token. Verifies the just-provisioned sso-deploy token (OTP
+        entry for OATH, credential-present check for FIDO2), then
+        moves it in place of the user's default_sso_token_name
+        (never a client-supplied target -- prevents pivoting). On
+        success clears the recovery token from the user object so
+        the link is single-use. """
+        user, err = self._recovery_gate(username, command_args)
+        if err is not None:
+            return err
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="recovery_deploy_verify",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        sso_token, err = self._recovery_gate_home(user, command_args)
+        if err is not None:
+            return err
+        callback = self.get_callback()
+        callback.raise_exception = True
+        token_data = command_args.get('token_data') or {}
+        # Password: no DEPLOY_NAME staging. Create the new password
+        # token directly at the SSO-token slot with add_token(
+        # replace=True). Works for both same-type (was password) and
+        # cross-type (was fido2/totp -> password). Real password
+        # policy failures surface with a proper message.
+        token_type_hint = token_data.get('token_type')
+        if token_type_hint == "password":
+            new_password = token_data.get('password')
+            confirm = token_data.get('password_confirm')
+            if not isinstance(new_password, str) or not new_password:
+                return self._recovery_invalid()
+            if confirm is not None and confirm != new_password:
+                return self._recovery_invalid()
+            try:
+                user.add_token(token_name=sso_token.name,
+                                token_type="password",
+                                replace=True,
+                                password=new_password,
+                                no_token_infos=True,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=True,
+                                callback=callback)
+                user._write(callback=callback)
+            except Exception as e:
+                log_msg = _("Recovery deploy: password set failed for '{u}': {e}", log=True)[1]
+                log_msg = log_msg.format(u=user.name, e=e)
+                self.logger.warning(log_msg)
+                return self._recovery_invalid()
+        else:
+            # OATH / FIDO2: verify the DEPLOY_NAME staging token,
+            # then move it into the SSO-token slot (server-derived
+            # name -- client-supplied token name never taken).
+            deploy_token = user.token(DEPLOY_NAME)
+            if not deploy_token:
+                return self._recovery_invalid()
+            if deploy_token.token_type == "fido2":
+                if not deploy_token.credential_data:
+                    return self._recovery_invalid()
+            else:
+                otp = str(token_data.get('otp', ''))
+                if not otp:
+                    return self._recovery_invalid()
+                try:
+                    pin = deploy_token.pin or ""
+                    verify_result = deploy_token.verify_otp(otp=f"{pin}{otp}")
+                except Exception as e:
+                    log_msg = _("Recovery deploy: OTP verify failed for '{u}': {e}", log=True)[1]
+                    log_msg = log_msg.format(u=user.name, e=e)
+                    self.logger.warning(log_msg)
+                    return self._recovery_invalid()
+                if not verify_result:
+                    return self._recovery_invalid()
+            target_path = f"{user.name}/{sso_token.name}"
+            try:
+                deploy_token.move(target_path,
+                                replace=True,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
+            except Exception as e:
+                log_msg = _("Recovery deploy: token move failed for '{u}': {e}", log=True)[1]
+                log_msg = log_msg.format(u=user.name, e=e)
+                self.logger.critical(log_msg)
+                return self._recovery_invalid()
+        # Single-shot: clear the recovery slot so the link stops
+        # working immediately.
+        try:
+            user.recovery_token = None
+            user.recovery_token_created = None
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("Recovery deploy: failed to clear recovery slot for '{u}': {e}", log=True)[1]
+            log_msg = log_msg.format(u=user.name, e=e)
+            self.logger.warning(log_msg)
+            # Don't fail the whole flow -- deploy succeeded, only the
+            # cleanup didn't. TTL will still expire the token.
+        log_msg = _("Recovery deploy complete for user '{u}'.", log=True)[1]
+        log_msg = log_msg.format(u=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {'status': True})
 
     def change_language(self, username, sso_jwt, command_args):
         """ Persist the user's preferred UI language on the User object.
@@ -5187,6 +6093,14 @@ class OTPmeSsoP1(OTPmeServer1):
                             "sso_get_device_token_role_uuids",
                             "get_admin_access_state",
                             "set_admin_access_state",
+                            "get_recovery_mail",
+                            "set_recovery_mail",
+                            "request_sso_token_recovery",
+                            "get_sso_token_recovery_info",
+                            "recovery_deploy_begin",
+                            "recovery_deploy_verify",
+                            "recovery_fido2_register_begin",
+                            "recovery_fido2_register_complete",
                             "oidc_token",
                             "oidc_userinfo",
                             "oidc_introspect",
@@ -5250,6 +6164,50 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.oidc_avatar(command_args)
             if command == "oidc_prompt_none_no_session":
                 return self.oidc_prompt_none_no_session(command_args)
+
+        # SSO-token recovery commands are unauth by design ("forgot my
+        # token" flow): the caller cannot present an SSO JWT because
+        # the whole point is that they have no valid credential.
+        # Bypass the username/sso_jwt envelope check below; the
+        # handlers do their own input validation and enum-safe
+        # response shaping.
+        recovery_commands = ("request_sso_token_recovery",
+                             "get_sso_token_recovery_info",
+                             "recovery_deploy_begin",
+                             "recovery_deploy_verify",
+                             "recovery_fido2_register_begin",
+                             "recovery_fido2_register_complete")
+        if command in recovery_commands:
+            # Reconfigure the per-connection logger (child fork inherits
+            # a pre-connect logger that swallows records). set_proctitle
+            # is what does that in the authed paths; recovery skips the
+            # sso_jwt/username envelope, so we call it here explicitly
+            # with the requested-username (or the command name if the
+            # client sent no username) so DEBUG/INFO from the recovery
+            # handler is actually written.
+            recovery_username = command_args.get('username', '')
+            self.set_proctitle(recovery_username or command)
+            log_msg = _("Processing recovery command {command}.", log=True)[1]
+            log_msg = log_msg.format(command=command)
+            self.logger.info(log_msg)
+            if command == "request_sso_token_recovery":
+                return self.request_sso_token_recovery(recovery_username,
+                                                       None, command_args)
+            if command == "get_sso_token_recovery_info":
+                return self.get_sso_token_recovery_info(recovery_username,
+                                                       None, command_args)
+            if command == "recovery_deploy_begin":
+                return self.recovery_deploy_begin(recovery_username,
+                                                  None, command_args)
+            if command == "recovery_deploy_verify":
+                return self.recovery_deploy_verify(recovery_username,
+                                                   None, command_args)
+            if command == "recovery_fido2_register_begin":
+                return self.recovery_fido2_register_begin(recovery_username,
+                                                          None, command_args)
+            if command == "recovery_fido2_register_complete":
+                return self.recovery_fido2_register_complete(recovery_username,
+                                                             None, command_args)
 
         # Try to get username.
         try:
@@ -5385,6 +6343,16 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command set_admin_access_state.", log=True)[1]
             self.logger.info(log_msg)
             return self.set_admin_access_state(username, sso_jwt, command_args)
+
+        if command == "get_recovery_mail":
+            log_msg = _("Processing command get_recovery_mail.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.get_recovery_mail(username, sso_jwt, command_args)
+
+        if command == "set_recovery_mail":
+            log_msg = _("Processing command set_recovery_mail.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.set_recovery_mail(username, sso_jwt, command_args)
 
         if command == "list_passkeys":
             log_msg = _("Processing command list_passkeys.", log=True)[1]

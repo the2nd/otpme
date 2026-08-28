@@ -351,7 +351,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 return self.build_response(status, response)
             self.home_share = share.home_share
             self.home_share_uid = share.home_share_uid
-            self.home_share_permissions = share.home_share_permissions
+            if share.home_share_permissions:
+                self.home_share_permissions = share.home_share_permissions
             # A root mount token gets no home dir, it mounts the share
             # root and thus reaches the home dirs of all users.
             self.root_mount = share.is_root_mount_token(config.auth_token.uuid)

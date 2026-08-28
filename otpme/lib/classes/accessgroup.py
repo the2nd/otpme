@@ -60,6 +60,7 @@ read_value_acls = {
                             "child_sessions",
                             "sessions_enabled",
                             "sotp_signing",
+                            "force_sotp_signing",
                             "timeout_pass_on",
                             "max_fail",
                             "max_fail_reset",
@@ -111,11 +112,13 @@ write_value_acls = {
                 "enable"    : [
                             "sessions",
                             "sotp_signing",
+                            "force_sotp_signing",
                             "timeout_pass_on",
                             ],
                 "disable"   : [
                             "sessions",
                             "sotp_signing",
+                            "force_sotp_signing",
                             "timeout_pass_on",
                             ],
 }
@@ -341,6 +344,22 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_force_sotp_signing'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'enable_force_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_force_sotp_signing'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'disable_force_sotp_signing',
                     'job_type'          : 'process',
                     },
                 },
@@ -918,6 +937,8 @@ def register_hooks():
     config.register_auth_on_action_hook("accessgroup", "disable_sessions")
     config.register_auth_on_action_hook("accessgroup", "enable_sotp_signing")
     config.register_auth_on_action_hook("accessgroup", "disable_sotp_signing")
+    config.register_auth_on_action_hook("accessgroup", "enable_force_sotp_signing")
+    config.register_auth_on_action_hook("accessgroup", "disable_force_sotp_signing")
     config.register_auth_on_action_hook("accessgroup", "update_sign_public_keys")
     config.register_auth_on_action_hook("accessgroup", "enable_timeout_pass_on")
     config.register_auth_on_action_hook("accessgroup", "disable_timeout_pass_on")
@@ -1009,8 +1030,13 @@ class AccessGroup(OTPmeObject):
         self.acl_inheritance_enabled = False
         self.sessions_enabled = False
         self.timeout_pass_on = False
-        # Require the client to sign the SOTP it authenticates with.
+        # Require the client to sign the SOTP it authenticates with. Only
+        # users whose sign public key is stored in the accessgroup have to
+        # sign, the others authenticate as before.
         self.sotp_signing = False
+        # Require every user to sign, even those without a sign public key
+        # stored in the accessgroup. Those can no longer authenticate.
+        self.force_sotp_signing = False
 
         self._sync_fields = {
                     'host'  : {
@@ -1029,6 +1055,7 @@ class AccessGroup(OTPmeObject):
                             "OBJECT_CLASSES",
                             "EXTENSION_ATTRIBUTES",
                             "SOTP_SIGNING",
+                            "FORCE_SOTP_SIGNING",
                             "SIGN_PUBLIC_KEYS",
                             "ROLES",
                             "TOKENS",
@@ -1053,6 +1080,12 @@ class AccessGroup(OTPmeObject):
 
                         'SOTP_SIGNING'              : {
                                                         'var_name'  : 'sotp_signing',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+
+                        'FORCE_SOTP_SIGNING'        : {
+                                                        'var_name'  : 'force_sotp_signing',
                                                         'type'      : bool,
                                                         'required'  : False,
                                                     },
@@ -2131,29 +2164,31 @@ class AccessGroup(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Require clients to sign the SOTP they authenticate with. """
+        """ Require clients to sign the SOTP they authenticate with.
+
+        Only users whose sign public key is stored in the accessgroup
+        have to sign. A user without a key authenticates as before, which
+        makes it possible to enable signing before every user has a key.
+        Use enable_force_sotp_signing() to require it from everyone.
+        """
         if self.sotp_signing:
             return callback.error(_("SOTP signing already enabled."))
 
-        # A role would bring in tokens without us noticing, so their
-        # users sign public keys would be missing.
-        if self.roles:
-            msg = _("SOTP signing does not support roles. Please remove all roles from the accessgroup first.")
-            return callback.error(msg)
-
         # Get sign public keys of all users with a token assigned.
         group_users = self.get_token_users(return_type="instance")
+        key_users = []
         missing_keys = []
         for user in group_users:
-            if user.sign_public_key:
+            if not user.sign_public_key:
+                missing_keys.append(user.name)
                 continue
-            missing_keys.append(user.name)
+            key_users.append(user)
         if missing_keys:
-            msg = _("Users without sign public key: {user_names}")
+            msg = _("Users without sign public key (they will not sign): {user_names}")
             msg = msg.format(user_names=",".join(sorted(missing_keys)))
-            return callback.error(msg)
+            callback.send(msg)
 
-        msg = _("Enable SOTP signing for accessgroup '{group_name}'? Clients without a sign key cannot authenticate anymore.: ")
+        msg = _("Enable SOTP signing for accessgroup '{group_name}'? Clients of users with a sign key stored in the accessgroup have to sign.: ")
         msg = msg.format(group_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
             return callback.abort()
@@ -2170,7 +2205,7 @@ class AccessGroup(OTPmeObject):
                 msg = str(e)
                 return callback.error(msg)
 
-        for user in group_users:
+        for user in key_users:
             if not self.add_sign_public_key(user, callback=callback):
                 return callback.error()
 
@@ -2221,8 +2256,122 @@ class AccessGroup(OTPmeObject):
             self.set_changelog("removed sign public keys")
 
         self.sotp_signing = False
+        # Forcing it without signing being enabled makes no sense.
+        self.force_sotp_signing = False
 
         self.update_index('sotp_signing', self.sotp_signing)
+        self.update_index('force_sotp_signing', self.force_sotp_signing)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:force_sotp_signing'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("enable forced SOTP signing")
+    def enable_force_sotp_signing(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Require every user to sign the SOTP, not just those with a key.
+
+        Without this a user whose sign public key is missing in the
+        accessgroup authenticates without signing. That is what makes a
+        rollout possible, but it also means a user can be talked out of
+        signing by removing their key. Forcing closes that door: a user
+        without a key can no longer authenticate at all.
+        """
+        if not self.sotp_signing:
+            msg = _("SOTP signing not enabled.")
+            return callback.error(msg)
+
+        if self.force_sotp_signing:
+            return callback.error(_("Forced SOTP signing already enabled."))
+
+        # A role would bring in tokens without us noticing, so their
+        # users sign public keys would be missing.
+        if self.roles:
+            msg = _("Forced SOTP signing does not support roles. Please remove all roles from the accessgroup first.")
+            return callback.error(msg)
+
+        # Every user with a token assigned needs a key we can verify against.
+        group_users = self.get_token_users(return_type="instance")
+        missing_keys = []
+        for user in group_users:
+            if self.sign_public_keys.get(user.uuid):
+                continue
+            missing_keys.append(user.name)
+        if missing_keys:
+            msg = _("Users without sign public key: {user_names}")
+            msg = msg.format(user_names=",".join(sorted(missing_keys)))
+            return callback.error(msg)
+
+        msg = _("Force SOTP signing for accessgroup '{group_name}'? Clients without a sign key cannot authenticate anymore.: ")
+        msg = msg.format(group_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_force_sotp_signing",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        self.force_sotp_signing = True
+
+        self.update_index('force_sotp_signing', self.force_sotp_signing)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:force_sotp_signing'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    @object_changelog("disable forced SOTP signing")
+    def disable_force_sotp_signing(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Only require users with a stored sign public key to sign.
+
+        SOTP signing itself stays enabled. The stored keys are kept, so
+        the users that have one keep signing.
+        """
+        if not self.force_sotp_signing:
+            return callback.error(_("Forced SOTP signing already disabled."))
+
+        msg = _("Do no longer force SOTP signing for accessgroup '{group_name}'?: ")
+        msg = msg.format(group_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_force_sotp_signing",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        self.force_sotp_signing = False
+
+        self.update_index('force_sotp_signing', self.force_sotp_signing)
 
         return self._cache(callback=callback)
 
@@ -2368,12 +2517,18 @@ class AccessGroup(OTPmeObject):
                 msg = msg.format(token_user=token_user)
                 return callback.error(msg)
             user = result[0]
-            # Refuse the token before the parent class adds it. Without
-            # a key its user cannot authenticate anyway.
             if not user.sign_public_key:
-                msg = _("User misses sign public key: {user_name}")
+                # With signing forced the user cannot authenticate without
+                # a key, so refuse the token before the parent class adds
+                # it. Without force the user just does not sign.
+                if self.force_sotp_signing:
+                    msg = _("User misses sign public key: {user_name}")
+                    msg = msg.format(user_name=user.name)
+                    return callback.error(msg)
+                msg = _("User misses sign public key and will not sign: {user_name}")
                 msg = msg.format(user_name=user.name)
-                return callback.error(msg)
+                callback.send(msg)
+                user = None
 
         # Add token by parent class.
         result = super().add_token(token_path=token_path,
@@ -2442,9 +2597,10 @@ class AccessGroup(OTPmeObject):
         ):
         """ Add role to accessgroup. """
         # A role would bring in tokens without us noticing, so their
-        # users sign public keys would be missing.
-        if self.sotp_signing:
-            msg = _("Accessgroups with SOTP signing do not support roles.")
+        # users sign public keys would be missing. Without force that is
+        # fine, those users just do not sign.
+        if self.force_sotp_signing:
+            msg = _("Accessgroups with forced SOTP signing do not support roles.")
             return callback.error(msg)
         return super().add_role(*args, callback=callback, **kwargs)
 
@@ -2456,8 +2612,8 @@ class AccessGroup(OTPmeObject):
         **kwargs,
         ):
         """ Remove role from accessgroup. """
-        if self.sotp_signing:
-            msg = _("Accessgroups with SOTP signing do not support roles.")
+        if self.force_sotp_signing:
+            msg = _("Accessgroups with forced SOTP signing do not support roles.")
             return callback.error(msg)
         return super().remove_role(*args, callback=callback, **kwargs)
 
@@ -2513,6 +2669,7 @@ class AccessGroup(OTPmeObject):
         self.add_index("timeout_pass_on", self.timeout_pass_on)
         self.add_index("sessions_enabled", self.sessions_enabled)
         self.add_index("sotp_signing", self.sotp_signing)
+        self.add_index("force_sotp_signing", self.force_sotp_signing)
         self.add_index("relogin_timeout", self.relogin_timeout)
         self.add_index("unused_session_timeout", self.unused_session_timeout)
         return OTPmeObject.add(self, verbose_level=verbose_level,

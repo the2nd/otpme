@@ -326,7 +326,7 @@ cmd_help = {
                 },
 
     'index'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool index {start|status|reload|restart|stop|cli|init|drop|fix|rebuild|create_db_indices|drop_db_indices}'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool index {start|status|reload|restart|stop|cli|init|drop|fix|rebuild|init|backup|restore|create_db_indices|drop_db_indices}'),
                     '_help' :   {
                                     'cmd'                   : _('Execute index command (e.g. rebuild)'),
                                 },

@@ -19,12 +19,13 @@ cmd_help = {
     '_need_command'             : True,
     '_usage_help'               : _("Usage: otpme-token --type password {command} [token]"),
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token --type password add [-r] [--password <password>] [--enable-mschap] {token}'),
-                    'cmd'   :   '-r :replace=True: --password :password: --enable-mschap :enable_mschap=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-token --type password add [-r] [--password <password>] [--weakk-password] [--enable-mschap] {token}'),
+                    'cmd'   :   '-r :replace=True: --password :password: --weak-password :weak_password=True: --enable-mschap :enable_mschap=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Add new token.'),
                                     '-r'                    : _('Replace existing token and keep its UUID.'),
                                     '--password'            : _('Set token password.'),
+                                    '--weak-password'       : _('Allow a password the password policy rejects (needs force_password ACL).'),
                                     '--enable-mschap'       : _('Enable MSCHAP for this token.'),
                                 },
                 },

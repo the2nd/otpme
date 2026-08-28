@@ -4,6 +4,7 @@ import os
 import stat
 import gzip
 import zlib
+import errno
 import fcntl
 import shutil
 import struct
@@ -32,6 +33,21 @@ _SNAP_ID_TYPES = {v: k for k, v in _SNAP_TYPE_IDS.items()}
 # Offset of ctime (double) inside the header: B+H+I+I+Q = 1+2+4+4+8 = 19
 _SNAP_CTIME_OFFSET = 19
 
+# Schema version of the snap-index (PRAGMA user_version).
+#   0: snapshot membership in a per snapshot entry_ids.gz file
+#   1: snapshot membership in the snap_entries table
+#   2: extended attributes in the index entry
+#   3: chunk IDs are keyed with the repository key, not a plain hash
+_SNAP_SCHEMA_VERSION = 3
+
+# Extended attributes the ACL handling covers already.
+_ACL_XATTRS = (
+                "system.posix_acl_access",
+                "system.posix_acl_default",
+            )
+# How much of an entries extended attributes we are willing to store.
+_MAX_XATTR_BYTES = 65536
+
 
 
 def _entry_ctime(val):
@@ -40,7 +56,7 @@ def _entry_ctime(val):
 
 
 def _entry_chunk_hashes(val):
-    """Extract chunk hashes from a binary snap-index entry without full parse."""
+    """Extract the chunk IDs from a binary snap-index entry without full parse."""
     if val[0] != _SNAP_TYPE_IDS['file']:
         return []
     off = _SNAP_HEADER_SIZE
@@ -86,28 +102,34 @@ Architecture
   BackupClient (crypto + file I/O)     BackupServer (storage only)
   ──────────────────────────────────    ──────────────────────────────
    Filesystem read                       get_salt() → bytes
-   Metadata collection                   block_exists(hash) → bool
-   SHA-256 hashing                       store_block(hash, blob)
-   zlib compression                      retrieve_block(hash) → blob
-   AES-GCM encryption                   create_snapshot(name)
-   ───── sends encrypted blob ────→      write_entry(name, path, meta)
-   ←──── receives encrypted blob ──
-   AES-GCM decryption                   iter_entries(name) → entry...
+   Metadata collection                   get_key_check() → bytes
+   Keyed chunk ID (HMAC)                 block_exists(id) → bool
+   zlib compression                      store_block(id, blob)
+   AES-GCM encryption                    retrieve_block(id) → blob
+   ───── sends encrypted blob ────→      create_snapshot(name)
+   ←──── receives encrypted blob ──      write_entry(name, path, meta)
+   AES-GCM decryption                    iter_entries(name) → entry...
    zlib decompression                    list_snapshots() → [...]
    File writing + metadata restore       delete_snapshot(name)
                                          gc_orphaned_blocks()
 
-  The server never sees plaintext.  The client knows nothing about storage layout.
+  The server never sees plaintext: it stores blobs the client encrypted and
+  never computes a chunk ID itself.  The client in turn leaves the storage
+  layout to the server, with one exception -- it reads the snap-index of the
+  previous snapshot to find out what changed, see _open_prev_index().
 
 Storage layout
 ==============
 
   backup_dir/
   ├── key.salt                   # PBKDF2 salt (600 000 iterations → AES-256 key)
+  ├── key.check                  # Blob encrypted with the repository key
+  ├── mode                       # Repository mode: "tree" or "pack"
+  ├── snap_index.db              # SQLite: entries + snap_entries + snap_meta
   ├── packs/                     # Pack-based encrypted block store
   │   ├── XX/                   #   first 2 hex chars of 6-digit pack ID
-  │   │   └── pack-XXXXXX.dat  #   concatenated entries: 64B hash + 4B len + blob
-  │   └── pack_index.db         #   SQLite pack index: hash → (pack_id, offset, length)
+  │   │   └── pack-XXXXXX.dat  #   concatenated: 64B chunk ID + 4B len + blob
+  │   └── pack_index.db         #   SQLite: chunk ID → (pack_id, offset, length)
   ├── tree/                      # Shared directory tree with all backup entries
   │   ├── etc/                  #   mirrors the original directory structure
   │   │   └── cfg-<snap>        #   files get "-<snap_name>" suffix
@@ -116,26 +138,36 @@ Storage layout
   │           └── doc-<snap>
   └── snapshots/
       └── <name>/
-          ├── meta/              # Only for directories: sha256(rel_path) named files
-          │   └── <hash_b>       # standalone file for dirs (metadata carrier)
-          ├── entry_ids.gz        # Compressed entry_id list (per snapshot)
-          └── snap_index.db       # SQLite: entries table + key index
+          ├── chunks             # gzip text: one chunk ID per line (GC)
+          ├── complete           # Written by finalize_snapshot(), holds the stats
+          └── running            # Pidfile, exists while the backup runs
 
-  For directories, meta/ files carry filesystem metadata (permissions, ACLs,
-  ownership, timestamps) as actual file attributes.  For non-directory entries,
-  metadata is stored directly on the tree/ file — no meta/ entry exists.
+  A non-directory entry has one tree/ file per snapshot, and that file carries
+  its filesystem metadata (permissions, ACLs, ownership, timestamps) as actual
+  file attributes.  A directory in tree/ is shared by all snapshots, so it can
+  not do that: its metadata per snapshot lives in the index.  What is on the
+  directory itself is the metadata of the *last* backup, which is what keeps
+  the kernel from letting a user into an older snapshot of a directory he lost
+  his permissions on.
 
-File content format (meta/ and tree/ entries)
-=============================================
+File content format (tree/ entries)
+===================================
 
   <rel_path>                      ← line 0: original relative path
   <size> <mtime>                  ← line 1 (regular files): decimal size + mtime
-  <sha256_chunk_hash_1>           ← lines 2+: one hash per line, in order
-  <sha256_chunk_hash_2>
+  <chunk_id_1>                    ← lines 2+: one chunk ID per line, in order
+  <chunk_id_2>
   ...
 
+  A chunk ID is HMAC-SHA256(id_key, plaintext), not a plain hash of the
+  plaintext: it is stored in the clear, and a plain hash would let anyone
+  with read access confirm whether a known file is in the backup.
+
   Special entry types use a type marker on line 1:
-  DIR, SYMLINK, HARDLINK, BLOCKDEV, CHARDEV, FIFO, SOCKET
+  SYMLINK, HARDLINK, BLOCKDEV, CHARDEV, FIFO, SOCKET
+
+  A directory has no tree/ entry of its own, so it has no such file: the
+  directory itself is the entry, and what it was per snapshot is in the index.
 
 Snapshot deletion & garbage collection
 ======================================
@@ -143,8 +175,8 @@ Snapshot deletion & garbage collection
   1. Read index — for non-dir entries, delete tree/ file (via suffix)
   2. Remove snapshots/<name>/ directory
   3. Clean up empty tree/ directories (bottom-up)
-  4. Scan all remaining snapshot chunks files to collect live hashes
-  5. Remove dead hashes from pack index; delete fully empty pack files
+  4. Scan all remaining snapshot chunks files to collect the live chunk IDs
+  5. Remove dead IDs from pack index; delete fully empty pack files
   6. Pack-index is updated transactionally
 
 """
@@ -198,6 +230,7 @@ import hmac as _hmac
 import base64 as _base64
 
 _PATH_KEY_LABEL = b"otpme-backup-path-encryption-v1"
+_ID_KEY_LABEL = b"otpme-backup-chunk-id-v1"
 
 
 def _derive_path_key(key: bytes) -> bytes:
@@ -206,6 +239,16 @@ def _derive_path_key(key: bytes) -> bytes:
     k1 = _hmac.new(key, _PATH_KEY_LABEL + b'\x01', 'sha256').digest()
     k2 = _hmac.new(key, _PATH_KEY_LABEL + b'\x02', 'sha256').digest()
     return k1 + k2
+
+
+def _derive_id_key(key: bytes) -> bytes:
+    """Derive the chunk ID key from the 32-byte main key.
+
+    Kept apart from the key that encrypts the data: the chunk ID is the one
+    thing about a chunk that is stored in the clear, so it must not be
+    derivable from anything but the repository key.
+    """
+    return _hmac.new(key, _ID_KEY_LABEL, 'sha256').digest()
 
 
 def encrypt_path_component(siv: AESSIV, name: str, parent_ct: bytes) -> str:
@@ -301,6 +344,151 @@ def _set_acl_text(path: str, acl_text: str) -> None:
         logger.debug("setacl %s: %s", path, exc)
     return
 
+def _get_xattrs(path: str) -> Optional[dict]:
+    """Read the extended attributes of an entry.
+
+    Without the POSIX ACLs, which are stored as text of their own.  Symlinks
+    are not followed: we back up the link, not what it points at.  Returns
+    None if there is nothing to store.
+
+    The values are hex, like the chunk hashes: a meta dict travels to a
+    remote backupd as JSON, which has no way to carry raw bytes.  An
+    attribute like security.capability -- what /usr/bin/ping has instead of
+    a setuid bit -- is binary.
+    """
+    try:
+        names = os.listxattr(path, follow_symlinks=False)
+    except OSError as exc:
+        if exc.errno not in (errno.ENOTSUP, errno.ENODATA):
+            logger.debug("listxattr %s: %s", path, exc)
+        return None
+    xattrs = {}
+    total = 0
+    for x_name in names:
+        if x_name in _ACL_XATTRS:
+            continue
+        try:
+            value = os.getxattr(path, x_name, follow_symlinks=False)
+        except OSError as exc:
+            logger.debug("getxattr %s %s: %s", path, x_name, exc)
+            continue
+        total += len(x_name) + len(value)
+        if total > _MAX_XATTR_BYTES:
+            logger.warning("Extended attributes exceed %d bytes, storing "
+                        "only what fits: %s", _MAX_XATTR_BYTES, path)
+            break
+        xattrs[x_name] = value.hex()
+    if not xattrs:
+        return None
+    return xattrs
+
+def _set_xattrs(path: str, xattrs: dict) -> None:
+    """Apply extended attributes to a restored entry.
+
+    Values are hex, see _get_xattrs().  Has to run after chown(): that drops
+    security.capability.
+    """
+    for x_name in sorted(xattrs):
+        try:
+            value = bytes.fromhex(xattrs[x_name])
+        except ValueError as exc:
+            logger.warning("Invalid extended attribute %s on %s: %s",
+                        x_name, path, exc)
+            continue
+        try:
+            os.setxattr(path, x_name, value, follow_symlinks=False)
+        except OSError as exc:
+            logger.debug("setxattr %s %s: %s", path, x_name, exc)
+    return
+
+def _pack_xattrs(xattrs: Optional[dict]) -> bytes:
+    """Serialise extended attributes: name_len(2) name value_len(4) value."""
+    if not xattrs:
+        return b''
+    parts = []
+    for x_name in sorted(xattrs):
+        name = x_name.encode('utf-8')
+        try:
+            value = bytes.fromhex(xattrs[x_name])
+        except ValueError as exc:
+            logger.warning("Invalid extended attribute %s: %s", x_name, exc)
+            continue
+        parts.append(struct.pack('>H', len(name)))
+        parts.append(name)
+        parts.append(struct.pack('>I', len(value)))
+        parts.append(value)
+    return b''.join(parts)
+
+def _unpack_xattrs(raw: bytes) -> Optional[dict]:
+    """Parse what _pack_xattrs() wrote. Returns None if there are none."""
+    if not raw:
+        return None
+    xattrs = {}
+    off = 0
+    try:
+        while off < len(raw):
+            name_len = struct.unpack_from('>H', raw, off)[0]
+            off += 2
+            name = raw[off:off + name_len].decode('utf-8')
+            off += name_len
+            value_len = struct.unpack_from('>I', raw, off)[0]
+            off += 4
+            xattrs[name] = raw[off:off + value_len].hex()
+            off += value_len
+    except (struct.error, IndexError, UnicodeDecodeError) as exc:
+        logger.warning("Truncated extended attributes in index entry: %s", exc)
+    if not xattrs:
+        return None
+    return xattrs
+
+def _remove_acl(path: str, default: bool = False) -> None:
+    """Drop an extended ACL, leaving the mode bits alone.
+
+    An entry that lost its ACL must not keep the one of the previous backup.
+    chmod only recalculates the mask, so a leftover named entry becomes
+    effective again as soon as the new mode carries group permissions -- the
+    user we just took the ACL away from would still get in.
+    """
+    if default:
+        xattr_name = "system.posix_acl_default"
+    else:
+        xattr_name = "system.posix_acl_access"
+    try:
+        os.removexattr(path, xattr_name)
+    except OSError as exc:
+        if exc.errno in (errno.ENODATA, errno.ENOTSUP):
+            # There was none to begin with.
+            return
+        logger.debug("removeacl %s: %s", path, exc)
+    return
+
+def _get_default_acl_text(path: str) -> Optional[str]:
+    """Return the default ACL of a directory as single-line text.
+
+    Only directories have one and it grants no access itself: it is the
+    template new entries below the directory inherit.  A minimal default ACL
+    is kept as well -- unlike the access ACL it is not implied by the mode
+    bits, so dropping it would change what gets inherited.  Returns None if
+    there is no default ACL.
+    """
+    try:
+        acl = posix1e.ACL(filedef=path)
+    except (OSError, IOError):
+        return None
+    if not acl.valid():
+        return None
+    return acl.to_any_text(separator=b",",
+                        options=posix1e.TEXT_NUMERIC_IDS).decode()
+
+def _set_default_acl_text(path: str, acl_text: str) -> None:
+    """Apply a default ACL (directories only)."""
+    try:
+        acl = posix1e.ACL(text=acl_text)
+        acl.applyto(path, posix1e.ACL_TYPE_DEFAULT)
+    except (OSError, IOError) as exc:
+        logger.debug("setdefaultacl %s: %s", path, exc)
+    return
+
 # ---------------------------------------------------------------------------
 # Directory walk (sorted, symlink-safe)
 # ---------------------------------------------------------------------------
@@ -356,10 +544,12 @@ def _walk(path: str, excluded_dirs=None):
 # ---------------------------------------------------------------------------
 
 class BackupServer:
-    """Manages the backup storage: objects/, snapshots/, salt.
+    """Manages the backup storage: packs/, tree/, snapshots/, the snap-index
+    and the repository key material.
 
     The server never sees plaintext data.  It stores and retrieves
-    pre-encrypted blobs identified by their plaintext SHA-256 hash.
+    pre-encrypted blobs identified by a chunk ID the client computes with
+    the repository key, and it never computes one itself.
     """
 
     def __init__(self, backup_dir: str):
@@ -368,6 +558,7 @@ class BackupServer:
         self.tree_dir      = self.root / "tree"
         self.snapshots_dir = self.root / "snapshots"
         self.salt_file     = self.root / "key.salt"
+        self.key_check_file = self.root / "key.check"
         self.mode_file     = self.root / "mode"
         self.mode          = None  # loaded by _load_mode()
         # The snapshot we are filling, set by create_snapshot() and
@@ -392,10 +583,10 @@ class BackupServer:
         self._snap_puts_since_commit = 0
         # Shared snap-index SQLite (single DB for all snapshots)
         self._snap_db           = None  # sqlite3.Connection
+        self._snap_db_readonly  = False # True if opened with mode=ro
         self._snap_id_cache     = {}    # snap_name -> snap_id
-        self._snap_entry_id_cache = {}  # snap_name -> set of entry_ids
         self._active_snap_id    = None  # snap_id of current write session
-        self._active_entry_ids  = None  # set of entry_ids being written
+        self._active_snap_name  = None  # name of current write session
         self._snap_puts_since_commit = 0
         self._chunks_gz         = None  # streaming gzip writer for chunks file
         # Entry cursor state (for chunked iteration)
@@ -463,40 +654,44 @@ class BackupServer:
             self._load_mode()
         return self.mode
 
-    def _snap_entry_ids(self, snap_name: str) -> set:
-        """Return cached set of entry_ids for a snapshot."""
-        if snap_name in self._snap_entry_id_cache:
-            return self._snap_entry_id_cache[snap_name]
-        ids = self._read_snap_entry_ids(snap_name)
-        self._snap_entry_id_cache[snap_name] = ids
-        return ids
+    # One entry of one snapshot, by path. The join keeps this an indexed
+    # lookup instead of a membership test against the whole snapshot.
+    _SNAP_GET_SQL = ("SELECT e.value FROM entries e "
+                    "JOIN snap_entries se ON se.entry_id = e.entry_id "
+                    "WHERE e.key = ? AND se.snap_id = ? "
+                    "ORDER BY e.entry_id DESC LIMIT 1")
+
+    def _connect_snap_db_ro(self) -> sqlite3.Connection:
+        """Open a read-only connection to the snap-index.
+
+        For the callers that only read and have no session open. Read-only
+        because they also run where we may not write the repository, e.g. on
+        a restore mount. Returns None if there is no index yet.
+        """
+        db_path = self._snap_index_db_path()
+        if not os.path.exists(db_path):
+            return None
+        return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
 
     def _snap_index_get(self, snap_name: str, rel_path: str) -> bytes:
         """Look up a single entry from snap-index SQLite. Returns entry_data or None."""
-        entry_ids = self._snap_entry_ids(snap_name)
-        if not entry_ids:
+        snap_id = self._resolve_snap_id(snap_name)
+        if snap_id == 0:
             return None
         db = self._snap_db
         if db is None:
-            db_path = self._snap_index_db_path()
-            if not os.path.exists(db_path):
+            db = self._connect_snap_db_ro()
+            if db is None:
                 return None
-            db = sqlite3.connect(db_path)
             try:
-                for row in db.execute(
-                        "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC",
-                        (rel_path,)):
-                    if row[0] in entry_ids:
-                        return row[1]
-                return None
+                row = db.execute(self._SNAP_GET_SQL, (rel_path, snap_id)).fetchone()
             finally:
                 db.close()
-        for row in db.execute(
-                "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC",
-                (rel_path,)):
-            if row[0] in entry_ids:
-                return row[1]
-        return None
+        else:
+            row = db.execute(self._SNAP_GET_SQL, (rel_path, snap_id)).fetchone()
+        if row is None:
+            return None
+        return row[0]
 
     def _snap_index_get_parsed(self, snap_name: str, rel_path: str) -> dict:
         """Look up a single entry and return parsed dict, or None."""
@@ -527,6 +722,26 @@ class BackupServer:
         self.salt_file.write_bytes(salt)
         self.salt_file.chmod(0o600)
         return salt
+
+    def get_key_check(self) -> bytes:
+        """Return the key check blob, or b'' if the repository has none."""
+        if self.key_check_file.exists():
+            return self.key_check_file.read_bytes()
+        return b''
+
+    def set_key_check(self, blob: bytes) -> None:
+        """Store the key check blob of a repository that has none yet.
+
+        Written once and never replaced. Letting it be overwritten would mean
+        the first backup with a wrong key simply takes the repository over,
+        which is the very thing the check exists to prevent.
+        """
+        if self.key_check_file.exists():
+            msg = _("Repository already has a key check.")
+            raise OTPmeException(msg)
+        self.init_repository()
+        self.key_check_file.write_bytes(blob)
+        self.key_check_file.chmod(0o600)
 
     # -- pack-file helpers --
 
@@ -722,9 +937,9 @@ class BackupServer:
 
     @staticmethod
     def _is_valid_block_hash(h) -> bool:
-        """A block hash is a 64-char lowercase hex SHA-256 digest.
+        """A chunk ID is a 64-char lowercase hex digest.
 
-        The on-disk pack format hard-codes a 64-byte hash field (store
+        The on-disk pack format hard-codes a 64-byte ID field (store
         writes h + 4-byte length + blob; retrieve seeks offset + 68), so
         a client-supplied h of any other length silently desyncs the
         pack accounting and misaligns later retrieves. Reject anything
@@ -771,11 +986,6 @@ class BackupServer:
 
     # -- path helpers --
 
-    @staticmethod
-    def _path_hash(rel_path: str) -> str:
-        """Return SHA-256 hex digest of a relative path (used for meta/ filenames)."""
-        return hashlib.sha256(rel_path.encode("utf-8")).hexdigest()
-
     def _gen_hash_name(self, name: str, snap_name: str) -> str:
         short = hashlib.sha1(name.encode("utf-8")).hexdigest()[:16]
         tree_name = f"{short}-{snap_name}.longname"
@@ -798,12 +1008,6 @@ class BackupServer:
         # would escape the repo.
         self._ensure_in_tree(candidate)
         return candidate
-
-    def _meta_entry_path(self, snap_name: str, rel_path: str) -> str:
-        """Return bucketed path for a meta/ entry: meta/XX/<hash>."""
-        path_hash = self._path_hash(rel_path)
-        meta_dir = str(self.snap_meta_dir(snap_name))
-        return os.path.join(meta_dir, path_hash[:2], path_hash)
 
     def _safe_rel_path(self, rel_path: str) -> str:
         """Reject client-supplied rel_paths that would escape tree_dir.
@@ -858,28 +1062,6 @@ class BackupServer:
             return gzip.decompress(raw).decode('utf-8')
         return raw.decode('utf-8')
 
-    def _snap_entry_ids_path(self, snap_name: str) -> Path:
-        """Return path to the entry_ids.gz file for a snapshot."""
-        return self.snap_dir(snap_name) / "entry_ids.gz"
-
-    def _write_snap_entry_ids(self, snap_name: str, entry_ids) -> None:
-        """Write entry_ids set/list to a compressed file."""
-        sorted_ids = sorted(entry_ids)
-        raw = struct.pack(f'>{len(sorted_ids)}Q', *sorted_ids)
-        path = self._snap_entry_ids_path(snap_name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(str(path), 'wb') as f:
-            f.write(zlib.compress(raw))
-
-    def _read_snap_entry_ids(self, snap_name: str) -> set:
-        """Read entry_ids from compressed file. Returns empty set if missing."""
-        path = self._snap_entry_ids_path(snap_name)
-        if not path.exists():
-            return set()
-        raw = zlib.decompress(path.read_bytes())
-        count = len(raw) // 8
-        return set(struct.unpack(f'>{count}Q', raw))
-
     # -- snapshot management --
 
     @staticmethod
@@ -888,7 +1070,7 @@ class BackupServer:
         snapshots dir.
 
         snap_name is used unmodified as a path component (snap_dir /
-        snap_meta_dir / snap_chunks_path / ...). pathlib's '/' operator
+        snap_chunks_path / ...). pathlib's '/' operator
         discards its left operand on an absolute right operand and never
         normalises "..", so an unchecked snap_name is a traversal
         primitive -- and backup mode runs as root. Restrict it to a
@@ -908,10 +1090,6 @@ class BackupServer:
             raise OTPmeException(f"Refusing snap_name: {snap_name!r}")
         return snap_name
 
-    def snap_meta_dir(self, name: str) -> Path:
-        self._safe_snap_name(name)
-        return self.snapshots_dir / name / "meta"
-
 
     def snap_dir(self, name: str) -> Path:
         self._safe_snap_name(name)
@@ -926,21 +1104,34 @@ class BackupServer:
         return self.snap_dir(name) / "chunks"
 
     def _open_snap_db(self, readonly: bool = False) -> sqlite3.Connection:
-        """Open the shared snap-index SQLite database."""
+        """Open the shared snap-index SQLite database.
+
+        A read-only connection must not touch the database file: setting the
+        journal mode or creating the tables would fail on a repository we may
+        only read (a restore mount serves the index with the privileges of the
+        mount user). It is opened with mode=ro and query_only, so an attempt
+        to write is an error here and not somewhere deep in a query.
+        """
         if self._snap_db is not None:
+            if not readonly and self._snap_db_readonly:
+                msg = _("Snap-index is open read-only.")
+                raise OTPmeException(msg)
             return self._snap_db
         db_path = self._snap_index_db_path()
         if readonly and not os.path.exists(db_path):
             return None
-        uri = f"file:{db_path}?mode=ro" if readonly else db_path
         if readonly:
-            db = sqlite3.connect(uri, uri=True)
+            db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            db.execute("PRAGMA query_only=1")
         else:
             db = sqlite3.connect(db_path)
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute("PRAGMA synchronous=NORMAL")
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA synchronous=NORMAL")
         db.execute("PRAGMA cache_size=-65536")  # 64 MiB cache
-        if not readonly:
+        self._snap_db_readonly = readonly
+        if readonly:
+            self._check_snap_schema(db, readonly=True)
+        else:
             db.execute("""CREATE TABLE IF NOT EXISTS entries (
                 entry_id INTEGER PRIMARY KEY,
                 key TEXT NOT NULL,
@@ -952,9 +1143,47 @@ class BackupServer:
             db.execute("""CREATE TABLE IF NOT EXISTS name_map (
                 hmac_hex TEXT PRIMARY KEY,
                 enc_name BLOB NOT NULL)""")
+            # Which entry belongs to which snapshot. Answering that for one
+            # path has to be a single indexed query: we must not need the
+            # whole membership of a snapshot in memory to serve one lookup.
+            db.execute("""CREATE TABLE IF NOT EXISTS snap_entries (
+                snap_id INTEGER NOT NULL,
+                entry_id INTEGER NOT NULL,
+                PRIMARY KEY (snap_id, entry_id)) WITHOUT ROWID""")
+            # The other direction: is this entry still referenced anywhere?
+            db.execute("CREATE INDEX IF NOT EXISTS idx_snap_entries_entry ON snap_entries(entry_id)")
+            self._check_snap_schema(db)
 
         self._snap_db = db
         return db
+
+    def _check_snap_schema(self, db, readonly: bool = False) -> None:
+        """Stamp the snap-index schema version and refuse an older one.
+
+        There is no migration, in either direction: a repository of an older
+        schema has to be created anew. We say that instead of answering every
+        lookup with "not found", which would look like an empty snapshot
+        rather than a repository we cannot read. See _SNAP_SCHEMA_VERSION for
+        what changed when.
+
+        A read-only connection only checks: an empty repository it cannot
+        stamp is nothing to complain about either.
+        """
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version >= _SNAP_SCHEMA_VERSION:
+            return
+        try:
+            row = db.execute("SELECT entry_id FROM entries LIMIT 1").fetchone()
+        except sqlite3.OperationalError:
+            # No entries table yet -> nothing was ever written.
+            return
+        if row is not None:
+            msg = _("Repository uses snap-index schema {version}, expected {expected}. It has to be created anew.")
+            msg = msg.format(version=version, expected=_SNAP_SCHEMA_VERSION)
+            raise OTPmeException(msg)
+        if readonly:
+            return
+        db.execute(f"PRAGMA user_version = {_SNAP_SCHEMA_VERSION}")
 
     def _get_snap_id(self, snap_name: str) -> int:
         """Get numeric snap_id for a snapshot name. Creates one if missing."""
@@ -980,10 +1209,9 @@ class BackupServer:
             return self._snap_id_cache[snap_name]
         db = self._snap_db
         if db is None:
-            db_path = self._snap_index_db_path()
-            if not os.path.exists(db_path):
+            db = self._connect_snap_db_ro()
+            if db is None:
                 return 0
-            db = sqlite3.connect(db_path)
             try:
                 row = db.execute("SELECT snap_id FROM snap_meta WHERE snap_name=?",
                                  (snap_name,)).fetchone()
@@ -1007,7 +1235,6 @@ class BackupServer:
         self._open_snap_db()
         self._snap_db.execute("BEGIN")
         self._active_snap_id = self._get_snap_id(snap_name)
-        self._active_entry_ids = set()
         self._active_snap_name = snap_name
         self._snap_puts_since_commit = 0
         # Open streaming gzip writer for chunks file
@@ -1019,15 +1246,12 @@ class BackupServer:
         if self._chunks_gz is not None:
             self._chunks_gz.close()
             self._chunks_gz = None
-        # Write entry_ids to compressed file
-        if self._active_entry_ids is not None and self._active_snap_name:
-            self._write_snap_entry_ids(self._active_snap_name, self._active_entry_ids)
-            self._active_entry_ids = None
-            self._active_snap_name = None
+        self._active_snap_name = None
         if self._snap_db is not None:
             self._snap_db.commit()
             self._snap_db.close()
             self._snap_db = None
+            self._snap_db_readonly = False
         self._active_snap_id = None
         self._snap_id_cache = {}
 
@@ -1056,8 +1280,10 @@ class BackupServer:
             "INSERT INTO entries (key, value) VALUES (?, ?)",
             (rel_path, entry_data))
         entry_id = cur.lastrowid
-        self._active_entry_ids.add(entry_id)
-        # Stream chunk hashes to chunks file
+        self._snap_db.execute(
+            "INSERT OR IGNORE INTO snap_entries (snap_id, entry_id) VALUES (?, ?)",
+            (snap_id, entry_id))
+        # Stream the chunk IDs to the chunks file
         if self._chunks_gz is not None:
             for h in _entry_chunk_hashes(entry_data):
                 self._chunks_gz.write(h + '\n')
@@ -1078,14 +1304,16 @@ class BackupServer:
         # Find entry_id: prefer the one from from_snap, fall back to latest
         entry_id = None
         if from_snap is not None:
-            from_ids = self._snap_entry_ids(from_snap)
-            if from_ids:
-                for row in self._snap_db.execute(
-                        "SELECT entry_id FROM entries WHERE key=? ORDER BY entry_id DESC",
-                        (rel_path,)):
-                    if row[0] in from_ids:
-                        entry_id = row[0]
-                        break
+            from_snap_id = self._resolve_snap_id(from_snap)
+            if from_snap_id != 0:
+                row = self._snap_db.execute(
+                    "SELECT e.entry_id FROM entries e "
+                    "JOIN snap_entries se ON se.entry_id = e.entry_id "
+                    "WHERE e.key = ? AND se.snap_id = ? "
+                    "ORDER BY e.entry_id DESC LIMIT 1",
+                    (rel_path, from_snap_id)).fetchone()
+                if row is not None:
+                    entry_id = row[0]
         if entry_id is None:
             row = self._snap_db.execute(
                 "SELECT entry_id FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
@@ -1093,8 +1321,10 @@ class BackupServer:
             if row is None:
                 return
             entry_id = row[0]
-        self._active_entry_ids.add(entry_id)
-        # Stream chunk hashes to chunks file
+        self._snap_db.execute(
+            "INSERT OR IGNORE INTO snap_entries (snap_id, entry_id) VALUES (?, ?)",
+            (snap_id, entry_id))
+        # Stream the chunk IDs to the chunks file
         if self._chunks_gz is not None:
             val = self._snap_db.execute(
                 "SELECT value FROM entries WHERE entry_id=?",
@@ -1102,39 +1332,60 @@ class BackupServer:
             for h in _entry_chunk_hashes(val):
                 self._chunks_gz.write(h + '\n')
 
+    # All entries of one snapshot, ordered by path. Ordering by entry_id
+    # within a path lets the reader keep the last row of each path group,
+    # which is the same "latest wins" rule _snap_index_get() applies.
+    _SNAP_ITER_SQL = ("SELECT e.key, e.value FROM snap_entries se "
+                    "JOIN entries e ON e.entry_id = se.entry_id "
+                    "WHERE se.snap_id = ? "
+                    "ORDER BY e.key, e.entry_id")
+    _SNAP_ITER_FILTER_SQL = ("SELECT e.key, e.value FROM entries e "
+                    "JOIN snap_entries se ON se.entry_id = e.entry_id "
+                    "WHERE se.snap_id = ? "
+                    "AND (e.key = ? OR (e.key > ? AND e.key < ?)) "
+                    "ORDER BY e.key, e.entry_id")
+
+    @staticmethod
+    def _iter_latest_per_key(rows):
+        """Yield (key, value) keeping the last row of each key group."""
+        last_key = None
+        last_val = None
+        for key, val in rows:
+            if last_key is not None and key != last_key:
+                yield last_key, last_val
+            last_key = key
+            last_val = val
+        if last_key is not None:
+            yield last_key, last_val
+
     def _iter_snap_index(self, snap_name: str):
         """Yield (rel_path, entry_data_bytes) tuples for a snapshot from SQLite."""
-        entry_ids = self._snap_entry_ids(snap_name)
-        if not entry_ids:
+        snap_id = self._resolve_snap_id(snap_name)
+        if snap_id == 0:
             return
-        db_path = self._snap_index_db_path()
-        if not os.path.exists(db_path):
-            return
-        db = sqlite3.connect(db_path)
+        # Use the connection we already have: after a privilege drop we could
+        # not open the repository a second time.
+        db = self._snap_db
+        own_db = False
+        if db is None:
+            db = self._connect_snap_db_ro()
+            if db is None:
+                return
+            own_db = True
         try:
-            # Batch-fetch entries by entry_id, sort by key
-            results = []
-            id_list = sorted(entry_ids)
-            for i in range(0, len(id_list), 500):
-                batch = id_list[i:i+500]
-                ph = ",".join("?" * len(batch))
-                for eid, key, val in db.execute(
-                        f"SELECT entry_id, key, value FROM entries "
-                        f"WHERE entry_id IN ({ph})", batch):
-                    results.append((key, val))
-            results.sort(key=lambda x: x[0])
-            for key, val in results:
-                yield key, val
+            rows = db.execute(self._SNAP_ITER_SQL, (snap_id,))
+            yield from self._iter_latest_per_key(rows)
         finally:
-            db.close()
+            if own_db:
+                db.close()
 
 
     def read_chunks_file(self, snap_name: str) -> set:
-        """Read the chunks file and return a set of chunk hashes."""
+        """Read the chunks file and return a set of chunk IDs."""
         return set(self.iter_chunks_file(snap_name))
 
     def iter_chunks_file(self, snap_name: str):
-        """Yield chunk hashes from the chunks file one at a time (streaming)."""
+        """Yield the chunk IDs from the chunks file one at a time (streaming)."""
         chunks_path = self.snap_chunks_path(snap_name)
         if not chunks_path.exists():
             return
@@ -1151,7 +1402,10 @@ class BackupServer:
     def _build_index_entry(meta: dict) -> bytes:
         """Build a binary snap-index value from a meta dict.
 
-        Format: 43-byte header + 2-byte extra_len + extra + 2-byte acl_len + acl
+        Format: 43-byte header + 2-byte extra_len + extra + 2-byte acl_len +
+        acl + 2-byte default_acl_len + default_acl + 4-byte xattrs_len +
+        xattrs.  The xattrs length is 4 bytes because a single attribute can
+        hold 64 KiB and an entry can have several.
         Header: type_id(B) mode(H) uid(I) gid(I) size(Q) ctime(d) mtime(d) atime(d)
         """
         entry_type = meta["type"]
@@ -1186,14 +1440,21 @@ class BackupServer:
             extra = b''
         # ACL
         acl = (meta.get('acl', '') or '').encode('utf-8')
-        return header + struct.pack('>H', len(extra)) + extra + struct.pack('>H', len(acl)) + acl
+        default_acl = (meta.get('default_acl', '') or '').encode('utf-8')
+        xattrs = _pack_xattrs(meta.get('xattrs'))
+        return (header
+                + struct.pack('>H', len(extra)) + extra
+                + struct.pack('>H', len(acl)) + acl
+                + struct.pack('>H', len(default_acl)) + default_acl
+                + struct.pack('>I', len(xattrs)) + xattrs)
 
     @staticmethod
     def _parse_index_entry(val: bytes) -> Optional[dict]:
         """Parse a binary snap-index value into a dict.
 
         Returns dict with type, mode, uid, gid, size, ctime, mtime, atime,
-        and optionally symlink_target, link_target, devmajor, devminor, chunk_hashes, acl.
+        and optionally symlink_target, link_target, devmajor, devminor,
+        chunk_hashes, acl, default_acl, xattrs.
         Returns None if data is too short.
         """
         if len(val) < _SNAP_HEADER_SIZE + 2:
@@ -1239,6 +1500,21 @@ class BackupServer:
             off += 2
             if acl_len > 0 and off + acl_len <= len(val):
                 entry['acl'] = val[off:off + acl_len].decode('utf-8')
+            off += acl_len
+        # Default ACL (directories only).
+        if off + 2 <= len(val):
+            default_acl_len = struct.unpack_from('>H', val, off)[0]
+            off += 2
+            if default_acl_len > 0 and off + default_acl_len <= len(val):
+                entry['default_acl'] = val[off:off + default_acl_len].decode('utf-8')
+            off += default_acl_len
+        # Extended attributes. Only a pack mode backup collects them, so in
+        # tree mode the field is there but empty.
+        if off + 4 <= len(val):
+            xattrs_len = struct.unpack_from('>I', val, off)[0]
+            off += 4
+            if xattrs_len > 0 and off + xattrs_len <= len(val):
+                entry['xattrs'] = _unpack_xattrs(val[off:off + xattrs_len])
         return entry
 
     def get_snap_index_info(self, snap_name: str = None) -> dict:
@@ -1263,13 +1539,6 @@ class BackupServer:
         fp = f"{entries}:{size}:{mtime}"
         return {'size': size, 'fingerprint': fp}
 
-    def get_snap_entry_ids(self, snap_name: str) -> bytes:
-        """Return the compressed entry_ids blob for a snapshot, or b'' if missing."""
-        path = self._snap_entry_ids_path(snap_name)
-        if path.exists():
-            return path.read_bytes()
-        return b''
-
     def get_snap_index_size(self, snap_name: str) -> int:
         """Return the file size of the shared snap-index SQLite DB in bytes."""
         return self.get_snap_index_info(snap_name)['size']
@@ -1283,7 +1552,7 @@ class BackupServer:
         return zlib.compress(raw, 1)
 
     def create_snapshot(self, name: str) -> None:
-        """Create meta/ directory and index file for a new snapshot.
+        """Create the snapshot directory and open its index session.
 
         A snapshot is written once. Handing out a name that is already
         there would open it for writing again -- a finished one included,
@@ -1299,10 +1568,7 @@ class BackupServer:
         self.inode_count = 0
         self.ref_count = 0
         self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if self.mode != "pack":
-            self.snap_meta_dir(name).mkdir(parents=True, exist_ok=True)
-        else:
-            self.snap_dir(name).mkdir(parents=True, exist_ok=True)
+        self.snap_dir(name).mkdir(parents=True, exist_ok=True)
         # Open snap-index session for this snapshot
         self._open_snap_session(name)
 
@@ -1418,10 +1684,10 @@ class BackupServer:
     def write_entry(self, snap_name: str, rel_path: str, meta: dict) -> None:
         """Create a single entry in the snapshot.
 
-        For directories: creates the dir in tree/ and a metadata file in meta/.
+        For directories: creates the dir in tree/ (shared by all snapshots).
         For all other types: creates a file in tree/<dir>/<name>-<snap>.
 
-        File content format:
+        Content format of that file:
             Line 1: relative path
             Line 2+: type-specific data
 
@@ -1436,12 +1702,11 @@ class BackupServer:
 
         if self.mode != "pack":
             if entry_type == "dir":
+                # A directory in tree/ is shared by all snapshots, so it can
+                # not carry the metadata of this one. That lives in the index.
                 tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
                 self._ensure_in_tree(tree_dir_path)
                 os.makedirs(tree_dir_path, exist_ok=True)
-                meta_path = self._meta_entry_path(snap_name, rel_path)
-                os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-                self._write_gz(meta_path, f"{rel_path}\nDIR\n")
                 self.inode_count += 1
 
             elif entry_type == "symlink":
@@ -1502,25 +1767,32 @@ class BackupServer:
     def set_entry_metadata(self, snap_name: str, rel_path: str, meta: dict) -> None:
         """Apply ownership, permissions, ACLs, and timestamps to an entry.
 
-        For directories: applies to both the meta/ file and the tree/ dir.
-        For non-dirs: applies directly to the tree/ file.
+        For directories: applies to the tree/ dir, which is shared by all
+        snapshots and therefore ends up with the metadata of the last backup.
+        That is on purpose: it is what keeps the kernel from letting a user
+        into an older snapshot of a directory he lost his permissions on. The
+        metadata of *this* snapshot is in the index, see get_entry_full().
+        For non-dirs: applies directly to the tree/ file, which is per
+        snapshot.
 
-        meta dict keys:
-            type:           "file" | "dir" | "symlink"
+        meta dict keys used here:
+            type:           "dir" or one of the non-directory types
             mode:           int (file mode bits)
             uid, gid:       int
             atime, mtime:   float
             acl:            str or None
+
+        The default ACL and the extended attributes are not applied: they
+        live in the index, see write_entry() and _build_index_entry().
         """
         self.check_writable(snap_name)
         if self.mode == "pack":
             return
         self._safe_rel_path(rel_path)
         if meta.get("type") == "dir":
-            meta_path = self._meta_entry_path(snap_name, rel_path)
             tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
             self._ensure_in_tree(tree_dir_path)
-            targets = [meta_path, tree_dir_path]
+            targets = [tree_dir_path]
         else:
             tree_path = self._tree_entry_path(rel_path, snap_name)
             self._ensure_in_tree(tree_path)
@@ -1537,6 +1809,21 @@ class BackupServer:
                 os.chown(target, meta["uid"], meta["gid"])
             except (PermissionError, OSError) as exc:
                 logger.debug("chown %s: %s", target, exc)
+
+            # Start from a clean slate. An entry in tree/ can already carry an
+            # ACL: a directory is shared by all snapshots and keeps whatever
+            # the last backup put on it, and anything we create inherits an
+            # ACL from a default ACL further up in the repository. Setting an
+            # ACL replaces the old one, but not setting any would leave it --
+            # and chmod only recalculates the mask, so a leftover named entry
+            # becomes effective again as soon as the mode carries group
+            # permissions.
+            _remove_acl(target)
+            if meta.get("type") == "dir":
+                # The default ACL of this snapshot lives in the index. On the
+                # directory it would only make everything we create below it
+                # inherit an ACL, so we clear it and never set one.
+                _remove_acl(target, default=True)
 
             try:
                 os.chmod(target, safe_mode)
@@ -1563,43 +1850,53 @@ class BackupServer:
         for rel_path, meta in sorted(dir_entries, key=lambda e: e[0], reverse=True):
             self.set_entry_metadata(snap_name, rel_path, meta)
 
-    def get_entry_full(self, snap_name: str, rel_path: str) -> Optional[dict]:
-        """Read all info for an entry in one shot (single lstat + open + ACL read).
+    def entry_from_index(self, snap_name: str, rel_path: str) -> Optional[dict]:
+        """Build the entry info from the snap-index. Returns None if absent."""
+        parsed = self._snap_index_get_parsed(snap_name, rel_path)
+        if parsed is None:
+            return None
+        result = {
+            "mode": parsed["mode"],
+            "uid": parsed["uid"],
+            "gid": parsed["gid"],
+            "mtime": parsed["mtime"],
+            "acl": parsed.get("acl"),
+            "default_acl": parsed.get("default_acl"),
+            "xattrs": parsed.get("xattrs"),
+        }
+        if parsed["type"] == "file":
+            result["type_line"] = f"{parsed['size']} {parsed['mtime']!r}"
+            result["file_size"] = parsed["size"]
+            result["file_mtime"] = parsed["mtime"]
+            result["chunk_hashes"] = parsed.get("chunk_hashes", [])
+        elif parsed["type"] == "dir":
+            result["type_line"] = "DIR"
+        else:
+            result["type_line"] = parsed["type"].upper()
+        return result
 
-        For non-dirs reads from tree/ file, for dirs from meta/ file.
-        Returns dict with mode, uid, gid, mtime, acl, and for regular files
-        also file_size, file_mtime, chunk_hashes.  Returns None if not found.
+    def get_entry_full(self, snap_name: str, rel_path: str) -> Optional[dict]:
+        """Read all info for an entry in one shot.
+
+        Non-directories carry their metadata in their tree/ entry, which is
+        per snapshot, so that is one lstat plus one ACL read plus the file.
+        A directory in tree/ is shared by all snapshots and thus carries the
+        metadata of the last backup, so its metadata comes from the index --
+        one lookup, no filesystem access.
+
+        Returns a dict with mode, uid, gid, mtime, acl, default_acl, xattrs
+        and, for regular files, file_size, file_mtime, chunk_hashes.  Returns
+        None if the entry is not part of this snapshot.
         """
         if self.mode == "pack":
             # Pack mode: O(1) index lookup
-            parsed = self._snap_index_get_parsed(snap_name, rel_path)
-            if parsed is None:
-                return None
-            result = {
-                "mode": parsed["mode"],
-                "uid": parsed["uid"],
-                "gid": parsed["gid"],
-                "mtime": parsed["mtime"],
-                "acl": parsed.get("acl"),
-            }
-            if parsed["type"] == "file":
-                result["type_line"] = f"{parsed['size']} {parsed['mtime']!r}"
-                result["file_size"] = parsed["size"]
-                result["file_mtime"] = parsed["mtime"]
-                result["chunk_hashes"] = parsed.get("chunk_hashes", [])
-            elif parsed["type"] == "dir":
-                result["type_line"] = "DIR"
-            else:
-                result["type_line"] = parsed["type"].upper()
-            return result
+            return self.entry_from_index(snap_name, rel_path)
 
-        # Tree mode: read from tree/ and meta/ files
         tree_path = self._tree_entry_path(rel_path, snap_name)
-        if os.path.lexists(tree_path):
-            entry_path = tree_path
-        else:
-            # Fall back to meta/ (dirs, bucketed)
-            entry_path = self._meta_entry_path(snap_name, rel_path)
+        if not os.path.lexists(tree_path):
+            # A directory, or not part of this snapshot.
+            return self.entry_from_index(snap_name, rel_path)
+        entry_path = tree_path
         try:
             st = os.lstat(entry_path)
         except OSError:
@@ -1613,6 +1910,7 @@ class BackupServer:
             "gid": st.st_gid,
             "mtime": st.st_mtime,
             "acl": acl,
+            "default_acl": None,
         }
         lines = self._read_gz(entry_path).strip().split("\n")
         if len(lines) >= 2:
@@ -1632,8 +1930,9 @@ class BackupServer:
                    meta: dict = None) -> bool:
         """Link an entry from one snapshot to another (for unchanged entries).
 
-        For directories: hardlinks meta/ file and ensures tree/ dir exists.
-        For non-dirs: hardlinks tree/ file only (no meta/ entry).
+        For directories: ensures the tree/ dir exists; there is nothing to
+        link, their metadata is in the index.
+        For non-dirs: hardlinks the tree/ file.
         Returns True on success, False if source doesn't exist.
 
         index_val:  raw binary index value to copy into the new snapshot's index.
@@ -1669,17 +1968,11 @@ class BackupServer:
                 is_dir = not os.path.lexists(src_tree)
 
         if is_dir:
-            # Ensure tree/ directory exists (shared across snapshots)
+            # Ensure tree/ directory exists (shared across snapshots). There
+            # is nothing to link: the metadata of a directory is in the index.
             tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
             self._ensure_in_tree(tree_dir_path)
             os.makedirs(tree_dir_path, exist_ok=True)
-            # Hardlink meta/ entry (dirs, bucketed)
-            src_meta = self._meta_entry_path(from_snap, rel_path)
-            dst_meta = self._meta_entry_path(to_snap, rel_path)
-            if not os.path.lexists(src_meta):
-                return False
-            os.makedirs(os.path.dirname(dst_meta), exist_ok=True)
-            os.link(src_meta, dst_meta)
         else:
             # Hardlink tree/ entry: old snap → new snap
             src_tree = self._tree_entry_path(rel_path, from_snap)
@@ -1715,7 +2008,8 @@ class BackupServer:
 
         For each entry:
         - Adds the new snapshot's snap_id to the existing entry in the shared index
-        - For tree mode: also hardlinks tree/meta filesystem entries
+        - For tree mode: hardlinks the tree/ file of a non-directory, and
+          makes sure the tree/ directory of a directory exists
 
         Returns the number of successfully linked entries.
         """
@@ -1735,12 +2029,6 @@ class BackupServer:
                     tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
                     self._ensure_in_tree(tree_dir_path)
                     os.makedirs(tree_dir_path, exist_ok=True)
-                    src_meta = self._meta_entry_path(from_snap, rel_path)
-                    dst_meta = self._meta_entry_path(to_snap, rel_path)
-                    if not os.path.lexists(src_meta):
-                        continue
-                    os.makedirs(os.path.dirname(dst_meta), exist_ok=True)
-                    os.link(src_meta, dst_meta)
                 else:
                     src_tree = self._tree_entry_path(rel_path, from_snap)
                     dst_tree = self._tree_entry_path(rel_path, to_snap)
@@ -1780,26 +2068,25 @@ class BackupServer:
             entry["devminor"] = parsed["devminor"]
 
         if full:
-            if self.get_mode() == "pack":
-                entry["atime"] = parsed.get("atime", 0.0)
-                entry["acl"] = parsed.get("acl")
-                if parsed["type"] == "file":
-                    entry["chunk_hashes"] = parsed.get("chunk_hashes", [])
-                else:
-                    entry["chunk_hashes"] = []
-            else:
-                if parsed["type"] == "dir":
-                    entry_path = self._meta_entry_path(snap_name, rel_path)
-                else:
-                    entry_path = self._tree_entry_path(rel_path, snap_name)
+            # A directory has no per snapshot entry on disk, so everything
+            # about it comes from the index. For the rest the tree/ entry is
+            # the source: its ACL is a real ACL there, and only it knows the
+            # chunk hashes.
+            entry["atime"] = parsed.get("atime", 0.0)
+            entry["acl"] = parsed.get("acl")
+            entry["default_acl"] = parsed.get("default_acl")
+            entry["xattrs"] = parsed.get("xattrs")
+            entry["chunk_hashes"] = []
+            if parsed["type"] == "file":
+                entry["chunk_hashes"] = parsed.get("chunk_hashes", [])
+            if self.get_mode() != "pack" and parsed["type"] != "dir":
+                entry_path = self._tree_entry_path(rel_path, snap_name)
                 st = os.lstat(entry_path)
                 entry["atime"] = st.st_atime
                 entry["acl"] = _get_acl_text(entry_path)
                 if parsed["type"] == "file":
                     lines = self._read_gz(entry_path).strip().split("\n")
                     entry["chunk_hashes"] = [h for h in lines[2:] if h] if len(lines) > 2 else []
-                else:
-                    entry["chunk_hashes"] = []
 
         return entry
 
@@ -1816,8 +2103,11 @@ class BackupServer:
         if filter_path is not None:
             filter_path = filter_path.strip("/")
 
-        # Open DB first so _resolve_snap_id can use it (also runs migration)
-        db = self._open_snap_db()
+        # Open DB first so _resolve_snap_id can use it. We only read here, so
+        # a read-only connection does: that is what a restore mount has.
+        db = self._snap_db
+        if db is None:
+            db = self._open_snap_db(readonly=True)
         if db is None:
             raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
@@ -1825,38 +2115,19 @@ class BackupServer:
         if snap_id == 0:
             raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
-        # Load entry_ids set for this snapshot
-        entry_ids = self._snap_entry_ids(snap_name)
-
+        # A real SQLite cursor: the rows are read as they are needed instead
+        # of building the whole result of a snapshot in memory first.
         if filter_path is not None:
-            # Get candidate entries by key range, filter by snapshot membership
-            candidates = db.execute(
-                "SELECT entry_id, key, value FROM entries "
-                "WHERE key=? OR (key>? AND key<?) ORDER BY key",
-                (filter_path, filter_path + "/", filter_path + "/\xff\xff\xff\xff")).fetchall()
-            # Deduplicate by key: keep latest entry_id (highest) per key
-            results = {}
-            for eid, key, val in candidates:
-                if eid in entry_ids:
-                    if key not in results or eid > results[key][0]:
-                        results[key] = (eid, val)
-            sorted_results = [(k, v) for k, (_, v) in sorted(results.items())]
-            self._entry_cursor_results = iter(sorted_results)
+            cursor = db.execute(self._SNAP_ITER_FILTER_SQL,
+                                (snap_id,
+                                filter_path,
+                                filter_path + "/",
+                                filter_path + "/\xff\xff\xff\xff"))
         else:
-            # Full scan: batch-fetch entries by entry_id, sort by key
-            results = []
-            id_list = sorted(entry_ids)
-            for i in range(0, len(id_list), 500):
-                batch = id_list[i:i+500]
-                ph = ",".join("?" * len(batch))
-                for eid, key, val in db.execute(
-                        f"SELECT entry_id, key, value FROM entries "
-                        f"WHERE entry_id IN ({ph})", batch):
-                    results.append((key, val))
-            results.sort(key=lambda x: x[0])
-            self._entry_cursor_results = iter(results)
+            cursor = db.execute(self._SNAP_ITER_SQL, (snap_id,))
+        self._entry_cursor_results = self._iter_latest_per_key(cursor)
 
-        self._entry_cursor_cur = True  # flag: cursor is open
+        self._entry_cursor_cur = cursor
         self._entry_cursor_snap = snap_name
         self._entry_cursor_snap_id = snap_id
         self._entry_cursor_filter = filter_path
@@ -1890,7 +2161,11 @@ class BackupServer:
 
     def close_entry_cursor(self) -> None:
         """Close the entry cursor."""
-        if hasattr(self, '_entry_cursor_cur') and self._entry_cursor_cur is not None:
+        if getattr(self, '_entry_cursor_cur', None) is not None:
+            try:
+                self._entry_cursor_cur.close()
+            except sqlite3.Error:
+                pass
             self._entry_cursor_cur = None
         self._entry_cursor_results = None
         self._entry_cursor_snap = None
@@ -2005,57 +2280,31 @@ class BackupServer:
         # Remove snap_id from shared snap-index
         self._remove_snap_from_index(snap_name)
 
-        # Remove snapshot directory (meta/ + complete + running + chunks)
+        # Remove snapshot directory (complete + running + chunks)
         shutil.rmtree(snap_dir)
 
     def _remove_snap_from_index(self, snap_name: str) -> None:
         """Remove a snapshot from the snap-index."""
-        # Collect all entry_ids still referenced by other snapshots
-        live_ids = set()
-        for snap in self.snapshots_dir.iterdir():
-            if snap.name == snap_name:
-                continue
-            ids_path = snap / "entry_ids.gz"
-            if ids_path.exists():
-                live_ids.update(self._read_snap_entry_ids(snap.name))
-
-        # Remove entry_ids file for this snapshot
-        ids_path = self._snap_entry_ids_path(snap_name)
-        deleted_ids = set()
-        if ids_path.exists():
-            deleted_ids = self._read_snap_entry_ids(snap_name)
-            ids_path.unlink()
-
-        # Remove orphaned entries (not referenced by any other snapshot)
-        orphan_ids = deleted_ids - live_ids
-        if orphan_ids:
-            db_path = self._snap_index_db_path()
-            if os.path.exists(db_path):
-                db = sqlite3.connect(db_path)
-                db.execute("PRAGMA journal_mode=WAL")
-                db.execute("PRAGMA synchronous=NORMAL")
-                try:
-                    id_list = sorted(orphan_ids)
-                    for i in range(0, len(id_list), 500):
-                        batch = id_list[i:i+500]
-                        ph = ",".join("?" * len(batch))
-                        db.execute(f"DELETE FROM entries WHERE entry_id IN ({ph})", batch)
-                    db.commit()
-                finally:
-                    db.close()
-
-        # Remove snap metadata
         db_path = self._snap_index_db_path()
-        if os.path.exists(db_path):
-            db = sqlite3.connect(db_path)
-            try:
-                db.execute("DELETE FROM snap_meta WHERE snap_name=?", (snap_name,))
-                db.commit()
-            finally:
-                db.close()
+        if not os.path.exists(db_path):
+            self._snap_id_cache.pop(snap_name, None)
+            return
+        snap_id = self._resolve_snap_id(snap_name)
+        db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        try:
+            if snap_id != 0:
+                db.execute("DELETE FROM snap_entries WHERE snap_id=?", (snap_id,))
+                # Whatever no other snapshot references any more.
+                db.execute("DELETE FROM entries WHERE NOT EXISTS "
+                        "(SELECT 1 FROM snap_entries se WHERE se.entry_id = entries.entry_id)")
+            db.execute("DELETE FROM snap_meta WHERE snap_name=?", (snap_name,))
+            db.commit()
+        finally:
+            db.close()
 
         self._snap_id_cache.pop(snap_name, None)
-        self._snap_entry_id_cache.pop(snap_name, None)
 
     def delete_snapshot(self, snap_name: str) -> int:
         """Delete a snapshot and run GC.  Returns number of orphaned blocks removed."""
@@ -2067,7 +2316,7 @@ class BackupServer:
             self.unlock_repo()
 
     def _build_live_bloom(self, exclude_set: set = None):
-        """Build a Bloom filter containing all chunk hashes from live snapshots.
+        """Build a Bloom filter containing all chunk IDs from live snapshots.
 
         Returns a Bloom filter, or None if there are no live snapshots.
         Uses pack-index entry count as size estimate for the filter.
@@ -2432,25 +2681,20 @@ class BackupServer:
         db_path = self._snap_index_db_path()
         if not os.path.exists(db_path):
             return {"orphans": 0}
-        # Collect all live entry_ids from all snapshot gz files
-        live_ids = set()
-        if self.snapshots_dir.exists():
-            for snap in self.snapshots_dir.iterdir():
-                ids_path = snap / "entry_ids.gz"
-                if ids_path.exists():
-                    live_ids.update(self._read_snap_entry_ids(snap.name))
-        # Remove entries not in any snapshot
+        # Remove entries no snapshot references any more, and membership rows
+        # whose snapshot or entry is gone.
         db = sqlite3.connect(db_path)
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
         try:
             total = db.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
-            orphans = 0
-            # Batch-check entries against live set
-            for entry_id, in db.execute("SELECT entry_id FROM entries"):
-                if entry_id not in live_ids:
-                    db.execute("DELETE FROM entries WHERE entry_id=?", (entry_id,))
-                    orphans += 1
+            db.execute("DELETE FROM snap_entries WHERE snap_id NOT IN "
+                    "(SELECT snap_id FROM snap_meta)")
+            db.execute("DELETE FROM snap_entries WHERE NOT EXISTS "
+                    "(SELECT 1 FROM entries e WHERE e.entry_id = snap_entries.entry_id)")
+            cur = db.execute("DELETE FROM entries WHERE NOT EXISTS "
+                    "(SELECT 1 FROM snap_entries se WHERE se.entry_id = entries.entry_id)")
+            orphans = cur.rowcount
             db.commit()
             logger.info("Repair: %d orphaned entries removed (of %d total)",
                         orphans, total)
@@ -2574,14 +2818,17 @@ class BackupServer:
 
 
 # ---------------------------------------------------------------------------
-# BackupClient — crypto + file I/O, no storage knowledge
+# BackupClient — crypto + file I/O
 # ---------------------------------------------------------------------------
 
 class BackupClient:
     """Handles encryption/decryption and filesystem operations.
 
-    The client never touches the storage layout directly.  All storage
-    operations go through the server interface.
+    Everything the repository holds goes through the server interface, and
+    everything that needs the key happens here: the server sees no plaintext,
+    no path and no chunk ID it could have computed itself.  The one thing the
+    client does read directly is the snap-index of the previous snapshot --
+    it downloads a copy to find out what changed, see _open_prev_index().
     """
 
     _CACHE_BASE = "/var/cache/otpme/backup"
@@ -2605,8 +2852,10 @@ class BackupClient:
         if hasattr(self, 'key'):
             self._path_key = _derive_path_key(self.key)
             self._siv = AESSIV(self._path_key)
+            self._id_key = _derive_id_key(self.key)
         else:
             self._siv = None
+            self._id_key = None
         self.logger = config.logger
 
     def encrypt_rel_path(self, rel_path: str) -> str:
@@ -2646,10 +2895,21 @@ class BackupClient:
             return enc_target
         return ('/' + dec) if absolute else dec
 
-    @staticmethod
-    def hash_block(plaintext: bytes) -> str:
-        """Return the SHA-256 hex digest of a plaintext block."""
-        return hashlib.sha256(plaintext).hexdigest()
+    def hash_block(self, plaintext: bytes) -> str:
+        """Return the chunk ID of a plaintext block.
+
+        Keyed, not a plain hash of the plaintext. The ID is the one thing
+        about a chunk that the repository stores in the clear -- in the index,
+        the chunks file, the pack index and the pack record header. A plain
+        SHA-256 would let anybody with read access to the repository answer
+        "is this particular file in this backup?": chunk the file the same
+        way, hash it, look the ID up. With the repository key in the MAC that
+        question can no longer be asked from outside.
+
+        Deduplication is unaffected: it only ever worked within one
+        repository, and a repository has one key.
+        """
+        return _hmac.new(self._id_key, plaintext, 'sha256').hexdigest()
 
     def encrypt_block(self, plaintext: bytes) -> bytes:
         """Compress (if enabled) and encrypt a plaintext block.  Returns flag+ciphertext."""
@@ -2658,6 +2918,44 @@ class BackupClient:
             if len(compressed) < len(plaintext):
                 return FLAG_ZLIB + encrypt_block(self.key, compressed)
         return FLAG_RAW + encrypt_block(self.key, plaintext)
+
+    _KEY_CHECK_MAGIC = b"otpme-backup-key-check-v1"
+
+    def _key_check_plaintext(self) -> bytes:
+        """What the key check blob has to decrypt to.
+
+        The salt is part of it, so the blob belongs to this repository and
+        not merely to this key.
+        """
+        return self._KEY_CHECK_MAGIC + b"\n" + self.server.get_salt()
+
+    def verify_key(self) -> None:
+        """Make sure we hold the key this repository was written with.
+
+        A wrong key does not fail on its own: every path is encrypted with
+        it, so the whole tree looks new, nothing dedups, and the snapshots
+        already there can no longer be read -- the repository would end up
+        holding two sets of data nobody can use together.  So the repository
+        keeps a blob encrypted with its key.  AES-GCM authenticates, which
+        makes decrypting it at all the proof; we compare the plaintext too,
+        to also catch a blob carried over from another repository.
+
+        A repository that has none yet gets one, which is the case for a
+        fresh one.  Raises OTPmeException on a mismatch.
+        """
+        wanted = self._key_check_plaintext()
+        blob = self.server.get_key_check()
+        if not blob:
+            self.server.set_key_check(self.encrypt_block(wanted))
+            return
+        try:
+            got = self.decrypt_block(blob)
+        except Exception as e:
+            msg = _("Wrong backup key for this repository.")
+            raise OTPmeException(msg) from e
+        if got != wanted:
+            msg = _("Wrong backup key for this repository.")
+            raise OTPmeException(msg)
 
     def decrypt_block(self, blob: bytes) -> bytes:
         """Decrypt and decompress an encrypted blob from the server."""
@@ -2691,7 +2989,8 @@ class BackupClient:
         """
         self._prev_snap = None
         self._prev_db = None
-        self._prev_entry_ids = None
+        if hasattr(self, '_prev_snap_id_cached'):
+            del self._prev_snap_id_cached
         if prev_snap is None:
             return
         if isinstance(self.server, BackupServer):
@@ -2735,15 +3034,6 @@ class BackupClient:
                         total, transferred)
         self._prev_db = sqlite3.connect(cached_db)
         self._prev_snap = prev_snap
-        # Download entry_ids for prev_snap
-        entry_ids_blob = self.server.get_snap_entry_ids(prev_snap)
-        if entry_ids_blob:
-            cached_ids = os.path.join(cache_dir, "entry_ids.gz")
-            with open(cached_ids, 'wb') as f:
-                f.write(entry_ids_blob)
-            raw = zlib.decompress(entry_ids_blob)
-            count = len(raw) // 8
-            self._prev_entry_ids = set(struct.unpack(f'>{count}Q', raw))
 
     def _prev_index_get(self, rel_path: str) -> bytes:
         """Look up a path in the previous snapshot's index. Returns entry_data or None."""
@@ -2752,17 +3042,18 @@ class BackupClient:
         if isinstance(self.server, BackupServer):
             # Local: direct lookup via server's snap-index
             return self.server._snap_index_get(self._prev_snap, rel_path)
-        # Remote: lookup in local cached copy
+        # Remote: lookup in the downloaded copy. It carries the snap_entries
+        # table, so this is the same indexed query the server would run.
         if self._prev_db is None:
             return None
-        if self._prev_entry_ids is None:
+        snap_id = self._resolve_prev_snap_id()
+        if snap_id == 0:
             return None
-        for row in self._prev_db.execute(
-                "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC",
-                (rel_path,)):
-            if row[0] in self._prev_entry_ids:
-                return row[1]
-        return None
+        row = self._prev_db.execute(BackupServer._SNAP_GET_SQL,
+                                    (rel_path, snap_id)).fetchone()
+        if row is None:
+            return None
+        return row[0]
 
     def _resolve_prev_snap_id(self) -> int:
         """Get snap_id for prev_snap from the local SQLite copy (remote case)."""
@@ -2783,7 +3074,6 @@ class BackupClient:
             self._prev_db.close()
             self._prev_db = None
         self._prev_snap = None
-        self._prev_entry_ids = None
         if hasattr(self, '_prev_snap_id_cached'):
             del self._prev_snap_id_cached
 
@@ -2797,6 +3087,9 @@ class BackupClient:
         excludes: list of fnmatch patterns matched against the relative path.
         includes: list of fnmatch patterns that override excludes.
         dry_run:  if True, only log what would be backed up without storing anything.
+
+        Refuses to run with the wrong key for the repository, see
+        verify_key().
         """
         source = os.path.realpath(source)
         if not os.path.isdir(source):
@@ -2807,6 +3100,10 @@ class BackupClient:
         if not dry_run:
             self.server.lock_repo()
         try:
+            # Before anything is written: a wrong key would not fail on its
+            # own, it would quietly fill the repository with data that does
+            # not go with what is already there.
+            self.verify_key()
             return self._backup_locked(source, snap_name, special_files,
                                         excludes, includes, dry_run)
         finally:
@@ -2841,8 +3138,10 @@ class BackupClient:
         unchanged_entries = []  # (rel_path, is_dir) for batch link
         _unchanged_flush_size = 10000
 
-        # Two passes:
-        #   create entries via server + store blocks, apply metadata inline
+        # One pass over the tree creates the entries and stores the blocks,
+        # applying the metadata of everything but a directory right away.
+        # Directories come last, deepest-first, so that writing below them
+        # does not clobber the mtime we just set.
 
         dir_entries = []  # (rel_path, meta) for deferred directory metadata pass
         seen_inodes = {}  # (dev, ino) -> rel_path for hardlink detection
@@ -2952,6 +3251,14 @@ class BackupClient:
                     unchanged_entries = []
                 continue
 
+            # Extended attributes are stored in pack mode only: that is what
+            # a system backup uses, and a share does not serve them (see
+            # OTPmeFsServer1.check_xattr()). Changing one changes the ctime,
+            # so the fast path above does not hide it.
+            entry_xattrs = None
+            if repo_mode == "pack":
+                entry_xattrs = _get_xattrs(fpath)
+
             try:
                 if entry_type == "dir":
                     meta = {
@@ -2960,19 +3267,23 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "acl": _get_acl_text(fpath),
+                        "default_acl": _get_default_acl_text(fpath),
+                        "xattrs": entry_xattrs,
                         "ctime": st.st_ctime,
                     }
-                    # Reuse previous snapshot's meta/ entry if unchanged
+                    # Reuse the previous snapshot's index entry if unchanged
                     linked = False
                     if prev_snap:
                         prev = self.server.get_entry_full(prev_snap, enc_rel)
                         cur_acl = meta["acl"]
+                        cur_default_acl = meta["default_acl"]
                         if (prev
                                 and prev["uid"] == st.st_uid
                                 and prev["gid"] == st.st_gid
                                 and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
                                 and prev.get("mtime") == st.st_mtime
-                                and prev["acl"] == cur_acl):
+                                and prev["acl"] == cur_acl
+                                and prev.get("default_acl") == cur_default_acl):
                             linked = self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                             is_dir=True, meta=meta)
                     if not linked:
@@ -3006,6 +3317,7 @@ class BackupClient:
                                                             "size": st.st_size, "mtime": st.st_mtime,
                                                             "ctime": st.st_ctime,
                                                             "acl": cur_acl,
+                                                            "xattrs": entry_xattrs,
                                                             "chunk_hashes": chunk_hashes,
                                                         })
                             else:
@@ -3016,6 +3328,7 @@ class BackupClient:
                                     "atime": st.st_atime, "mtime": st.st_mtime,
                                     "ctime": st.st_ctime,
                                     "acl": cur_acl,
+                                    "xattrs": entry_xattrs,
                                     "size": st.st_size,
                                     "chunk_hashes": chunk_hashes,
                                 }
@@ -3058,6 +3371,7 @@ class BackupClient:
                             "atime": st.st_atime, "mtime": st.st_mtime,
                             "ctime": st.st_ctime,
                             "acl": _get_acl_text(fpath),
+                            "xattrs": entry_xattrs,
                             "size": st.st_size,
                             "chunk_hashes": chunk_hashes,
                         }
@@ -3073,6 +3387,7 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "ctime": st.st_ctime,
+                        "xattrs": entry_xattrs,
                         "symlink_target": self.encrypt_symlink_target(os.readlink(fpath)),
                     }
                     if (prev
@@ -3095,6 +3410,7 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "ctime": st.st_ctime,
+                        "xattrs": entry_xattrs,
                     }
                     if (prev
                             and prev["uid"] == st.st_uid
@@ -3116,6 +3432,7 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "ctime": st.st_ctime,
+                        "xattrs": entry_xattrs,
                         "devmajor": os.major(st.st_rdev),
                         "devminor": os.minor(st.st_rdev),
                     }
@@ -3139,6 +3456,7 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "ctime": st.st_ctime,
+                        "xattrs": entry_xattrs,
                     }
                     if (prev
                             and prev["uid"] == st.st_uid
@@ -3215,9 +3533,16 @@ class BackupClient:
     def restore(self, snap_name: str, dest: str,
                 filter_path: Optional[str] = None,
                 dry_run: bool = False) -> None:
-        """Restore a snapshot (or a single file/dir) to dest."""
+        """Restore a snapshot (or a single file/dir) to dest.
+
+        Refuses to run with the wrong key for the repository, see
+        verify_key().
+        """
         self.server.lock_repo()
         try:
+            # Say which key is wrong instead of failing somewhere in the
+            # middle on a path we cannot decrypt.
+            self.verify_key()
             self._restore_locked(snap_name, dest, filter_path, dry_run)
         finally:
             self.server.unlock_repo()
@@ -3354,13 +3679,26 @@ class BackupClient:
                 os.lchown(dst_path, entry["uid"], entry["gid"])
             except (PermissionError, OSError) as exc:
                 self.logger.debug("lchown %s: %s", dst_path, exc)
+            is_dir = (entry["type"] == "dir")
             if not is_link:
+                # Same as in set_entry_metadata(): clear first, then set what
+                # this entry has. The destination may exist already, and what
+                # we create inherits an ACL from a default ACL above it.
+                _remove_acl(dst_path)
+                if is_dir:
+                    _remove_acl(dst_path, default=True)
                 try:
                     os.chmod(dst_path, stat.S_IMODE(entry["mode"]))
                 except (PermissionError, OSError) as exc:
                     self.logger.debug("chmod %s: %s", dst_path, exc)
                 if entry.get("acl"):
                     _set_acl_text(dst_path, entry["acl"])
+                if entry.get("default_acl") and is_dir:
+                    _set_default_acl_text(dst_path, entry["default_acl"])
+            # After the chown above: that drops security.capability. Symlinks
+            # get their attributes too, setxattr() does not follow the link.
+            if entry.get("xattrs"):
+                _set_xattrs(dst_path, entry["xattrs"])
             try:
                 os.utime(dst_path, (entry["atime"], entry["mtime"]), follow_symlinks=False)
             except (OSError, AttributeError):
@@ -3513,7 +3851,7 @@ def _cmd_verify_locked(server: BackupServer, client: BackupClient, snap_name: st
                 errors += 1
                 continue
 
-            if hashlib.sha256(data).hexdigest() != h:
+            if client.hash_block(data) != h:
                 logger.error("Hash mismatch %s  (%s)", h[:16], rel_path)
                 errors += 1
 

@@ -1305,32 +1305,46 @@ def register_config():
                                     default_value="all",
                                     setter=backup_report_mode_setter,
                                     object_types=object_types)
-    config.register_config_parameter(name="backup_report_smtp_server",
-                                    ctype=str,
-                                    default_value="127.0.0.1",
-                                    object_types=object_types)
-    config.register_config_parameter(name="backup_report_smtp_port",
-                                    ctype=int,
-                                    default_value=25,
-                                    object_types=object_types)
-    config.register_config_parameter(name="backup_report_smtp_starttls",
-                                    ctype=bool,
-                                    default_value=False,
-                                    object_types=object_types)
+    # Feature-scoped envelope addresses. Server/port/auth live on the
+    # shared smtp_relay_* parameters below and are used by every
+    # notification path (backup reports, password reset, ...).
     config.register_config_parameter(name="backup_report_mail_from",
                                     ctype=str,
                                     object_types=object_types)
     config.register_config_parameter(name="backup_report_mail_to",
                                     ctype=str,
                                     object_types=object_types)
-    config.register_config_parameter(name="backup_report_smtp_auth",
+    # From: address for SSO-token recovery mails. Resolved on the
+    # user's home site (the site that emits the mail via smtp_relay_*).
+    # No default -- mails are only sent when the admin has explicitly
+    # configured a sender, otherwise recovery is silently disabled.
+    config.register_config_parameter(name="sso_recovery_mail_from",
+                                    ctype=str,
+                                    object_types=object_types)
+
+    # Shared outbound SMTP relay used by every OTPme notification feature
+    # (backup reports, password reset, future alerts). Feature-specific
+    # envelope addresses live next to the feature (e.g. backup_report_mail_from).
+    config.register_config_parameter(name="smtp_relay_server",
+                                    ctype=str,
+                                    default_value="127.0.0.1",
+                                    object_types=object_types)
+    config.register_config_parameter(name="smtp_relay_port",
+                                    ctype=int,
+                                    default_value=25,
+                                    object_types=object_types)
+    config.register_config_parameter(name="smtp_relay_starttls",
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
-    config.register_config_parameter(name="backup_report_smtp_username",
+    config.register_config_parameter(name="smtp_relay_auth",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="smtp_relay_username",
                                     ctype=str,
                                     object_types=object_types)
-    def backup_smtp_pass_setter(smtp_pass, callback=default_callback, **kwargs):
+    def smtp_relay_pass_setter(smtp_pass, callback=default_callback, **kwargs):
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
         try:
@@ -1338,12 +1352,12 @@ def register_config():
                                             algorithm="SHA256",
                                             cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to encrypt backup report smtp pass: {error}")
+            msg = _("Failed to encrypt SMTP relay password: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
         smtp_pass = smtp_pass.hex()
         return smtp_pass
-    def backup_smtp_pass_getter(smtp_pass, callback=default_callback, **kwargs):
+    def smtp_relay_pass_getter(smtp_pass, callback=default_callback, **kwargs):
         smtp_pass = bytes.fromhex(smtp_pass)
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
@@ -1354,15 +1368,15 @@ def register_config():
                                             algorithm="SHA256",
                                             cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to decrypt backup key: {error}")
+            msg = _("Failed to decrypt SMTP relay password: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
         smtp_pass = smtp_pass.decode()
         return smtp_pass
-    config.register_config_parameter(name="backup_report_smtp_password",
+    config.register_config_parameter(name="smtp_relay_password",
                                     ctype=str,
-                                    getter=backup_smtp_pass_getter,
-                                    setter=backup_smtp_pass_setter,
+                                    getter=smtp_relay_pass_getter,
+                                    setter=smtp_relay_pass_setter,
                                     sensitive=True,
                                     object_types=object_types)
     # Object types our config parameter is valid for.
@@ -1524,6 +1538,16 @@ def register_config():
                                     ctype=str,
                                     setter=sso_rate_limit_setter,
                                     default_value="60/minute",
+                                    object_types=['site'])
+    # Per-username cap on the unauth SSO-token recovery endpoints
+    # (/recover, /recover/complete/*). Bounds mail-flood + brute-
+    # force-of-recovery-token attempts without impacting legit users
+    # (a real recovery is a handful of requests total). Keyed on the
+    # submitted username, so shared NAT pools don't collide.
+    config.register_config_parameter(name="sso_rate_limit_recover",
+                                    ctype=str,
+                                    setter=sso_rate_limit_setter,
+                                    default_value="20/minute",
                                     object_types=['site'])
     # Hosts accessgroup.
     def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
@@ -2314,11 +2338,30 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'user', 'token'])
-    # Allow fido2 token deploy in SSO portal.
+    # Allow totp token deploy in SSO portal.
     config.register_config_parameter(name="sso_allow_totp_deploy",
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'user', 'token'])
+    # Allow password token deploy in SSO portal. Covers both the
+    # regular /deploy flow and the /recover/complete flow. Default
+    # False -- a password token is a weaker credential than TOTP or
+    # FIDO2, so admins have to opt in explicitly.
+    config.register_config_parameter(name="sso_allow_password_deploy",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site', 'unit', 'user', 'token'])
+    # Site-level UI toggle for the "Lost access to your SSO token?"
+    # link on the SSO portal's /login page. Independent of the
+    # per-user ``allow_sso_account_recovery`` cascade: this one hides
+    # the entry point (link + /recover route) entirely at site scope,
+    # so admins on a site that opts out of recovery altogether do not
+    # expose the flow at all. When False (default) the link is not
+    # rendered and /recover redirects back to /login.
+    config.register_config_parameter(name="sso_show_recover_link",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site'])
     # Start this number of authd workers. These stay for good, which is
     # what keeps their caches warm, so this should carry the normal day.
     config.register_config_parameter(name="authd_workers",
@@ -2721,6 +2764,8 @@ class Site(OTPmeObject):
                                 "CONFIG_PARAMS:sso_rate_limit_login",
                                 "CONFIG_PARAMS:sso_rate_limit_login_user",
                                 "CONFIG_PARAMS:sso_rate_limit_settings",
+                                "CONFIG_PARAMS:sso_rate_limit_recover",
+                                "CONFIG_PARAMS:sso_show_recover_link",
                                 ],
                         },
 

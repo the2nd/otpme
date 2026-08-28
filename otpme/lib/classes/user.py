@@ -1372,6 +1372,77 @@ def register_config_parameters():
                                     ctype=str,
                                     default_value="sso",
                                     object_types=object_types)
+    # Top-level on/off gate for the SSO-token recovery flow. When
+    # False (default) the recovery UI is hidden on the login page and
+    # every ssod-side recovery command silently no-ops (generic OK).
+    # Independent of ``allow_sso_token_recovery`` on purpose: admin
+    # first flips this bool to expose the feature at all, then picks
+    # which token types are eligible via the list parameter.
+    object_types = [
+                        'site',
+                        'unit',
+                        'user',
+                    ]
+    config.register_config_parameter(name="allow_sso_account_recovery",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    # SSO token recovery: token types eligible for the out-of-band
+    # SSO-token re-deploy flow triggered from the SSO portal's recovery
+    # link. Empty (default) disables recovery entirely. Resolved via the
+    # user's own site/unit/user cascade, on the user's home site.
+    def allow_sso_token_recovery_setter(token_types, **kwargs):
+        if isinstance(token_types, str):
+            token_types = [x.strip() for x in token_types.split(",") if x.strip()]
+        if not isinstance(token_types, list):
+            msg = _("allow_sso_token_recovery must be a list of token types.")
+            raise ValueError(msg)
+        valid_types = config.get_sub_object_types("token")
+        for token_type in token_types:
+            if token_type not in valid_types:
+                msg = _("Invalid token type: {token_type}")
+                msg = msg.format(token_type=token_type)
+                raise ValueError(msg)
+        return token_types
+    config.register_config_parameter(name="allow_sso_token_recovery",
+                                    ctype=list,
+                                    default_value=[],
+                                    setter=allow_sso_token_recovery_setter,
+                                    object_types=object_types)
+    # How long an emitted SSO-token recovery link remains valid.
+    # Accepted as a human duration ("15m", "2h", "1d", "900s") on the
+    # CLI/config layer; stored as an integer number of seconds so
+    # ssod-side comparisons stay cheap. Resolved via the user's
+    # home-site cascade. Bounds picked so a typo like "1" (which
+    # units.time2int interprets as 1 second) fails fast, and nobody
+    # can accidentally set a 30-day recovery window.
+    def sso_recovery_link_ttl_setter(ttl, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            ttl = units.time2int(ttl, time_unit="s")
+        except Exception as err:
+            msg = _("Invalid sso_recovery_link_ttl: {ttl}")
+            msg = msg.format(ttl=ttl)
+            raise ValueError(msg) from err
+        if ttl < 60 or ttl > 86400:
+            msg = _("sso_recovery_link_ttl out of range (1m..24h): {ttl}s")
+            msg = msg.format(ttl=ttl)
+            raise ValueError(msg)
+        return ttl
+    def sso_recovery_link_ttl_getter(ttl, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            return units.int2time(ttl, time_unit="s")[0]
+        except Exception as err:
+            msg = _("Invalid sso_recovery_link_ttl: {ttl}")
+            msg = msg.format(ttl=ttl)
+            raise ValueError(msg) from err
+    config.register_config_parameter(name="sso_recovery_link_ttl",
+                                    ctype=int,
+                                    default_value=900,
+                                    setter=sso_recovery_link_ttl_setter,
+                                    getter=sso_recovery_link_ttl_getter,
+                                    object_types=object_types)
     # Length for user RSA keys.
     object_types = [
                         'realm',
@@ -1686,6 +1757,13 @@ class User(OTPmeObject):
         self.auth_script_enabled = False
         # User photo.
         self.photo = None
+        # SSO-token recovery: single-slot per user. recovery_token is
+        # the SHA256 hash of the raw token that was mailed out (raw
+        # token never touches persistent storage). recovery_token_created
+        # is the unix timestamp used to enforce sso_recovery_link_ttl.
+        # A successful complete clears both back to None.
+        self.recovery_token = None
+        self.recovery_token_created = None
         self.acl_inheritance_enabled = False
         self.track_last_used = True
 
@@ -1925,6 +2003,16 @@ class User(OTPmeObject):
                         'PHOTO'                     : {
                                                         'var_name'  : 'photo',
                                                         'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'RECOVERY_TOKEN'            : {
+                                                        'var_name'  : 'recovery_token',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'RECOVERY_TOKEN_CREATED'    : {
+                                                        'var_name'  : 'recovery_token_created',
+                                                        'type'      : int,
                                                         'required'  : False,
                                                     },
                         }
@@ -4932,11 +5020,12 @@ class User(OTPmeObject):
         token_add_status = None
         if new_token:
             if password is not None:
-                new_token.change_password(password=password,
+                if not new_token.change_password(password=password,
                                         force=True,
                                         weak_password=weak_password,
                                         verify_acls=False,
-                                        callback=callback)
+                                        callback=callback):
+                    return callback.error()
         else:
             # Try to create new token instance.
             try:

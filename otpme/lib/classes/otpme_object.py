@@ -562,7 +562,9 @@ def get_ldif_whitelist_id(auth_token=None, whitelist=None):
     return ",".join(sorted(whitelist))
 
 def get_ldif(ldif, attributes=None, verify_acl_func=None,
-    fake_dc=None, auth_token=None, text=False, **kwargs):
+    fake_dc=None, auth_token=None, text=False,
+    truncate_jpeg_photo=False,
+    **kwargs):
     """ Return objects LDIF. """
     # Sort LDIF: dn -> sorted(objectClasses) -> sorted(attributes)
     _dn = None
@@ -613,7 +615,10 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
                     v = encode(v, "base64")
                     attr = f"{a}:: {v}"
                 if a == "jpegPhoto":
-                    attr = f"{a}:: {v}"
+                    if truncate_jpeg_photo:
+                        attr = f"{a}:: {v[:8]}"
+                    else:
+                        attr = f"{a}:: {v}"
             _ldif.append(attr)
 
     if attributes is None or "objectClass" in attributes:
@@ -6805,6 +6810,7 @@ class OTPmeObject(OTPmeBaseObject):
     @ldif_cache.cache_method()
     def get_ldif(
         self,
+        attributes: str=None,
         _caller: str="API",
         verify_acls: bool=True,
         callback: JobCallback=default_callback,
@@ -6817,9 +6823,15 @@ class OTPmeObject(OTPmeBaseObject):
         verify_acl_func = None
         if verify_acls:
             verify_acl_func = self.verify_acl
+        truncate_jpeg_photo = True
+        if attributes:
+            if "jpegPhoto" in attributes:
+                truncate_jpeg_photo = False
         object_ldif = self.ldif.copy()
         ldif = get_ldif(ldif=object_ldif, text=text,
+                        attributes=attributes,
                         verify_acl_func=verify_acl_func,
+                        truncate_jpeg_photo=truncate_jpeg_photo,
                         **kwargs)
         return callback.ok(ldif, return_value=True)
 

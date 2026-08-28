@@ -30,6 +30,12 @@ from otpme.lib.exceptions import *
 
 filehandlers = {}
 
+# The extended attributes that carry a POSIX ACL.
+ACL_XATTRS = [
+                "system.posix_acl_access",
+                "system.posix_acl_default",
+            ]
+
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 
@@ -89,6 +95,20 @@ class OTPmeFsServer1(OTPmeServer1):
         self.force_group_gid = None
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
+
+    def check_xattr(self, name):
+        """ Check if we serve the given extended attribute.
+
+        We only serve the POSIX ACLs: they are the permission model of a share
+        and the backup stores them. Everything else (user.*, security.*,
+        trusted.*) is application data the backup does not keep, so a share
+        must not pretend to hold it -- it would be gone after a restore
+        without anybody noticing. We report what a filesystem without xattr
+        support reports instead.
+        """
+        if name in ACL_XATTRS:
+            return
+        raise OSError(errno.EOPNOTSUPP, "Operation not supported")
 
     @property
     def root(self) -> Optional[str]:
@@ -442,6 +462,7 @@ class OTPmeFsServer1(OTPmeServer1):
     @with_root_path(allow_symlinks=True)
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
         """Get extended attributes (including POSIX ACLs)"""
+        self.check_xattr(name)
         if os.path.islink(path):
             raise OSError(errno.ENODATA, "No such attribute")
         try:
@@ -458,6 +479,7 @@ class OTPmeFsServer1(OTPmeServer1):
         """Set extended attributes (including POSIX ACLs)"""
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
+        self.check_xattr(name)
         try:
             flags = 0
             if options & 0x1:  # XATTR_CREATE
@@ -473,17 +495,21 @@ class OTPmeFsServer1(OTPmeServer1):
     def listxattr(self, path: str) -> list:
         """List all extended attributes"""
         try:
-            return list(xattr.listxattr(path))
+            attrs = list(xattr.listxattr(path))
         except OSError as e:
             if e.errno == errno.ENOTSUP:
                 return []
             raise
+        # Only the POSIX ACLs are served, see check_xattr(). Listing anything
+        # else would offer attributes that getxattr() then refuses.
+        return [x for x in attrs if x in ACL_XATTRS]
 
     @with_root_path()
     def removexattr(self, path: str, name: str) -> int:
         """Remove extended attributes"""
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
+        self.check_xattr(name)
         try:
             xattr.removexattr(path, name)
             return 0

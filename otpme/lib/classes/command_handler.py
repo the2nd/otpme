@@ -2052,7 +2052,7 @@ class CommandHandler(object):
             elif command == "restore":
                 try:
                     restore_file = command_line[1]
-                except KeyError:
+                except Exception:
                     restore_file = None
                 if not restore_file:
                     return self.get_help()

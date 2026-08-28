@@ -405,6 +405,15 @@ If enabled, temporary passwords can be set on tokens.
 .br
 Object types: site, unit, user, token
 .TP
+.B allow_sso_token_recovery \fR(list, default: empty)
+Comma-separated list of token types that are eligible for the SSO-token recovery flow (\fIforgot my token \-> receive re\-deploy link by e\-mail\fR). The token targeted is always the user's SSO token as named by
+.BR default_sso_token_name .
+Recovery is refused unless that token's type is listed here. Empty (default) disables recovery entirely. Resolved via the user/unit/site cascade on the user's home site; the recovery mail address is stored on the user object as the
+.B otpmeRecoveryMail
+LDAP attribute.
+.br
+Object types: site, unit, user
+.TP
 .B admin_access_role \fR(str)
 Role whose members are allowed to set a temporary password on another user's token through the SSO portal admin\-access flow. Resolved per\-user with the standard cascade (token overrides user overrides unit overrides site). Foreign\-site users only resolve via this cascade if the local site lists the home site under
 .BR admin_access_trusts ;
@@ -1013,7 +1022,9 @@ Object types: site, unit, node, share
 .B backup_report_enabled \fR(bool, default: false)
 Enable e\-mail reports about completed backup runs (success and failure). When disabled, none of the other
 .B backup_report_*
-parameters take effect.
+parameters take effect. The SMTP relay itself is configured via the shared
+.B smtp_relay_*
+parameters below.
 .br
 Object types: site, unit, node, share
 .TP
@@ -1028,40 +1039,6 @@ Which backup runs to report on. Valid values:
 .br
 Object types: site, unit, node, share
 .TP
-.B backup_report_smtp_server \fR(str, default: 127.0.0.1)
-SMTP server to use when sending backup reports.
-.br
-Object types: site, unit, node, share
-.TP
-.B backup_report_smtp_port \fR(int, default: 25)
-TCP port of the SMTP server.
-.br
-Object types: site, unit, node, share
-.TP
-.B backup_report_smtp_starttls \fR(bool, default: false)
-Issue \fBSTARTTLS\fR before sending the report.
-.br
-Object types: site, unit, node, share
-.TP
-.B backup_report_smtp_auth \fR(bool, default: false)
-Authenticate to the SMTP server with
-.B backup_report_smtp_username
-and
-.BR backup_report_smtp_password .
-.br
-Object types: site, unit, node, share
-.TP
-.B backup_report_smtp_username \fR(str)
-Login name for SMTP authentication.
-.br
-Object types: site, unit, node, share
-.TP
-.B backup_report_smtp_password \fR(str)
-Password for SMTP authentication. Stored encrypted with the site key; shown as \fI<hidden>\fR by
-.BR show_config .
-.br
-Object types: site, unit, node, share
-.TP
 .B backup_report_mail_from \fR(str)
 Envelope and \fBFrom:\fR address of the report e\-mail.
 .br
@@ -1069,6 +1046,40 @@ Object types: site, unit, node, share
 .TP
 .B backup_report_mail_to \fR(str)
 Recipient address for the report e\-mail.
+.br
+Object types: site, unit, node, share
+.TP
+.B smtp_relay_server \fR(str, default: 127.0.0.1)
+Outbound SMTP relay used by every OTPme notification feature (backup reports, password reset, ...).
+.br
+Object types: site, unit, node, share
+.TP
+.B smtp_relay_port \fR(int, default: 25)
+TCP port of the SMTP relay.
+.br
+Object types: site, unit, node, share
+.TP
+.B smtp_relay_starttls \fR(bool, default: false)
+Issue \fBSTARTTLS\fR before handing over the message.
+.br
+Object types: site, unit, node, share
+.TP
+.B smtp_relay_auth \fR(bool, default: false)
+Authenticate to the SMTP relay with
+.B smtp_relay_username
+and
+.BR smtp_relay_password .
+.br
+Object types: site, unit, node, share
+.TP
+.B smtp_relay_username \fR(str)
+Login name for SMTP authentication.
+.br
+Object types: site, unit, node, share
+.TP
+.B smtp_relay_password \fR(str)
+Password for SMTP authentication. Stored encrypted with the site key; shown as \fI<hidden>\fR by
+.BR show_config .
 .br
 Object types: site, unit, node, share
 .TP

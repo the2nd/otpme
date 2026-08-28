@@ -344,6 +344,20 @@ class OTPmeServer1(object):
         # Call child class method.
         self._pre_init()
 
+        # Post-fork logger rebind. The setup_logger call in __init__
+        # ran before the child protocol handler had a chance to touch
+        # process-wide state via multiprocessing.atfork(); its stream
+        # handler is bound to the sys.stdout ref at that time, and its
+        # ContextFilter reads the module-global log_banner set then.
+        # After _pre_init() the fork is fully settled, so redo the
+        # setup here so every protocol emits records from the child
+        # PID's fresh state -- otherwise INFO/DEBUG before the first
+        # per-command banner change (e.g. set_proctitle) can go
+        # missing depending on how the fork left stdio and filters.
+        self.logger = log.setup_logger(banner=config.log_name,
+                                        pid=True,
+                                        existing_logger=config.logger)
+
         # Check client certificate.
         if self.peer_cert:
             # Get certs common name.
@@ -1252,6 +1266,11 @@ class OTPmeServer1(object):
         so it also decides: the share for a share request, else the
         accessgroup we authenticate against. The accessgroup case only
         applies to protocols that can handle a signed SOTP.
+
+        An accessgroup without forced signing only requires it from users
+        whose sign public key it holds. This is what makes it possible to
+        enable signing while users are still getting their keys. With
+        force enabled the key is required, so a user without one fails.
         """
         self.sotp_signing = False
         self.sotp_sign_object = None
@@ -1272,6 +1291,13 @@ class OTPmeServer1(object):
         ag_instance = self.get_accessgroup_instance(self.access_group)
         if not ag_instance.sotp_signing:
             return
+        if not ag_instance.force_sotp_signing:
+            # No user to decide for means we cannot tell if a key exists.
+            # Requiring the signature is the safe direction: the request
+            # fails instead of passing unsigned.
+            if self.user:
+                if not ag_instance.get_sign_public_key(self.user.uuid):
+                    return
         self.sotp_signing = True
         self.sotp_sign_object = ag_instance
 

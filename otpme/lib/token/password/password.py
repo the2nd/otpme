@@ -776,11 +776,12 @@ class PasswordToken(Token):
 
         # Set password. Adding the token is the confirmed action, so the
         # password must not ask again.
-        self.change_password(password=new_pass,
+        if not self.change_password(password=new_pass,
                             force=True,
                             weak_password=weak_password,
                             verify_acls=False,
-                            callback=callback)
+                            callback=callback):
+            return callback.error()
 
         if _caller == "API":
             return new_pass

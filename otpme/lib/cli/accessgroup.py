@@ -54,6 +54,7 @@ def register():
                         'session_timeout',
                         'sessions_enabled',
                         'sotp_signing',
+                        'force_sotp_signing',
                         'unused_session_timeout',
                         'acl_inheritance_enabled',
                         ]
@@ -119,6 +120,10 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
             sotp_signing = group_data[ag_uuid]['sotp_signing'][0]
         except Exception:
             sotp_signing = False
+        try:
+            force_sotp_signing = group_data[ag_uuid]['force_sotp_signing'][0]
+        except Exception:
+            force_sotp_signing = False
         try:
             relogin_timeout = group_data[ag_uuid]['relogin_timeout'][0]
         except Exception:
@@ -198,12 +203,16 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                 row.append(max_fail_reset)
             else:
                 row.append("-")
-        # SOTP signing.
+        # SOTP signing. Forced signing shares the column, it cannot be
+        # enabled without SOTP signing anyway.
         if "sotp_signing" in output_fields:
             if check_acl("view:sotp_signing") \
             or check_acl("enable:sotp_signing") \
             or check_acl("disable:sotp_signing"):
-                row.append(sotp_signing)
+                if sotp_signing and force_sotp_signing:
+                    row.append(_("forced"))
+                else:
+                    row.append(sotp_signing)
             else:
                 row.append("-")
         # Sessions enabled.

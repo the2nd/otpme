@@ -1,0 +1,53 @@
+# otpme.schema -- OTPme-specific LDAP attribute and object class
+# definitions.
+#
+# ---------------------------------------------------------------------
+# OID assignment
+# ---------------------------------------------------------------------
+# The base arc used below (1.3.6.1.4.1.99999) is a PLACEHOLDER Private
+# Enterprise Number. Before shipping this schema to production, obtain
+# an official PEN from IANA (https://pen.iana.org/) and replace every
+# occurrence of ``1.3.6.1.4.1.99999`` in this file with your assigned
+# arc. All sub-OIDs (.1.x for attributes, .2.x for object classes) can
+# stay as they are -- only the enterprise prefix needs to be swapped.
+#
+# Sub-arc layout (kept stable across future OTPme schema additions):
+#   <PEN>.1.<n>   attribute types
+#   <PEN>.2.<n>   object classes
+# ---------------------------------------------------------------------
+
+#-----------------------------------------------------------
+# Attribute types
+#-----------------------------------------------------------
+
+# Private / recovery e-mail address, distinct from the corporate ``mail``
+# attribute inherited from inetOrgPerson. Used by the SSO portal password
+# reset flow to send a recovery token to an address the user controls
+# outside the organisation.
+#
+# Syntax is Directory String (UTF-8) rather than the traditional IA5
+# String used by ``mail``, so internationalised mailboxes (EAI, RFC 6530
+# -- e.g. ``mueller@muenchen.de`` with UTF-8 localpart or domain) can be
+# stored verbatim without a Punycode/ACE round-trip in the UI layer.
+attributetype ( 1.3.6.1.4.1.99999.1.1
+	NAME 'otpmeRecoveryMail'
+	DESC 'OTPme: private/recovery e-mail address for password reset (EAI-capable)'
+	EQUALITY caseIgnoreMatch
+	SUBSTR caseIgnoreSubstringsMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
+	SINGLE-VALUE )
+
+#-----------------------------------------------------------
+# Object classes
+#-----------------------------------------------------------
+
+# Auxiliary class that hangs OTPme-specific user attributes off any
+# existing structural class (typically inetOrgPerson). Kept AUXILIARY so
+# it composes freely with the standard person/organizationalPerson/
+# inetOrgPerson stack that OTPme users already carry.
+objectclass ( 1.3.6.1.4.1.99999.2.1
+	NAME 'otpmeUser'
+	DESC 'OTPme: auxiliary class for OTPme-specific user attributes'
+	SUP top
+	AUXILIARY
+	MAY ( otpmeRecoveryMail ) )

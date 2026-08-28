@@ -14,7 +14,11 @@
      data-url-del-passkey="{{ url_for('del_passkey', _external=True, _scheme='https') }}"
      data-url-toggle-passkey="{{ url_for('toggle_passkey', _external=True, _scheme='https') }}"
      data-url-get-admin-access="{{ url_for('get_admin_access_state', _external=True, _scheme='https') }}"
-     data-url-set-admin-access="{{ url_for('set_admin_access_state', _external=True, _scheme='https') }}"></div>
+     data-url-set-admin-access="{{ url_for('set_admin_access_state', _external=True, _scheme='https') }}"
+     data-url-get-recovery-mail="{{ url_for('get_recovery_mail', _external=True, _scheme='https') }}"
+     data-url-set-recovery-mail="{{ url_for('set_recovery_mail', _external=True, _scheme='https') }}"
+     data-url-reauth="{{ url_for('reauth', _external=True, _scheme='https') }}"
+     data-settings-path="{{ url_for('settings', _external=True, _scheme='https') }}"></div>
 <div id="page-i18n"
      data-label-changing-password="{{ gettext('Changing password...') }}"
      data-label-password-failed="{{ gettext('Password change failed.') }}"
@@ -68,6 +72,13 @@
      data-label-admin-access-failed-save="{{ gettext('Failed to update admin access.') }}"
      data-label-admin-access-on="{{ gettext('Admin access enabled.') }}"
      data-label-admin-access-off="{{ gettext('Admin access disabled.') }}"
+     data-label-recovery-mail-failed-load="{{ gettext('Failed to load recovery mail.') }}"
+     data-label-recovery-mail-failed-save="{{ gettext('Failed to save recovery mail.') }}"
+     data-label-recovery-mail-saved="{{ gettext('Recovery mail saved.') }}"
+     data-label-recovery-mail-cleared="{{ gettext('Recovery mail removed.') }}"
+     data-label-recovery-mail-invalid="{{ gettext('Please enter a valid e-mail address.') }}"
+     data-label-recovery-mail-none="{{ gettext('No recovery address set.') }}"
+     data-label-confirm-remove-recovery-mail="{{ gettext('Remove your recovery e-mail address?') }}"
      class="is-hidden"></div>
 <div class="portal-wrapper">
     <h2>{{ gettext("Settings") }}</h2>
@@ -173,6 +184,36 @@
         </div>
         <h4>{{ gettext("Existing Passkeys") }}</h4>
         <ul id="passkeyList" class="device-token-list"></ul>
+    </div>
+
+    <!-- Recovery mail: address the SSO token recovery link is sent to.
+         Address lives on the user object as otpmeRecoveryMail (LDIF
+         attribute). Editing requires a fresh step-up reauth (within
+         STEP_UP_MAX_AGE seconds of /reauth) so a forgotten-unlocked
+         browser cannot silently pivot into an account-takeover
+         setting. Display mode shows current address + small Edit
+         button; Edit click redirects to /reauth?next=/settings#recoveryMailCard
+         and after return the row swaps to input + small Save/Remove
+         /Cancel. -->
+    <div class="settings-card" id="recoveryMailCard">
+        <h3>{{ gettext("Recovery E-Mail") }}</h3>
+        <p class="settings-desc">{{ gettext("If you lose access to your SSO token, a re-deploy link is sent to this address. Keep it under an account only you control (private mailbox, not your work address). Editing requires re-authentication.") }}</p>
+        <div class="settings-form">
+            <div class="recovery-mail-display" id="recoveryMailDisplay">
+                <span class="recovery-mail-value" id="recoveryMailValue"></span>
+                <button type="button" id="editRecoveryMailBtn" class="btn btn-secondary btn-small">{{ gettext("Edit") }}</button>
+            </div>
+            <div class="recovery-mail-edit is-hidden" id="recoveryMailEdit">
+                <input type="email" id="recoveryMailInput" autocomplete="email" spellcheck="false" placeholder="you@example.com">
+                <div class="recovery-mail-actions">
+                    <button type="button" id="saveRecoveryMailBtn" class="btn btn-primary btn-small">{{ gettext("Save") }}</button>
+                    <button type="button" id="removeRecoveryMailBtn" class="btn btn-secondary btn-small">{{ gettext("Remove") }}</button>
+                    <button type="button" id="cancelRecoveryMailBtn" class="btn btn-secondary btn-small">{{ gettext("Cancel") }}</button>
+                </div>
+            </div>
+            <div class="status-msg" id="recoveryMailStatus"></div>
+            <div class="error-msg" id="recoveryMailError"></div>
+        </div>
     </div>
 
     <!-- Admin access: opt-in. Hidden by default; revealed by

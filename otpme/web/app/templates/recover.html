@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="page-data"
+     data-url-recover="{{ url_for('recover_request', _external=True, _scheme='https') }}"
+     data-url-login="{{ url_for('login', _external=True, _scheme='https') }}"></div>
+<div id="page-i18n"
+     data-label-need-username="{{ gettext('Please enter your username.') }}"
+     data-label-submitting="{{ gettext('Submitting request...') }}"
+     data-label-failed-submit="{{ gettext('Failed to submit recovery request.') }}"
+     data-label-generic-sent="{{ gettext('If an account with the given username exists and has a recovery e-mail address configured, a re-deploy link is on its way. Please check the recovery inbox and click the link within the next few minutes.') }}"
+     class="is-hidden"></div>
+<div class="login-wrapper">
+  <div class="login-card">
+    <h1>{{ gettext("Recover SSO Token") }}</h1>
+    <p class="deploy-desc">{{ gettext("Enter your username. If a recovery e-mail address is set on the account, a re-deploy link will be sent to it.") }}</p>
+
+    <div id="recover-form-block">
+      <form id="recoverForm" onsubmit="return false;">
+        <label for="recoverUsername">{{ gettext("Username") }}</label>
+        <input type="text" id="recoverUsername" name="username" autocomplete="username" autofocus>
+
+        <div class="login-buttons">
+          <button type="submit" id="recoverSubmitBtn" class="btn btn-primary">{{ gettext("Send Recovery Link") }}</button>
+          <a href="{{ url_for('login', _external=True, _scheme='https') }}" class="btn btn-secondary">{{ gettext("Back to Sign In") }}</a>
+        </div>
+      </form>
+    </div>
+
+    <div id="recover-sent-block" class="is-hidden">
+      <p class="deploy-hint" id="recoverSentMsg"></p>
+      <div class="login-buttons">
+        <a href="{{ url_for('login', _external=True, _scheme='https') }}" class="btn btn-primary">{{ gettext("Back to Sign In") }}</a>
+      </div>
+    </div>
+
+    <div class="status-msg" id="recoverStatus"></div>
+    <div class="error-msg" id="recoverError"></div>
+
+    <div class="logo-container">
+      <img src="{{ url_for('static', filename='otpme.png') }}" alt="OTPme Logo" class="logo">
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='recover.js') }}"></script>
+{% endblock %}

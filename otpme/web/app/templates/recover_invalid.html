@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="login-wrapper">
+  <div class="login-card">
+    <h1>{{ gettext("Recovery Link Invalid") }}</h1>
+    <p class="deploy-desc">{{ gettext("This recovery link is invalid or has expired. Recovery links are single-use and time-limited.") }}</p>
+    <p class="deploy-hint">{{ gettext("Request a fresh recovery mail from the recovery page.") }}</p>
+    <div class="login-buttons">
+      <a href="{{ url_for('recover', _external=True, _scheme='https') }}" class="btn btn-primary">{{ gettext("Request New Link") }}</a>
+      <a href="{{ url_for('login', _external=True, _scheme='https') }}" class="btn btn-secondary">{{ gettext("Back to Sign In") }}</a>
+    </div>
+    <div class="logo-container">
+      <img src="{{ url_for('static', filename='otpme.png') }}" alt="OTPme Logo" class="logo">
+    </div>
+  </div>
+</div>
+{% endblock %}

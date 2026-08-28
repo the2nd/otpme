@@ -143,9 +143,9 @@ class BackupDaemon(OTPmeDaemon):
             if backup_report_mode == "error":
                 if status is not False:
                     return
-        server = backup_object.get_config_parameter("backup_report_smtp_server")
+        server = backup_object.get_config_parameter("smtp_relay_server")
         if not server:
-            log_msg = _("Cannot send backup report: backup_report_smtp_server not configured.", log=True)[1]
+            log_msg = _("Cannot send backup report: smtp_relay_server not configured.", log=True)[1]
             self.logger.warning(log_msg)
             return False
         mail_from = backup_object.get_config_parameter("backup_report_mail_from")
@@ -158,26 +158,26 @@ class BackupDaemon(OTPmeDaemon):
             log_msg = _("Cannot send backup report: backup_report_mail_to not configured.", log=True)[1]
             self.logger.warning(log_msg)
             return False
-        port = backup_object.get_config_parameter("backup_report_smtp_port")
+        port = backup_object.get_config_parameter("smtp_relay_port")
         if port is None:
             port = 25
-        starttls = backup_object.get_config_parameter("backup_report_smtp_starttls")
+        starttls = backup_object.get_config_parameter("smtp_relay_starttls")
         if starttls is None:
             starttls = False
-        smtp_auth = backup_object.get_config_parameter("backup_report_smtp_auth")
+        smtp_auth = backup_object.get_config_parameter("smtp_relay_auth")
         if smtp_auth is None:
             smtp_auth = False
         username = None
         password = None
         if smtp_auth:
-            username = backup_object.get_config_parameter("backup_report_smtp_username")
+            username = backup_object.get_config_parameter("smtp_relay_username")
             if username is None:
-                log_msg = _("Cannot send backup report: backup_report_smtp_auth configured without backup_report_smtp_username.", log=True)[1]
+                log_msg = _("Cannot send backup report: smtp_relay_auth configured without smtp_relay_username.", log=True)[1]
                 self.logger.warning(log_msg)
                 return False
-            password = backup_object.get_config_parameter("backup_report_smtp_password")
+            password = backup_object.get_config_parameter("smtp_relay_password")
             if password is None:
-                log_msg = _("Cannot send backup report: backup_report_smtp_auth configured without backup_report_smtp_password.", log=True)[1]
+                log_msg = _("Cannot send backup report: smtp_relay_auth configured without smtp_relay_password.", log=True)[1]
                 self.logger.warning(log_msg)
                 return False
 

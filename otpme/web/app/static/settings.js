@@ -689,6 +689,187 @@
         }
     }
 
+    // ---- Recovery mail (SSO-token recovery destination) ----
+    //
+    // Two DOM subtrees, one visible at a time:
+    //   * display: current value as text + small Edit button
+    //   * edit:    input + small Save/Remove/Cancel
+    // Edit click redirects through /reauth?next=/settings#recoveryMailCard;
+    // after the reauth completes the user lands back here and the URL
+    // hash flips the card into edit mode. The server gates every
+    // write on session.reauth_time freshness -- if the 60s window
+    // elapsed by the time Save is clicked, the response carries
+    // step_up_required=true and we bounce the user through /reauth
+    // again.
+
+    let _recoveryMailCurrentValue = null;
+
+    function _recoveryMailEls() {
+        return {
+            card:       document.getElementById('recoveryMailCard'),
+            display:    document.getElementById('recoveryMailDisplay'),
+            edit:       document.getElementById('recoveryMailEdit'),
+            valueEl:    document.getElementById('recoveryMailValue'),
+            input:      document.getElementById('recoveryMailInput'),
+            editBtn:    document.getElementById('editRecoveryMailBtn'),
+            saveBtn:    document.getElementById('saveRecoveryMailBtn'),
+            removeBtn:  document.getElementById('removeRecoveryMailBtn'),
+            cancelBtn:  document.getElementById('cancelRecoveryMailBtn'),
+            statusEl:   document.getElementById('recoveryMailStatus'),
+            errorEl:    document.getElementById('recoveryMailError'),
+        };
+    }
+
+    function _renderRecoveryMailDisplay(els) {
+        const i18n = getPageI18n();
+        const v = _recoveryMailCurrentValue;
+        if (v) {
+            els.valueEl.textContent = v;
+            els.valueEl.classList.remove('empty');
+            els.removeBtn.classList.remove('is-hidden');
+        } else {
+            els.valueEl.textContent = i18n.labelRecoveryMailNone
+                    || 'No recovery address set.';
+            els.valueEl.classList.add('empty');
+            els.removeBtn.classList.add('is-hidden');
+        }
+        els.display.classList.remove('is-hidden');
+        els.edit.classList.add('is-hidden');
+    }
+
+    function _enterRecoveryMailEdit(els) {
+        els.input.value = _recoveryMailCurrentValue || '';
+        els.display.classList.add('is-hidden');
+        els.edit.classList.remove('is-hidden');
+        if (_recoveryMailCurrentValue) {
+            els.removeBtn.classList.remove('is-hidden');
+        } else {
+            els.removeBtn.classList.add('is-hidden');
+        }
+        els.input.focus();
+    }
+
+    function _driveReauth() {
+        const urls = getUrls();
+        const target = (urls.settingsPath || '/settings') + '#recoveryMailCard';
+        window.location.assign(urls.urlReauth
+                + '?next=' + encodeURIComponent(target));
+    }
+
+    async function loadRecoveryMail() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const els = _recoveryMailEls();
+        if (!els.card || !els.input) return;
+        try {
+            const resp = await fetchJSON(urls.urlGetRecoveryMail);
+            const {body, error} = await window.readJsonResponse(
+                resp,
+                i18n.labelRecoveryMailFailedLoad || 'Failed to load recovery mail.');
+            if (error) throw new Error(error);
+            _recoveryMailCurrentValue = body.recovery_mail || null;
+        } catch (e) {
+            els.errorEl.textContent = e.message
+                    || i18n.labelRecoveryMailFailedLoad
+                    || 'Failed to load recovery mail.';
+            return;
+        }
+        _renderRecoveryMailDisplay(els);
+        // Coming back from /reauth for this card -- flip to edit mode.
+        if (window.location.hash === '#recoveryMailCard') {
+            _enterRecoveryMailEdit(els);
+        }
+    }
+
+    function onEditRecoveryMail() {
+        _driveReauth();
+    }
+
+    function onCancelRecoveryMail() {
+        const els = _recoveryMailEls();
+        els.errorEl.textContent = '';
+        els.statusEl.textContent = '';
+        _renderRecoveryMailDisplay(els);
+    }
+
+    // Client-side sanity mirror of stuff.is_email (server-side is
+    // authoritative). Catches typos before the round-trip.
+    function _looksLikeEmail(v) {
+        if (typeof v !== 'string') return false;
+        const s = v.trim();
+        if (!s) return false;
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+    }
+
+    async function _submitRecoveryMail(newValue) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const els = _recoveryMailEls();
+        els.statusEl.textContent = '';
+        els.errorEl.textContent = '';
+        els.saveBtn.disabled = true;
+        els.removeBtn.disabled = true;
+        els.cancelBtn.disabled = true;
+        try {
+            const resp = await fetchJSON(urls.urlSetRecoveryMail, {
+                method: 'POST',
+                body: JSON.stringify({recovery_mail: newValue || ''}),
+            });
+            const {body, error} = await window.readJsonResponse(
+                resp,
+                i18n.labelRecoveryMailFailedSave || 'Failed to save recovery mail.');
+            // Server says the SSO-session reauth is stale -> drive the
+            // user through /reauth and let them retry after landing back.
+            if (body && body.step_up_required) {
+                _driveReauth();
+                return;
+            }
+            if (error) throw new Error(error);
+            _recoveryMailCurrentValue = body.recovery_mail || null;
+            els.statusEl.textContent = _recoveryMailCurrentValue
+                    ? (i18n.labelRecoveryMailSaved || 'Recovery mail saved.')
+                    : (i18n.labelRecoveryMailCleared || 'Recovery mail removed.');
+            _renderRecoveryMailDisplay(els);
+        } catch (e) {
+            els.errorEl.textContent = e.message
+                    || i18n.labelRecoveryMailFailedSave
+                    || 'Failed to save recovery mail.';
+        } finally {
+            els.saveBtn.disabled = false;
+            els.removeBtn.disabled = false;
+            els.cancelBtn.disabled = false;
+        }
+    }
+
+    async function onSaveRecoveryMail() {
+        const i18n = getPageI18n();
+        const els = _recoveryMailEls();
+        const v = (els.input.value || '').trim();
+        if (!v) {
+            // Empty save is treated as an accidental "clear" -- use
+            // the explicit Remove button for that instead.
+            els.errorEl.textContent = i18n.labelRecoveryMailInvalid
+                    || 'Please enter a valid e-mail address.';
+            return;
+        }
+        if (!_looksLikeEmail(v)) {
+            els.errorEl.textContent = i18n.labelRecoveryMailInvalid
+                    || 'Please enter a valid e-mail address.';
+            return;
+        }
+        await _submitRecoveryMail(v);
+    }
+
+    async function onRemoveRecoveryMail() {
+        const i18n = getPageI18n();
+        const els = _recoveryMailEls();
+        const msg = i18n.labelConfirmRemoveRecoveryMail
+                || 'Remove your recovery e-mail address?';
+        if (!window.confirm(msg)) return;
+        els.input.value = '';
+        await _submitRecoveryMail('');
+    }
+
     function getConsentUrls() {
         const el = document.getElementById('oidc-consent-urls');
         return el ? el.dataset : null;
@@ -873,12 +1054,22 @@
         const adminToggle = document.getElementById('adminAccessToggle');
         if (adminToggle) adminToggle.addEventListener('change', onAdminAccessToggle);
 
+        const editRecoveryBtn = document.getElementById('editRecoveryMailBtn');
+        if (editRecoveryBtn) editRecoveryBtn.addEventListener('click', onEditRecoveryMail);
+        const saveRecoveryBtn = document.getElementById('saveRecoveryMailBtn');
+        if (saveRecoveryBtn) saveRecoveryBtn.addEventListener('click', onSaveRecoveryMail);
+        const removeRecoveryBtn = document.getElementById('removeRecoveryMailBtn');
+        if (removeRecoveryBtn) removeRecoveryBtn.addEventListener('click', onRemoveRecoveryMail);
+        const cancelRecoveryBtn = document.getElementById('cancelRecoveryMailBtn');
+        if (cancelRecoveryBtn) cancelRecoveryBtn.addEventListener('click', onCancelRecoveryMail);
+
         // Kick off all async loaders in parallel; catch each so a
         // single failure doesn't keep scroll restoration from firing.
         Promise.all([
             loadDeviceTokens().catch(() => {}),
             loadPasskeys().catch(() => {}),
             loadAdminAccess().catch(() => {}),
+            loadRecoveryMail().catch(() => {}),
             loadOidcConsents().catch(() => {}),
         ]).then(function () {
             let saved = null;

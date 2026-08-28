@@ -375,19 +375,28 @@ a:hover { text-decoration: underline; }
   color: #555;
   margin-bottom: 4px;
 }
-.deploy-card input[type="text"] {
+.deploy-card input[type="text"],
+.deploy-card input[type="password"] {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid #ccd0d5;
   border-radius: 8px;
   font-size: 18px;
-  letter-spacing: 4px;
-  text-align: center;
   margin-bottom: 14px;
   outline: none;
   transition: border-color .15s;
+  background-color: #fff;
+  color: #1c1e21;
+  box-sizing: border-box;
 }
-.deploy-card input[type="text"]:focus {
+/* OATH OTP field: centered + spaced-out digits for legibility.
+   Password fields keep the normal look. */
+.deploy-card input[type="text"] {
+  letter-spacing: 4px;
+  text-align: center;
+}
+.deploy-card input[type="text"]:focus,
+.deploy-card input[type="password"]:focus {
   border-color: #4a7cff;
   box-shadow: 0 0 0 3px rgba(74,124,255,.15);
 }
@@ -432,6 +441,7 @@ a:hover { text-decoration: underline; }
 }
 .settings-form input[type="password"],
 .settings-form input[type="text"],
+.settings-form input[type="email"],
 .settings-form select {
   width: 100%;
   max-width: 360px;
@@ -447,6 +457,7 @@ a:hover { text-decoration: underline; }
 }
 .settings-form input[type="password"]:focus,
 .settings-form input[type="text"]:focus,
+.settings-form input[type="email"]:focus,
 .settings-form select:focus {
   border-color: #4a7cff;
   box-shadow: 0 0 0 3px rgba(74,124,255,.15);
@@ -554,6 +565,55 @@ a:hover { text-decoration: underline; }
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
+}
+.login-recover-link {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+}
+.login-recover-link a {
+  color: #4a7cff;
+  text-decoration: none;
+}
+.login-recover-link a:hover {
+  text-decoration: underline;
+}
+.recovery-mail-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border: 1px solid #dfe3ea;
+  border-radius: 8px;
+}
+.recovery-mail-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #222;
+  word-break: break-all;
+}
+.recovery-mail-value.empty {
+  color: #888;
+  font-style: italic;
+}
+.recovery-mail-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recovery-mail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* .btn-primary / .btn-secondary carry flex:1 for the full-width login
+   layout; inside recovery-mail rows the small buttons should size to
+   their content instead of stretching across the container. */
+.recovery-mail-display .btn,
+.recovery-mail-actions .btn {
   flex: 0 0 auto;
 }
 .device-token-list li.empty,

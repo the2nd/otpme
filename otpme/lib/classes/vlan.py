@@ -589,7 +589,7 @@ def get_member_vlan(object_uuid, object_type, site_uuid=None):
         return
 
     # Named by a VLAN itself.
-    x_vlans = [x for x in vlans if object_uuid in x.get_members(object_type)]
+    x_vlans = [x for x in vlans if object_uuid in x._get_members(object_type)]
     if x_vlans:
         return pick_member_vlan(x_vlans, object_uuid)
 
@@ -899,7 +899,7 @@ class Vlan(OTPmeObject):
             return self.vlan_id
         return self.name
 
-    def get_members(self, member_type):
+    def _get_members(self, member_type):
         """ Members of the given type. """
         if member_type == "token":
             return self.tokens
@@ -930,7 +930,7 @@ class Vlan(OTPmeObject):
                                     return_type="instance"):
             if x_vlan.uuid == self.uuid:
                 continue
-            if member_uuid not in x_vlan.get_members(member_type):
+            if member_uuid not in x_vlan._get_members(member_type):
                 continue
             msg = _("Object is already a member of VLAN: {vlan}")
             msg = msg.format(vlan=x_vlan.rel_path)
@@ -1199,7 +1199,7 @@ class Vlan(OTPmeObject):
                 lines.append(f'{x_field}=""')
                 continue
             x_members = []
-            for x_uuid in self.get_members(x_type):
+            for x_uuid in self._get_members(x_type):
                 x_oid = backend.get_oid(uuid=x_uuid,
                                         object_type=x_type,
                                         instance=True)

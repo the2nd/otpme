@@ -693,6 +693,9 @@ class OTPmeAuthP1(OTPmeServer1):
         # stay alive.
         reauth = bool(command_args.get('reauth', False))
         reauth_session_uuid = command_args.get('session_uuid')
+        log_msg = _("fido2_auth_complete: reauth={r} session_uuid_set={s}", log=True)[1]
+        log_msg = log_msg.format(r=reauth, s=bool(reauth_session_uuid))
+        self.logger.info(log_msg)
         user = backend.get_object(object_type="user",
                                 name=username,
                                 realm=config.realm,
@@ -705,13 +708,100 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = self.build_log_msg(command_error)
             self.logger.warning(log_msg)
             return self.build_response(status, auth_response)
+        # Whether the caller (another authd) is asking us to verify only
+        # and hand back a proof-of-verify JWT, leaving session state on
+        # them. Set by portal's cross-site reauth path (see below); we
+        # do NOT create a session or bump reauth_time here. Captured
+        # before the state pop so both branches (portal-side forward,
+        # home-side handler) see the same value.
+        reauth_forward = bool(command_args.get('reauth_forward'))
         state_data, err = self._pop_fido2_state_or_error(fido2_state_id)
         if err is not None:
             return err
-        # Check for command redirection.
+        # Cross-site reauth: portal forwards a lightweight "verify only,
+        # return a signed JWT" request to home so home never sees the
+        # SSO session (it lives on portal). Full-auth redirect stays as
+        # the default for a plain login.
         if user.site != config.site:
             fido2_auth_node = state_data['node']
-            # Build smartcard_data for auth_handler.
+            if reauth:
+                # Ask home to verify and JWT-sign the result -- portal
+                # validates the JWT below and bumps reauth_time on the
+                # local session (never crosses).
+                jwt_reason = "DST_TOKEN_VERIFY"
+                jwt_challenge = stuff.gen_secret(32)
+                forward_args = {
+                        'username'          : user.name,
+                        'client'            : client,
+                        'client_ip'         : client_ip,
+                        'rp_id'             : rp_id,
+                        'fido2_state_id'    : fido2_state_id,
+                        'auth_response'     : auth_response,
+                        'reauth_forward'    : True,
+                        'jwt_reason'        : jwt_reason,
+                        'jwt_challenge'     : jwt_challenge,
+                    }
+                status, response = self.authd_redirect_command(
+                                                command="fido2_auth_complete",
+                                                user=user,
+                                                command_args=forward_args,
+                                                node=fido2_auth_node)
+                if not status or not isinstance(response, dict):
+                    log_msg = _("Cross-site fido2 reauth: redirected verify failed for user '{u}'.", log=True)[1]
+                    log_msg = log_msg.format(u=user.name)
+                    self.logger.warning(log_msg)
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+                token_uuid = response.get('token_uuid')
+                dst_token = backend.get_object(uuid=token_uuid) if token_uuid else None
+                if dst_token is None:
+                    log_msg = _("Cross-site fido2 reauth: unknown token uuid in home response.", log=True)[1]
+                    self.logger.warning(log_msg)
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+                if not self.verify_redirect_jwt(response, dst_token, dst_token,
+                                                jwt_challenge, jwt_reason):
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+                if not reauth_session_uuid:
+                    log_msg = _("Reauth: session_uuid missing.", log=True)[1]
+                    self.logger.warning(log_msg)
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+                sso_session = backend.get_object(object_type="session",
+                                                 uuid=reauth_session_uuid)
+                if sso_session is None or sso_session.user_uuid != user.uuid:
+                    emit_audit("Auth", "reauth_failed",
+                                    level='warning',
+                                    user=user.name,
+                                    session=reauth_session_uuid,
+                                    reason='session_user_mismatch',
+                                    ip=client_ip)
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+                try:
+                    sso_session.update_reauth_time(wait_for_cluster_writes=True)
+                except Exception as e:
+                    log_msg = _("Reauth: failed to persist reauth_time: {err}", log=True)[1]
+                    log_msg = log_msg.format(err=e)
+                    self.logger.warning(log_msg)
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+                emit_audit("Auth", "reauth_success",
+                                user=user.name,
+                                token=dst_token.name,
+                                session=sso_session.session_id,
+                                ip=client_ip)
+                return self.build_response(True, {
+                    'message': 'ok', 'status': True,
+                })
+            # Regular cross-site full auth: unchanged.
             smartcard_data = {
                 'rp_id'         : rp_id,
                 'auth_response' : json.dumps(auth_response),
@@ -768,6 +858,56 @@ class OTPmeAuthP1(OTPmeServer1):
             token = t
             verify_token = x_verify_token
             break
+
+        # Cross-site reauth forward from a peer authd (the SSO session
+        # is on the caller, not here): verify the fido2 assertion, sign
+        # a JWT proving it, and return. The caller validates the JWT
+        # and bumps its own session's reauth_time -- we do not touch
+        # session state locally.
+        if reauth_forward:
+            if token is None:
+                log_msg = _("Reauth-forward: matched FIDO2 token not found.", log=True)[1]
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            try:
+                verify_ok = verify_token.verify(smartcard_data=smartcard_data)
+            except Exception as e:
+                log_msg = _("Reauth-forward: FIDO2 verify failed: {err}", log=True)[1]
+                log_msg = log_msg.format(err=e)
+                self.logger.warning(log_msg)
+                verify_ok = False
+            if not verify_ok:
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            jwt_reason = command_args.get('jwt_reason')
+            jwt_challenge = command_args.get('jwt_challenge')
+            try:
+                # src_token=verify_token (not the local link token) so
+                # the JWT's src_token/login_token both point to the
+                # dst_token -- portal validates via verify_redirect_jwt
+                # with dst_token=src_token=verify_token, no need to
+                # transmit the local link's uuid across sites.
+                proof_jwt = self.gen_jwt(username=verify_token.owner,
+                                        token=verify_token,
+                                        src_token=verify_token,
+                                        reason=jwt_reason,
+                                        access_group=None,
+                                        challenge=jwt_challenge)
+            except Exception as e:
+                log_msg = _("Reauth-forward: gen_jwt failed: {err}", log=True)[1]
+                log_msg = log_msg.format(err=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            return self.build_response(True, {
+                'status':     True,
+                'jwt':        proof_jwt,
+                'token_uuid': verify_token.uuid,
+            })
 
         # Step-up reauth: verify FIDO2 directly on the token (which
         # already enforces counter / replay protection) and bump
@@ -918,6 +1058,37 @@ class OTPmeAuthP1(OTPmeServer1):
                                             site=verify_token.site)
         if not status:
             log_msg = _("Reauth: redirected verify failed: {token}", log=True)[1]
+            log_msg = log_msg.format(token=verify_token.rel_path)
+            self.logger.warning(log_msg)
+            return False
+        return self.verify_redirect_jwt(response, verify_token, token,
+                                    jwt_challenge, jwt_reason)
+
+    def reauth_redirect_password(self, user, token, verify_token,
+        password, client, client_ip):
+        """ Cross-site password/OTP reauth: same shape as ``reauth_redirect``
+        but sends ``token_verify`` (clear-text) to the token's home site
+        instead of ``token_verify_smartcard``. Used from the ``verify``
+        reauth branch when the SSO session's auth token (or its dst
+        token) lives elsewhere. """
+        jwt_reason = "DST_TOKEN_VERIFY"
+        jwt_challenge = stuff.gen_secret(32)
+        verify_args = {
+                    'username'          : user.name,
+                    'token_uuid'        : token.uuid,
+                    'jwt_reason'        : jwt_reason,
+                    'jwt_challenge'     : jwt_challenge,
+                    'password'          : password,
+                    'client'            : client,
+                    'client_ip'         : client_ip,
+                    }
+        status, \
+        response = self.authd_redirect_command(command="token_verify",
+                                            user=user,
+                                            command_args=verify_args,
+                                            site=verify_token.site)
+        if not status:
+            log_msg = _("Reauth: redirected password verify failed: {token}", log=True)[1]
             log_msg = log_msg.format(token=verify_token.rel_path)
             self.logger.warning(log_msg)
             return False
@@ -1918,6 +2089,126 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Set proctitle to contain username.
         self.set_proctitle(username)
+
+        # Step-up reauth via the plain "verify" command: the SSO portal
+        # bounces the user through /reauth for sensitive actions and
+        # submits the standard login form. Instead of creating a new
+        # session (cookies, JWT, peer-RP disruption) we verify the
+        # credential directly against the token that opened the current
+        # SSO session and bump the session's ``reauth_time``. FIDO2
+        # reauth already lives in fido2_auth_complete; this branch
+        # covers password/OTP tokens so the "Sign In" button in reauth
+        # mode of login.html actually works for them.
+        reauth = bool(command_args.get('reauth', False))
+        reauth_session_uuid = command_args.get('session_uuid')
+        log_msg = _("verify: reauth={r} session_uuid={s} user_site={us} local_site={ls}", log=True)[1]
+        log_msg = log_msg.format(r=reauth,
+                                s=bool(reauth_session_uuid),
+                                us=user.site,
+                                ls=config.site)
+        self.logger.info(log_msg)
+        if reauth and command == "verify":
+            log_msg = _("Reauth branch entered for user '{u}'.", log=True)[1]
+            log_msg = log_msg.format(u=user.name)
+            self.logger.info(log_msg)
+            if not reauth_session_uuid:
+                log_msg = _("Reauth: session_uuid missing.", log=True)[1]
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            # The SSO session was created on the site that owns the SSO
+            # portal (this node); a foreign-user login stashed a link
+            # token here whose ``dst_token`` lives on the user's home
+            # site. Look the session up locally, dereference the link,
+            # and verify against the destination token -- either directly
+            # (same site) or via ``reauth_redirect_password`` (foreign).
+            sso_session = backend.get_object(object_type="session",
+                                             uuid=reauth_session_uuid)
+            if sso_session is None or sso_session.user_uuid != user.uuid:
+                emit_audit("Auth", "reauth_failed",
+                                level='warning',
+                                user=user.name,
+                                session=reauth_session_uuid,
+                                reason='session_user_mismatch',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            token = backend.get_object(uuid=sso_session.auth_token)
+            if token is None:
+                log_msg = _("Reauth: session token not found.", log=True)[1]
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            verify_token = token
+            if token.destination_token:
+                verify_token = token.dst_token
+                if verify_token is None:
+                    log_msg = _("Reauth: link token has no dst_token: {t}", log=True)[1]
+                    log_msg = log_msg.format(t=token.rel_path)
+                    self.logger.warning(log_msg)
+                    return self.build_response(False, {
+                        'message': 'Login failed.', 'status': False,
+                    })
+            if verify_token.site != config.site:
+                # Cross-site: hand the verify to the home authd. Home
+                # returns a signed JWT proving it verified the token;
+                # we validate the JWT (identity+challenge+reason bound)
+                # and only then bump reauth_time on the local session.
+                try:
+                    verify_ok = self.reauth_redirect_password(user=user,
+                                                token=token,
+                                                verify_token=verify_token,
+                                                password=password,
+                                                client=client,
+                                                client_ip=client_ip)
+                except Exception as e:
+                    log_msg = _("Reauth: cross-site password verify failed: {err}", log=True)[1]
+                    log_msg = log_msg.format(err=e)
+                    self.logger.warning(log_msg)
+                    verify_ok = False
+            else:
+                verify_kwargs = {'auth_type': 'clear-text'}
+                if verify_token.pass_type == 'otp':
+                    verify_kwargs['otp'] = password
+                else:
+                    verify_kwargs['password'] = password
+                try:
+                    verify_ok = verify_token.verify(**verify_kwargs)
+                except Exception as e:
+                    log_msg = _("Reauth: token verify failed: {err}", log=True)[1]
+                    log_msg = log_msg.format(err=e)
+                    self.logger.warning(log_msg)
+                    verify_ok = False
+            if not verify_ok:
+                emit_audit("Auth", "reauth_failed",
+                                level='warning',
+                                user=user.name,
+                                token=verify_token.name,
+                                reason='token_verify_failed',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            try:
+                sso_session.update_reauth_time(wait_for_cluster_writes=True)
+            except Exception as e:
+                log_msg = _("Reauth: failed to persist reauth_time: {err}", log=True)[1]
+                log_msg = log_msg.format(err=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            emit_audit("Auth", "reauth_success",
+                            user=user.name,
+                            token=verify_token.name,
+                            session=sso_session.session_id,
+                            ip=client_ip)
+            return self.build_response(True, {
+                'message': 'ok', 'status': True,
+            })
 
         if command == "token_verify" \
         or command == "token_verify_mschap" \

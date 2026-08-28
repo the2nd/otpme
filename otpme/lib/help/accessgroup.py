@@ -490,6 +490,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_force_sotp_signing'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup enable_force_sotp_signing {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Require every user to sign the SOTP, not just those with a key.'),
+                                },
+                },
+
+    'disable_force_sotp_signing'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup disable_force_sotp_signing {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Only require users with a stored sign public key to sign.'),
+                                },
+                },
+
     'update_sign_public_keys'    : {
                     '_cmd_usage_help' : _('Usage: otpme-accessgroup update_sign_public_keys {accessgroup} [username]'),
                     'cmd'   :   '<|object|> [username]',

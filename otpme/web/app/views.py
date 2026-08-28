@@ -435,6 +435,15 @@ def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False)
                     "redirect": url_for('login', _external=True, _scheme='https'),
                 }), 401)
             return None, _do_sso_logout(resp)
+        # Sensitive action requires a fresh step-up reauth (ssod's
+        # _require_fresh_step_up rejected). Signal to the JS layer so
+        # it can drive the user through /reauth?next=... and retry
+        # the action after the SSO session's reauth_time is bumped.
+        if isinstance(response, dict) and response.get('message') == 'STEP_UP_REQUIRED':
+            return None, (jsonify({
+                    "error": gettext("Please re-authenticate to continue."),
+                    "step_up_required": True,
+                }), 401)
         error_msg = _ssod_error_message(response, default_error)
         return None, (jsonify({"error": error_msg}), 400)
     return response, None
@@ -690,6 +699,62 @@ def set_admin_access_state():
                 "status"    : "ok",
                 "enabled"   : new_enabled,
             })
+
+@app.route('/settings/recovery_mail', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def get_recovery_mail():
+    """ Return the user's recovery e-mail address (from the
+    otpmeRecoveryMail LDIF attribute on the user object) plus the
+    step-up max-age so the UI knows how long a fresh /reauth stays
+    valid. """
+    try:
+        response, error = _send_ssod_command(
+                command="get_recovery_mail",
+                default_error=gettext("Failed to load recovery mail."))
+    except Exception as e:
+        logger.critical(f"get_recovery_mail failed: {e}")
+        return jsonify({"error": gettext("Failed to load recovery mail.")}), 500
+    if error:
+        return error
+    recovery_mail = None
+    step_up_max_age = 0
+    if isinstance(response, dict):
+        recovery_mail = response.get('recovery_mail')
+        step_up_max_age = int(response.get('step_up_max_age') or 0)
+    return jsonify({
+            "recovery_mail":   recovery_mail,
+            "step_up_max_age": step_up_max_age,
+        })
+
+@app.route('/settings/recovery_mail', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def set_recovery_mail():
+    """ Write / clear the user's recovery e-mail address. Requires a
+    fresh /reauth (checked in ssod via session.reauth_time within
+    STEP_UP_MAX_AGE); a stale session triggers step_up_required=True
+    in the response so the JS drives the user through /reauth and
+    retries. Empty string clears the attribute. """
+    data = request.json or {}
+    raw = data.get('recovery_mail')
+    if raw is None:
+        return jsonify({"error": gettext("Missing 'recovery_mail' field.")}), 400
+    value = raw.strip() if isinstance(raw, str) else raw
+    response, error = _send_ssod_command(
+            command="set_recovery_mail",
+            extra_args={'recovery_mail': value},
+            default_error=gettext("Failed to update recovery mail."),
+            mgmt=True)
+    if error:
+        return error
+    stored = None
+    if isinstance(response, dict):
+        stored = response.get('recovery_mail')
+    return jsonify({
+            "status":        "ok",
+            "recovery_mail": stored,
+        })
 
 @app.route('/settings/oidc_consents', methods=['GET'])
 @login_required
@@ -1050,8 +1115,25 @@ def _site_rate_limit(name):
     except Exception as e:
         log_msg = _("Rate-limit lookup for {name} failed: {error}", log=True)[1]
         log_msg = log_msg.format(name=name, error=e)
-        logger.debug(log_msg)
+        logger.warning(log_msg)
     return None
+
+
+def _show_recover_link():
+    """ Site-level UI toggle for the SSO-token recovery entry point.
+    Anonymous check -- the login page and the /recover route don't
+    know the user yet, so the visibility gate is site-only. Per-user
+    cascade (``allow_sso_account_recovery``) still runs ssod-side
+    once the target user is resolved. """
+    try:
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is not None:
+            return bool(site.get_config_parameter("sso_show_recover_link"))
+    except Exception as e:
+        log_msg = _("sso_show_recover_link lookup failed: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        logger.warning(log_msg)
+    return False
 
 
 def _rate_limit_login():
@@ -1155,7 +1237,12 @@ def login():
     if next_url:
         flask_session['next_after_login'] = next_url
 
-    if g.user and g.user.is_authenticated:
+    # Step-up reauth targets /login POST too (the reauth form action
+    # submits here), but the user is still authenticated at that point.
+    # Skip the already-logged-in early-return so the reauth branch
+    # below can consume reauth_mode + verify the credential.
+    reauth_mode_pending = bool(flask_session.get('reauth_mode'))
+    if not reauth_mode_pending and g.user and g.user.is_authenticated:
         # Already logged in -- honor next= if it's there, else /index.
         target = (_safe_next_url(flask_session.pop('next_after_login', None))
                   or url_for('index', _external=True, _scheme='https'))
@@ -1170,12 +1257,31 @@ def login():
             form.username.data = prev_username
         return render_template('login.html',
                                title=gettext('Sign In'),
-                               form=form)
+                               form=form,
+                               show_recover_link=_show_recover_link())
     # Get client IP.
     client_ip = check_forwarded_for()[0]
     # Get username/password.
     username = request.form['username']
     password = request.form['password']
+    # Step-up reauth marker set by /reauth GET. In reauth mode we verify
+    # the credential against the existing SSO session (bump reauth_time
+    # via authd's reauth branch) instead of creating a new session --
+    # keeps cookies, JWT, peer-RP sessions intact. Only honour the flag
+    # when the user is actually authenticated at POST time; a stale flag
+    # from a prior aborted reauth (session gone, cookie expired) would
+    # otherwise break a fresh login by sending reauth=True with no valid
+    # session_uuid.
+    reauth_mode = bool(flask_session.pop('reauth_mode', False))
+    reauth_next = _safe_next_url(flask_session.pop('reauth_next', None))
+    if reauth_mode and not (g.user and g.user.is_authenticated):
+        reauth_mode = False
+        reauth_next = None
+    # In reauth mode the form's username field is readonly and prefilled;
+    # trust the flask_session copy so a client can't sneak a different
+    # username into the reauth submission.
+    if reauth_mode:
+        username = flask_session.get('otpme_username') or username
     # Get JWT from authd.
     sso_challenge = stuff.gen_secret(len=32)
     verify_args = {
@@ -1185,6 +1291,12 @@ def login():
                     'client_ip'         : client_ip,
                     'sso_challenge'     : sso_challenge,
                 }
+    if reauth_mode:
+        verify_args['reauth'] = True
+        verify_args['session_uuid'] = request.cookies.get('otpme_sso_session')
+        log_msg = _("/login POST reauth: user={u} session_uuid_set={s}", log=True)[1]
+        log_msg = log_msg.format(u=username, s=bool(verify_args['session_uuid']))
+        logger.info(log_msg)
 
     # Get authd connection.
     authd_conn = get_authd_conn(username, password)
@@ -1200,6 +1312,11 @@ def login():
         log_msg = f"{log_msg}: {e}"
         logger.critical(log_msg)
         flash(gettext("Login failed."))
+        if reauth_mode:
+            flask_session['reauth_mode'] = True
+            if reauth_next:
+                flask_session['reauth_next'] = reauth_next
+            return redirect(url_for('reauth', _external=True, _scheme='https'))
         # Stash the typed-in username so the login form prefills it
         # after the redirect-after-POST roundtrip -- the form object
         # is discarded here, but the user shouldn't have to retype.
@@ -1209,8 +1326,20 @@ def login():
         authd_conn.close()
     if not auth_status:
         flash(gettext("Login failed."))
+        if reauth_mode:
+            flask_session['reauth_mode'] = True
+            if reauth_next:
+                flask_session['reauth_next'] = reauth_next
+            return redirect(url_for('reauth', _external=True, _scheme='https'))
         flask_session['login_prev_username'] = username
         return redirect(url_for('login', _external=True, _scheme='https'))
+    # Reauth succeeded -- no new session was created; just redirect back
+    # to whatever triggered the step-up (Settings recovery-mail card,
+    # OIDC /authorize after prompt=login, etc.).
+    if reauth_mode:
+        target = (reauth_next
+                  or url_for('index', _external=True, _scheme='https'))
+        return redirect(target)
     try:
         login_token_pass_type = auth_response['login_token_pass_type']
         login_token_type = auth_response['login_token_type']
@@ -1299,6 +1428,12 @@ def _do_sso_logout(response, skip_backchannel_client=None,
     # next login (a different user, or the same user after an external
     # toggle).
     flask_session.pop('admin_access_enabled', None)
+    # Drop step-up reauth markers so a stale flag from an aborted /reauth
+    # doesn't turn the next fresh /login POST into a session_uuid-less
+    # reauth attempt (would trip the authd reauth branch's session_uuid
+    # required guard and break the login).
+    flask_session.pop('reauth_mode', None)
+    flask_session.pop('reauth_next', None)
     # Drop the per-user /get_apps cache so a re-login (possibly with a
     # different token / different access-group membership) doesn't
     # briefly see the previous session's app tiles.
@@ -1365,13 +1500,18 @@ def reauth():
     # step-up code path on the authd side.
     flask_session['reauth_mode'] = True
     username = flask_session.get('otpme_username') or ''
+    log_msg = _("/reauth GET: user={u} next_stashed={n}", log=True)[1]
+    log_msg = log_msg.format(u=username, n=bool(flask_session.get('reauth_next')))
+    logger.info(log_msg)
     form = LoginForm()
     form.username.data = username
     return render_template('login.html',
                            title=gettext('Re-authenticate'),
                            form=form,
                            reauth=True,
-                           reauth_username=username)
+                           reauth_username=username,
+                           reauth_token_pass_type=flask_session.get('login_token_pass_type') or '',
+                           reauth_token_type=flask_session.get('login_token_type') or '')
 
 def _logout_origin_ok():
     # Logout is CSRF-exempt (see csrf.exempt(logout) below) so a stale
@@ -1416,6 +1556,242 @@ def logout():
     return _do_sso_logout(resp)
 
 csrf.exempt(logout)
+
+
+def _send_ssod_command_unauth(command, extra_args, default_error=None,
+                              mgmt=False):
+    """ Unauth companion to ``_send_ssod_command`` for endpoints
+    with no active SSO session (SSO-token recovery flow). Skips
+    JWT / session_uuid / g.user handling; the server-side handler
+    validates the raw recovery token itself. ``extra_args`` MUST
+    include ``username`` -- it is required at the ssod dispatch
+    layer and is also used for the ssod connection context. """
+    args = dict(extra_args or {})
+    username = args.get('username') or ''
+    ssod_conn = get_ssod_conn(username or 'recover', mgmt=mgmt)
+    try:
+        status, \
+        status_code, \
+        response, \
+        binary_data = ssod_conn.send(command=command, command_args=args)
+    except Exception as e:
+        log_msg = _("ssod unauth command '{command}' failed: {e}", log=True)[1]
+        log_msg = log_msg.format(command=command, e=e)
+        logger.critical(log_msg)
+        return None, (jsonify({"error": default_error}), 500)
+    finally:
+        ssod_conn.close()
+    if not status:
+        error_msg = _ssod_error_message(response, default_error)
+        return None, (jsonify({"error": error_msg}), 400)
+    return response, None
+
+
+# ---- SSO-token recovery (unauth "forgot my token" flow) ---------------
+#
+# /recover              GET  -> username form
+#                       POST -> ssod request_sso_token_recovery, always
+#                                renders the generic 'if account exists,
+#                                mail is on the way' page (enum-safe)
+# /recover/complete     GET  -> validate ?t=&u= via get_sso_token_recovery_info,
+#                                render the deploy form for the sso-token
+# /recover/complete/begin           POST -> recovery_deploy_begin
+# /recover/complete/fido2/begin     POST -> recovery_fido2_register_begin
+# /recover/complete/fido2/complete  POST -> recovery_fido2_register_complete
+# /recover/complete/verify          POST -> recovery_deploy_verify
+
+def _recover_rate_limit():
+    return _site_rate_limit("sso_rate_limit_recover") or "20/minute"
+
+
+def _recover_username_key():
+    """ Prefer keying rate limits on the submitted username so a
+    single account cannot be spammed with recovery mails from a
+    shared IP pool. Falls back to remote IP when no username was
+    submitted (GET requests, malformed POSTs). """
+    if request.method == 'POST':
+        try:
+            data = request.get_json(silent=True) or {}
+        except Exception:
+            data = {}
+        username = (data.get('username') or '').strip().lower()
+        if username:
+            return f"recover-user:{username}"
+    from otpme.web.app import _ratelimit_key
+    return _ratelimit_key()
+
+
+@app.route('/recover', methods=['GET'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover():
+    """ Username form for the SSO-token recovery flow. """
+    if not _show_recover_link():
+        return redirect(url_for('login', _external=True, _scheme='https'))
+    return render_template('recover.html',
+                           title=gettext('Recover SSO token'))
+
+
+@app.route('/recover', methods=['POST'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover_request():
+    """ Fire off a recovery request via ssod. Response shape is
+    identical for every input (unknown user, no recovery mail,
+    disallowed token type, SMTP failure) so the client cannot
+    enumerate accounts or infer recovery state. """
+    if not _show_recover_link():
+        return jsonify({"status": "ok"})
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    if not username:
+        return jsonify({"status": "ok"})
+    response, error = _send_ssod_command_unauth(
+            command="request_sso_token_recovery",
+            extra_args={'username': username},
+            default_error=gettext("Recovery request failed."))
+    if error:
+        # ssod returns generic-OK for all logic-level failures, so an
+        # error here is a real infrastructure fault (cluster down,
+        # etc.). Surface it so the user knows to retry -- but do NOT
+        # leak whether the account exists.
+        return error
+    return jsonify({"status": "ok"})
+
+
+@app.route('/recover/complete', methods=['GET'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover_complete():
+    """ Validate the recovery-mail link and render the deploy form.
+    Both parameters (?t=raw_token, ?u=username) come from the mail
+    body; server re-verifies via ssod (hash + TTL) before rendering
+    the form so an expired/bogus link lands on a plain 'invalid or
+    expired' page instead of the deploy UI. """
+    if not _show_recover_link():
+        return redirect(url_for('login', _external=True, _scheme='https'))
+    raw_token = (request.args.get('t') or '').strip()
+    username = (request.args.get('u') or '').strip()
+    if not raw_token or not username:
+        return render_template('recover_invalid.html',
+                               title=gettext('Recovery link invalid'))
+    response, error = _send_ssod_command_unauth(
+            command="get_sso_token_recovery_info",
+            extra_args={'username':       username,
+                        'recovery_token': raw_token},
+            default_error=gettext("Recovery link invalid or expired."))
+    if error or not isinstance(response, dict) or not response.get('valid'):
+        return render_template('recover_invalid.html',
+                               title=gettext('Recovery link invalid'))
+    return render_template('recover_complete.html',
+                           title=gettext('Recover SSO token'),
+                           recovery_username=username,
+                           recovery_token=raw_token,
+                           sso_token_name=response.get('sso_token_name') or '',
+                           sso_token_type=response.get('sso_token_type') or '',
+                           deploy_token_types=response.get('allowed_deploy_types') or [])
+
+
+@app.route('/recover/complete/begin', methods=['POST'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover_complete_begin():
+    """ Proxy for recovery_deploy_begin. The server enforces that
+    token_type matches the user's actual SSO token type -- we just
+    forward whatever the client sent. """
+    if not _show_recover_link():
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    raw_token = (data.get('recovery_token') or '').strip()
+    token_type = (data.get('token_type') or '').strip()
+    if not username or not raw_token or not token_type:
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    response, error = _send_ssod_command_unauth(
+            command="recovery_deploy_begin",
+            extra_args={'username':       username,
+                        'recovery_token': raw_token,
+                        'token_type':     token_type},
+            default_error=gettext("Recovery deployment failed."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify(response or {})
+
+
+@app.route('/recover/complete/fido2/begin', methods=['POST'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover_complete_fido2_begin():
+    if not _show_recover_link():
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    raw_token = (data.get('recovery_token') or '').strip()
+    if not username or not raw_token:
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    response, error = _send_ssod_command_unauth(
+            command="recovery_fido2_register_begin",
+            extra_args={'username':       username,
+                        'recovery_token': raw_token,
+                        'rp_id':          _get_fido2_rp_id()},
+            default_error=gettext("Security key registration failed."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify(response or {})
+
+
+@app.route('/recover/complete/fido2/complete', methods=['POST'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover_complete_fido2_complete():
+    if not _show_recover_link():
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    raw_token = (data.get('recovery_token') or '').strip()
+    fido2_state_id = data.get('fido2_state_id')
+    registration_data = data.get('registration_data')
+    if not username or not raw_token or not fido2_state_id or not registration_data:
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    response, error = _send_ssod_command_unauth(
+            command="recovery_fido2_register_complete",
+            extra_args={'username':          username,
+                        'recovery_token':    raw_token,
+                        'rp_id':             _get_fido2_rp_id(),
+                        'fido2_state_id':    fido2_state_id,
+                        'registration_data': registration_data},
+            default_error=gettext("Security key registration failed."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify(response or {})
+
+
+@app.route('/recover/complete/verify', methods=['POST'])
+@limiter.limit(_recover_rate_limit, key_func=_recover_username_key)
+def recover_complete_verify():
+    """ Proxy for recovery_deploy_verify. Server clears the recovery
+    token slot on success. Client redirects to /login. """
+    if not _show_recover_link():
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    raw_token = (data.get('recovery_token') or '').strip()
+    token_data = data.get('token_data') or {}
+    if not username or not raw_token:
+        return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    response, error = _send_ssod_command_unauth(
+            command="recovery_deploy_verify",
+            extra_args={'username':       username,
+                        'recovery_token': raw_token,
+                        'token_data':     token_data},
+            default_error=gettext("Recovery deployment failed."),
+            mgmt=True)
+    if error:
+        return error
+    login_url = url_for('login', _external=True, _scheme='https')
+    return jsonify({
+                "status":   "ok",
+                "message":  gettext("SSO token successfully re-deployed. Please sign in with your new credentials."),
+                "redirect": login_url,
+            })
+
 
 # Short-lived per-worker cache for the /get_apps result. The portal
 # hits this endpoint on every reload of the SSO landing page; without
@@ -1723,6 +2099,9 @@ def fido2_auth_complete():
     if reauth_mode:
         verify_args['reauth'] = True
         verify_args['session_uuid'] = request.cookies.get('otpme_sso_session')
+    log_msg = _("/fido2/auth/complete: reauth_mode={r} session_uuid_set={s}", log=True)[1]
+    log_msg = log_msg.format(r=reauth_mode, s=bool(request.cookies.get('otpme_sso_session')))
+    logger.info(log_msg)
     authd_conn = get_authd_conn(username, node=fido2_auth_node)
     try:
         status, \

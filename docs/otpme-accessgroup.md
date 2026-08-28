@@ -129,21 +129,37 @@ node verifies the signature against that copy. This keeps a user of
 another site from authenticating with an SOTP alone: whoever controls
 the nodes of that site can produce a valid SOTP and can change the users
 public key there, but cannot touch the copy inside the access group.
-Access groups with SOTP signing do not support roles, because a role
-would bring in tokens whose users sign public keys are missing. Only
-daemons that can handle a signed SOTP enforce this, currently
+Only daemons that can handle a signed SOTP enforce this, currently
 **otpme-mgmtd**(1).
 
+Signing is required from a user only if the access group holds their
+sign public key. A user without a key authenticates as before, which is
+what makes it possible to enable signing while the users are still
+getting their keys. Forced signing drops that exception: every user has
+to sign, so a user without a key can no longer authenticate. Access
+groups with forced SOTP signing do not support roles, because a role
+would bring in tokens whose users sign public keys are missing.
+
 **enable_sotp_signing *accessgroup***  
-Require clients to sign the SOTP they authenticate with. Only possible
-if no role is assigned to the access group and all users with a token
-assigned have a sign public key. Their keys are copied into the access
-group. Note that a token which is only valid through a parent access
-group has no key stored and can no longer authenticate.
+Require clients to sign the SOTP they authenticate with. The keys of the
+users that have one are copied into the access group, users without a
+key are named and do not sign.
 
 **disable_sotp_signing *accessgroup***  
 Do no longer require clients to sign their SOTP. The sign public keys
-stored in the access group are removed with it.
+stored in the access group are removed with it, and forced signing is
+switched off.
+
+**enable_force_sotp_signing *accessgroup***  
+Require every user to sign, not just those whose key the access group
+holds. Only possible with SOTP signing enabled, no role assigned to the
+access group and a stored key for every user with a token assigned. Note
+that a token which is only valid through a parent access group has no
+key stored and can no longer authenticate.
+
+**disable_force_sotp_signing *accessgroup***  
+Only require the users whose sign public key the access group holds to
+sign. SOTP signing stays enabled and the stored keys are kept.
 
 **update_sign_public_keys *accessgroup* \[*username*\]**  
 Take over the current sign public keys of the users that have a token

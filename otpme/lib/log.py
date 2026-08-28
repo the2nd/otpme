@@ -163,6 +163,15 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
     if logger.hasHandlers():
         logger.handlers.clear()
 
+    # ContextFilter is stateless (reads module-global log_banner) so a
+    # stale one is not "wrong", but every setup_logger call would else
+    # append another, and Python drops a record if any attached filter
+    # returns False -- so a fork or a rerun that only wants to rebind
+    # the stream ends up with a growing list of duplicates. Clear like
+    # we do for handlers.
+    if logger.filters:
+        logger.filters.clear()
+
     # Add filter to add log_banner to format string of logging.
     logger.addFilter(ContextFilter())
 

@@ -21,7 +21,7 @@
     {% if reauth %}
       <p>{{ gettext("Please verify your identity to continue.") }}</p>
     {% endif %}
-    <form action="" method="post" name="login" id="loginForm">
+    <form action="{{ url_for('login', _external=True, _scheme='https') }}" method="post" name="login" id="loginForm">
         {{ form.hidden_tag() }}
         <label for="username">{{ gettext("Username") }}</label>
         {% if reauth %}
@@ -33,8 +33,18 @@
           <span class="error-msg">[{{ error }}]</span>
         {% endfor %}
 
-        {% if not reauth %}
-          <label for="password">{{ gettext("Password") }}</label>
+        {# In reauth mode the label + button set follow the SSO token
+           the user actually logged in with -- OTP tokens get an OTP
+           label, smartcard/FIDO2 hides the password field entirely
+           because a static password wouldn't verify against them. #}
+        {% if not reauth or reauth_token_pass_type != 'smartcard' %}
+          <label for="password">
+            {% if reauth and reauth_token_pass_type == 'otp' %}
+              {{ gettext("One-Time Password") }}
+            {% else %}
+              {{ gettext("Password") }}
+            {% endif %}
+          </label>
           {{ form.password(size=80, id="password", class="") }}
           {% for error in form.password.errors %}
             <span class="error-msg">[{{ error }}]</span>
@@ -42,12 +52,17 @@
         {% endif %}
 
         <div class="login-buttons">
-          {% if not reauth %}
-            <input type="submit" value="{{ gettext('Sign In') }}" class="btn btn-primary">
+          {% if not reauth or reauth_token_pass_type != 'smartcard' %}
+            <input type="submit" value="{% if reauth %}{{ gettext('Re-authenticate') }}{% else %}{{ gettext('Sign In') }}{% endif %}" class="btn btn-primary">
           {% endif %}
           <button type="button" id="fido2LoginBtn" class="btn btn-secondary">{{ gettext("Security Key") }}</button>
         </div>
     </form>
+    {% if not reauth and show_recover_link %}
+    <div class="login-recover-link">
+      <a href="{{ url_for('recover', _external=True, _scheme='https') }}">{{ gettext("Lost access to your SSO token?") }}</a>
+    </div>
+    {% endif %}
     <div class="status-msg" id="fido2Status"></div>
     <div class="error-msg" id="fido2Error"></div>
     <div class="logo-container">

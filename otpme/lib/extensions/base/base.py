@@ -87,6 +87,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             "cosine.schema",
                             "inetorgperson.schema",
                             "misc.schema",
+                            "otpme.schema",
                             ]
 
         for f in list(self.schema_files):
@@ -102,7 +103,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'unit' : [ 'organizationalUnit' ],
                             'host' : [ 'account' ],
                             'node' : [ 'account' ],
-                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson', 'inetLocalMailRecipient', 'nisMailAlias' ],
+                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson', 'inetLocalMailRecipient', 'nisMailAlias', 'otpmeUser' ],
                             'role' : [ 'organizationalRole' ],
                             'group' : [],
                         }
@@ -112,7 +113,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'realm' : [ 'dcObject', 'organization' ],
                             'site' : [ 'organizationalUnit' ],
                             'unit' : [ 'organizationalUnit' ],
-                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson' ],
+                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson', 'otpmeUser' ],
                             'role' : [ 'organizationalRole' ],
                             'group' : [],
                         }

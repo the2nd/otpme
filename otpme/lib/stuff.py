@@ -229,6 +229,17 @@ def is_mac_address(s):
     import re
     return bool(re.fullmatch(r'([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', s))
 
+def is_email(s):
+    """ Basic EAI-capable structural check for an e-mail address.
+    Catches typos and obviously malformed input; leaves deliverability
+    to the mail stack. UTF-8-safe (Umlauts in localpart/domain OK). """
+    if not isinstance(s, str):
+        return False
+    v = s.strip()
+    if not v or len(v.encode("utf-8")) > 254:
+        return False
+    return bool(re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', v))
+
 def update_reload_file():
     """ Update reload file. """
     from otpme.lib import config

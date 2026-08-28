@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import re
+import pwd
+import grp
 import time
 import gzip
 import stat
@@ -23,11 +25,13 @@ except Exception:
 from otpme.lib import jwt
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import posix_acl
 from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
 from otpme.lib.classes.backup import BackupServer
 from otpme.lib.multiprocessing import drop_privileges
+from otpme.lib.protocols.server.fs import ACL_XATTRS
 from otpme.lib.protocols.server.fs import OTPmeFsServer1
 
 from otpme.lib.exceptions import *
@@ -45,7 +49,12 @@ PROTOCOL_VERSION = "OTPme-backup-1.0"
 def register():
     config.register_otpme_protocol("backupd", PROTOCOL_VERSION, server=True)
 
-def fix_snapshot_path():
+def fix_snapshot_path(amode=os.F_OK):
+    """ Map a client path to the repository layout and check permissions.
+
+    amode: the access the wrapped method needs on the entry itself (the parent
+    directories always need search permission).
+    """
     def wrapper(f):
         @wraps(f)
         def wrapped(self, path, *args, **kwargs):
@@ -53,6 +62,9 @@ def fix_snapshot_path():
                 skip = kwargs.pop('skip')
             except KeyError:
                 skip = False
+            # Will hold the entries path within the snapshot (methods that
+            # need the access mode at runtime need it, e.g. access()).
+            self.snapshot_rel_path = None
             if path == "/":
                 self.snapshot = None
                 path = path.split("/")
@@ -67,6 +79,12 @@ def fix_snapshot_path():
                 path = "/".join(path)
                 if not skip:
                     if self.snapshot:
+                        # A snapshot a backup is still writing has nothing to
+                        # show yet: its entries are not in the index and its
+                        # directories have not got their metadata.
+                        if not self.snapshot_complete(self.snapshot):
+                            raise FileNotFoundError(errno.ENOENT,
+                                                os.strerror(errno.ENOENT))
                         is_dir = False
                         try:
                             result = self.getattr(path, None, skip=True)
@@ -83,6 +101,10 @@ def fix_snapshot_path():
                             if not self._dir_in_snapshot(path):
                                 raise FileNotFoundError(errno.ENOENT,
                                                     os.strerror(errno.ENOENT))
+                        # The entries in tree/ carry the permissions/ACLs of
+                        # the last backup, so the kernel cannot decide this
+                        # for us -> evaluate the ones of this snapshot.
+                        self.check_snapshot_access(path, amode)
                         if not is_dir:
                             # Check for longname.
                             x = f"{path}-{self.snapshot}"
@@ -124,6 +146,20 @@ class OTPmeBackupP1(OTPmeFsServer1):
         self.username = None
         self.default_group = None
         self.groups = None
+        # The IDs of the mount user. We need them to evaluate the
+        # permissions/ACLs a snapshot recorded for its entries.
+        self.mount_uid = None
+        self.mount_gid = None
+        self.mount_gids = []
+        # Cache for the entry metadata of the current snapshot.
+        self.snapshot_entry_cache = {}
+        # Snapshots we know are finished. A finished one never becomes
+        # unfinished, so this only ever holds positives.
+        self.complete_snapshots = set()
+        # What the repository looked like when we last filled the caches.
+        self.repo_stamp = None
+        # Path of the entry the current request is about (within the snapshot).
+        self.snapshot_rel_path = None
         # Will hold repository name.
         self.repository = None
         # Will hold repository root when mounting as fuse fs.
@@ -323,9 +359,137 @@ class OTPmeBackupP1(OTPmeFsServer1):
         file_path = f"{self.root}/{path}"
         return file_path
 
+    def get_repo_stamp(self):
+        """ Get something cheap that changes when the repository does.
+
+        The index database, its write-ahead log and the snapshots directory:
+        a backup adds a snapshot and commits index rows, and each of those
+        shows up in one of them.
+        """
+        db_path = self.backup_handler._snap_index_db_path()
+        stamp = []
+        for x_path in (db_path,
+                        f"{db_path}-wal",
+                        str(self.backup_handler.snapshots_dir)):
+            try:
+                x_stat = os.stat(x_path)
+            except OSError:
+                stamp.append(None)
+                continue
+            stamp.append((x_stat.st_mtime_ns, x_stat.st_size))
+        return tuple(stamp)
+
+    def check_repo_changed(self):
+        """ Drop the caches if the repository changed under us.
+
+        A mount is served from caches that never expire, and rightly so: the
+        entries of a finished snapshot do not change. But a backup running
+        while the mount is open does change the repository -- it adds a
+        snapshot and it commits the index rows of the one it is writing. A
+        mount that looked in the meantime would else keep serving what it saw
+        back then, which is the repository mid-backup: entries that are not
+        in the index yet, and a tree/ directory whose permissions have not
+        been applied. Until it is unmounted.
+        """
+        if not self.backup_handler:
+            return
+        try:
+            stamp = self.get_repo_stamp()
+        except Exception as e:
+            log_msg = _("Failed to check repository state: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            return
+        if stamp == self.repo_stamp:
+            return
+        self.repo_stamp = stamp
+        getattr_cache.clear()
+        readdir_cache.clear()
+        self.snapshot_entry_cache.clear()
+        self.complete_snapshots.clear()
+
+    def drop_incomplete_snapshots(self, result):
+        """ Keep the snapshots a backup is still writing out of the listing.
+
+        Offering one would only lead into an empty or half applied snapshot,
+        see snapshot_complete().
+        """
+        listed = []
+        for x_entry in result['readdir']:
+            if x_entry in (".", ".."):
+                listed.append(x_entry)
+                continue
+            if not self.snapshot_complete(x_entry):
+                continue
+            listed.append(x_entry)
+        result['readdir'] = listed
+        # Keep the cached metadata in step with the listing.
+        keep = set(listed)
+        for x_map in ('getattr', 'getxattr'):
+            for x_path in list(result[x_map]):
+                if os.path.basename(x_path) in keep:
+                    continue
+                result[x_map].pop(x_path)
+
+    def snapshot_complete(self, snap_name):
+        """ Check if a backup has finished writing the given snapshot.
+
+        The snapshot directory exists from the moment a backup starts, but
+        its entries only reach the index when the backup commits. Serving it
+        in between hands out the repository mid-backup.
+        """
+        if not self.backup_handler:
+            return True
+        if snap_name in self.complete_snapshots:
+            return True
+        try:
+            complete = self.backup_handler.is_complete(snap_name)
+        except Exception:
+            return False
+        if complete:
+            self.complete_snapshots.add(snap_name)
+        return complete
+
+    def resolve_mount_ids(self):
+        """ Resolve the UID/GIDs of the mount user.
+
+        We have to evaluate the permissions/ACLs of the snapshot ourselves
+        (see check_snapshot_access()) and thus need the numeric IDs of the
+        user we mount for. They are resolved before we drop privileges, so a
+        failure here is the same failure drop_privileges() would run into.
+        """
+        try:
+            self.mount_uid = pwd.getpwnam(self.username).pw_uid
+        except KeyError as e:
+            msg = _("Unknown user: {username}")
+            msg = msg.format(username=self.username)
+            raise OTPmeException(msg) from e
+        try:
+            self.mount_gid = grp.getgrnam(self.default_group).gr_gid
+        except KeyError as e:
+            msg = _("Unknown group: {group_name}")
+            msg = msg.format(group_name=self.default_group)
+            raise OTPmeException(msg) from e
+        mount_gids = [self.mount_gid]
+        for x_group in self.groups:
+            try:
+                x_gid = grp.getgrnam(x_group).gr_gid
+            except KeyError:
+                # Not fatal: drop_privileges() will fail on its own if the
+                # group is really needed.
+                continue
+            if x_gid in mount_gids:
+                continue
+            mount_gids.append(x_gid)
+        self.mount_gids = mount_gids
+
     def _process(self, command, command_args, binary_data):
         """ Handle fuse requests. """
         if self.root:
+            # Once per client request, not per entry we touch while serving
+            # it: a backup running while this mount is open changes the
+            # repository under us.
+            self.check_repo_changed()
             try:
                 response = self.process_file_command(command,
                                                 command_args,
@@ -343,6 +507,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "start_restore",
                             "get_mode",
                             "get_salt",
+                            "get_key_check",
+                            "set_key_check",
                             "list_snapshots",
                             "create_snapshot",
                             "write_entry",
@@ -357,7 +523,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "get_snap_index_info",
                             "get_snap_index_size",
                             "get_snap_index_chunk",
-                            "get_snap_entry_ids",
                             "open_entry_cursor",
                             "next_entries",
                             "close_entry_cursor",
@@ -601,6 +766,29 @@ class OTPmeBackupP1(OTPmeFsServer1):
             self.backup_handler = BackupServer(self.root)
             self.backup_handler.load_pack_index()
             try:
+                self.resolve_mount_ids()
+            except Exception as e:
+                status = status_codes.PERMISSION_DENIED
+                message, log_msg = _("Failed to resolve mount user: {error}", log=True)
+                message = message.format(error=e)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            # Read everything that belongs to the repository itself before we
+            # drop privileges: it belongs to us, not to the mount user, so
+            # afterwards we could open neither the database and the WAL files
+            # it needs nor the mode file.
+            try:
+                self.backup_handler.get_mode()
+                self.backup_handler._open_snap_db(readonly=True)
+            except Exception as e:
+                status = status_codes.UNKNOWN_OBJECT
+                message, log_msg = _("Failed to open snap-index: {error}", log=True)
+                message = message.format(error=e)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+            try:
                 drop_privileges(user=self.username, group=self.default_group, groups=self.groups)
             except Exception as e:
                 status = status_codes.PERMISSION_DENIED
@@ -744,6 +932,31 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = f"{command}: {e}"
                 binary_data = None
             return self.build_response(status, message, binary_data=binary_data)
+
+        elif command == "get_key_check":
+            try:
+                binary_data = self.backup_handler.get_key_check()
+                if not binary_data:
+                    binary_data = None
+                message = "Got key check."
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+                binary_data = None
+            return self.build_response(status, message, binary_data=binary_data)
+
+        elif command == "set_key_check":
+            if not binary_data:
+                status = False
+                message = _("Missing key check.")
+                return self.build_response(status, message)
+            try:
+                self.backup_handler.set_key_check(binary_data)
+                message = "Key check stored."
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
 
         elif command == "list_snapshots":
             try:
@@ -1000,24 +1213,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 binary_data = None
             return self.build_response(status, message, binary_data=binary_data)
 
-        elif command == "get_snap_entry_ids":
-            try:
-                snap_name = command_args['snap_name']
-            except KeyError:
-                status = False
-                message = _("Missing arguments.")
-                return self.build_response(status, message)
-            try:
-                binary_data = self.backup_handler.get_snap_entry_ids(snap_name)
-                if not binary_data:
-                    binary_data = None
-                message = "Entry IDs data."
-            except Exception as e:
-                status = False
-                message = f"{command}: {e}"
-                binary_data = None
-            return self.build_response(status, message, binary_data=binary_data)
-
         elif command == "open_entry_cursor":
             try:
                 snap_name = command_args['snap_name']
@@ -1182,7 +1377,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
             pass
         return file_path, False
 
-    @fix_snapshot_path()
+    @fix_snapshot_path(amode=os.R_OK)
     def read_restore_file(self, path):
         restore_file = f"{self.root}/{path}"
         # Enforce the repo boundary before touching the filesystem —
@@ -1246,18 +1441,14 @@ class OTPmeBackupP1(OTPmeFsServer1):
         currently selected snapshot (self.snapshot).
 
         Directories live in the shared tree/ across ALL snapshots, so their
-        mere presence on disk does not imply membership. get_entry_full()
-        resolves that correctly: in tree mode (the only mode that mounts) it
-        reads the per-snapshot meta/ entry (written for new/changed dirs,
-        hardlinked for unchanged ones) and returns None when the dir is not
-        part of this snapshot -- this is exactly the check the client-side
-        implementation used and it is read-only (it does NOT touch the
-        read-write snap_index.db, which raises "attempt to write a readonly
-        database" on a restore mount). 'tree_path' is the internal
-        "/tree/<enc-rel>" path; stripping the "/tree/" prefix yields the
-        encrypted rel path. Fails open (True) when there is nothing to check
+        mere presence on disk does not imply membership. The index answers
+        that: it has one entry per snapshot and path. 'tree_path' is the
+        internal "/tree/<enc-rel>" path; stripping the "/tree/" prefix yields
+        the encrypted rel path. Returns True when there is nothing to check
         against (no snapshot / no handler / unexpected path), so non-snapshot
-        browsing is unaffected.
+        browsing is unaffected. A directory we find no entry for is reported
+        as absent: we would else fall back to the permissions of the last
+        backup (see check_snapshot_access()).
         """
         if not self.snapshot or not self.backup_handler:
             return True
@@ -1267,25 +1458,211 @@ class OTPmeBackupP1(OTPmeFsServer1):
         rel_key = tree_path[len(prefix):]
         if not rel_key:
             return True
+        entry = self.get_snapshot_entry(rel_key)
+        return entry is not None and entry['is_dir']
+
+    def get_tree_rel_path(self, tree_path):
+        """ Get the entries path within the snapshot.
+
+        The internal path is "/tree/<enc-rel>". Stripping the prefix yields
+        the encrypted rel path the snapshot uses as key. The tree root itself
+        is stored as ".". Returns None for paths outside tree/.
+        """
+        prefix = "/tree"
+        if not tree_path.startswith(prefix):
+            return None
+        rel_path = tree_path[len(prefix):].strip("/")
+        if not rel_path:
+            return "."
+        return rel_path
+
+    def get_snapshot_entry(self, rel_path):
+        """ Get the metadata the current snapshot recorded for an entry.
+
+        This is the metadata the entry had at backup time (mode, uid, gid and
+        the ACLs), not the one the entry carries on disk. Returns None if the
+        entry is not part of this snapshot.
+
+        It comes from the index, not from the filesystem. A directory in tree/
+        is shared by all snapshots and carries the metadata of the last
+        backup, and the entries of the others we may not even be allowed to
+        read: we run with the privileges of the mount user. The index is open
+        read-only since before we dropped privileges, see the mount command.
+        """
+        cache_key = f"{self.snapshot}:{rel_path}"
         try:
-            entry = self.backup_handler.get_entry_full(self.snapshot, rel_key)
-        except Exception:
-            return True
-        return entry is not None and entry.get("type_line") == "DIR"
+            return self.snapshot_entry_cache[cache_key]
+        except KeyError:
+            pass
+        entry = None
+        try:
+            index_entry = self.backup_handler.entry_from_index(self.snapshot,
+                                                            rel_path)
+        except Exception as e:
+            log_msg = _("Failed to read snapshot entry: {rel_path}: {error}", log=True)[1]
+            log_msg = log_msg.format(rel_path=rel_path, error=e)
+            self.logger.warning(log_msg)
+            index_entry = None
+        if index_entry is not None:
+            entry = {
+                    'mode'          : index_entry['mode'],
+                    'uid'           : index_entry['uid'],
+                    'gid'           : index_entry['gid'],
+                    'mtime'         : index_entry['mtime'],
+                    'acl'           : index_entry.get('acl'),
+                    'default_acl'   : index_entry.get('default_acl'),
+                    'is_dir'        : index_entry.get('type_line') == "DIR",
+                    }
+            # Parsed once: the access check runs for every parent directory
+            # of every request.
+            entry['acl_parsed'] = posix_acl.parse_acl_text(entry['acl'])
+            self.snapshot_entry_cache[cache_key] = entry
+        # A miss is not cached: it may only mean the backup writing this
+        # snapshot has not committed its entries yet, and that answer must
+        # not outlive the backup.
+        return entry
+
+    def check_entry_access(self, rel_path, amode):
+        """ Check the mount users access to a single snapshot entry. """
+        entry = self.get_snapshot_entry(rel_path)
+        if entry is None:
+            # Without the metadata of the snapshot we cannot tell which
+            # permissions the entry had at backup time. The permissions on
+            # disk are the ones of the last backup, so trusting them would
+            # hand out access the user never had.
+            return False
+        return posix_acl.check_access(mode=entry['mode'],
+                                    uid=entry['uid'],
+                                    gid=entry['gid'],
+                                    acl=entry['acl_parsed'],
+                                    user_uid=self.mount_uid,
+                                    user_gids=self.mount_gids,
+                                    amode=amode,
+                                    is_dir=entry['is_dir'])
+
+    def check_snapshot_access(self, tree_path, amode):
+        """ Check if the mount user may access a path in the current snapshot.
+
+        The directories below tree/ are shared by all snapshots and therefore
+        carry the permissions/ACLs of the *last* backup. A user who got access
+        to a directory after a snapshot was taken would else be able to read
+        the files that snapshot holds below it. So we read the permissions/ACLs
+        the snapshot recorded and evaluate them ourselves: every parent
+        directory needs search permission and the entry itself the access the
+        caller asked for.
+
+        This check only ever denies. We still drop privileges to the mount
+        user, so the kernel keeps enforcing the permissions the directories in
+        tree/ carry on top of it. That means the other way round stays closed
+        as well: a user who lost his permissions on a directory does not get
+        to the data of the older snapshots either. That is on purpose -- we do
+        not want to be the only thing standing between a user and the data.
+
+        Raises PermissionError on denied access.
+        """
+        self.snapshot_rel_path = None
+        if not self.snapshot or not self.backup_handler:
+            return
+        if self.mount_uid is None:
+            return
+        rel_path = self.get_tree_rel_path(tree_path)
+        if rel_path is None:
+            return
+        self.snapshot_rel_path = rel_path
+        for x_parent in self.get_parent_rel_paths(rel_path):
+            if self.check_entry_access(x_parent, os.X_OK):
+                continue
+            log_msg = _("Access denied by snapshot permissions: {snapshot}: {rel_path}", log=True)[1]
+            log_msg = log_msg.format(snapshot=self.snapshot, rel_path=x_parent)
+            self.logger.debug(log_msg)
+            raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+        if amode == os.F_OK:
+            return
+        if self.check_entry_access(rel_path, amode):
+            return
+        log_msg = _("Access denied by snapshot permissions: {snapshot}: {rel_path}", log=True)[1]
+        log_msg = log_msg.format(snapshot=self.snapshot, rel_path=rel_path)
+        self.logger.debug(log_msg)
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+
+    def get_parent_rel_paths(self, rel_path):
+        """ Get all parent directories of the given rel path. """
+        if rel_path == ".":
+            return []
+        parents = ["."]
+        path_parts = rel_path.split("/")
+        for x in range(1, len(path_parts)):
+            parents.append("/".join(path_parts[:x]))
+        return parents
+
+    def get_request_entry(self):
+        """ Get the snapshot entry the current request is about.
+
+        check_snapshot_access() left us the path within the snapshot, which is
+        the unmangled one: for a file the path the handler works on carries
+        the snapshot suffix and would not resolve.
+        """
+        if not self.snapshot or not self.backup_handler:
+            return None
+        if self.snapshot_rel_path is None:
+            return None
+        return self.get_snapshot_entry(self.snapshot_rel_path)
+
+    def get_acl_xattr(self, name):
+        """ Get an ACL extended attribute of the current request.
+
+        The index holds both ACLs as text, so we let the kernel turn the text
+        back into the attribute a client expects, see posix_acl.
+        """
+        entry = self.get_request_entry()
+        if entry is None:
+            return None
+        default = (name == "system.posix_acl_default")
+        if default:
+            acl_text = entry['default_acl']
+        else:
+            acl_text = entry['acl']
+        if not acl_text:
+            return None
+        return posix_acl.acl_text_to_xattr(acl_text, default=default)
+
+    def fix_dir_attrs(self, tree_path, result):
+        """ Replace a directories metadata with the one of the snapshot. """
+        if not self.snapshot or not self.backup_handler:
+            return
+        rel_path = self.get_tree_rel_path(tree_path)
+        if rel_path is None:
+            return
+        entry = self.get_snapshot_entry(rel_path)
+        if entry is None:
+            return
+        result['st_mode'] = stat.S_IFDIR | stat.S_IMODE(entry['mode'])
+        result['st_uid'] = entry['uid']
+        result['st_gid'] = entry['gid']
+        # getattr() returns nanoseconds (the '_ns' suffix is stripped from the
+        # key), the entry holds seconds.
+        result['st_mtime'] = int(entry['mtime'] * 1000000000)
 
     @fix_snapshot_path()
     def getattr(self, path: str, fh: Optional[int] = None) -> dict[str, Any]:
         global getattr_cache
+        # The directories in tree/ are shared by all snapshots but we report
+        # the metadata of the snapshot the client is browsing, so the snapshot
+        # has to be part of the cache key.
+        cache_key = f"{self.snapshot}:{path}"
         try:
-            result = getattr_cache[path]
+            result = getattr_cache[cache_key]
         except KeyError:
             pass
         else:
             return result
         result = super().getattr(path, fh)
         mode = result.get("st_mode", 0)
-        # Directories are real dirs in tree/ — nothing to fix.
+        # Directories are real dirs in tree/, but they carry the metadata of
+        # the last backup -> report the one of this snapshot.
         if stat.S_ISDIR(mode):
+            self.fix_dir_attrs(path, result)
+            getattr_cache[cache_key] = result
             return result
         # For regular files the data/ entry is a small text file whose first
         # line contains the original size and mtime: "<size> <mtime>\n".
@@ -1326,13 +1703,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
             except (IOError, OSError, ValueError, IndexError) as e:
                 pass
         # Update cache.
-        getattr_cache[path] = result
+        getattr_cache[cache_key] = result
         return result
 
     def mkdir(self, path: str, mode: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
+    @fix_snapshot_path(amode=os.R_OK|os.X_OK)
     def readdir(self, path: str) -> list:
         global readdir_cache
         if self.snapshot:
@@ -1360,6 +1737,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
             file_glob = None
         result = super().readdir(path, permanent_cache=True, glob=file_glob)
         if not self.snapshot:
+            if path.rstrip("/").endswith("/snapshots"):
+                self.drop_incomplete_snapshots(result)
             return result
         readdir_result = []
         x_result = result['readdir']
@@ -1491,7 +1870,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
     def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
+    @fix_snapshot_path(amode=os.R_OK)
     def open(self, path: str, flags) -> int:
         if flags & os.O_WRONLY:
             flag_type = "write"
@@ -1518,6 +1897,12 @@ class OTPmeBackupP1(OTPmeFsServer1):
 
     @fix_snapshot_path()
     def access(self, path: str, amode: int) -> int:
+        # The entries in tree/ carry the permissions/ACLs of the last backup,
+        # so os.access() would answer for the wrong snapshot.
+        if self.snapshot_rel_path is not None:
+            if not self.check_entry_access(self.snapshot_rel_path, amode):
+                raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+            return 0
         return super().access(path, amode)
 
     def link(self, target: str, source: str):
@@ -1538,6 +1923,13 @@ class OTPmeBackupP1(OTPmeFsServer1):
     @fix_snapshot_path()
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
         """Get extended attributes (including POSIX ACLs)"""
+        if name in ACL_XATTRS and self.snapshot_rel_path is not None:
+            # The entries on disk carry the ACL of the last backup (shared
+            # directories) or none at all -> serve the one of this snapshot.
+            acl_xattr = self.get_acl_xattr(name)
+            if acl_xattr is None:
+                raise OSError(errno.ENODATA, "No such attribute")
+            return acl_xattr
         return super().getxattr(path, name, position)
 
     def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0) -> int:
@@ -1547,7 +1939,22 @@ class OTPmeBackupP1(OTPmeFsServer1):
     @fix_snapshot_path()
     def listxattr(self, path: str) -> list:
         """List all extended attributes"""
-        return super().listxattr(path)
+        result = super().listxattr(path)
+        entry = self.get_request_entry()
+        if entry is None:
+            return result
+        # Keep the list consistent with getxattr(): the ACLs are the ones of
+        # this snapshot, everything else comes from the entry on disk.
+        attrs = []
+        for x_attr in result:
+            if x_attr in ACL_XATTRS:
+                continue
+            attrs.append(x_attr)
+        if entry['acl']:
+            attrs.append("system.posix_acl_access")
+        if entry['default_acl']:
+            attrs.append("system.posix_acl_default")
+        return attrs
 
     def removexattr(self, path: str, name: str) -> int:
         """Remove extended attributes"""
