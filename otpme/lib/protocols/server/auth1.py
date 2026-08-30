@@ -196,8 +196,9 @@ class OTPmeAuthP1(OTPmeServer1):
         """ Set proctitle to contain username. """
         if config.use_api:
             return
-        new_proctitle = f"{self.proctitle} User: {username}"
-        setproctitle.setproctitle(new_proctitle)
+        if config.proc_mode == "multiprocessing":
+            new_proctitle = f"{self.proctitle} User: {username}"
+            setproctitle.setproctitle(new_proctitle)
         # In debug mode its handy to have username included in loglines
         if config.debug_enabled or config.loglevel == "DEBUG":
             log_banner = f"{config.log_name}:{username}:"

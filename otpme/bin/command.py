@@ -430,6 +430,27 @@ if command == "controld":
     if system_user != "root":
         error_message(_("Permission denied."))
         sys.exit(1)
+    # A logfile our daemons cannot write kills them, and they have no
+    # way of saying so: they find out after they dropped privileges and
+    # forked, with no logger left to complain with and no terminal to
+    # print to. All that reaches the admin is controld running into its
+    # startup timeouts. We are the last process that still has a
+    # terminal, so the answer has to come from here.
+    #
+    # Only for "-l": the default paths belong to us and create_paths()
+    # keeps them that way. And only where daemons are about to come up:
+    # refusing to stop them over the logfile would leave no way out of a
+    # start that already went wrong.
+    if config.force_logfile and subcommand in ["start", "restart"]:
+        from otpme.lib.log import check_logfile_access
+        logfile_error = check_logfile_access(config.log_file,
+                                            config.user,
+                                            config.group)
+        if logfile_error:
+            msg = _("Cannot write logfile as user '{user}': {error}")
+            msg = msg.format(user=config.user, error=logfile_error)
+            error_message(msg)
+            sys.exit(1)
     # Change dir to otpme base directory on daemon start.
     if os.path.exists(config.base_dir):
         os.chdir(config.base_dir)

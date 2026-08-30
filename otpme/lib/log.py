@@ -83,6 +83,58 @@ def ensure_logfile(logfile):
         msg = msg.format(logfile=logfile)
         raise Exception(msg)
 
+def check_logfile_access(logfile, user, group):
+    """ Check that our daemons will be able to write to a logfile.
+
+    Returns the error they would run into, or None.
+
+    Not os.access(): our caller is root, and root reaches paths the
+    daemons do not -- a directory of mode 0700 owned by somebody else is
+    exactly the case this exists for, and ensure_logfile() cannot see it
+    because by the time it runs we are already that other user. Walking
+    the permission bits of the whole path would only get us close, so we
+    do what the daemons do: become the user and open the file.
+
+    It has to be a child process, there is no way back from setuid().
+    """
+    import pwd
+    import grp
+    read_pipe, write_pipe = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        # We are the child. Whatever happens, it ends in os._exit(): a
+        # return would hand our caller a second copy of itself.
+        error = ""
+        try:
+            os.close(read_pipe)
+            os.setgid(grp.getgrnam(group).gr_gid)
+            os.setgroups([])
+            os.setuid(pwd.getpwnam(user).pw_uid)
+            # Same call the daemon makes, so we hit the same errors.
+            fd = open(logfile, "a")
+            fd.close()
+        except Exception as e:
+            error = str(e)
+        try:
+            os.write(write_pipe, error.encode())
+            os.close(write_pipe)
+        except Exception:
+            pass
+        os._exit(0)
+
+    os.close(write_pipe)
+    error = b""
+    while True:
+        data = os.read(read_pipe, 1024)
+        if not data:
+            break
+        error += data
+    os.close(read_pipe)
+    os.waitpid(pid, 0)
+    if not error:
+        return None
+    return error.decode()
+
 def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
     syslog_ssl=False, syslog_ca_cert=None, syslog_cert=None, syslog_key=None,
     syslog_relp=False, logger=None, pid=None, banner=None, logfile=None,

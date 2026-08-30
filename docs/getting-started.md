@@ -504,10 +504,12 @@ otpme-tool join
 
 ### Joining as an Ordinary User
 
-To allow a non-root user like joe to join hosts, grant the necessary ACLs on
-the `JOIN` access group and the `hosts` unit:
+To allow a non-root user like joe to join hosts, add the token to the `JOIN`
+access group and grant the necessary ACLs on the access group and the
+`hosts` unit:
 
 ```bash
+otpme-accessgroup add_token JOIN joe/login
 otpme-accessgroup add_acl JOIN token joe/login "join:host"
 otpme-accessgroup add_acl JOIN token joe/login "leave:host"
 otpme-unit add_acl hosts token joe/login "add:host"

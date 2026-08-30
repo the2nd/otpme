@@ -2667,10 +2667,11 @@ class AuthHandler(object):
         # daemons (e.g. mgmtd) the worker spawns job threads that would
         # otherwise share this process-global session and corrupt the
         # MySQL packet sequence ("Packet sequence number wrong").
-        if config.daemon_name == "authd":
-            if not config.session:
-                _index = config.get_index_module()
-                config.session = _index.get_db_connection()
+        if config.proc_mode == "multiprocessing":
+            if config.daemon_name == "authd":
+                if not config.session:
+                    _index = config.get_index_module()
+                    config.session = _index.get_db_connection()
 
         # Will be set to True if authentication was successful.
         self.auth_status = False

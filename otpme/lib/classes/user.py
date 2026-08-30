@@ -70,7 +70,6 @@ from otpme.lib.exceptions import *
 
 default_callback = config.get_callback()
 
-auth_handler = None
 logger = config.logger
 
 read_acls = [
@@ -4069,9 +4068,7 @@ class User(OTPmeObject):
 
     def authenticate(self, **kwargs):
         """ Wrapper to call auth handler. """
-        global auth_handler
-        if auth_handler is None:
-            auth_handler = AuthHandler()
+        auth_handler = AuthHandler()
         start_time = time.time()
         auth_status = auth_handler.authenticate(user=self, **kwargs)
         end_time = time.time()

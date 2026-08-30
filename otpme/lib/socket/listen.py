@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import sys
 import pwd
 import ssl
 import mmap
+import threading
 import time
 import struct
 import socket
@@ -38,12 +40,23 @@ WORKER_IDLE = 0
 WORKER_BUSY = 1
 WORKER_RUN = 0
 WORKER_EXIT = 1
+# One slot past the workers carries the state of the pool as a whole.
+# Only the supervisor writes it, every worker reads it, so it keeps the
+# one-writer-per-byte rule the rest of the scoreboard lives by.
+POOL_SLOT_OFFSET = 0
+POOL_HEALTHY = 0
+POOL_SATURATED = 1
 # How long the pool has to stay unsaturated before we start giving back
 # workers we forked on demand. Long enough that the morning login storm
 # does not fork and reap in circles.
 WORKER_SHRINK_DELAY = 60
 # Seconds between two supervisor rounds.
 WORKER_SUPERVISE_INTERVAL = 0.5
+# How long a worker that is serving connections in threads, and may not
+# take another one, waits before it looks again. It is out of the accept
+# path while it waits, so this is also how long it takes to notice that
+# the pool became saturated and it may help out after all.
+WORKER_THREAD_POLL_INTERVAL = 0.1
 # How long a round of the accept loop takes. accept() returning is the
 # only point at which that loop looks at self.shutdown, and a pool
 # worker at its stop request, so this is how quickly either is noticed.
@@ -60,7 +73,7 @@ class ListenSocket(object):
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
         proctitle=None, logger=None, max_conn=100, conn_handling="multiprocessing",
-        worker_count=0, max_worker_count=0):
+        worker_count=0, max_worker_count=0, worker_threads=0):
         # Check if we got all required paramters.
         if use_ssl:
             if not ssl_cert:
@@ -134,6 +147,24 @@ class ListenSocket(object):
         # Last time we saw every worker busy at once.
         self.last_saturated = 0
         self.last_max_workers_warn = 0
+        # How many connections one worker may serve at the same time,
+        # each in a thread of its own. 0 keeps a worker on the one
+        # connection it accepted, which is what it always did.
+        #
+        # A second connection in the same worker means two of them
+        # share one GIL, so this is the last resort and not the second:
+        # a worker only reaches for it once the pool cannot grow any
+        # further and every worker in it is busy. Up to that point
+        # another process is the better answer, because it comes with a
+        # core of its own. What makes it worth having at all is that a
+        # login spends most of its time waiting for the user, and a
+        # thread parked in a read holds no GIL.
+        self.worker_threads = worker_threads or 0
+        # Threads currently serving a connection, and the lock that
+        # counts them. Both are per worker process, they never cross a
+        # fork.
+        self.worker_thread_count = 0
+        self.worker_thread_lock = threading.Lock()
 
         # Save proctitle for later use (e.g. new client connection)
         if proctitle is None:
@@ -307,14 +338,22 @@ class ListenSocket(object):
                                                     target_args=(init_done,),
                                                     target_kwargs=kwargs)
         # Wait for _listen() to initialize (e.g. setup ssl certs etc.)
+        init_status = None
         try:
-            init_done.recv()
+            init_status = init_done.recv()
         except Exception as e:
             log_msg = _("Exception waiting for listen process init: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
         finally:
             init_done.unlink()
+        # A listen process that did not come up is not something to carry
+        # on from. Our caller logs it (see OTPmeDaemon.listen()), which
+        # is the only place the reason still reaches anyone.
+        if init_status is not None and init_status != "init_successful":
+            msg = _("Listen process failed to initialize: {status}")
+            msg = msg.format(status=init_status)
+            raise OTPmeException(msg)
 
     def _listen(self, init_done, **kwargs):
         """
@@ -336,7 +375,24 @@ class ListenSocket(object):
         multiprocessing.atfork(quiet=True)
         # Setup logger.
         if not self.got_logger:
-            self.logger = log.setup_logger(pid=os.getpid())
+            try:
+                self.logger = log.setup_logger(pid=os.getpid())
+            except Exception as e:
+                # Our logfile is what just failed, so there is nothing to
+                # log this with. Saying nothing is the worst option: our
+                # parent waits on init_done and would wait forever, and
+                # the daemon start hangs with it. So answer, and put the
+                # reason where a foreground start still shows it.
+                #
+                # This is where a logfile the daemon cannot write ends
+                # up: log.ensure_logfile() refuses it, and we run after
+                # the privileges were dropped, so a path root can reach
+                # and our user cannot fails right here.
+                msg = _("Failed to setup logger: {error}")
+                msg = msg.format(error=e)
+                print(msg, file=sys.stderr)
+                init_done.send(f"init_failed: {e}")
+                return False
 
         # Start socket initialization.
         try:
@@ -473,7 +529,8 @@ class ListenSocket(object):
             # Pre-fork worker pool mode. The scoreboard has to exist
             # before the first fork: the workers inherit the mapping,
             # which is what makes it shared without any IPC.
-            self.scoreboard = mmap.mmap(-1, self.max_worker_count
+            # One slot per worker, plus one for the pool itself.
+            self.scoreboard = mmap.mmap(-1, (self.max_worker_count + 1)
                                         * SCOREBOARD_SLOT_SIZE)
             if self.max_worker_count > self.worker_count:
                 log_msg = _("Starting {count} pre-fork workers (up to {max} under load) for '{uri}'", log=True)[1]
@@ -540,6 +597,20 @@ class ListenSocket(object):
             return WORKER_RUN
         return self.scoreboard[worker_idx * SCOREBOARD_SLOT_SIZE + 1]
 
+    def set_pool_state(self, state):
+        """ Tell the workers how the pool is doing. Called by the parent. """
+        if self.scoreboard is None:
+            return
+        pool_slot = self.max_worker_count * SCOREBOARD_SLOT_SIZE
+        self.scoreboard[pool_slot + POOL_SLOT_OFFSET] = state
+
+    def get_pool_state(self):
+        """ How the pool is doing. Called by the worker. """
+        if self.scoreboard is None:
+            return POOL_HEALTHY
+        pool_slot = self.max_worker_count * SCOREBOARD_SLOT_SIZE
+        return self.scoreboard[pool_slot + POOL_SLOT_OFFSET]
+
     def start_worker(self, worker_idx):
         """ Fork one worker for the given scoreboard slot. """
         self.set_worker_state(worker_idx, WORKER_IDLE)
@@ -579,10 +650,6 @@ class ListenSocket(object):
             self.logger.warning(log_msg)
             self.worker_procs[worker_idx] = self.start_worker(worker_idx)
 
-        if self.max_worker_count <= self.worker_count:
-            # Fixed pool.
-            return
-
         idle_slots = []
         leaving_slots = []
         running = 0
@@ -603,6 +670,22 @@ class ListenSocket(object):
             elif worker_idx >= self.worker_count:
                 # Only the ones we forked on demand may be given back.
                 idle_slots.append(worker_idx)
+
+        # Publish what a worker cannot see for itself: whether the pool
+        # is out of room. Only here do we know both numbers, and being
+        # the only writer of that byte is what keeps the scoreboard
+        # free of locks. A worker reads it to decide whether serving a
+        # second connection in a thread is warranted -- see
+        # may_serve_in_thread().
+        if running >= self.max_worker_count and busy >= running:
+            self.set_pool_state(POOL_SATURATED)
+        else:
+            self.set_pool_state(POOL_HEALTHY)
+
+        if self.max_worker_count <= self.worker_count:
+            # Fixed pool. Nothing to grow or hand back, but the workers
+            # still want to know whether it is saturated.
+            return
 
         now = time.time()
         if not running or busy < running:
@@ -759,6 +842,67 @@ class ListenSocket(object):
 
         return new_connection, client
 
+    def get_worker_thread_count(self):
+        """ How many connections we are serving in threads right now. """
+        with self.worker_thread_lock:
+            return self.worker_thread_count
+
+    def may_serve_in_thread(self):
+        """ Check whether we may take a connection on top of our own.
+
+        Only when there is nowhere else for it to go. A worker of our
+        own is worth more than a thread of ours -- it brings a core with
+        it, while a thread has to queue up behind us for the GIL -- so
+        as long as the pool can still grow, or anyone in it is free, the
+        answer is no and the connection is better off waiting in the
+        backlog for a moment.
+
+        The supervisor writes that verdict into the scoreboard, because
+        it is the only one that sees every worker. We read one byte.
+        """
+        if self.worker_threads <= 0:
+            return False
+        if self.get_pool_state() != POOL_SATURATED:
+            return False
+        return self.get_worker_thread_count() < self.worker_threads
+
+    def serve_in_thread(self, worker_idx, new_connection, client):
+        """ Serve a connection in a thread and go back to accepting. """
+        def run_connection():
+            try:
+                self.handle_connection(new_connection, client,
+                                        self.connection_handler,
+                                        _from_worker=True)
+            except Exception as e:
+                log_msg = _("Worker {idx}: Error handling connection: {error}", log=True)[1]
+                log_msg = log_msg.format(idx=worker_idx, error=e)
+                self.logger.warning(log_msg)
+            finally:
+                with self.worker_thread_lock:
+                    self.worker_thread_count -= 1
+                    threads_left = self.worker_thread_count
+                # The accept loop may be sitting in accept() right now,
+                # so nobody else would notice that we became free.
+                if threads_left == 0:
+                    self.set_worker_state(worker_idx, WORKER_IDLE)
+
+        with self.worker_thread_lock:
+            self.worker_thread_count += 1
+        try:
+            multiprocessing.start_thread(name=self.name,
+                                        target=run_connection,
+                                        daemon=True)
+        except Exception as e:
+            with self.worker_thread_lock:
+                self.worker_thread_count -= 1
+            log_msg = _("Worker {idx}: Failed to start connection thread: {error}", log=True)[1]
+            log_msg = log_msg.format(idx=worker_idx, error=e)
+            self.logger.warning(log_msg)
+            try:
+                new_connection.close()
+            except Exception:
+                pass
+
     def _worker_loop(self, worker_idx):
         """ Pre-fork worker loop: accept and handle connections repeatedly. """
         # Handle multiprocessing stuff.
@@ -770,6 +914,14 @@ class ListenSocket(object):
         new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
         setproctitle.setproctitle(new_proctitle)
 
+        if self.worker_threads > 0:
+            # Two connections in one process means two of them share
+            # what used to be private: config.auth_user/auth_token move
+            # into thread local storage and the log handler takes a
+            # lock. Both hang off this one switch, so it has to be set
+            # before the first connection, not before the first thread.
+            config.proc_mode = "threading"
+
         self.set_worker_state(worker_idx, WORKER_IDLE)
 
         while not self.shutdown:
@@ -780,11 +932,37 @@ class ListenSocket(object):
                 log_msg = log_msg.format(idx=worker_idx)
                 self.logger.info(log_msg)
                 break
+            # Decided before we accept, not after: entering accept() is
+            # what puts us in the running for the next connection, and
+            # somebody who is already serving one has no business
+            # competing for it while anyone else is free. Staying out
+            # here is what leaves the connection to a worker that has
+            # nothing to do -- the kernel hands it to whoever is in the
+            # accept path, it knows nothing about who is busy.
+            if self.get_worker_thread_count() > 0:
+                if not self.may_serve_in_thread():
+                    time.sleep(WORKER_THREAD_POLL_INTERVAL)
+                    continue
             new_connection, client = self._accept_connection(worker_idx=worker_idx)
             if new_connection is None:
                 # Nothing came in, or the handshake failed. Either way
-                # we are free again.
-                self.set_worker_state(worker_idx, WORKER_IDLE)
+                # we are free again -- unless a thread of ours is still
+                # serving somebody.
+                if self.get_worker_thread_count() == 0:
+                    self.set_worker_state(worker_idx, WORKER_IDLE)
+                continue
+            # Threads of our own mean we came past the check above, so
+            # taking this one was allowed and there is room for it --
+            # asking again would only catch the pool turning healthy in
+            # the meantime, and then handling it here would be the very
+            # thing the check exists to prevent.
+            if self.get_worker_thread_count() > 0 or self.may_serve_in_thread():
+                # Hand it to a thread and go back to accept. We stay
+                # busy on the scoreboard while that thread runs: the
+                # pool is at its maximum anyway, so nothing grows from
+                # it, but it keeps us out of the "everybody is free"
+                # count the moment the load drops.
+                self.serve_in_thread(worker_idx, new_connection, client)
                 continue
             # Log new connection.
             if config.debug_level("connections") > 0:
@@ -803,7 +981,8 @@ class ListenSocket(object):
                 log_msg = log_msg.format(idx=worker_idx, error=e)
                 self.logger.warning(log_msg)
             finally:
-                self.set_worker_state(worker_idx, WORKER_IDLE)
+                if self.get_worker_thread_count() == 0:
+                    self.set_worker_state(worker_idx, WORKER_IDLE)
             # Reset process title.
             new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
             setproctitle.setproctitle(new_proctitle)

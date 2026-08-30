@@ -67,6 +67,11 @@ class AuthDaemon(OTPmeDaemon):
         # back afterwards.
         self.max_worker_count = self.get_config_parameter(own_node,
                                                     "authd_max_workers")
+        # Connections one worker may serve at once, in threads. Only
+        # used once the pool is at max_worker_count and every worker in
+        # it is busy, see ListenSocket.may_serve_in_thread().
+        self.worker_threads = self.get_config_parameter(own_node,
+                                                    "authd_worker_threads")
         # Speedup authd by setting cache update interval.
         config.cache_update_interval = 30
         # FIXME: where to configure socket banner?
@@ -95,7 +100,8 @@ class AuthDaemon(OTPmeDaemon):
                             group=self.group,
                             mode=0o666,
                             worker_count=self.worker_count,
-                            max_worker_count=self.max_worker_count)
+                            max_worker_count=self.max_worker_count,
+                            worker_threads=self.worker_threads)
         except Exception as e:
             log_msg = _("Failed to add unix socket: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)

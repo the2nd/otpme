@@ -2379,6 +2379,24 @@ def register_config():
                                     ctype=int,
                                     default_value=64,
                                     object_types=['site', 'unit', 'node'])
+    # How many connections one authd worker may take on top of the one
+    # it handles itself, each in a thread. 0 (the default) keeps a
+    # worker on the connection it accepted.
+    #
+    # This is the last resort, not the second: two connections in one
+    # worker share one GIL, so as long as the pool can still grow, or
+    # anyone in it is free, another worker is the better answer. A
+    # worker only reaches for a thread once the pool sits at
+    # authd_max_workers and every worker in it is busy -- the point
+    # where the alternative is not a slower login but none at all,
+    # because the connection waits in the backlog with nobody to pick
+    # it up. What makes it work at all is that a login spends most of
+    # its time waiting for the user to type or to touch their token,
+    # and a thread parked in a read holds no GIL.
+    config.register_config_parameter(name="authd_worker_threads",
+                                    ctype=int,
+                                    default_value=0,
+                                    object_types=['site', 'unit', 'node'])
     # How long an authd connection may sit there without asking anything
     # before we hang up. A worker serves one connection at a time, so a
     # client that connects and then says nothing holds one for good --

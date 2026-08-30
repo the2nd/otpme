@@ -40,7 +40,6 @@ from otpme.lib.classes.otpme_object import \
 
 from otpme.lib.exceptions import *
 
-auth_handler = None
 logger = config.logger
 
 default_callback = config.get_callback()
@@ -560,9 +559,7 @@ class OTPmeDevice(OTPmeObject):
 
     def authenticate(self, **kwargs):
         """ Wrapper to call auth handler. """
-        global auth_handler
-        if auth_handler is None:
-            auth_handler = AuthHandler()
+        auth_handler = AuthHandler()
         start_time = time.time()
         auth_status = auth_handler.authenticate(user=self, **kwargs)
         end_time = time.time()

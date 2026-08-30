@@ -66,8 +66,10 @@ class OTPmeConfig(object):
         # Users token (instance) that was used to authenticate the user of the current
         # connection.
         self.register_config_var("_auth_token", None, None)
-        # Session UUID the user authenticated with.
-        self.register_config_var("auth_session", str, None)
+        # Session UUID the user authenticated with. Set per request, so
+        # it goes through thread local storage while we are threading,
+        # see the auth_session property below.
+        self.register_config_var("_auth_session", str, None)
         # Token to impersonate. Needs admin permissions.
         self.register_config_var("impersonate_token", None, None)
         # Audit logger instance.
@@ -507,8 +509,10 @@ class OTPmeConfig(object):
         # Base CA paths.
         #self.register_config_var("realm_ca_path", str, None)
         #self.register_config_var("site_ca_path", str, None)
-        # Which auth type the user authenticated (e.g. sotp)
-        self.register_config_var("auth_type", None, None)
+        # Which auth type the user authenticated (e.g. sotp). Set per
+        # request, so it goes through thread local storage while we are
+        # threading, see the auth_type property below.
+        self.register_config_var("_auth_type", None, None)
         # Token with realm admin rights.
         self.register_config_var("admin_token_uuid", str, None)
         # OTPme site admin role UUID.
@@ -720,7 +724,10 @@ class OTPmeConfig(object):
                                 config_file_parameter="USE_MGMTD_SOCKET",
                                 user_config_file_parameter="USE_MGMTD_SOCKET")
         self.register_config_var("use_socket", bool, False)
-        self.register_config_var("socket_auth", bool, False)
+        # Whether this request authenticated over our local socket. Set
+        # per request, so it goes through thread local storage while we
+        # are threading, see the socket_auth property below.
+        self.register_config_var("_socket_auth", bool, False)
 
         self.register_config_var("floating_ip_iface", str, None,
                                 config_file_parameter="FLOATING_IP_IFACE")
@@ -2534,6 +2541,54 @@ class OTPmeConfig(object):
             self.thread_data.auth_token = auth_token
         else:
             self._auth_token = auth_token
+
+    @property
+    def auth_type(self):
+        """ How the user of this request authenticated (e.g. "sotp"). """
+        if self.proc_mode == "threading":
+            return getattr(self.thread_data, "auth_type", None)
+        return self._auth_type
+
+    @auth_type.setter
+    def auth_type(self, auth_type):
+        if self.proc_mode == "threading":
+            self.thread_data.auth_type = auth_type
+        else:
+            self._auth_type = auth_type
+
+    @property
+    def auth_session(self):
+        """ Session UUID the user of this request authenticated with. """
+        if self.proc_mode == "threading":
+            return getattr(self.thread_data, "auth_session", None)
+        return self._auth_session
+
+    @auth_session.setter
+    def auth_session(self, auth_session):
+        if self.proc_mode == "threading":
+            self.thread_data.auth_session = auth_session
+        else:
+            self._auth_session = auth_session
+
+    @property
+    def socket_auth(self):
+        """ Whether this request authenticated over our local socket.
+
+        The one of these three that decides something rather than
+        describing it: the auth-on-action policy reads it to tell
+        whether an action still needs an authentication of its own.
+        Another request's answer to that question is not ours.
+        """
+        if self.proc_mode == "threading":
+            return getattr(self.thread_data, "socket_auth", False)
+        return self._socket_auth
+
+    @socket_auth.setter
+    def socket_auth(self, socket_auth):
+        if self.proc_mode == "threading":
+            self.thread_data.socket_auth = socket_auth
+        else:
+            self._socket_auth = socket_auth
 
     def get_login_user(self):
         """ Get login user. """

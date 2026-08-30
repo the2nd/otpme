@@ -72,6 +72,10 @@ class OTPmeDaemon(object):
         # Upper bound the pool may grow to while all workers are busy.
         # Anything at or below worker_count keeps the pool fixed.
         self.max_worker_count = 0
+        # Connections one worker may take on top of the one it handles
+        # itself, each in a thread. 0 keeps a worker on the connection
+        # it accepted, which is what every daemon but authd does.
+        self.worker_threads = 0
 
     def signal_handler(self, _signal, frame):
         """ Handle signals """
@@ -458,7 +462,8 @@ class OTPmeDaemon(object):
                             ssl_verify_client=ssl_verify_client,
                             max_conn=self.max_conn,
                             worker_count=self.worker_count,
-                            max_worker_count=self.max_worker_count)
+                            max_worker_count=self.max_worker_count,
+                            worker_threads=self.worker_threads)
 
     def listen(self):
         """ Start listening on sockets. """

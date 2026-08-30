@@ -426,6 +426,8 @@ class OTPmeServer1(object):
 
     def close(self):
         """ Handle connection close. """
+        if self.proctitle:
+            setproctitle.setproctitle(self.proctitle)
         # Call child class method.
         self._close()
 
@@ -2026,8 +2028,9 @@ class OTPmeServer1(object):
         # If we are called from a daemon set proctitle to contain username.
         if not config.use_api:
             # Set process title.
-            new_proctitle = f"{self.proctitle} User: {username}"
-            setproctitle.setproctitle(new_proctitle)
+            if config.proc_mode == "multiprocessing":
+                new_proctitle = f"{self.proctitle} User: {username}"
+                setproctitle.setproctitle(new_proctitle)
             # In debug mode its handy to have username included in loglines.
             if config.debug_enabled or config.loglevel == "DEBUG":
                 log_banner = f"{config.log_name}:{username}:"
@@ -2038,6 +2041,13 @@ class OTPmeServer1(object):
         except KeyError as err:
             msg = "Missing auth type in request."
             raise OTPmeException(msg) from err
+
+        # Allow JWT auth only for users from other sites.
+        if auth_type == "jwt" and self.user.site == config.site:
+            log_msg = _("JWT auth for user from own site: {user}", log=True)[1]
+            log_msg = log_msg.format(user=self.user.name)
+            self.logger.warning(log_msg)
+            raise OTPmeException("AUTH_FAILED")
 
         # Try to get password from command args (e.g. password auth fallback if
         # no SSH public key has matched).

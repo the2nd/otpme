@@ -60,22 +60,17 @@
 # Standard attribute types from RFC 2256
 #
 
-# system schema
-#attributetype ( 2.5.4.0 NAME 'objectClass'
-#	DESC 'RFC2256: object classes of the entity'
-#	EQUALITY objectIdentifierMatch
-#	SYNTAX 1.3.6.1.4.1.1466.115.121.1.38 )
+# the2nd: slapd defines this one itself, we have to bring our own.
+attributetype ( 2.5.4.0 NAME 'objectClass'
+	DESC 'RFC2256: object classes of the entity'
+	EQUALITY objectIdentifierMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.38 )
 
 # system schema
 #attributetype ( 2.5.4.1 NAME ( 'aliasedObjectName' 'aliasedEntryName' )
 #	DESC 'RFC2256: name of aliased object'
 #	EQUALITY distinguishedNameMatch
 #	SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
-
-# system schema
-attributetype ( 2.5.4.0 NAME 'entryUUID'
-	DESC 'OTPME: entity UUID'
-	SUP name SINGLE-VALUE )
 
 attributetype ( 2.5.4.2 NAME 'knowledgeInformation'
 	DESC 'RFC2256: knowledge information'
@@ -289,11 +284,13 @@ attributetype ( 2.5.4.40 NAME 'crossCertificatePair'
 	DESC 'RFC2256: X.509 cross certificate pair, use ;binary'
 	SYNTAX 1.3.6.1.4.1.1466.115.121.1.10 )
 
-# system schema
-#attributetype ( 2.5.4.41 NAME 'name'
-#	EQUALITY caseIgnoreMatch
-#	SUBSTR caseIgnoreSubstringsMatch
-#	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{32768} )
+# the2nd: slapd defines this one itself, we have to bring our own.
+# Half the attributes below derive from it ("SUP name").
+attributetype ( 2.5.4.41 NAME 'name'
+	DESC 'RFC4519: common supertype of name attributes'
+	EQUALITY caseIgnoreMatch
+	SUBSTR caseIgnoreSubstringsMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{32768} )
 
 attributetype ( 2.5.4.42 NAME ( 'givenName' 'gn' )
 	DESC 'RFC2256: first name(s) for which the entity is known by'
@@ -328,10 +325,12 @@ attributetype ( 2.5.4.48 NAME 'protocolInformation'
 	EQUALITY protocolInformationMatch
 	SYNTAX 1.3.6.1.4.1.1466.115.121.1.42 )
 
-# system schema
-#attributetype ( 2.5.4.49 NAME 'distinguishedName'
-#	EQUALITY distinguishedNameMatch
-#	SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+# the2nd: slapd defines this one itself, we have to bring our own.
+# member, owner, roleOccupant and seeAlso derive from it.
+attributetype ( 2.5.4.49 NAME 'distinguishedName'
+	DESC 'RFC4519: common supertype of DN attributes'
+	EQUALITY distinguishedNameMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
 
 attributetype ( 2.5.4.50 NAME 'uniqueMember'
 	DESC 'RFC2256: unique member of a group'
@@ -364,11 +363,12 @@ attributetype ( 2.5.4.65 NAME 'pseudonym'
 
 # Standard object classes from RFC2256
 
-# system schema
-#objectclass ( 2.5.6.0 NAME 'top'
-#	DESC 'RFC2256: top of the superclass chain'
-#	ABSTRACT
-#	MUST objectClass )
+# the2nd: slapd defines this one itself, we have to bring our own.
+# Every object class below has it as its superclass ("SUP top").
+objectclass ( 2.5.6.0 NAME 'top'
+	DESC 'RFC2256: top of the superclass chain'
+	ABSTRACT
+	MUST objectClass )
 
 # system schema
 #objectclass ( 2.5.6.1 NAME 'alias'
@@ -634,6 +634,29 @@ attributetype ( 2.5.18.2 NAME 'modifyTimestamp'
         EQUALITY generalizedTimeMatch
         ORDERING generalizedTimeOrderingMatch
         SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
+        SINGLE-VALUE
+        NO-USER-MODIFICATION
+        USAGE directoryOperation )
+
+# the2nd: slapd defines this one itself, we have to bring our own. The
+# DN our ldapd publishes its schema under, see SUBSCHEMA_DN.
+attributetype ( 2.5.18.10 NAME 'subschemaSubentry'
+        DESC 'RFC4512: name of controlling subschema entry'
+        EQUALITY distinguishedNameMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+        SINGLE-VALUE
+        NO-USER-MODIFICATION
+        USAGE directoryOperation )
+
+# the2nd: was defined on 2.5.4.0 before, which is the OID of
+# objectClass. This is the one RFC 4530 assigns, and it goes with the
+# two timestamps above: OTPme fills it with the object UUID, which is a
+# uuid4 (see stuff.gen_uuid()).
+attributetype ( 1.3.6.1.1.16.4 NAME 'entryUUID'
+        DESC 'UUID of the entry'
+        EQUALITY UUIDMatch
+        ORDERING UUIDOrderingMatch
+        SYNTAX 1.3.6.1.1.16.1
         SINGLE-VALUE
         NO-USER-MODIFICATION
         USAGE directoryOperation )

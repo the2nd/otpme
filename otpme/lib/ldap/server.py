@@ -53,6 +53,7 @@ from otpme.lib import otpme_acl
 from otpme.lib import auth_cache
 from otpme.lib import connections
 from otpme.lib import multiprocessing
+from otpme.lib.ldap import schema
 from otpme.lib.cache import index_cache
 from otpme.lib.cache import search_cache
 from otpme.lib.cache import ldap_search_cache
@@ -152,6 +153,11 @@ def set_cache(enabled):
 LDAP_CLIENT_NAME = "LDAP"
 LDAP_ACCESSGROUP = "LDAP"
 
+# Where we publish our schema. The root DSE points a client here, the
+# lookup of that DN is a special case and so is the search on it, so the
+# four of them have to agree on the spelling.
+SUBSCHEMA_DN = "cn=Subschema"
+
 # Encoded search results we keep per entry. The key is the attribute
 # list of the request, so it is the client that decides how many there
 # are. A handful covers what an application asks for; past that we
@@ -163,8 +169,17 @@ ON_REQUEST_ATTRIBUTES = [
                     'jpegPhoto',
                     ]
 
+# Attributes that say something about the server rather than about the
+# object they hang on. No object stores them, get_object() adds them to
+# an entry when a search names them, and "+" is the request for all of
+# them.
+OPERATIONAL_ATTRIBUTES = [
+                    'subschemaSubentry',
+                    ]
+
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
+                "otpme.lib.ldap.schema",
                 "otpme.lib.classes.client",
                 "otpme.lib.classes.accessgroup",
                 ]
@@ -454,7 +469,16 @@ def get_ldif_attributes(attributes):
     Returns None if the client wants them all, else the attributes to
     build. "dn" and "objectClass" are always included: get_ldif() only
     renders the DN line when objectClass is asked for, and the search
-    reads the DN back out of the rendered LDIF.
+    reads the DN back out of the rendered LDIF. That also means a "+"
+    request gets objectClass along with the operational attributes it
+    asked for -- without it the entry we build has no DN at all. The one
+    exception is "1.1", which asks for the DN alone and so gets a list
+    of just "dn": get_ldif() renders that without an objectClass.
+
+    What comes out of here is also part of the cache keys of a search
+    (see get_ldif_attributes_id() and _search()), so what is changed
+    here does not only decide which attributes get built -- it decides
+    which cached entries a search finds.
 
     ldaptor hands us the list from the search request as bytes (see
     RFC 4511: no attributes means all user attributes, "*" all user
@@ -463,16 +487,37 @@ def get_ldif_attributes(attributes):
     if not attributes:
         return None
     _attributes = []
+    no_attributes = False
+    all_user_attributes = False
     for x_attr in attributes:
         if isinstance(x_attr, bytes):
             x_attr = x_attr.decode()
         if x_attr == "*":
-            return None
+            all_user_attributes = True
+            continue
         if x_attr == "+":
+            # Every operational attribute we have. Naming them turns
+            # this into an ordinary request for those attributes, which
+            # is what get_object() acts on.
+            _attributes += OPERATIONAL_ATTRIBUTES
             continue
         if x_attr == "1.1":
+            no_attributes = True
             continue
         _attributes.append(x_attr)
+    if no_attributes and not _attributes and not all_user_attributes:
+        # RFC 4511: "1.1" on its own asks for the DN and nothing else,
+        # and next to other attributes it is ignored. Asking for "dn" is
+        # how we say that -- get_object() then drops everything else
+        # before it renders or verifies an ACL for any of it.
+        return ("dn",)
+    if all_user_attributes:
+        if not _attributes:
+            return None
+        # "* +" is one request for both halves, and there is no way to
+        # write "everything the object has" as a list of names. So "*"
+        # stays in it and get_object() reads it as what it is.
+        _attributes.append("*")
     if not _attributes:
         return None
     _attributes.append("dn")
@@ -1097,30 +1142,18 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         hands us its data and we do not read it a second time.
         """
         # Handle subschmema requests.
-        if self.dn.getText() == "cn=Subschema":
-            ldif = f"dn: {self.dn}\ncn: Subschema\nobjectClass: subschema\n"
-            oc_ldif = ""
-            attr_ldif = ""
-            #attr_syntax_ldif = ""
-
-            for i in config.ldap_object_classes:
-                oc_ldif = f"{oc_ldif}objectClasses: {config.ldap_object_classes[i]}\n"
-
-            for i in config.ldap_attribute_types:
-                attr_ldif = f"{attr_ldif}attributeTypes: {config.ldap_attribute_types[i]}"
-                #attr_desc = config.ldap_attribute_types[i].desc
-                #attr_syntax = config.ldap_attribute_types[i].syntax
-                #if attr_syntax != None and attr_desc != None:
-                #    attr_syntax_ldif = f"{attr_syntax_ldif}ldapSyntaxes: ( {attr_syntax_ldif} DESC '{attr_desc}' )\n"
-                #print(config.ldap_attribute_types[i].oid, config.ldap_attribute_types[i].equality, config.ldap_attribute_types[i].syntax)
-
-            # FIXME: how to implement ldapSyntaxes, matchingRules, and matchingRuleUse like returned in schema search of openldap?
-            # ldapsearch -H ldap://127.0.0.1 -b cn=Subschema -D "uid=testuser1,ou=Users,ou=site,dc=realm,dc=tld" -w otp -s base -x '(objectClass=subschema)' attributeTypes dITStructureRules objectClasses nameForms dITContentRules matchingRules ldapSyntaxes matchingRuleUse
-            # ldaptor-fetchschema --base="dc=domain,dc=tld"  --service-location="dc=domain,dc=tld:127.0.0.1:389"
-
-            #ldif = f"{ldif}{attr_syntax_ldif}"
-            ldif = f"{ldif}{oc_ldif}"
-            ldif = f"{ldif}{attr_ldif}"
+        if self.dn.getText() == SUBSCHEMA_DN:
+            # The object classes of a subschema subentry, as RFC 4512
+            # wants them and as OpenLDAP hands them out.
+            ldif = f"dn: {self.dn.getText()}\n"
+            ldif = f"{ldif}objectClass: top\n"
+            ldif = f"{ldif}objectClass: subentry\n"
+            ldif = f"{ldif}objectClass: subschema\n"
+            ldif = f"{ldif}objectClass: extensibleObject\n"
+            ldif = f"{ldif}cn: Subschema\n"
+            # Object classes, attribute types, syntaxes, matching rules
+            # and matching rule uses of the schema files we loaded.
+            ldif = f"{ldif}{schema.get_subschema_ldif()}"
             ldif = f"{ldif}\n"
 
         else:
@@ -1175,7 +1208,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 if dn == full_dn:
                     ldif = f"{chr(10).join(ldif)}\n\n"
                 else:
-                    ldif = f"dn: {dn}\nobjectClass: dcObject\ndc: {dc}\n\n"
+                    # A "dc=" level above the realm object, so there is
+                    # no object behind it and get_object() had nothing to
+                    # add its operational attributes to.
+                    ldif = f"dn: {dn}\nobjectClass: dcObject\ndc: {dc}\n"
+                    if self.attributes:
+                        requested_attributes = {x.lower() for x in self.attributes}
+                        if "subschemasubentry" in requested_attributes:
+                            ldif = f"{ldif}subschemaSubentry: {SUBSCHEMA_DN}\n"
+                    ldif = f"{ldif}\n"
             else:
                 ldif = f"{chr(10).join(ldif)}\n\n"
 
@@ -1475,7 +1516,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         object_dn = dn.getText()
 
         cache_entry = None
-        if object_dn != "cn=Subschema":
+        if object_dn != SUBSCHEMA_DN:
             # The client belongs to the request, not to the object, so
             # take it from the DN we were asked for -- every time, and
             # also when there is none. Reading it back out of the cache
@@ -1485,7 +1526,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             self.client = client
             cache_entry = get_lookup_cache(real_dn)
 
-        if object_dn == "cn=Subschema":
+        if object_dn == SUBSCHEMA_DN:
             config_dir = self.path
         elif cache_entry is not None:
             config_dir = cache_entry['config_dir']
@@ -1952,7 +1993,17 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         object_type = object_data['type']
         object_acls = object_data['acls']
         object_checksum = object_data['checksum']
-        if attributes is None:
+        # LDAP attribute names are case insensitive. Resolved before the
+        # filtering below because the operational attributes after it
+        # need it too.
+        requested_attributes = None
+        if attributes is not None:
+            requested_attributes = {x.lower() for x in attributes}
+        # A "*" in the list means the client wants every attribute the
+        # object has, which is the same thing as naming none at all. It
+        # can still be paired with operational attributes, and those are
+        # added further down.
+        if requested_attributes is None or "*" in requested_attributes:
             # Wildcard search: hold back the attributes that are only
             # handed out when asked for by name.
             for x_attr in dict(object_ldif):
@@ -1961,8 +2012,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 object_ldif.pop(x_attr)
         else:
             # Drop what the search did not ask for before we verify any
-            # ACL for it. LDAP attribute names are case insensitive.
-            requested_attributes = {x.lower() for x in attributes}
+            # ACL for it.
             for x_attr in dict(object_ldif):
                 if x_attr.lower() in requested_attributes:
                     continue
@@ -1982,6 +2032,16 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 if result:
                     continue
                 object_ldif.pop(x_attr)
+
+        # Operational attributes we answer ourselves. They say something
+        # about the server, not about the object, so they are in no LDIF
+        # and no ACL covers them -- which is why they go in after the ACL
+        # filter instead of through it. RFC 4512 has them handed out only
+        # to a client that asks for them by name, so a wildcard search
+        # never gets here.
+        if requested_attributes is not None:
+            if "subschemasubentry" in requested_attributes:
+                object_ldif['subschemaSubentry'] = [SUBSCHEMA_DN]
 
         # We filtered above, so let get_ldif() render what is left: its
         # own filter is case sensitive and would drop attributes whose
@@ -2238,14 +2298,27 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             raise ldaperrors.LDAPProtocolError(msg)
 
         # Handle schema search requests.
-        if isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
+        #
+        # A client that knows where our schema lives asks for it by DN,
+        # with whatever filter it likes ("(objectClass=*)" is what
+        # ldapsearch sends when it is given none). The subschema is the
+        # only thing that DN holds, so the filter has nothing to select
+        # and we answer it either way. Deciding by filter alone would
+        # send those searches into the object search below, where our
+        # path is the tree root and no OID resolves.
+        if self.dn.getText() == SUBSCHEMA_DN:
+            schema_search = True
+        elif isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
+            # A client that does not know the DN searches its own base
+            # for the subschema instead, so that filter picks it too.
             attribute = filterObject.attributeDesc.value
             value = filterObject.assertionValue.value.lower()
             if attribute.lower() == "objectclass" and value.lower() == "subschema":
                 schema_search = True
-                dn = distinguishedname.DistinguishedName('cn=Subschema')
-                e = self.__class__(self.path, dn)
-                results.append(e)
+        if schema_search:
+            dn = distinguishedname.DistinguishedName(SUBSCHEMA_DN)
+            e = self.__class__(self.path, dn)
+            results.append(e)
 
         if not schema_search:
             # The attributes the client asked for. We only build those,
@@ -2441,6 +2514,35 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
         # Get peer.
         self.peer = self.transport.getPeer()
 
+    def getRootDSE(self, request, reply):
+        """ Answer a root DSE request.
+
+        This is where a client that knows nothing about us looks first,
+        so it has to be true. The one we inherit is not: it publishes
+        the DN of our root entry as the naming context, which is empty,
+        and it advertises the password modify extension, which we refuse
+        further down.
+
+        We name what we actually serve and nothing else. A capability we
+        leave out is one we do not have -- no controls, no extensions, no
+        SASL mechanisms, simple bind only.
+        """
+        # Our tree starts at the realm. A client may put a "dc=" of its
+        # own left of it to pick an accessgroup (see split_client_dn()),
+        # but that is a prefix to this context, not a context of its own.
+        realm_dn = f"dc={',dc='.join(config.realm.split('.'))}"
+        attributes = [
+                    ("objectClass", ["top"]),
+                    ("namingContexts", [realm_dn]),
+                    ("subschemaSubentry", [SUBSCHEMA_DN]),
+                    ("supportedLDAPVersion", ["3"]),
+                    ("vendorName", ["OTPme"]),
+                    ("vendorVersion", [config.my_version]),
+                    ]
+        reply(pureldap.LDAPSearchResultEntry(objectName="",
+                                            attributes=attributes))
+        return pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+
     def refuse_modification(self):
         """ OTPme objects cannot be changed through LDAP.
 
@@ -2468,6 +2570,22 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
 
     def handle_LDAPModifyDNRequest(self, request, controls, response):
         self.refuse_modification()
+
+    def extendedRequest_LDAPPasswordModifyRequest(self, data, reply):
+        """ Passwords cannot be set through LDAP either.
+
+        The handler we inherit calls setPassword() and commit() on the
+        bound entry, neither of which our entry class has, and the
+        failure lands exactly where refuse_modification() describes. We
+        no longer advertise the extension in the root DSE, this is for a
+        client that tries it regardless.
+
+        No berdecoder on purpose: without one ldaptor hands us the
+        request value undecoded, and we have no use for it.
+        """
+        self.refuse_modification()
+
+    extendedRequest_LDAPPasswordModifyRequest.oid = pureldap.LDAPPasswordModifyRequest.oid
 
     def handle_LDAPBindRequest(self, request, controls, response):
         if request.version != 3:
@@ -2533,9 +2651,19 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
         base.auth_token = self.boundUser.auth_token
 
         requested_attributes = request.attributes
+        if b"+" in requested_attributes:
+            # What goes out is filtered against the names the client
+            # sent, and nothing is called "+". Of the four special values
+            # in RFC 4511 the filter below knows the empty list and "*",
+            # not the operational attributes -- ldaptor, whose filtering
+            # this is, has no concept of them. So resolve "+" to what it
+            # stands for before it gets there.
+            requested_attributes = [x for x in requested_attributes if x != b"+"]
+            requested_attributes += [x.encode() for x in OPERATIONAL_ATTRIBUTES]
         # What we cache are the bytes for this attribute selection, and
         # the request order is the order they go out in, so the whole
-        # list belongs in the key.
+        # list belongs in the key. Resolved above, so a "+" request and
+        # one naming the same attributes share their payloads.
         payload_key = tuple(requested_attributes)
         send_all = True
         if requested_attributes:

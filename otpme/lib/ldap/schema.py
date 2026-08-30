@@ -33,6 +33,121 @@ def register_config():
     config.register_config_var("ldap_attribute_type_mappings", dict, {})
     config.register_config_var("ldap_object_class_mappings", dict, {})
 
+# Names of the LDAP syntaxes our schema files reference. Only used to put
+# a DESC into the "ldapSyntaxes" we publish in cn=Subschema. RFC 4512
+# makes DESC optional, so a syntax that is missing here is still
+# published, just without a name.
+#
+# Taken from the subschema an OpenLDAP 2.5 slapd publishes, plus the ones
+# it has dropped over the years while our core/cosine copies still use
+# them. Those carry their source, they cannot be re-read from a current
+# slapd.
+LDAP_SYNTAXES = {
+        '1.2.36.79672281.1.5.0'             : 'RDN',
+        '1.2.840.113549.1.8.1.1'            : 'PKCS#8 PrivateKeyInfo',
+        '1.3.6.1.1.1.0.0'                   : 'RFC2307 NIS Netgroup Triple',
+        '1.3.6.1.1.1.0.1'                   : 'RFC2307 Boot Parameter',
+        '1.3.6.1.1.16.1'                    : 'UUID',
+        '1.3.6.1.4.1.1466.115.121.1.4'      : 'Audio',
+        '1.3.6.1.4.1.1466.115.121.1.5'      : 'Binary',
+        '1.3.6.1.4.1.1466.115.121.1.6'      : 'Bit String',
+        '1.3.6.1.4.1.1466.115.121.1.7'      : 'Boolean',
+        '1.3.6.1.4.1.1466.115.121.1.8'      : 'Certificate',
+        '1.3.6.1.4.1.1466.115.121.1.9'      : 'Certificate List',
+        '1.3.6.1.4.1.1466.115.121.1.10'     : 'Certificate Pair',
+        '1.3.6.1.4.1.1466.115.121.1.11'     : 'Country String',
+        '1.3.6.1.4.1.1466.115.121.1.12'     : 'Distinguished Name',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.13'     : 'Data Quality Syntax',
+        '1.3.6.1.4.1.1466.115.121.1.14'     : 'Delivery Method',
+        '1.3.6.1.4.1.1466.115.121.1.15'     : 'Directory String',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.19'     : 'DSA Quality Syntax',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.21'     : 'Enhanced Guide',
+        '1.3.6.1.4.1.1466.115.121.1.22'     : 'Facsimile Telephone Number',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.23'     : 'Fax',
+        '1.3.6.1.4.1.1466.115.121.1.24'     : 'Generalized Time',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.25'     : 'Guide',
+        '1.3.6.1.4.1.1466.115.121.1.26'     : 'IA5 String',
+        '1.3.6.1.4.1.1466.115.121.1.27'     : 'Integer',
+        '1.3.6.1.4.1.1466.115.121.1.28'     : 'JPEG',
+        '1.3.6.1.4.1.1466.115.121.1.34'     : 'Name And Optional UID',
+        '1.3.6.1.4.1.1466.115.121.1.36'     : 'Numeric String',
+        '1.3.6.1.4.1.1466.115.121.1.38'     : 'OID',
+        '1.3.6.1.4.1.1466.115.121.1.39'     : 'Other Mailbox',
+        '1.3.6.1.4.1.1466.115.121.1.40'     : 'Octet String',
+        '1.3.6.1.4.1.1466.115.121.1.41'     : 'Postal Address',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.42'     : 'Protocol Information',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.43'     : 'Presentation Address',
+        '1.3.6.1.4.1.1466.115.121.1.44'     : 'Printable String',
+        '1.3.6.1.4.1.1466.115.121.1.45'     : 'SubtreeSpecification',
+        '1.3.6.1.4.1.1466.115.121.1.49'     : 'Supported Algorithm',
+        '1.3.6.1.4.1.1466.115.121.1.50'     : 'Telephone Number',
+        # RFC 2252.
+        '1.3.6.1.4.1.1466.115.121.1.51'     : 'Teletex Terminal Identifier',
+        '1.3.6.1.4.1.1466.115.121.1.52'     : 'Telex Number',
+        # RFC 4517. No attribute type uses it, but it is the syntax of
+        # every substrings matching rule we publish.
+        '1.3.6.1.4.1.1466.115.121.1.58'     : 'Substring Assertion',
+        '1.3.6.1.4.1.4203.666.11.10.2.1'    : 'X.509 AttributeCertificate',
+        }
+
+# OID and assertion syntax of the matching rules our schema files
+# reference. A schema file names its EQUALITY/ORDERING/SUBSTR rule, but
+# "matchingRules" of cn=Subschema is keyed by OID, so a rule that is
+# missing here cannot be published and is left out.
+#
+# Same source as LDAP_SYNTAXES above.
+LDAP_MATCHING_RULES = {
+        'rdnMatch'                          : ('1.2.36.79672281.1.13.3', '1.2.36.79672281.1.5.0'),
+        'integerBitAndMatch'                : ('1.2.840.113556.1.4.803', '1.3.6.1.4.1.1466.115.121.1.27'),
+        'integerBitOrMatch'                 : ('1.2.840.113556.1.4.804', '1.3.6.1.4.1.1466.115.121.1.27'),
+        'UUIDMatch'                         : ('1.3.6.1.1.16.2', '1.3.6.1.1.16.1'),
+        'UUIDOrderingMatch'                 : ('1.3.6.1.1.16.3', '1.3.6.1.1.16.1'),
+        'caseExactIA5Match'                 : ('1.3.6.1.4.1.1466.109.114.1', '1.3.6.1.4.1.1466.115.121.1.26'),
+        'caseIgnoreIA5Match'                : ('1.3.6.1.4.1.1466.109.114.2', '1.3.6.1.4.1.1466.115.121.1.26'),
+        'caseIgnoreIA5SubstringsMatch'      : ('1.3.6.1.4.1.1466.109.114.3', '1.3.6.1.4.1.1466.115.121.1.26'),
+        'caseExactIA5SubstringsMatch'       : ('1.3.6.1.4.1.4203.1.2.1', '1.3.6.1.4.1.1466.115.121.1.26'),
+        'objectIdentifierMatch'             : ('2.5.13.0', '1.3.6.1.4.1.1466.115.121.1.38'),
+        'distinguishedNameMatch'            : ('2.5.13.1', '1.3.6.1.4.1.1466.115.121.1.12'),
+        'caseIgnoreMatch'                   : ('2.5.13.2', '1.3.6.1.4.1.1466.115.121.1.15'),
+        'caseIgnoreOrderingMatch'           : ('2.5.13.3', '1.3.6.1.4.1.1466.115.121.1.15'),
+        'caseIgnoreSubstringsMatch'         : ('2.5.13.4', '1.3.6.1.4.1.1466.115.121.1.58'),
+        'caseExactMatch'                    : ('2.5.13.5', '1.3.6.1.4.1.1466.115.121.1.15'),
+        'caseExactOrderingMatch'            : ('2.5.13.6', '1.3.6.1.4.1.1466.115.121.1.15'),
+        'caseExactSubstringsMatch'          : ('2.5.13.7', '1.3.6.1.4.1.1466.115.121.1.58'),
+        'numericStringMatch'                : ('2.5.13.8', '1.3.6.1.4.1.1466.115.121.1.36'),
+        'numericStringOrderingMatch'        : ('2.5.13.9', '1.3.6.1.4.1.1466.115.121.1.36'),
+        'numericStringSubstringsMatch'      : ('2.5.13.10', '1.3.6.1.4.1.1466.115.121.1.58'),
+        'caseIgnoreListMatch'               : ('2.5.13.11', '1.3.6.1.4.1.1466.115.121.1.41'),
+        'caseIgnoreListSubstringsMatch'     : ('2.5.13.12', '1.3.6.1.4.1.1466.115.121.1.58'),
+        'booleanMatch'                      : ('2.5.13.13', '1.3.6.1.4.1.1466.115.121.1.7'),
+        'integerMatch'                      : ('2.5.13.14', '1.3.6.1.4.1.1466.115.121.1.27'),
+        'integerOrderingMatch'              : ('2.5.13.15', '1.3.6.1.4.1.1466.115.121.1.27'),
+        'bitStringMatch'                    : ('2.5.13.16', '1.3.6.1.4.1.1466.115.121.1.6'),
+        'octetStringMatch'                  : ('2.5.13.17', '1.3.6.1.4.1.1466.115.121.1.40'),
+        'octetStringOrderingMatch'          : ('2.5.13.18', '1.3.6.1.4.1.1466.115.121.1.40'),
+        'octetStringSubstringsMatch'        : ('2.5.13.19', '1.3.6.1.4.1.1466.115.121.1.40'),
+        'telephoneNumberMatch'              : ('2.5.13.20', '1.3.6.1.4.1.1466.115.121.1.50'),
+        'telephoneNumberSubstringsMatch'    : ('2.5.13.21', '1.3.6.1.4.1.1466.115.121.1.58'),
+        # RFC 2252.
+        'presentationAddressMatch'          : ('2.5.13.22', '1.3.6.1.4.1.1466.115.121.1.43'),
+        'uniqueMemberMatch'                 : ('2.5.13.23', '1.3.6.1.4.1.1466.115.121.1.34'),
+        # RFC 2252.
+        'protocolInformationMatch'          : ('2.5.13.24', '1.3.6.1.4.1.1466.115.121.1.42'),
+        'generalizedTimeMatch'              : ('2.5.13.27', '1.3.6.1.4.1.1466.115.121.1.24'),
+        'generalizedTimeOrderingMatch'      : ('2.5.13.28', '1.3.6.1.4.1.1466.115.121.1.24'),
+        'integerFirstComponentMatch'        : ('2.5.13.29', '1.3.6.1.4.1.1466.115.121.1.27'),
+        'objectIdentifierFirstComponentMatch': ('2.5.13.30', '1.3.6.1.4.1.1466.115.121.1.38'),
+        'certificateExactMatch'             : ('2.5.13.34', '1.3.6.1.1.15.1'),
+        'certificateListExactMatch'         : ('2.5.13.38', '1.3.6.1.1.15.5'),
+        }
+
 class SchemaElement(object):
     """ Schema element parser """
     def __init__(self, schema_string):
@@ -104,6 +219,10 @@ class SchemaElement(object):
                 cur = "SINGLE-VALUE"
                 self.single_value = True
                 continue
+            if x == "NO-USER-MODIFICATION":
+                cur = "NO-USER-MODIFICATION"
+                self.no_user_mod = True
+                continue
             if x == "MUST":
                 cur = "MUST"
                 continue
@@ -150,6 +269,44 @@ class SchemaElement(object):
 
             prev = x
 
+    def format_names(self):
+        """ Our NAMEs as a RFC 4512 qdescrs.
+
+        A single name goes out bare, more than one in brackets. That is
+        not cosmetics: a client parses "NAME ( 'cn' 'commonName' )" as
+        two names and "NAME 'cn'" as one.
+        """
+        if not self.names:
+            return None
+        names = [x.replace("'", "") for x in self.names]
+        if len(names) == 1:
+            return f"'{names[0]}'"
+        names = " ".join([f"'{x}'" for x in names])
+        return f"( {names} )"
+
+    def format_desc(self):
+        """ Our DESC as a RFC 4512 qdstring.
+
+        The parser keeps the quotes the schema file had, so a normal
+        description already comes quoted and goes out unchanged.
+        """
+        desc = self.desc
+        if desc.startswith("'") and desc.endswith("'"):
+            return desc
+        desc = desc.replace("'", "")
+        return f"'{desc}'"
+
+    def format_oids(self, oids):
+        """ A list of attribute or class names as a RFC 4512 oids.
+
+        Same rule as for the names: a single one bare, more than one
+        "$" separated in brackets.
+        """
+        oids = [x.replace("'", "") for x in oids]
+        if len(oids) == 1:
+            return oids[0]
+        return f"( {' $ '.join(oids)} )"
+
 class ObjectClass(SchemaElement):
     """
     oid
@@ -182,6 +339,33 @@ class ObjectClass(SchemaElement):
         self.kind = None
         # Call parent class init.
         SchemaElement.__init__(self, schema_string)
+
+    def __str__(self):
+        """ Our definition as a RFC 4512 ObjectClassDescription.
+
+        This is what a client reads from "objectClasses" of the
+        cn=Subschema entry, so the order of the parts is the one the RFC
+        prescribes, not the one the schema file happened to use.
+        """
+        parts = ["(", self.oid]
+        names = self.format_names()
+        if names:
+            parts.append(f"NAME {names}")
+        if self.desc:
+            parts.append(f"DESC {self.format_desc()}")
+        if self.obsolete:
+            parts.append("OBSOLETE")
+        if self.sup:
+            parts.append(f"SUP {self.format_oids(self.sup)}")
+        # An object class without a kind is STRUCTURAL. Say it instead of
+        # leaving the client to know the default.
+        parts.append(self.kind or "STRUCTURAL")
+        if self.must:
+            parts.append(f"MUST {self.format_oids(self.must)}")
+        if self.may:
+            parts.append(f"MAY {self.format_oids(self.may)}")
+        parts.append(")")
+        return " ".join(parts)
 
 class AttributeType(SchemaElement):
     """
@@ -227,10 +411,49 @@ class AttributeType(SchemaElement):
         self.equality = None
         self.ordering = None
         self.collective = False
+        self.no_user_mod = False
         self.single_value = False
         self.usage = "userApplications"
         # Call parent class init.
         SchemaElement.__init__(self, schema_string)
+
+    def __str__(self):
+        """ Our definition as a RFC 4512 AttributeTypeDescription.
+
+        This is what a client reads from "attributeTypes" of the
+        cn=Subschema entry, so the order of the parts is the one the RFC
+        prescribes, not the one the schema file happened to use.
+        """
+        parts = ["(", self.oid]
+        names = self.format_names()
+        if names:
+            parts.append(f"NAME {names}")
+        if self.desc:
+            parts.append(f"DESC {self.format_desc()}")
+        if self.obsolete:
+            parts.append("OBSOLETE")
+        if self.sup:
+            parts.append(f"SUP {self.format_oids(self.sup)}")
+        if self.equality:
+            parts.append(f"EQUALITY {self.equality}")
+        if self.ordering:
+            parts.append(f"ORDERING {self.ordering}")
+        if self.substr:
+            parts.append(f"SUBSTR {self.substr}")
+        if self.syntax:
+            parts.append(f"SYNTAX {self.syntax}")
+        if self.single_value:
+            parts.append("SINGLE-VALUE")
+        if self.collective:
+            parts.append("COLLECTIVE")
+        if self.no_user_mod:
+            parts.append("NO-USER-MODIFICATION")
+        # userApplications is the default and stays implicit, the same
+        # way the schema files write it.
+        if self.usage and self.usage != "userApplications":
+            parts.append(f"USAGE {self.usage}")
+        parts.append(")")
+        return " ".join(parts)
 
 @ldap_schema_cache.cache_function()
 def load(schema_file):
@@ -352,3 +575,135 @@ def load(schema_file):
     config.ldap_schema_files_loaded[schema_file] = [object_classes,
                                                     attribute_types]
     return object_classes, attribute_types
+
+def get_attribute_type(name):
+    """ Get a loaded attribute type by name. """
+    name = name.replace("'", "")
+    try:
+        name = config.ldap_attribute_type_mappings[name.lower()]
+    except KeyError:
+        return None
+    try:
+        return config.ldap_attribute_types[name]
+    except KeyError:
+        return None
+
+def get_inherited(attribute_type, attribute):
+    """ Get an attribute type property, following SUP if it has none.
+
+    An attribute type may leave its syntax or its matching rules to the
+    one it derives from ("cn" has nothing but "SUP name"), so asking the
+    type itself is not enough to tell which syntax it really uses.
+    """
+    seen = []
+    while attribute_type is not None:
+        value = getattr(attribute_type, attribute, None)
+        if value:
+            return value
+        if not attribute_type.sup:
+            return None
+        sup_name = attribute_type.sup[0].replace("'", "")
+        # A schema that derives in a circle would keep us here forever.
+        if sup_name in seen:
+            return None
+        seen.append(sup_name)
+        attribute_type = get_attribute_type(sup_name)
+    return None
+
+def get_loaded_elements():
+    """ Get the loaded object classes and attribute types, each one once.
+
+    config.ldap_object_classes and config.ldap_attribute_types are keyed
+    by every NAME an element carries, so one with an alias (e.g. "cn" and
+    "commonName") sits in there more than once. Publishing it twice would
+    hand the client two definitions for the same OID.
+    """
+    object_classes = []
+    attribute_types = []
+    seen_classes = []
+    seen_attributes = []
+    for name in config.ldap_object_classes:
+        object_class = config.ldap_object_classes[name]
+        if object_class.oid in seen_classes:
+            continue
+        seen_classes.append(object_class.oid)
+        object_classes.append(object_class)
+    for name in config.ldap_attribute_types:
+        attribute_type = config.ldap_attribute_types[name]
+        if attribute_type.oid in seen_attributes:
+            continue
+        seen_attributes.append(attribute_type.oid)
+        attribute_types.append(attribute_type)
+    return object_classes, attribute_types
+
+def get_subschema_ldif():
+    """ Build the schema attributes of the cn=Subschema entry.
+
+    RFC 4512 has a DSA publish its schema so a client can find out what
+    it may ask for. We publish what we actually loaded: the object
+    classes and attribute types of our schema files and the syntaxes and
+    matching rules they reference.
+
+    No "matchingRuleUse": that attribute does not describe the schema,
+    it tells a client which extensible match assertions it may send --
+    e.g. "(cn:caseExactMatch:=Meier)". Our search filter has no
+    extensible match (see LDIFTreeEntry.decode_ldap_filter()), so
+    publishing it would advertise something every client trying it would
+    fail on.
+    """
+    object_classes, attribute_types = get_loaded_elements()
+
+    syntaxes = []
+    matching_rules = []
+
+    for attribute_type in attribute_types:
+        syntax = get_inherited(attribute_type, "syntax")
+        if syntax:
+            # The length limit ("{256}") belongs to the attribute type,
+            # the syntax itself is just the OID.
+            syntax_oid = syntax.split("{")[0]
+            if syntax_oid not in syntaxes:
+                syntaxes.append(syntax_oid)
+        for rule_type in ["equality", "ordering", "substr"]:
+            rule = get_inherited(attribute_type, rule_type)
+            if not rule:
+                continue
+            rule = rule.replace("'", "")
+            if rule not in matching_rules:
+                matching_rules.append(rule)
+
+    # A rule we cannot name an OID for cannot be published.
+    for rule in list(matching_rules):
+        try:
+            rule_syntax = LDAP_MATCHING_RULES[rule][1]
+        except KeyError:
+            log_msg = _("Unknown matching rule, not publishing it: {rule}", log=True)[1]
+            log_msg = log_msg.format(rule=rule)
+            logger.debug(log_msg)
+            matching_rules.remove(rule)
+            continue
+        # The assertion syntax of a rule is usually not one an attribute
+        # type uses, so it is missing from what we collected above.
+        if rule_syntax in syntaxes:
+            continue
+        syntaxes.append(rule_syntax)
+
+    ldif = ""
+    for object_class in object_classes:
+        ldif = f"{ldif}objectClasses: {object_class}\n"
+    for attribute_type in attribute_types:
+        ldif = f"{ldif}attributeTypes: {attribute_type}\n"
+    for syntax_oid in syntaxes:
+        try:
+            syntax_desc = LDAP_SYNTAXES[syntax_oid]
+        except KeyError:
+            # DESC is optional, so a syntax we have no name for is still
+            # a valid definition.
+            ldif = f"{ldif}ldapSyntaxes: ( {syntax_oid} )\n"
+            continue
+        ldif = f"{ldif}ldapSyntaxes: ( {syntax_oid} DESC '{syntax_desc}' )\n"
+    for rule in matching_rules:
+        rule_oid, rule_syntax = LDAP_MATCHING_RULES[rule]
+        ldif = f"{ldif}matchingRules: ( {rule_oid} NAME '{rule}' SYNTAX {rule_syntax} )\n"
+
+    return ldif
