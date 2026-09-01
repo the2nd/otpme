@@ -33,7 +33,7 @@ table_headers = [
                 "logins",
                 "addresses",
                 "auth_cache",
-                "auth_cache_timeout",
+                "tmo",
                 "policies",
                 #"inherit",
                 "description",
@@ -115,7 +115,7 @@ def row_getter(realm, site, client_order, client_data, acls,
         try:
             auth_cache_timeout = client_data[client_uuid]['auth_cache_timeout'][0]
         except Exception:
-            auth_cache_timeout = "Not set"
+            auth_cache_timeout = 0
         try:
             logins_limited = client_data[client_uuid]['logins_limited'][0]
         except Exception:
@@ -192,7 +192,7 @@ def row_getter(realm, site, client_order, client_data, acls,
         group_tokens_count = 0
         if get_roles:
             member_roles = []
-            return_attrs = ['name', 'rel_path', 'enabled', 'site']
+            return_attrs = ['name', 'enabled', 'site']
             roles_count, roles_result = backend.search(object_type="role",
                                                 attribute="uuid",
                                                 value="*",
@@ -200,18 +200,18 @@ def row_getter(realm, site, client_order, client_data, acls,
                                                 join_search_attr="uuid",
                                                 join_search_val=client_uuid,
                                                 join_attribute="role",
-                                                order_by="rel_path",
+                                                order_by="name",
                                                 max_results=max_roles,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs)
             for role_uuid in roles_result:
                 role_site = roles_result[role_uuid]['site']
-                role_rel_path = roles_result[role_uuid]['rel_path']
+                role_name = roles_result[role_uuid]['name']
                 role_enabled = roles_result[role_uuid]['enabled'][0]
                 role_status_string = ""
                 if not role_enabled:
                     role_status_string = " (D)"
-                role_string = f"{role_rel_path} ({role_site}) {role_status_string}"
+                role_string = f"{role_name} ({role_site}) {role_status_string}"
                 member_roles.append(role_string)
 
                 processed_roles = len(member_roles)
@@ -375,7 +375,7 @@ def row_getter(realm, site, client_order, client_data, acls,
             else:
                 row.append("-")
         # Auth cache timeout.
-        if "auth_cache_timeout" in output_fields:
+        if "tmo" in output_fields:
             if check_acl("view:auth_cache_timeout") \
             or check_acl("add:auth_cache_timeout") \
             or check_acl("remove:auth_cache_timeout"):

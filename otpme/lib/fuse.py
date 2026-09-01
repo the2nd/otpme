@@ -151,6 +151,7 @@ class OTPmeFS(fuse.Operations):
         nodes,
         hard=False,
         sotp_signing=False,
+        connection_timeout=None,
         ):
         self.use_ns = True
         self.share = share
@@ -163,8 +164,14 @@ class OTPmeFS(fuse.Operations):
         self.connect_done = threading.Event()
         self.connect_thread = None
         self.connect_error = None
+        self.connection_use_time = None
+        self.connection_timeout = connection_timeout
+        # Set when we dropped the connection because it was unused for
+        # too long, see send().
+        self.timeout_reconnect = False
         self.max_name = 255
         self.username = None
+        self.key = None
         self.encrypted = False
         self.logger = logger
         self.add_share_key = False
@@ -263,6 +270,15 @@ class OTPmeFS(fuse.Operations):
                 return False
         return True
 
+    def reset_key(self):
+        """ Forget the share key, connect() gets it again.
+
+        The counterpart of setup_encryption(): the encrypted filesystem
+        derives more key material from the share key, and send() must be
+        able to drop all of it without knowing about it.
+        """
+        self.key = None
+
     def start_connect(self, command):
         """ Start connecting to a node in the background.
 
@@ -323,6 +339,10 @@ class OTPmeFS(fuse.Operations):
 
         A write on a hard mount, because it must not fail. It waits and
         retries like it did before.
+
+        And a reconnect after the connection timeout, because the share
+        is mounted and in use: failing a request on a mount that works
+        would make files that are there look gone.
         """
         block = False
         if self.encrypted:
@@ -330,6 +350,8 @@ class OTPmeFS(fuse.Operations):
         if self.sotp_signing:
             block = True
         if self.hard and command == "fsop_write":
+            block = True
+        if self.timeout_reconnect:
             block = True
         if not BACKGROUND_CONNECT:
             block = True
@@ -595,9 +617,14 @@ class OTPmeFS(fuse.Operations):
                     self.max_name = statfs['f_namemax']
                 except Exception:
                     pass
-            msg, log_msg = _("Share mounted: {share} ({node})", log=True)
-            msg = msg.format(share=self.share, node=node)
-            log_msg = log_msg.format(share=self.share, node=node)
+            if self.connection_timeout:
+                msg, log_msg = _("Share mounted: {share} ({node}) (tmo={tmo})", log=True)
+                msg = msg.format(share=self.share, node=node, tmo=self.connection_timeout)
+                log_msg = log_msg.format(share=self.share, node=node, tmo=self.connection_timeout)
+            else:
+                msg, log_msg = _("Share mounted: {share} ({node})", log=True)
+                msg = msg.format(share=self.share, node=node)
+                log_msg = log_msg.format(share=self.share, node=node)
             self.logger.info(log_msg)
             print(msg)
             # Add share key.
@@ -629,6 +656,8 @@ class OTPmeFS(fuse.Operations):
                 if not add_status:
                     raise OSError(errno.EACCES, _("Failed to add share key."))
                 self.add_share_key = False
+            self.connection_use_time = time.time()
+            self.timeout_reconnect = False
             break
 
     def send(self, command, command_args, binary_data=None):
@@ -640,6 +669,25 @@ class OTPmeFS(fuse.Operations):
                     msg = msg.format(share=self.share)
                     raise OSError(NOT_CONNECTED_ERRNO, msg)
                 continue
+
+            if self.connection_timeout and self.connection_use_time:
+                connection_age = time.time() - self.connection_use_time
+                if connection_age >= self.connection_timeout:
+                    log_msg = _("Dropping unused connection: {share}", log=True)[1]
+                    log_msg = log_msg.format(share=self.share)
+                    self.logger.info(log_msg)
+                    if self.fsd_conn:
+                        self.fsd_conn.close()
+                    # Without this we would send the request over the
+                    # connection we just closed. Dropping the reference
+                    # makes connected() return False, so the loop below
+                    # reconnects first.
+                    self.fsd_conn = None
+                    # Get the share key from the key script again.
+                    self.reset_key()
+                    self.connection_use_time = None
+                    self.timeout_reconnect = True
+                    continue
 
             try:
                 status, \
@@ -678,6 +726,7 @@ class OTPmeFS(fuse.Operations):
                 if not try_other_node:
                     raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
                 continue
+            self.connection_use_time = time.time()
             break
         return status, response_code, response, binary_data
 
@@ -1388,6 +1437,8 @@ class EncryptedFS(OTPmeFS):
         self.encrypted = True
         self.name_key = None
         self.content_key = None
+        self.aesgcm = None
+        self.aesgcm_names = None
         self.add_share_key = add_share_key
         self.master_password = master_password
         self.block_size = 4096
@@ -1403,6 +1454,14 @@ class EncryptedFS(OTPmeFS):
         self.block_size = block_size
         self.block_with_metadata_size = self.block_size + self.metadata_size
         self.null_block = b'\x00' * self.block_size
+
+    def reset_key(self):
+        """ Forget the share key and everything derived from it. """
+        super().reset_key()
+        self.name_key = None
+        self.content_key = None
+        self.aesgcm = None
+        self.aesgcm_names = None
 
     def setup_encryption(self, key):
         key_len = len(key)
@@ -2542,7 +2601,7 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, sotp_signing, *
 
 def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
     hard=False, master_password=None, add_share_key=False,
-    foreground=True, logger=None):
+    mount_timeout=None, foreground=True, logger=None):
     if add_share_key and not master_password:
         msg = _("Need <master_password> with <add_share_key>")
         raise OTPmeException(msg)
@@ -2562,6 +2621,7 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
                                 nodes,
                                 hard=hard,
                                 sotp_signing=sotp_signing,
+                                connection_timeout=mount_timeout,
                                 master_password=master_password,
                                 add_share_key=add_share_key),
                             mount,
@@ -2570,7 +2630,9 @@ def mount_share(share, share_site, mount, nodes, encrypted, sotp_signing,
                             fsname=fsname,
                             )
         else:
-            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard, sotp_signing=sotp_signing),
+            fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard,
+                                sotp_signing=sotp_signing,
+                                connection_timeout=mount_timeout),
                             mount,
                             foreground=foreground,
                             nothreads=True,

@@ -564,6 +564,10 @@ class OTPmeAgentP1(object):
                     share_encrypted = shares[share_id]['encrypted']
                     share_sotp_signing = shares[share_id]['sotp_signing']
                     try:
+                        share_mount_timeout = shares[share_id]['mount_timeout']
+                    except KeyError:
+                        share_mount_timeout = None
+                    try:
                         mount_share(username=login_user,
                                     share_id=share_id,
                                     share_site=share_site,
@@ -571,6 +575,7 @@ class OTPmeAgentP1(object):
                                     share_nodes=share_nodes,
                                     encrypted=share_encrypted,
                                     sotp_signing=share_sotp_signing,
+                                    mount_timeout=share_mount_timeout,
                                     session_id=self.session_id,
                                     logger=self.logger)
                     except Exception as e:

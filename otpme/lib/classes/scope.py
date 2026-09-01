@@ -980,7 +980,8 @@ class Scope(OTPmeObject):
         if defaults:
             auto_member = defaults["auto_member"]
             if auto_member:
-                self.enable_auto_member(force=True)
+                self.enable_auto_member(force=True,
+                                        verify_acls=False)
         return callback.ok()
 
     @object_lock(full_lock=True)

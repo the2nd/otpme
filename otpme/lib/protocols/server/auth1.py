@@ -2102,12 +2102,6 @@ class OTPmeAuthP1(OTPmeServer1):
         # mode of login.html actually works for them.
         reauth = bool(command_args.get('reauth', False))
         reauth_session_uuid = command_args.get('session_uuid')
-        log_msg = _("verify: reauth={r} session_uuid={s} user_site={us} local_site={ls}", log=True)[1]
-        log_msg = log_msg.format(r=reauth,
-                                s=bool(reauth_session_uuid),
-                                us=user.site,
-                                ls=config.site)
-        self.logger.info(log_msg)
         if reauth and command == "verify":
             log_msg = _("Reauth branch entered for user '{u}'.", log=True)[1]
             log_msg = log_msg.format(u=user.name)

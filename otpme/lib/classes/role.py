@@ -1369,6 +1369,7 @@ class Role(OTPmeObject):
                 shares[share_id]['hosts'] = share_hosts
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['sotp_signing'] = share.sotp_signing
+                shares[share_id]['mount_timeout'] = share.mount_timeout
                 shares[share_id]['tokens'] = [token_path]
                 shares[share_id]['persist'] = persist_mount
 
@@ -1442,6 +1443,7 @@ class Role(OTPmeObject):
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['sotp_signing'] = share.sotp_signing
+                shares[share_id]['mount_timeout'] = share.mount_timeout
                 shares[share_id]['tokens'] = [token_path]
                 shares[share_id]['persist'] = persist_mount
 
@@ -1527,6 +1529,7 @@ class Role(OTPmeObject):
                 shares[share_id]['hosts'] = share_hosts
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['sotp_signing'] = share.sotp_signing
+                shares[share_id]['mount_timeout'] = share.mount_timeout
 
                 # Collect notifications.
                 already_processed = []
@@ -1649,6 +1652,7 @@ class Role(OTPmeObject):
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['sotp_signing'] = share.sotp_signing
+                shares[share_id]['mount_timeout'] = share.mount_timeout
                 already_processed = []
                 for token_path in notify_tokens:
                     username = token_path.split("/")[0]
@@ -1883,6 +1887,7 @@ class Role(OTPmeObject):
                 shares[share_id]['hosts'] = share_hosts
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['sotp_signing'] = share.sotp_signing
+                shares[share_id]['mount_timeout'] = share.mount_timeout
                 already_processed = []
                 for token_path in notify_tokens:
                     username = token_path.split("/")[0]
@@ -1984,6 +1989,7 @@ class Role(OTPmeObject):
                 shares[share_id]['hosts'] = share_hosts
                 shares[share_id]['encrypted'] = share.encrypted
                 shares[share_id]['sotp_signing'] = share.sotp_signing
+                shares[share_id]['mount_timeout'] = share.mount_timeout
                 already_processed = []
                 for token_path in notify_tokens:
                     username = token_path.split("/")[0]

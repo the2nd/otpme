@@ -2393,6 +2393,30 @@ def register_config():
     # it up. What makes it work at all is that a login spends most of
     # its time waiting for the user to type or to touch their token,
     # and a thread parked in a read holds no GIL.
+    #
+    # What it buys is room: how many connections may sit in a login at
+    # once goes from authd_max_workers to that times this. And the room
+    # is cheap, which is the point -- one more waiting connection costs
+    # a thread stack instead of a process with caches of its own, so
+    # this can be set far higher than the number of workers ever could.
+    #
+    # It is not a defence. Someone occupying connections on purpose
+    # pays the same either way, one of them per place taken, so raising
+    # the ceiling raises what it costs him and nothing else. Note that
+    # nothing else limits him: max_conn is not enforced in the worker
+    # pool, and there is no limit per source. The occupancy problem is
+    # solved by not holding anything while waiting for the user (see
+    # daemon_idle_timeout in otpme_config.py), not here.
+    #
+    # Note that with this set every connection is served in a thread,
+    # not only the ones past the first. It has to be that way: handing
+    # a connection to a thread is a decision only a worker inside its
+    # accept loop can take, and serving one itself leaves that loop for
+    # the length of the connection. A worker that served its first
+    # connection itself would be gone from the loop before the
+    # supervisor ever published that the pool is saturated -- and then
+    # no thread would ever be started, which is exactly the load this
+    # exists for.
     config.register_config_parameter(name="authd_worker_threads",
                                     ctype=int,
                                     default_value=0,
@@ -4204,7 +4228,7 @@ class Site(OTPmeObject):
                    force=force)
 
         if was_active:
-            msg, log_msg = _("Revoked active OIDC key — generating replacement.",
+            msg, log_msg = _("Revoked active OIDC key, generating replacement.",
                              log=True)
             logger.warning(log_msg)
             callback.send(msg)

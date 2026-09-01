@@ -40,6 +40,32 @@ attributetype ( 1.3.6.1.4.1.66639.1.1
 	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
 	SINGLE-VALUE )
 
+# Additional e-mail address that delivers to the same mailbox as the
+# users ``mail`` attribute. Multi-valued: a user usually carries several
+# aliases (role addresses, former names, short forms).
+#
+# OTPme brings its own attribute instead of reusing one of the existing
+# candidates: ``nisMailAlias`` is STRUCTURAL, so it cannot be put on a
+# user entry that is already an inetOrgPerson, and ``mailLocalAddress``
+# (inetLocalMailRecipient) is IA5 only and tied to the sendmail/postfix
+# routing semantics of that draft. This one is a plain alias list with
+# no routing meaning attached.
+#
+# Syntax is Directory String (UTF-8) for the same reason as
+# otpmeRecoveryMail above: internationalised mailboxes (EAI, RFC 6530)
+# can be stored verbatim without a Punycode/ACE round-trip.
+#
+# Note the matching rule differs from the one of ``mail``
+# (caseIgnoreIA5Match), so a mail server that resolves an address over
+# both has to filter them separately, e.g.
+# ``(|(mail=x@y)(otpmeMailAlias=x@y))``.
+attributetype ( 1.3.6.1.4.1.66639.1.2
+	NAME 'otpmeMailAlias'
+	DESC 'OTPme: additional e-mail address delivering to the users mailbox (EAI-capable)'
+	EQUALITY caseIgnoreMatch
+	SUBSTR caseIgnoreSubstringsMatch
+	SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256} )
+
 #-----------------------------------------------------------
 # Object classes
 #-----------------------------------------------------------
@@ -53,4 +79,4 @@ objectclass ( 1.3.6.1.4.1.66639.2.1
 	DESC 'OTPme: auxiliary class for OTPme-specific user attributes'
 	SUP top
 	AUXILIARY
-	MAY ( otpmeRecoveryMail ) )
+	MAY ( otpmeRecoveryMail $ otpmeMailAlias ) )

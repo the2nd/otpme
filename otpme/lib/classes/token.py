@@ -4129,6 +4129,7 @@ class Token(OTPmeObject):
                 'hosts': share_hosts,
                 'encrypted': share.encrypted,
                 'sotp_signing': share.sotp_signing,
+                'mount_timeout': share.mount_timeout,
                 'tokens': [self.rel_path],
                 'persist': persist_mount,
             }

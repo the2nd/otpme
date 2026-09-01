@@ -2546,4 +2546,5 @@ def get_user_shares(auth_token, host_uuid):
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['encrypted'] = share.encrypted
             shares[share_id]['sotp_signing'] = share.sotp_signing
+            shares[share_id]['mount_timeout'] = share.mount_timeout
     return shares

@@ -6693,10 +6693,15 @@ class CommandHandler(object):
                 encrypted = response[share_id]['encrypted']
                 nodes = response[share_id]['nodes']
                 try:
+                    mount_timeout = response[share_id]['mount_timeout']
+                except KeyError:
+                    mount_timeout = None
+                try:
                     self.mount_share(share_id=share_id,
                                     encrypted=encrypted,
                                     hard=hard,
                                     sotp_signing=sotp_signing,
+                                    mount_timeout=mount_timeout,
                                     nodes=nodes)
                 except Exception as e:
                     msg = _("Failed to mount share: {share_id}: {e}")
@@ -6758,8 +6763,8 @@ class CommandHandler(object):
                                 foreground=foreground)
 
     def mount_share(self, share_id, mount_point=None, encrypted=False,
-        nodes=None, hard=False, sotp_signing=False, master_password_mount=False,
-        add_share_key=False, foreground=False):
+        nodes=None, hard=False, sotp_signing=False, mount_timeout=None,
+        master_password_mount=False, add_share_key=False, foreground=False):
         from otpme.lib import cli
         from otpme.lib import multiprocessing
         from otpme.lib.fuse import mount_share
@@ -6793,6 +6798,10 @@ class CommandHandler(object):
                 nodes = response[share_id]['nodes']
             encrypted = response[share_id]['encrypted']
             sotp_signing = response[share_id]['sotp_signing']
+            try:
+                mount_timeout = response[share_id]['mount_timeout']
+            except KeyError:
+                mount_timeout = None
             if mount_point is None:
                 shares = response
                 try:
@@ -6823,6 +6832,7 @@ class CommandHandler(object):
                         encrypted,
                         hard=hard,
                         sotp_signing=sotp_signing,
+                        mount_timeout=mount_timeout,
                         master_password=master_password,
                         add_share_key=add_share_key,
                         foreground=foreground)
@@ -6835,6 +6845,7 @@ class CommandHandler(object):
                                                                     'add_share_key'     : add_share_key,
                                                                     'hard'              : hard,
                                                                     'sotp_signing'      : sotp_signing,
+                                                                    'mount_timeout'     : mount_timeout,
                                                                     'foreground'        : False,
                                                                 },
                                                     daemon=False)

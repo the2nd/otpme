@@ -18,6 +18,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.idle import notify
+from otpme.lib.humanize import units
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
@@ -78,6 +79,7 @@ read_value_acls = {
                                     "root_dir",
                                     "encrypted",
                                     "sotp_signing",
+                                    "mount_timeout",
                                     "share_key",
                                     "block_size",
                                     "read_only",
@@ -143,6 +145,7 @@ write_value_acls = {
                                     "force_create_mode",
                                     "force_directory_mode",
                                     "home_share_permissions",
+                                    "mount_timeout",
                                     "add_script",
                                 ],
             }
@@ -325,6 +328,15 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'disable_sotp_signing',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'mount_timeout'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_mount_timeout',
+                    'args'              : ['mount_timeout'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1000,6 +1012,7 @@ def register():
     config.register_auth_on_action_hook("share", "show_config_parameters")
     config.register_auth_on_action_hook("share", "enable_sotp_signing")
     config.register_auth_on_action_hook("share", "disable_sotp_signing")
+    config.register_auth_on_action_hook("share", "change_mount_timeout")
     config.register_auth_on_action_hook("share", "update_sign_public_keys")
     config.register_auth_on_action_hook("share", "enable_ro")
     config.register_auth_on_action_hook("share", "disable_ro")
@@ -1170,6 +1183,9 @@ class Share(OTPmeObject):
         self.encrypted = False
         # Require the client to sign the SOTP it authenticates with.
         self.sotp_signing = False
+        # Time in seconds after which a mount drops its unused connection
+        # (and its share key). 0 means the connection is kept.
+        self.mount_timeout = 0
         self.block_size = 4096
 
         # Call parent class init.
@@ -1216,6 +1232,7 @@ class Share(OTPmeObject):
                             "READ_ONLY",
                             "ENCRYPTED",
                             "SOTP_SIGNING",
+                            "MOUNT_TIMEOUT",
                             "SIGN_PUBLIC_KEYS",
                             "TOKENS",
                             "ROLES",
@@ -1263,6 +1280,11 @@ class Share(OTPmeObject):
                         'SOTP_SIGNING'              : {
                                                         'var_name'  : 'sotp_signing',
                                                         'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'MOUNT_TIMEOUT'             : {
+                                                        'var_name'  : 'mount_timeout',
+                                                        'type'      : int,
                                                         'required'  : False,
                                                     },
                         'BLOCK_SIZE'                : {
@@ -1570,6 +1592,7 @@ class Share(OTPmeObject):
         self.encrypted = encrypted
         self.add_index('encrypted', self.encrypted)
         self.add_index('sotp_signing', self.sotp_signing)
+        self.add_index('mount_timeout', self.mount_timeout)
         if self.encrypted:
             self.block_size = block_size
             self.add_index('block_size', self.block_size)
@@ -2104,6 +2127,58 @@ class Share(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['edit:mount_timeout'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("change mount timeout to {mount_timeout}")
+    def change_mount_timeout(
+        self,
+        mount_timeout: str,
+        force: bool=False,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Change the timeout a mount drops its unused connection after.
+
+        The clients get the timeout with the share data they mount with,
+        so a change reaches an already mounted share on its next mount.
+        """
+        try:
+            new_mount_timeout = units.time2int(mount_timeout, time_unit="s")
+        except Exception as e:
+            msg = _("Invalid value for mount timeout: {error}")
+            msg = msg.format(error=e)
+            return callback.error(msg)
+
+        if new_mount_timeout < 0:
+            msg = _("Mount timeout cannot be negative.")
+            return callback.error(msg)
+
+        msg = _("Change mount timeout of share '{share_name}' to '{mount_timeout}'?: ")
+        msg = msg.format(share_name=self.name, mount_timeout=mount_timeout)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_mount_timeout",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        self.mount_timeout = new_mount_timeout
+
+        self.update_index('mount_timeout', self.mount_timeout)
+
+        return self._cache(callback=callback)
+
     @check_acls(['edit:sign_public_keys'])
     @object_lock(full_lock=True)
     @audit_log()
@@ -2390,6 +2465,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
             shares[share_id]['tokens'] = [token_path]
             shares[share_id]['persist'] = persist_mount
 
@@ -2933,6 +3009,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
             shares[share_id]['tokens'] = [token_path]
             shares[share_id]['persist'] = persist_mount
 
@@ -3079,6 +3156,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
             shares[share_id]['tokens'] = [token_path]
             shares[share_id]['persist'] = persist_mount
 
@@ -3176,6 +3254,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
 
             # Collect notifications.
             user_shares = {}
@@ -3287,6 +3366,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
 
             # Collect notifications.
             user_shares = {}
@@ -3699,6 +3779,7 @@ class Share(OTPmeObject):
         shares[share_id]['hosts'] = group_hosts
         shares[share_id]['encrypted'] = self.encrypted
         shares[share_id]['sotp_signing'] = self.sotp_signing
+        shares[share_id]['mount_timeout'] = self.mount_timeout
 
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
@@ -3834,6 +3915,7 @@ class Share(OTPmeObject):
         shares[share_id]['hosts'] = group_hosts
         shares[share_id]['encrypted'] = self.encrypted
         shares[share_id]['sotp_signing'] = self.sotp_signing
+        shares[share_id]['mount_timeout'] = self.mount_timeout
 
         if persist_mount is None:
             persist_mount = not bool(self.restore_share)
@@ -4291,6 +4373,7 @@ class Share(OTPmeObject):
             share_site = self.site
             share_encrypted = self.encrypted
             share_sotp_signing = self.sotp_signing
+            share_mount_timeout = self.mount_timeout
             share_limit_by_hosts = self.limit_by_hosts
 
             user_shares = {}
@@ -4318,6 +4401,7 @@ class Share(OTPmeObject):
                     'hosts': list(share_hosts),
                     'encrypted': share_encrypted,
                     'sotp_signing': share_sotp_signing,
+                    'mount_timeout': share_mount_timeout,
                     'tokens': tokens,
                     'persist': persist_mount,
                 }
@@ -4678,6 +4762,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
 
             # Collect notifications.
             user_shares = {}
@@ -4774,6 +4859,7 @@ class Share(OTPmeObject):
             shares[share_id]['hosts'] = share_hosts
             shares[share_id]['encrypted'] = self.encrypted
             shares[share_id]['sotp_signing'] = self.sotp_signing
+            shares[share_id]['mount_timeout'] = self.mount_timeout
 
             # Collect notifications.
             user_shares = {}

@@ -12,6 +12,7 @@ except Exception:
 
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.humanize import units
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
@@ -27,6 +28,7 @@ table_headers = [
                 "root_dir",
                 "encrypted",
                 "sotp_signing",
+                "mount_timeout",
                 "block_size",
                 "read_only",
                 "force_group",
@@ -56,6 +58,7 @@ def register():
                         'root_dir',
                         'encrypted',
                         'sotp_signing',
+                        'mount_timeout',
                         'block_size',
                         'force_group_uuid',
                         'create_mode',
@@ -120,6 +123,10 @@ def row_getter(realm, site, share_order, share_data, acls,
             sotp_signing = share_data[share_uuid]['sotp_signing'][0]
         except Exception:
             sotp_signing = False
+        try:
+            mount_timeout = share_data[share_uuid]['mount_timeout'][0]
+        except Exception:
+            mount_timeout = 0
         try:
             block_size = share_data[share_uuid]['block_size'][0]
         except Exception:
@@ -205,6 +212,17 @@ def row_getter(realm, site, share_order, share_data, acls,
         if "sotp_signing" in output_fields:
             if check_acl("view:sotp_signing"):
                 row.append(sotp_signing)
+            else:
+                row.append("-")
+        # Mount timeout.
+        if "mount_timeout" in output_fields:
+            if check_acl("view:mount_timeout") \
+            or check_acl("edit:mount_timeout"):
+                if mount_timeout:
+                    mount_timeout = units.int2time(mount_timeout, time_unit="s")[0]
+                else:
+                    mount_timeout = "0"
+                row.append(mount_timeout)
             else:
                 row.append("-")
         # Blocksize.

@@ -57,6 +57,14 @@ WORKER_SUPERVISE_INTERVAL = 0.5
 # path while it waits, so this is also how long it takes to notice that
 # the pool became saturated and it may help out after all.
 WORKER_THREAD_POLL_INTERVAL = 0.1
+# How long a stopping worker waits for the connections it handed to
+# threads. Past this it leaves and they are cut off.
+#
+# Has to stay below the join(timeout=5) our parent gives each of us on
+# shutdown (see _listen()): waiting longer than that does not buy the
+# connections any time, it only gets us dropped and left behind as an
+# orphan.
+WORKER_DRAIN_TIMEOUT = 3
 # How long a round of the accept loop takes. accept() returning is the
 # only point at which that loop looks at self.shutdown, and a pool
 # worker at its stop request, so this is how quickly either is noticed.
@@ -925,8 +933,14 @@ class ListenSocket(object):
         self.set_worker_state(worker_idx, WORKER_IDLE)
 
         while not self.shutdown:
-            # Only checked while we are between connections, so we never
-            # walk out on a client we already accepted.
+            # Only reached between connections, so a client we accepted
+            # ourselves is never left half served. Connections we handed
+            # to threads are still running at this point -- those are
+            # waited for below, before we leave.
+            #
+            # The pool never asks a worker with threads to stop:
+            # supervise_workers() picks its slots from the idle ones,
+            # and threads of ours keep us WORKER_BUSY.
             if self.get_worker_command(worker_idx) == WORKER_EXIT:
                 log_msg = _("Worker {idx}: No longer needed, stopping.", log=True)[1]
                 log_msg = log_msg.format(idx=worker_idx)
@@ -951,17 +965,27 @@ class ListenSocket(object):
                 if self.get_worker_thread_count() == 0:
                     self.set_worker_state(worker_idx, WORKER_IDLE)
                 continue
-            # Threads of our own mean we came past the check above, so
-            # taking this one was allowed and there is room for it --
-            # asking again would only catch the pool turning healthy in
-            # the meantime, and then handling it here would be the very
-            # thing the check exists to prevent.
-            if self.get_worker_thread_count() > 0 or self.may_serve_in_thread():
-                # Hand it to a thread and go back to accept. We stay
-                # busy on the scoreboard while that thread runs: the
-                # pool is at its maximum anyway, so nothing grows from
-                # it, but it keeps us out of the "everybody is free"
-                # count the moment the load drops.
+            if self.worker_threads > 0:
+                # Where we serve connections in threads, we serve all of
+                # them that way -- also the first one, and also while
+                # the pool is healthy. Not a matter of taste: handing a
+                # connection to a thread is a decision only a worker in
+                # its accept loop can take, and taking one below leaves
+                # that loop for as long as the connection lasts.
+                #
+                # Serving the first one below would close the door on
+                # the rest. A wave of connections arrives in
+                # milliseconds while the supervisor sets the pool state
+                # every half second, so every worker would still see a
+                # healthy pool, take its connection below, and be gone
+                # from the accept loop by the time saturation is
+                # published. Nobody would be left to read it, and the
+                # threads would only start once the wave had passed --
+                # or never, if whoever sent it holds on.
+                #
+                # It does not put us in the running for more than we are
+                # allowed: whether we go back to accept at all is
+                # decided at the top of the loop, before we get there.
                 self.serve_in_thread(worker_idx, new_connection, client)
                 continue
             # Log new connection.
@@ -986,6 +1010,32 @@ class ListenSocket(object):
             # Reset process title.
             new_proctitle = f"{self.proctitle} Worker: {worker_idx}"
             setproctitle.setproctitle(new_proctitle)
+
+        # Give the connections we handed to threads their chance to
+        # finish. os._exit() below takes them down mid request, and for
+        # an authentication that means a client left without an answer
+        # on something it cannot simply retry. They are daemon threads,
+        # so nothing else waits for them.
+        #
+        # With a deadline: a client that stalls its connection must not
+        # keep a worker of a stopping daemon alive for good. Whoever is
+        # still running when it passes is cut off, which is what would
+        # have happened right away without the wait.
+        if self.get_worker_thread_count() > 0:
+            log_msg = _("Worker {idx}: Waiting for {count} connection(s) to finish.", log=True)[1]
+            log_msg = log_msg.format(idx=worker_idx,
+                                    count=self.get_worker_thread_count())
+            self.logger.info(log_msg)
+            deadline = time.time() + WORKER_DRAIN_TIMEOUT
+            while self.get_worker_thread_count() > 0:
+                if time.time() >= deadline:
+                    log_msg = _("Worker {idx}: Giving up on {count} connection(s) after {timeout}s.", log=True)[1]
+                    log_msg = log_msg.format(idx=worker_idx,
+                                            count=self.get_worker_thread_count(),
+                                            timeout=WORKER_DRAIN_TIMEOUT)
+                    self.logger.warning(log_msg)
+                    break
+                time.sleep(WORKER_THREAD_POLL_INTERVAL)
 
         # Leave the way every other forked child here leaves (see the
         # SIGTERM handler in multiprocessing.py): hard, without running

@@ -2623,6 +2623,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 'nodes':     node_fqdns,
                 'encrypted': share.encrypted,
                 'sotp_signing': share.sotp_signing,
+                'mount_timeout': share.mount_timeout,
             }
         }
         return self.build_response(True, shares)

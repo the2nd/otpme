@@ -103,7 +103,11 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'unit' : [ 'organizationalUnit' ],
                             'host' : [ 'account' ],
                             'node' : [ 'account' ],
-                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson', 'inetLocalMailRecipient', 'nisMailAlias', 'otpmeUser' ],
+                            # No "nisMailAlias": that class is STRUCTURAL, so
+                            # it cannot be put on a user entry that already is
+                            # an inetOrgPerson. Mail aliases are otpmeMailAlias
+                            # (otpmeUser), see deploy/schema/otpme.schema.
+                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson', 'inetLocalMailRecipient', 'otpmeUser' ],
                             'role' : [ 'organizationalRole' ],
                             'group' : [],
                         }

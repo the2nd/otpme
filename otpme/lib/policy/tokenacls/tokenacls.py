@@ -218,9 +218,10 @@ def register_policy_object():
     # Register base policy.
     call_methods = [
                     ({'add_user_acl': {'acl': 'view_all'}},),
+                    ({'add_user_acl': {'acl': 'gen_keys'}},),
                     ({'add_user_acl': {'acl': 'encrypt'}},),
                     ({'add_user_acl': {'acl': 'decrypt'}},),
-                    ({'add_user_acl': {'acl': 'gen_keys'}},),
+                    ({'add_user_acl': {'acl': 'sign'}},),
                     ({'add_token_acl': {'acl': 'view'}},),
                     ({'add_token_acl': {'acl': 'edit:pin'}},),
                     ({'add_token_acl': {'acl': 'edit:password'}},),

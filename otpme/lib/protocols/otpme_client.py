@@ -1412,7 +1412,7 @@ class OTPmeClient(OTPmeClientBase):
                                                     key_len=key_len)
         except Exception as e:
             config.raise_exception()
-            msg = _("Failed to generate keys: {e]")
+            msg = _("Failed to generate keys: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg)
 

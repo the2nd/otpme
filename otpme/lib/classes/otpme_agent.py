@@ -84,7 +84,8 @@ def _load_piv():
     hpke_info_default = _hi
 
 def mount_share(username, share_id, share_site, share_name,
-    share_nodes, encrypted, sotp_signing, session_id, logger):
+    share_nodes, encrypted, sotp_signing, session_id, logger,
+    mount_timeout=None):
     try:
         mount_point = prepare_mount_point(username, share_site, share_name)
     except Exception as e:
@@ -109,8 +110,9 @@ def mount_share(username, share_id, share_site, share_name,
                                             encrypted,
                                             sotp_signing),
                                 target_kwargs={
-                                                'logger'    : logger,
-                                                'foreground': False,
+                                                'logger'        : logger,
+                                                'mount_timeout' : mount_timeout,
+                                                'foreground'    : False,
                                             },
                                 daemon=False,
                                 join=True)
@@ -582,6 +584,10 @@ class OTPmeAgent(UnixDaemon):
                             self.logger.info(log_msg)
                             continue
                         try:
+                            mount_timeout = data[share_id]['mount_timeout']
+                        except KeyError:
+                            mount_timeout = None
+                        try:
                             session = self.login_sessions[login_pid]
                             session_id = session['session_id']
                         except Exception:
@@ -594,6 +600,7 @@ class OTPmeAgent(UnixDaemon):
                                                     share_nodes=share_nodes,
                                                     encrypted=encrypted,
                                                     sotp_signing=sotp_signing,
+                                                    mount_timeout=mount_timeout,
                                                     session_id=session_id,
                                                     logger=self.logger)
                         except AlreadyMounted:

@@ -207,6 +207,15 @@ cmd_help = {
                 },
 
 
+     'mount_timeout'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share mount_timeout {share} [mount_timeout]'),
+                    'cmd'   :   '<|object|> [mount_timeout]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set the timeout a mount drops its unused connection after (0 to disable).'),
+                                },
+                },
+
+
      'update_sign_public_keys'    : {
                     '_cmd_usage_help' : _('Usage: otpme-share update_sign_public_keys {share} [username]'),
                     'cmd'   :   '<|object|> [username]',

@@ -36,6 +36,20 @@ REGISTER_AFTER = []
 
 CONTROLD_QUEUE_NAME = "otpme-controld-commq"
 
+# Seconds a child daemon gets to shut down on its own before we take it
+# down ourselves. In seconds, and measured as such: this used to be a
+# count of 1ms sleeps, which reads like a timeout without being one --
+# the is_alive() call in the loop adds to every round of it.
+#
+# It has to cover the slowest orderly shutdown any of our daemons does.
+# That is httpd, which stops up to two gunicorns and gives each of them
+# a window of its own (see GUNICORN_STOP_TIMEOUT in httpd.py). Cut it
+# short and the daemon dies mid-shutdown with its gunicorn orphaned --
+# which is how a shutdown ends up looking like a hang.
+DAEMON_TERMINATE_WAIT = 30
+# How long a daemon that ignored SIGTERM gets after the SIGKILL.
+DAEMON_KILL_WAIT = 5
+
 def register():
     """ Register daemon stuff. """
     # Register daemon status stuff.
@@ -1434,7 +1448,6 @@ class ControlDaemon(UnixDaemon):
 
     def stop_child(self, daemon_name):
         """ Stop child daemon. """
-        terminate_wait = 10000
         # Get child daemon process.
         daemon = self.get_child(daemon_name)
         if not daemon:
@@ -1452,27 +1465,39 @@ class ControlDaemon(UnixDaemon):
             self.logger.warning(log_msg)
 
         # Wait until we get 'down' response from child daemon or it dies.
-        count = 0
+        deadline = time.time() + DAEMON_TERMINATE_WAIT
         while daemon.is_alive():
-            if count == terminate_wait:
+            if time.time() >= deadline:
                 log_msg = _("Child daemon '{daemon} ({pid})' ignored SIGTERM command. Sending SIGKILL.", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
                 self.logger.warning(log_msg)
                 try:
+                    # signal=9, because this is where we stop asking.
+                    # Without it kill_pid() defaults to SIGTERM and, with
+                    # no kill_timeout, never escalates -- so the daemon
+                    # got a second polite request while the log said we
+                    # had killed it, and anything it left behind (a
+                    # gunicorn of httpd's, say) stayed behind.
                     stuff.kill_pid(daemon.pid,
+                                signal=9,
                                 recursive=True,
-                                timeout=self.daemon_msg_timeout)
+                                timeout=DAEMON_KILL_WAIT)
                 except Exception as e:
                     log_msg = _("Failed to send SIGKILL to daemon '{daemon} ({pid})': {error}", log=True)[1]
                     log_msg = log_msg.format(daemon=daemon.name, pid=daemon.pid, error=e)
                     self.logger.warning(log_msg)
                 break
 
-            time.sleep(0.001)
-            count += 1
+            time.sleep(0.01)
 
-        # Join child daemon process.
-        daemon.join()
+        # Join child daemon process. With a timeout: a SIGKILL that did
+        # not take (a process stuck in the kernel) must not keep the
+        # whole shutdown here for good.
+        daemon.join(timeout=DAEMON_KILL_WAIT)
+        if daemon.is_alive():
+            log_msg = _("Child daemon '{daemon} ({pid})' is still alive after SIGKILL, giving up on it.", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
+            self.logger.warning(log_msg)
 
         log_msg = _("Child daemon '{daemon}' shutdown succeeded.", log=True)[1]
         log_msg = log_msg.format(daemon=daemon_name)

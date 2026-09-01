@@ -42,6 +42,18 @@ from otpme.lib.exceptions import *
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
 REGISTER_AFTER = []
 
+# How long we wait for a gunicorn to go on SIGTERM before we kill it, and
+# how long for it to be gone afterwards. Enough for its own
+# graceful_timeout (5s, see the options below) with room to spare.
+#
+# Both windows are spent twice at worst, once for the SSL gunicorn and
+# once for the plain-HTTP one, so the sum -- 20s -- is what has to stay
+# below what controld gives a daemon before it stops waiting
+# (DAEMON_TERMINATE_WAIT in controld.py). Past that we are killed
+# ourselves, and then nobody is left to kill gunicorn.
+GUNICORN_STOP_TIMEOUT = 8
+GUNICORN_KILL_TIMEOUT = 2
+
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("httpd")
@@ -58,19 +70,27 @@ class HttpDaemon(OTPmeDaemon):
         # fall back to SIGKILL so daemon shutdown can't hang forever.
         # Both the SSL/SSO gunicorn AND the optional plain-HTTP CA
         # publisher share this lifecycle -- iterate over the bundle.
+        #
+        # The whole of it has to fit inside what controld gives us before
+        # it stops waiting (ControlDaemon.stop_child(), DAEMON_TERMINATE_
+        # WAIT): we are past rescue once it loses patience, and gunicorn
+        # is then left behind with nobody to kill it. Two of those
+        # windows stay well under it -- and with graceful_timeout at 5s
+        # the first one is normally enough.
         for label, child in (("https", self.gunicorn_ssl_child),
                               ("http", self.gunicorn_child)):
             if child is None:
                 continue
             try:
                 child.terminate()
-                child.join(timeout=35)
+                child.join(timeout=GUNICORN_STOP_TIMEOUT)
                 if child.is_alive():
-                    log_msg = _("gunicorn ({label}) did not exit gracefully within 35s; sending SIGKILL", log=True)[1]
-                    log_msg = log_msg.format(label=label)
+                    log_msg = _("gunicorn ({label}) did not exit gracefully within {timeout}s; sending SIGKILL", log=True)[1]
+                    log_msg = log_msg.format(label=label,
+                                            timeout=GUNICORN_STOP_TIMEOUT)
                     self.logger.warning(log_msg)
                     child.kill()
-                    child.join(timeout=5)
+                    child.join(timeout=GUNICORN_KILL_TIMEOUT)
                 child.close()
             except Exception as e:
                 log_msg = _("Error stopping gunicorn ({label}): {error}",
@@ -173,6 +193,10 @@ class HttpDaemon(OTPmeDaemon):
             SECRET_KEY = own_site.sso_secret,
             )
 
+        # Our own logger, for the class below: inside it "self" is the
+        # gunicorn application, not us.
+        daemon_logger = self.logger
+
         class GunicornApp(BaseApplication):
             def __init__(self, app, options=None):
                 self.options = options or {}
@@ -181,7 +205,20 @@ class HttpDaemon(OTPmeDaemon):
 
             def load_config(self):
                 for key, value in self.options.items():
-                    self.cfg.set(key.lower(), value)
+                    key = key.lower()
+                    try:
+                        self.cfg.set(key, value)
+                    except AttributeError:
+                        # A setting this gunicorn does not have. We set
+                        # some that only exist from a certain version on
+                        # (control_socket_disable, gunicorn 25.1), and
+                        # OTPme runs on older ones too -- cfg.set()
+                        # raises on those, which would take the whole
+                        # daemon down over an option we only wanted if
+                        # it was available.
+                        log_msg = _("Ignoring unknown gunicorn setting: {setting}", log=True)[1]
+                        log_msg = log_msg.format(setting=key)
+                        daemon_logger.info(log_msg)
 
             def load(self):
                 return self.application
@@ -223,6 +260,23 @@ class HttpDaemon(OTPmeDaemon):
           'worker_connections': 1000,
           'timeout': 30,
           'keepalive': 5,
+          # How long the gunicorn master gives its workers to finish
+          # their connections on SIGTERM. Its own default is 30s, and on
+          # a host that is reachable from the internet those 30s are
+          # spent in full on every shutdown: there is always a scanner
+          # holding a connection open, and the workers wait for it. Five
+          # seconds is more than a real request needs and turns daemon
+          # shutdown from "seems hung" into "done".
+          'graceful_timeout': 5,
+          # No control socket (gunicorn 25.1 and up, ignored before
+          # that, see load_config() above). It is what gunicornc talks
+          # to, and we do not use gunicornc -- we drive gunicorn through
+          # the process we forked it as. Two reasons not to have it:
+          # both of our gunicorns default to the same path
+          # ($XDG_RUNTIME_DIR or $HOME/.gunicorn/gunicorn.ctl, and as a
+          # daemon started by root that is one and the same file), and
+          # it has been reported to hang worker startup.
+          'control_socket_disable': True,
           'certfile': self.cert_file,
           'keyfile': self.key_file,
           'ssl_context': create_ssl_context,
@@ -273,6 +327,9 @@ class HttpDaemon(OTPmeDaemon):
                 'worker_connections': 100,
                 'timeout': 30,
                 'keepalive': 5,
+                # Same reasons as for the SSL gunicorn above.
+                'graceful_timeout': 5,
+                'control_socket_disable': True,
                 'user': self.user,
                 'group': self.group,
                 'proc_name': 'otpme-httpd-http',

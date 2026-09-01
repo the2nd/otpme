@@ -89,8 +89,6 @@ write_acls = [
 
 read_value_acls = {
             "view_all"      : [
-                        "sign_private_key",
-                        "encrypt_private_key",
                         "key_script",
                         "auth_script",
                         "agent_script",
@@ -100,8 +98,6 @@ read_value_acls = {
             "view"      : [
                         "token",
                         "group",
-                        "sign_public_key",
-                        "encrypt_public_key",
                         "failcount",
                         "session",
                         "auto_mount",
@@ -110,6 +106,10 @@ read_value_acls = {
                         ],
             "dump"      : [
                         "photo",
+                        "sign_public_key",
+                        "sign_private_key",
+                        "encrypt_public_key",
+                        "encrypt_private_key",
                         ],
         }
 
@@ -3177,7 +3177,6 @@ class User(OTPmeObject):
         aes_key: Union[str,None],
         callback: JobCallback,
         _caller: str,
-        check_acl: bool=True,
         ):
         """ Implementation shared by get_sign_key / get_encrypt_key.
 
@@ -3186,10 +3185,6 @@ class User(OTPmeObject):
         """
         priv_attr = self._key_attr(key_role, private=True)
         pub_attr = self._key_attr(key_role, private=False)
-        if private and check_acl:
-            if not self.verify_acl(f"view_all:{priv_attr}"):
-                msg = ("Permission denied.")
-                return callback.error(msg, exception=PermissionDenied)
         if private and getattr(self, priv_attr):
             try:
                 private_key = self.get_private_key(key_role=key_role,
@@ -3232,16 +3227,17 @@ class User(OTPmeObject):
                 check_acl = False
         if not private:
             check_acl = False
+        if private and self.key_mode == "server":
+            check_acl = True
         if check_acl:
-            acl = "view:sign_public_key"
+            acl = "dump:sign_public_key"
             if private:
-                acl = "view:sign_private_key"
+                acl = "dump:sign_private_key"
             if not self.verify_acl(acl):
                 msg = _("Permission denied.")
                 return callback.error(msg)
         return self._get_key_dispatch("sign", private, decrypt, aes_key,
-                                        callback, _caller,
-                                        check_acl=check_acl)
+                                        callback, _caller)
 
     def get_encrypt_key(
         self,
@@ -3263,16 +3259,17 @@ class User(OTPmeObject):
                 check_acl = False
         if not private:
             check_acl = False
+        if private and self.key_mode == "server":
+            check_acl = True
         if check_acl:
-            acl = "view:encrypt_public_key"
+            acl = "dump:encrypt_public_key"
             if private:
-                acl = "view:encrypt_private_key"
+                acl = "dump:encrypt_private_key"
             if not self.verify_acl(acl):
                 msg = _("Permission denied.")
                 return callback.error(msg)
         return self._get_key_dispatch("encrypt", private, decrypt, aes_key,
-                                        callback, _caller,
-                                        check_acl=check_acl)
+                                        callback, _caller)
 
     @check_acls(['gen_keys'])
     @check_special_user()
@@ -6105,6 +6102,7 @@ class User(OTPmeObject):
                 'hosts': share_hosts,
                 'encrypted': share.encrypted,
                 'sotp_signing': share.sotp_signing,
+                'mount_timeout': share.mount_timeout,
                 'tokens': sorted(token_paths),
                 'persist': persist_mount,
             }
