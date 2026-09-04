@@ -47,6 +47,11 @@ Path to pwgen binary for password generation.
 Enable use of mgmtd socket (--socket) by default. Makes sense on nodes
 only.
 
+**USE_PAGER**  
+Whether to page long CLI output through a pager. Values: "auto"
+(default, page only when stdout is a TTY), "True" (always page), "False"
+(never page).
+
 # INDEX DATABASE
 
 **INDEX**  
@@ -280,6 +285,42 @@ Minimum spare servers.
 **RADIUS_MAX_SPARE_SERVERS**  
 Maximum spare servers.
 
+# HAPROXY (LDAP LOAD BALANCING)
+
+Spread LDAP requests over the ldapd instances of all member nodes via a
+haproxy that binds on the floating cluster IP. Clients keep reaching
+ldapd directly on its own port as well; haproxy is only the
+load-balanced listener on the cluster IP.
+
+**START_HAPROXY**  
+Start haproxy with OTPme (default: True). Set to False to disable the
+LDAP load balancer on this host.
+
+**HAPROXY_BIN**  
+Path to the haproxy binary (default: /usr/sbin/haproxy).
+
+**HAPROXY_PORT**  
+Port on the floating cluster IP that clients connect to (default: 636).
+636 is where LDAP clients look for LDAPS, which is what dovecot and SOGo
+want to be pointed at.
+
+**HAPROXY_MAXCONN**  
+Maximum concurrent connections haproxy accepts (default: 4096).
+
+**HAPROXY_CHECK_INTERVAL**  
+How often a member node is health-checked (default: 5s).
+
+**HAPROXY_CONNECT_TIMEOUT**  
+Timeout for connecting to a backend ldapd (default: 5s).
+
+**HAPROXY_CLIENT_TIMEOUT**  
+Idle timeout for client connections (default: 1h). Generous on purpose:
+dovecot keeps its LDAP connection open between logins, and cutting an
+idle one only makes it reconnect.
+
+**HAPROXY_SERVER_TIMEOUT**  
+Idle timeout for backend connections (default: 1h).
+
 # ENCRYPTION
 
 **KEY_COMMAND**  
@@ -331,6 +372,9 @@ Directory for logfiles (default: /var/log/otpme).
 
 **MOUNT_ROOT_DIR**  
 Mount root directory (default: /otpme).
+
+**SHARE_ROOT**  
+Overrides the **share_root** config parameter.
 
 # DNS
 
@@ -542,10 +586,15 @@ Max POSIX message queue message size. Set to "auto" to read from
 Max POSIX message queue size (see getrlimit(2)). Increase for large
 installations.
 
+**FLOATING_IP_IFACE**  
+Name of the network interface the floating cluster IP is assigned to
+(e.g. "eth0").
+
 # STORAGE
 
-**OBJECT_JSON_COMPRESSSION**  
-Compression for object JSON files (e.g. "lz4").
+**OBJECT_JSON_COMPRESSION**  
+Compression for object JSON files (e.g. "lz4"). Set to "none" (or leave
+unset) to store objects uncompressed.
 
 **PRETTIFY_OBJECT_JSON**  
 Pretty-print object JSON files.
@@ -604,11 +653,12 @@ backupserver1.site.realm:host_type/site/hostname).
 **BACKUP_MODE**  
 Backup mode: "pack" or "tree".
 
-**BACKUP_REPO_PASS**  
-Repository password.
+**BACKUP_REPO_PASS_FILE**  
+Path to a file that holds the repository password.
 
-**BACKUP_KEY**  
-AES key to encrypt backup (generate with "openssl rand -hex 32").
+**BACKUP_KEY_FILE**  
+Path to a file that holds the AES key used to encrypt the backup
+(generate with **openssl rand -hex 32 \> /etc/otpme/backup.key**).
 
 **BACKUP_EXCLUDE_SPECIAL**  
 Exclude special files from backup.

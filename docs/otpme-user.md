@@ -92,30 +92,38 @@ one.
 
 ## Token Management
 
-**list_tokens \[*user*\]**  
-List all tokens assigned to user(s).
+**add_token \[**-r**\] \[**--no-qrcode**\] \[**--enable-mschap**\] \[**--token-type** *TYPE*\] \[**--name** *NAME*\] \[**--destination** *DST*\] \[**--password** *PASS*\] \[**--weak-password**\] *user***  
+Add a new token to the user. **-r** replaces an existing token of the
+same name while keeping its UUID (useful when re-running setup).
+
+**del_token *user* *token***  
+Delete a token from the user.
+
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] \[*user*\]**  
+List all tokens assigned to user(s). Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--token-types** to filter by token type.
+
+**deploy_token *user* *token***  
+Deploy the token (e.g. a smartcard token).
 
 ## Group Membership
 
-**add_group *user* *group***  
-Add user to a group.
+**group *user* *group***  
+Change the user's default group. (A user is added to further groups from
+the group side; see **otpme-group**(1).)
 
-**remove_group *user* *group***  
-Remove user from a group.
+**list_groups \[**--return-type** *TYPE*\] \[*user*\]**  
+List groups the user belongs to. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_groups \[*user*\]**  
-List groups the user belongs to.
+## Role Membership
 
-## Role Management
+Roles are managed from the role side; see **otpme-role**(1).
 
-**add_role *user* *role***  
-Assign a role to the user.
-
-**remove_role *user* *role***  
-Remove a role from the user.
-
-**list_roles \[*user*\]**  
-List roles assigned to the user.
+**list_roles \[**--return-type** *TYPE*\] \[*user*\]**  
+List roles assigned to the user. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Policy Management
 
@@ -125,22 +133,70 @@ Attach a policy to the user.
 **remove_policy *user* *policy***  
 Remove a policy from the user.
 
-**list_policies \[*user*\]**  
-List policies attached to the user.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] \[*user*\]**  
+List policies attached to the user. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to filter by policy type.
 
 ## User Configuration
 
-**config \[**-d**\] *user* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *user* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *user* \[*parameter*\]**  
 Show all configuration parameters.
 
+**get_config *user* *parameter***  
+Show the value of a single configuration parameter.
+
 **description *user* \[*description*\]**  
 Set user description.
 
-**unit *user* \[*unit*\]**  
-Display or change user's organizational unit.
+**language *user* *language***  
+Set the user's localization language (e.g. "en", "de").
+
+**enable_disabled_login *user***  
+Allow the user to log in even if the accessgroup is disabled.
+
+**disable_disabled_login *user***  
+Undo **enable_disabled_login**.
+
+**unblock *user* \[*accessgroup*\]**  
+Unblock the user for the given accessgroup, or for all accessgroups if
+none is given.
+
+**enable_auto_mount *user* / **disable_auto_mount** *user***  
+See *SS User Management* above.
+
+**enable_autosign *user***  
+Enable the auto-sign feature of the user.
+
+**disable_autosign *user***  
+Disable the auto-sign feature of the user.
+
+## User Scripts
+
+**auth_script *user* *script* **--** \[*script_options*\]**  
+Set the user's authorization script.
+
+**enable_auth_script *user* / **disable_auth_script** *user***  
+Enable / disable the user's authorization script.
+
+**key_script *user* \[*script*\] **--** \[*script_options*\]**  
+Set the user's key script.
+
+**get_key_script *user* \[**name**\|**uuid**\]**  
+Show the name or UUID of the user's key script.
+
+**agent_script *user* \[*script*\] **--** \[*script_options*\]**  
+Set the user's agent script.
+
+**login_script *user* \[*script*\] **--** \[*script_options*\]**  
+Set the user's login script.
+
+**enable_login_script *user* / **disable_login_script** *user***  
+Enable / disable the user's login script.
 
 ## VLAN Assignment
 
@@ -163,16 +219,25 @@ into it (see **otpme-vlan**(1)).
 ## Cryptographic Keys
 
 **gen_keys \[*options*\] *user***  
-Generate encryption/signing keys for the user.
+Generate the user's sign and encrypt RSA key pairs.
 
 **del_keys *user***  
-Delete user's cryptographic keys.
+Delete the user's cryptographic keys.
+
+**gen_cert \[**--stdin-pass**\] *user***  
+Generate a certificate for the user.
 
 **key_mode *user* *mode***  
-Set key mode (client or server).
+Set key mode (**client** or **server**).
 
 **get_key_mode *user***  
 Display current key mode.
+
+**get_sign_key_type *user***  
+Show the user's sign key type.
+
+**get_enc_key_type *user***  
+Show the user's encrypt key type.
 
 **key_cache_time *user* *time***  
 Set how long otpme-agent may cache the users private key, e.g. how long
@@ -185,11 +250,47 @@ the next login.
 **key_pass *user***  
 Change key passphrase.
 
-**dump_key \[**-p**\] *user***  
-Export user's public key (**-p** for private key).
+**sign_private_key *user* *private_key***  
+Set the user's sign private key.
 
-**import_key *user* \[*keyfile*\]**  
-Import existing key for the user.
+**encrypt_private_key *user* *private_key***  
+Set the user's encrypt private key.
+
+**sign_public_key *user* *public_key***  
+Set the user's sign public key.
+
+**encrypt_public_key *user* *public_key***  
+Set the user's encrypt public key.
+
+**import_sign_key \[**--server**\] \[**-n**\] \[**--stdin-key**\] *user* \[*private_key_file*\]**  
+Import the user's sign RSA key. **-n** stores the private key
+unencrypted, **--server** keeps it on the server.
+
+**import_encrypt_key \[**--server**\] \[**-n**\] \[**--stdin-key**\] *user* \[*private_key_file*\]**  
+Import the user's encrypt RSA key. Flags as for **import_sign_key**.
+
+**dump_sign_key \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user***  
+Dump the user's sign key to stdout. **-p** dumps the private key (or a
+pointer to it), **-n** dumps it unencrypted if possible.
+
+**dump_encrypt_key \[**-p**\] \[**-n**\] \[**--stdin-pass**\] *user***  
+Dump the user's encrypt key to stdout. Flags as for **dump_sign_key**.
+
+## Object Changelog
+
+**changelog *user***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *user* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *user* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *user***  
+Clear the object's entire changelog.
 
 ## ACL Management
 
@@ -210,11 +311,15 @@ Disable ACL inheritance.
 
 ## LDAP Integration
 
-**add_attribute *user* *attribute*=*value***  
-Add an LDAP attribute to the user.
+**add_attribute \[**-i** *position*\] *user* *attribute*=\[*value*\]**  
+Add an LDAP attribute to the user. Use **-i** to insert a multi-value
+attribute at the given zero-based position.
 
 **del_attribute *user* *attribute*=*value***  
 Remove an LDAP attribute from the user.
+
+**modify_attribute *user* *attribute* *old_value* *new_value***  
+Change an LDAP attribute value.
 
 **add_object_class *user* *class***  
 Add an LDAP object class to the user.
@@ -240,6 +345,17 @@ Add an extension to the user.
 
 **remove_extension *user* *extension***  
 Remove an extension from the user.
+
+## User Photo
+
+**photo *user* *image_path***  
+Set the user's photo (JPEG).
+
+**dump_photo *user***  
+Dump the user's photo as base64 to stdout.
+
+**del_photo *user***  
+Remove the user's photo.
 
 ## Import/Export
 
@@ -267,6 +383,10 @@ Assign multiple roles during user creation.
 
 **--password *PASS***  
 Set initial password during user creation.
+
+**--weak-password**  
+Accept a password even if the password policy would reject it. Needs the
+**force_password** ACL on the target unit.
 
 **--no-default-token**  
 Do not create a default token for the user.
@@ -387,11 +507,16 @@ Create user eve with multiple groups and roles
 
 ## Managing Groups and Roles
 
-**otpme-user add_group alice developers**  
-Add alice to developers group
+**otpme-user group alice developers**  
+Change alice's default group to developers
 
-**otpme-user add_role alice DEVELOPER**  
-Assign DEVELOPER role to alice
+**otpme-group add_token developers alice/login**  
+Add one of alice's tokens to the developers group (group membership is
+granted per token, see **otpme-group**(1))
+
+**otpme-role add_user DEVELOPER alice/login**  
+Assign the DEVELOPER role to one of alice's tokens (managed from the
+role side, see **otpme-role**(1))
 
 **otpme-user list_groups alice**  
 Show alice's group memberships
@@ -429,8 +554,8 @@ Generate 2048-bit keys for bob
 **otpme-user key_pass alice**  
 Change alice's key passphrase
 
-**otpme-user dump_key alice**  
-Export alice's public key
+**otpme-user dump_sign_key alice**  
+Dump alice's sign public key
 
 ## Managing User Status
 

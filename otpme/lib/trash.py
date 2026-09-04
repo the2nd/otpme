@@ -257,6 +257,9 @@ def write_entry(trash_id, object_id, object_data, deleted_by):
         raise OTPmeException(msg) from e
 
 def add(object_id, deleted_by, callback=default_callback):
+    # Trash only on nodes.
+    if config.host_data['type'] != "node":
+        return
     try:
         trash_data = backup.backup_object(object_id)
     except Exception as e:

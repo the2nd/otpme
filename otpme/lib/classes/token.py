@@ -263,6 +263,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -831,9 +832,18 @@ def register_oid():
     read_oid_schema = [ 'realm', 'user', 'name' ]
     # OID regex stuff.
     user_path_re = oid.object_regex['user']['path']
+    realm_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    user_name_re = oid.object_regex['user']['name']
     token_name_re = r'([0-9a-z]([0-9a-z_.\-:]*[0-9a-z]){0,})'
     token_path_re = f'{user_path_re}[/]{token_name_re}'
-    token_oid_re = f'token|{token_path_re}'
+    # An OID is not a path, see accessgroup.py. Our OID names the user
+    # instead of a unit path, and the read form leaves out the site:
+    # "token|<realm>/<user>/<name>" or
+    # "token|<realm>/<site>/<user>/<name>".
+    #token_oid_re = f'token|{token_path_re}'
+    token_oid_re = (f'token[|]{realm_name_re}[/]({site_name_re}[/])?'
+                    f'{user_name_re}[/]{token_name_re}')
     oid.register_oid_schema(object_type="token",
                             valid_owners=['user'],
                             full_schema=full_oid_schema,

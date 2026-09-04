@@ -25,7 +25,7 @@ from otpme.lib.classes.node import Node
 from otpme.lib.protocols import status_codes
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.otpme_server import OTPmeServer1
-from otpme.lib.daemon.clusterd import cluster_daemon_reload
+#from otpme.lib.daemon.clusterd import cluster_daemon_reload
 
 from otpme.lib.exceptions import *
 
@@ -475,24 +475,6 @@ class OTPmeJoinP1(OTPmeServer1):
             log_msg = _("Setting site master node: {host_fqdn}", log=True)[1]
             log_msg = log_msg.format(host_fqdn=host.fqdn)
             self.logger.debug(log_msg)
-            # Enable site if needed.
-            if not site.enabled:
-                log_msg = _("Enabling site: {site_name}", log=True)[1]
-                log_msg = log_msg.format(site_name=site.name)
-                self.logger.debug(log_msg)
-                site.enable(force=True,
-                            verify_acls=False,
-                            run_policies=False,
-                            callback=callback)
-                # Write site.
-                try:
-                    site._write(callback=callback)
-                except Exception as e:
-                    message, log_msg = _("Failed to write site: {error}", log=True)
-                    message = message.format(error=e)
-                    log_msg = log_msg.format(error=e)
-                    self.logger.critical(log_msg)
-                    return self.build_response(False, message)
 
             # Make sure we clean site from cache to prevent issues when joining
             # node from other site because checksums are not updated for objects
@@ -501,20 +483,23 @@ class OTPmeJoinP1(OTPmeServer1):
 
             # If we got a CSR for the SITE_CA of a new site sign it.
             if site_cert_req:
-                realm = backend.get_object(object_type="realm",
-                                        uuid=config.realm_uuid)
-                realm_ca = backend.get_object(object_type="ca",
-                                                uuid=realm.ca)
                 # The common name of the CSR must be the site CA path.
                 common_name = site_ca.path
                 log_msg = _("Generating CA certificate: {common_name}", log=True)[1]
                 log_msg = log_msg.format(common_name=common_name)
                 self.logger.debug(log_msg)
+                if site.sub:
+                    parent_site = backend.get_object(object_type="site", uuid=site.sub)
+                    ca = backend.get_object(object_type="ca", uuid=parent_site.ca)
+                else:
+                    realm = backend.get_object(object_type="realm",
+                                            uuid=config.realm_uuid)
+                    ca = backend.get_object(object_type="ca", uuid=realm.ca)
                 try:
-                    cert, key = realm_ca.create_ca_cert(common_name,
-                                                        cert_req=site_cert_req,
-                                                        verify_acls=False,
-                                                        callback=callback)
+                    cert, key = ca.create_ca_cert(common_name,
+                                                cert_req=site_cert_req,
+                                                verify_acls=False,
+                                                callback=callback)
                 except Exception as e:
                     cert = None
                     log_msg = _("Error signing CSR: {e}", log=True)[1]
@@ -1319,6 +1304,24 @@ class OTPmeJoinP1(OTPmeServer1):
                 # Get hosts site.
                 site = backend.get_object(object_type="site",
                                         uuid=host.site_uuid)
+                # Enable site if needed.
+                if not site.enabled:
+                    log_msg = _("Enabling site: {site_name}", log=True)[1]
+                    log_msg = log_msg.format(site_name=site.name)
+                    self.logger.debug(log_msg)
+                    site.enable(force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=self.callback)
+                    # Write site.
+                    try:
+                        site._write(callback=self.callback)
+                    except Exception as e:
+                        message, log_msg = _("Failed to write site: {error}", log=True)
+                        message = message.format(error=e)
+                        log_msg = log_msg.format(error=e)
+                        self.logger.critical(log_msg)
+                        return self.build_response(False, message)
                 # Try to get CRL.
                 try:
                     crl = _request['crl']
@@ -1345,12 +1348,13 @@ class OTPmeJoinP1(OTPmeServer1):
                 cache.clear(site_ca.oid)
                 # Update realm CA data.
                 site_ca.update_realm_ca_data()
-                # Reload after adding new CRL.
-                self._send_daemon_msg(daemon="controld",
-                                        command="reload",
-                                        timeout=1)
-                # Make sure member nodes do a daemon reload.
-                cluster_daemon_reload()
+                # NOTE: reload is done in realm.update_ca_data()
+                ## Reload after adding new CRL.
+                #self._send_daemon_msg(daemon="controld",
+                #                        command="reload",
+                #                        timeout=1)
+                ## Make sure member nodes do a daemon reload.
+                #cluster_daemon_reload()
 
             return self.build_response(status, message)
 

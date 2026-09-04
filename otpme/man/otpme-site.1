@@ -42,11 +42,14 @@ Change site auth FQDN.
 .B mgmt_fqdn \fIsite\fR \fIfqdn\fR
 Change site management FQDN.
 .TP
-.B config \fR[\fB\-d\fR] \fIsite\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIsite\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fIsite\fR [\fIparameter\fR]
 Show all configuration parameters.
+.TP
+.B get_config \fIsite\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B description \fIsite\fR \fR[\fIdescription\fR]
 Set site description.
@@ -90,32 +93,29 @@ Dump site certificate chain to stdout.
 .TP
 .B renew_cert \fIsite\fR
 Renew site certificate.
+.TP
+.B site_cert \fIsite\fR \fR[\fIcert_file\fR]
+Change the site certificate. Without \fIcert_file\fR the certificate is read from stdin.
 .SS RADIUS Certificate
 .TP
-.B radius_cert \fIsite\fR \fIcert_file\fR
-Change RADIUS certificate.
+.B radius_cert \fR[\fB\-\-key\fR \fIradius_key\fR] [\fB\-\-ca\-cert\fR \fIradius_ca_cert\fR] \fIsite\fR \fR[\fIradius_cert\fR]
+Change the RADIUS certificate. The optional \fB\-\-key\fR and \fB\-\-ca\-cert\fR flags set the matching private key and CA certificate in one call.
 .TP
 .B radius_key \fIsite\fR \fIkey_file\fR
 Change RADIUS certificate key.
 .TP
-.B del_radius_cert \fIsite\fR
-Delete RADIUS certificate.
-.TP
-.B del_radius_key \fIsite\fR
-Delete RADIUS key.
+.B radius_ca_cert \fIsite\fR \fR[\fIradius_ca_cert\fR]
+Change the RADIUS CA certificate used to verify the RADIUS certificate above.
 .SS SSO Configuration
 .TP
-.B sso_cert \fIsite\fR \fIcert_file\fR
-Change SSO certificate.
+.B sso_fqdn \fIsite\fR \fIfqdn\fR
+Change the site's SSO FQDN (see the OIDC OP section below).
+.TP
+.B sso_cert \fR[\fB\-\-key\fR \fIsso_key\fR] \fIsite\fR \fR[\fIcert_file\fR]
+Change the SSO certificate. Use \fB\-\-key\fR to set the matching private key in the same call.
 .TP
 .B sso_key \fIsite\fR \fIkey_file\fR
 Change SSO certificate key.
-.TP
-.B del_sso_cert \fIsite\fR
-Delete SSO certificate.
-.TP
-.B del_sso_key \fIsite\fR
-Delete SSO key.
 .TP
 .B sso_secret \fIsite\fR \fIsecret\fR
 Change SSO secret.
@@ -183,20 +183,24 @@ but is never advertised (see \fBoidc_allow_plain_pkce\fR).
 .TP
 .B enable_oidc \fIsite\fR
 Enable the OIDC OP on this site. On first activation, an active
-signing key (\fBgen_oidc_key\fR) and a pairwise secret are
+signing key (\fBrenew_oidc_key\fR) and a pairwise secret are
 auto-generated.
 .TP
 .B disable_oidc \fIsite\fR
 Disable the OIDC OP. Existing keys and secrets are kept on disk so
 \fBenable_oidc\fR resumes without re-issuing tokens.
 .TP
-.B gen_oidc_key \fR[\fB\-\-key-type\fR \fIpreset\fR] [\fB\-\-kty\fR \fIRSA|EC|OKP\fR] [\fB\-\-size\fR \fIN\fR] [\fB\-\-alg\fR \fIalg\fR] [\fB\-\-retired-max-age\fR \fIseconds\fR] \fIsite\fR
+.B renew_oidc_key \fR[\fB\-\-key-type\fR \fIpreset\fR] [\fB\-\-kty\fR \fIRSA|EC|OKP\fR] [\fB\-\-size\fR \fIN\fR] [\fB\-\-alg\fR \fIalg\fR] \fIsite\fR
 Rotate the active OIDC signing key. The previous active key is
-demoted to \fBretired\fR and removed from JWKS once
-\fIretired_max_age\fR (default 7200s) has elapsed, so RPs that
-fetched ID Tokens just before rotation can still verify them.
-Presets: \fBrsa-2048\fR, \fBrsa-3072\fR, \fBrsa-4096\fR,
-\fBec-p256\fR, \fBec-p384\fR, \fBec-p521\fR, \fBed25519\fR.
+demoted to \fBretired\fR and removed from JWKS once the site's
+\fBoidc_retired_max_age\fR config parameter (default 7200s) has
+elapsed, so RPs that fetched ID Tokens just before rotation can
+still verify them.
+Presets: \fBrsa\fR, \fBrsa-3072\fR, \fBrsa-4096\fR,
+\fBec\fR, \fBec-p256\fR, \fBec-p384\fR, \fBec-p521\fR, \fBed25519\fR.
+Direct configuration: \fB\-\-kty\fR (\fBRSA\fR/\fBEC\fR/\fBOKP\fR),
+\fB\-\-size\fR (RSA bits or EC/OKP curve), \fB\-\-alg\fR
+(\fBRS256\fR/\fBRS384\fR/\fBRS512\fR/\fBES256\fR/\fBES384\fR/\fBES512\fR/\fBEdDSA\fR).
 .TP
 .B revoke_oidc_key \fIsite\fR \fIkid\fR
 Permanently remove a signing key from JWKS. Tokens signed by it stop
@@ -256,6 +260,19 @@ Delete a FIDO2 CA certificate by subject.
 .TP
 .B list_fido2_ca_certs \fIsite\fR
 List FIDO2 CA certificates.
+.SS Object Changelog
+.TP
+.B changelog \fIsite\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIsite\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIsite\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIsite\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fIsite\fR \fIpolicy\fR
@@ -264,8 +281,8 @@ Attach a policy to the site.
 .B remove_policy \fIsite\fR \fIpolicy\fR
 Remove a policy from the site.
 .TP
-.B list_policies \fIsite\fR
-List policies attached to the site.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIsite\fR
+List policies attached to the site. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
 .SS ACL Management
 .TP
 .B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIsite\fR \fIowner_type\fR \fIowner\fR \fIacl\fR

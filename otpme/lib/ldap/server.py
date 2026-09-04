@@ -2770,9 +2770,6 @@ class LDAPServer(object):
         """ Exit on signal. """
         log_msg = _("Received SIGTERM.", log=True)[1]
         self.logger.info(log_msg)
-        if config.print_timing_results:
-            from otpme.lib import debug
-            debug.print_timing_result(print_status=True)
         multiprocessing.cleanup(ignore_thread=True)
         os._exit(0)
 

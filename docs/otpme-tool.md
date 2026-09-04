@@ -42,6 +42,10 @@ Logout from OTPme realm.
 **whoami**  
 Show currently logged in user.
 
+**who**  
+Show all users currently logged in on this host (across TTYs and desktop
+sessions).
+
 **show_sessions**  
 Get otpme-agent login sessions.
 
@@ -51,11 +55,17 @@ Get otpme-agent login session ID.
 **get_login_token**  
 Show token of currently logged in user.
 
+**get_login_token_type**  
+Show token type of currently logged in user.
+
 **get_login_pass_type**  
 Show token password type used at login.
 
 **get_tty**  
 Get TTY for logged in user.
+
+**get_display**  
+Get **DISPLAY** of currently logged in user.
 
 **get_sotp \[**--site** *site*\]**  
 Get a SOTP for logged in user.
@@ -71,6 +81,11 @@ Try to renegotiate login session.
 
 **reset_reauth**  
 Reset auth_on_action reauth.
+
+**do_reauth**  
+Trigger a manual **auth_on_action** reauth, e.g. from a helper script
+that wants to force the next protected action to prompt for
+reauthentication.
 
 ## Synchronization
 

@@ -149,9 +149,11 @@ def cluster_radius_reload():
 
 def cluster_daemon_reload():
     if config.use_api:
-        return
+        return False
     if config.one_node_setup:
-        return
+        return False
+    if config.host_type != "node":
+        return False
     multiprocessing.daemon_reload_queue.clear()
     reload_time = time.time() + 5
     try:
@@ -2327,6 +2329,7 @@ class ClusterDaemon(OTPmeDaemon):
                                                     socket_uri=socket_uri,
                                                     check_connected_site=False)
             except Exception as e:
+                config.raise_exception()
                 sync_status = False
                 log_msg = _("Initial sync of objects failed: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
@@ -2373,7 +2376,7 @@ class ClusterDaemon(OTPmeDaemon):
             log_msg = _("Error in cluster communication method: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-            #config.raise_exception()
+            config.raise_exception()
 
     def _start_cluster_communication(self, reload=False):
         """ Start cluster communication. """
@@ -3021,7 +3024,7 @@ class ClusterDaemon(OTPmeDaemon):
             try:
                 self.handle_daemon_reload(node_name)
             except Exception as e:
-                log_msg = _("Radius reload request failed: {error}", log=True)[1]
+                log_msg = _("Daemon reload request failed: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)
 

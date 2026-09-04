@@ -60,6 +60,22 @@ Export all words to stdout.
 **clear *dictionary***  
 Remove all words from the dictionary.
 
+## Object Changelog
+
+**changelog *dictionary***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *dictionary* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *dictionary* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *dictionary***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *dictionary* *policy***  
@@ -68,8 +84,11 @@ Attach a policy to the dictionary.
 **remove_policy *dictionary* *policy***  
 Remove a policy from the dictionary.
 
-**list_policies *dictionary***  
-List policies attached to the dictionary.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *dictionary***  
+List policies attached to the dictionary. Use **--return-type** to
+select the attribute returned (**name**, **read_oid**, **full_oid**,
+**uuid**) and **--policy-types** to limit the listing to the given
+policy types.
 
 ## ACL Management
 
@@ -152,13 +171,6 @@ Password for encrypting exports.
 
 Global options are available for all commands. See **otpme**(1) for
 details.
-
-# CONFIG PARAMETERS
-
-Configuration parameters can be set with the **config** command and
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
 
 # EXAMPLES
 

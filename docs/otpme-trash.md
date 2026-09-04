@@ -19,6 +19,9 @@ Show trash contents.
 **restore \[**--keep**\] \[**--objects** *oid1,oid2,...*\] *trash_id***  
 Restore object(s) from trash.
 
+**dump *trash_id* *object_id***  
+Dump a single object from a trash entry to stdout.
+
 **del *trash_id***  
 Permanently delete an entry from trash.
 

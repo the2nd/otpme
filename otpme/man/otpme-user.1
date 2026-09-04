@@ -92,28 +92,31 @@ ACL for the
 role, and purge any active temporary password from every token that still has one.
 .SS Token Management
 .TP
-.B list_tokens \fR[\fIuser\fR]
-List all tokens assigned to user(s).
+.B add_token \fR[\fB\-r\fR] [\fB\-\-no\-qrcode\fR] [\fB\-\-enable\-mschap\fR] [\fB\-\-token\-type\fR \fITYPE\fR] [\fB\-\-name\fR \fINAME\fR] [\fB\-\-destination\fR \fIDST\fR] [\fB\-\-password\fR \fIPASS\fR] [\fB\-\-weak\-password\fR] \fIuser\fR
+Add a new token to the user. \fB\-r\fR replaces an existing token of the same name while keeping its UUID (useful when re-running setup).
+.TP
+.B del_token \fIuser\fR \fItoken\fR
+Delete a token from the user.
+.TP
+.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
+List all tokens assigned to user(s). Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to filter by token type.
+.TP
+.B deploy_token \fIuser\fR \fItoken\fR
+Deploy the token (e.g. a smartcard token).
 .SS Group Membership
 .TP
-.B add_group \fIuser\fR \fIgroup\fR
-Add user to a group.
+.B group \fIuser\fR \fIgroup\fR
+Change the user's default group. (A user is added to further groups from the group side; see
+.BR otpme-group (1).)
 .TP
-.B remove_group \fIuser\fR \fIgroup\fR
-Remove user from a group.
+.B list_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
+List groups the user belongs to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.SS Role Membership
+Roles are managed from the role side; see
+.BR otpme-role (1).
 .TP
-.B list_groups \fR[\fIuser\fR]
-List groups the user belongs to.
-.SS Role Management
-.TP
-.B add_role \fIuser\fR \fIrole\fR
-Assign a role to the user.
-.TP
-.B remove_role \fIuser\fR \fIrole\fR
-Remove a role from the user.
-.TP
-.B list_roles \fR[\fIuser\fR]
-List roles assigned to the user.
+.B list_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
+List roles assigned to the user. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
 .TP
 .B add_policy \fIuser\fR \fIpolicy\fR
@@ -122,21 +125,65 @@ Attach a policy to the user.
 .B remove_policy \fIuser\fR \fIpolicy\fR
 Remove a policy from the user.
 .TP
-.B list_policies \fR[\fIuser\fR]
-List policies attached to the user.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
+List policies attached to the user. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
 .SS User Configuration
 .TP
-.B config \fR[\fB\-d\fR] \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fIuser\fR [\fIparameter\fR]
 Show all configuration parameters.
 .TP
+.B get_config \fIuser\fR \fIparameter\fR
+Show the value of a single configuration parameter.
+.TP
 .B description \fIuser\fR \fR[\fIdescription\fR]
 Set user description.
 .TP
-.B unit \fIuser\fR \fR[\fIunit\fR]
-Display or change user's organizational unit.
+.B language \fIuser\fR \fIlanguage\fR
+Set the user's localization language (e.g. "en", "de").
+.TP
+.B enable_disabled_login \fIuser\fR
+Allow the user to log in even if the accessgroup is disabled.
+.TP
+.B disable_disabled_login \fIuser\fR
+Undo
+.BR enable_disabled_login .
+.TP
+.B unblock \fIuser\fR \fR[\fIaccessgroup\fR]
+Unblock the user for the given accessgroup, or for all accessgroups if none is given.
+.TP
+.B enable_auto_mount \fIuser\fR / \fBdisable_auto_mount \fIuser\fR
+See \fISS User Management\fR above.
+.TP
+.B enable_autosign \fIuser\fR
+Enable the auto-sign feature of the user.
+.TP
+.B disable_autosign \fIuser\fR
+Disable the auto-sign feature of the user.
+.SS User Scripts
+.TP
+.B auth_script \fIuser\fR \fIscript\fR \fB\-\-\fR \fR[\fIscript_options\fR]
+Set the user's authorization script.
+.TP
+.B enable_auth_script \fIuser\fR / \fBdisable_auth_script \fIuser\fR
+Enable / disable the user's authorization script.
+.TP
+.B key_script \fIuser\fR \fR[\fIscript\fR] \fB\-\-\fR \fR[\fIscript_options\fR]
+Set the user's key script.
+.TP
+.B get_key_script \fIuser\fR \fR[\fBname\fR|\fBuuid\fR]
+Show the name or UUID of the user's key script.
+.TP
+.B agent_script \fIuser\fR \fR[\fIscript\fR] \fB\-\-\fR \fR[\fIscript_options\fR]
+Set the user's agent script.
+.TP
+.B login_script \fIuser\fR \fR[\fIscript\fR] \fB\-\-\fR \fR[\fIscript_options\fR]
+Set the user's login script.
+.TP
+.B enable_login_script \fIuser\fR / \fBdisable_login_script \fIuser\fR
+Enable / disable the user's login script.
 .SS VLAN Assignment
 A user is never the object of a port authentication -- a token is. So a user
 has no VLAN of its own, and cannot be made a member of one. What it can do
@@ -161,16 +208,25 @@ person a VLAN that way, put their token or one of their roles into it (see
 .SS Cryptographic Keys
 .TP
 .B gen_keys \fR[\fIoptions\fR] \fIuser\fR
-Generate encryption/signing keys for the user.
+Generate the user's sign and encrypt RSA key pairs.
 .TP
 .B del_keys \fIuser\fR
-Delete user's cryptographic keys.
+Delete the user's cryptographic keys.
+.TP
+.B gen_cert \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
+Generate a certificate for the user.
 .TP
 .B key_mode \fIuser\fR \fImode\fR
-Set key mode (client or server).
+Set key mode (\fBclient\fR or \fBserver\fR).
 .TP
 .B get_key_mode \fIuser\fR
 Display current key mode.
+.TP
+.B get_sign_key_type \fIuser\fR
+Show the user's sign key type.
+.TP
+.B get_enc_key_type \fIuser\fR
+Show the user's encrypt key type.
 .TP
 .B key_cache_time \fIuser\fR \fItime\fR
 Set how long otpme-agent may cache the users private key, e.g. how long it keeps the yubikey PIV handler open after the PIN was entered. Accepts a plain number of seconds or a time string such as \fI5m\fR. The default \fI0\fR means no timeout, the key stays cached as long as the agent runs. The agent gets the value with the login session, so a change takes effect on the next login.
@@ -178,11 +234,44 @@ Set how long otpme-agent may cache the users private key, e.g. how long it keeps
 .B key_pass \fIuser\fR
 Change key passphrase.
 .TP
-.B dump_key \fR[\fB\-p\fR] \fIuser\fR
-Export user's public key (\fB\-p\fR for private key).
+.B sign_private_key \fIuser\fR \fIprivate_key\fR
+Set the user's sign private key.
 .TP
-.B import_key \fIuser\fR \fR[\fIkeyfile\fR]
-Import existing key for the user.
+.B encrypt_private_key \fIuser\fR \fIprivate_key\fR
+Set the user's encrypt private key.
+.TP
+.B sign_public_key \fIuser\fR \fIpublic_key\fR
+Set the user's sign public key.
+.TP
+.B encrypt_public_key \fIuser\fR \fIpublic_key\fR
+Set the user's encrypt public key.
+.TP
+.B import_sign_key \fR[\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
+Import the user's sign RSA key. \fB\-n\fR stores the private key unencrypted, \fB\-\-server\fR keeps it on the server.
+.TP
+.B import_encrypt_key \fR[\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
+Import the user's encrypt RSA key. Flags as for
+.BR import_sign_key .
+.TP
+.B dump_sign_key \fR[\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
+Dump the user's sign key to stdout. \fB\-p\fR dumps the private key (or a pointer to it), \fB\-n\fR dumps it unencrypted if possible.
+.TP
+.B dump_encrypt_key \fR[\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
+Dump the user's encrypt key to stdout. Flags as for
+.BR dump_sign_key .
+.SS Object Changelog
+.TP
+.B changelog \fIuser\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIuser\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIuser\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIuser\fR
+Clear the object's entire changelog.
 .SS ACL Management
 .TP
 .B add_acl \fIuser\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -201,11 +290,14 @@ Enable ACL inheritance from parent objects.
 Disable ACL inheritance.
 .SS LDAP Integration
 .TP
-.B add_attribute \fIuser\fR \fIattribute\fR=\fIvalue\fR
-Add an LDAP attribute to the user.
+.B add_attribute \fR[\fB\-i\fR \fIposition\fR] \fIuser\fR \fIattribute\fR=[\fIvalue\fR]
+Add an LDAP attribute to the user. Use \fB\-i\fR to insert a multi-value attribute at the given zero-based position.
 .TP
 .B del_attribute \fIuser\fR \fIattribute\fR=\fIvalue\fR
 Remove an LDAP attribute from the user.
+.TP
+.B modify_attribute \fIuser\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
+Change an LDAP attribute value.
 .TP
 .B add_object_class \fIuser\fR \fIclass\fR
 Add an LDAP object class to the user.
@@ -232,6 +324,16 @@ Add an extension to the user.
 .TP
 .B remove_extension \fIuser\fR \fIextension\fR
 Remove an extension from the user.
+.SS User Photo
+.TP
+.B photo \fIuser\fR \fIimage_path\fR
+Set the user's photo (JPEG).
+.TP
+.B dump_photo \fIuser\fR
+Dump the user's photo as base64 to stdout.
+.TP
+.B del_photo \fIuser\fR
+Remove the user's photo.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIuser\fR
@@ -256,6 +358,11 @@ Assign multiple roles during user creation.
 .TP
 .B \-\-password \fIPASS\fR
 Set initial password during user creation.
+.TP
+.B \-\-weak\-password
+Accept a password even if the password policy would reject it. Needs the
+.B force_password
+ACL on the target unit.
 .TP
 .B \-\-no\-default\-token
 Do not create a default token for the user.
@@ -371,11 +478,16 @@ Create admin user dave
 Create user eve with multiple groups and roles
 .SS Managing Groups and Roles
 .TP
-.B otpme-user add_group alice developers
-Add alice to developers group
+.B otpme-user group alice developers
+Change alice's default group to developers
 .TP
-.B otpme-user add_role alice DEVELOPER
-Assign DEVELOPER role to alice
+.B otpme-group add_token developers alice/login
+Add one of alice's tokens to the developers group (group membership is granted per token, see
+.BR otpme-group (1))
+.TP
+.B otpme-role add_user DEVELOPER alice/login
+Assign the DEVELOPER role to one of alice's tokens (managed from the role side, see
+.BR otpme-role (1))
 .TP
 .B otpme-user list_groups alice
 Show alice's group memberships
@@ -410,8 +522,8 @@ Generate 2048-bit keys for bob
 .B otpme-user key_pass alice
 Change alice's key passphrase
 .TP
-.B otpme-user dump_key alice
-Export alice's public key
+.B otpme-user dump_sign_key alice
+Dump alice's sign public key
 .SS Managing User Status
 .TP
 .B otpme-user disable alice

@@ -353,6 +353,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1037,7 +1038,8 @@ def register():
 
 def register_sync_settings():
     #config.register_cluster_sync(object_type="site")
-    config.register_object_sync(host_type="node", object_type="site")
+    #config.register_object_sync(host_type="node", object_type="site")
+    pass
 
 def register_templates_unit():
     config.register_base_object("unit", TEMPLATES_UNIT, early=True)
@@ -2651,7 +2653,10 @@ def register_oid():
     realm_name_re = oid.object_regex['realm']['name']
     site_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     site_path_re = f'/{realm_name_re}[/]{site_name_re}'
-    site_oid_re = f'site|{site_path_re}'
+    # An OID is not a path, see accessgroup.py: no leading slash. We
+    # have no read schema, so realm and name are all there is.
+    #site_oid_re = f'site|{site_path_re}'
+    site_oid_re = f'site[|]{realm_name_re}[/]{site_name_re}'
     oid.register_oid_schema(object_type="site",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -2723,6 +2728,7 @@ class Site(OTPmeObject):
                                     path=path,
                                     **kwargs)
         self.ca = None
+        self.sub = None
         self.admin_role_uuid = None
         self.user_role_uuid = None
         self.sso_user_role_uuid = None
@@ -2859,6 +2865,12 @@ class Site(OTPmeObject):
                                             'var_name'      : 'site_uuid',
                                             'type'          : 'uuid',
                                             'required'      : False,
+                                        },
+
+            'SUB'                       : {
+                                            'var_name'  : 'sub',
+                                            'type'      : 'uuid',
+                                            'required'  : False,
                                         },
 
             'TRUSTED_SITES'             : {
@@ -3296,7 +3308,7 @@ class Site(OTPmeObject):
         self.mgmt_cert = cert
         self.mgmt_key = key
 
-        return callback.ok()
+        return self._cache(callback=callback)
 
     def gen_sso_cert(
         self,
@@ -3339,7 +3351,7 @@ class Site(OTPmeObject):
         self.sso_cert = cert
         self.sso_key = key
 
-        return callback.ok()
+        return self._cache(callback=callback)
 
     @check_acls(['edit:mgmt_fqdn'])
     @object_lock()
@@ -4404,25 +4416,39 @@ class Site(OTPmeObject):
             ca_key_len = config.default_ca_key_len
         # Create site CA cert using the realm CA.
         if not no_cert and not cert and not key:
-            # Get realm CA.
-            msg = _("Loading realm CA '{realm_ca_path}'.")
-            msg = msg.format(realm_ca_path=config.realm_ca_path)
-            callback.send(msg)
-            realm_ca = Ca(path=config.realm_ca_path)
-            if not realm_ca.exists():
-                msg = _("Problem loading realm CA '{realm_ca_path}'.")
+            if self.sub:
+                # Get parent site.
+                parent_site = backend.get_object(uuid=config.site_uuid)
+                if not parent_site:
+                    msg = _("Problem loading parent site.")
+                    return callback.error(msg)
+                # Get site CA.
+                msg = _("Loading site CA.")
+                callback.send(msg)
+                ca = backend.get_object(uuid=parent_site.ca)
+                if not ca:
+                    msg = _("Problem loading site CA.")
+                    return callback.error(msg)
+            else:
+                # Get realm CA.
+                msg = _("Loading realm CA '{realm_ca_path}'.")
                 msg = msg.format(realm_ca_path=config.realm_ca_path)
-                return callback.error(msg)
+                callback.send(msg)
+                ca = Ca(path=config.realm_ca_path)
+                if not ca.exists():
+                    msg = _("Problem loading realm CA '{realm_ca_path}'.")
+                    msg = msg.format(realm_ca_path=config.realm_ca_path)
+                    return callback.error(msg)
 
             # Create site CA cert.
             try:
-                cert, key = realm_ca.create_ca_cert(cn=config.site_ca_path,
-                                                country=ca_country,
-                                                state=ca_state,
-                                                locality=ca_locality,
-                                                organization=ca_organization,
-                                                ou=ca_ou, email=ca_email,
-                                                verify_acls=False)
+                cert, key = ca.create_ca_cert(cn=config.site_ca_path,
+                                            country=ca_country,
+                                            state=ca_state,
+                                            locality=ca_locality,
+                                            organization=ca_organization,
+                                            ou=ca_ou, email=ca_email,
+                                            verify_acls=False)
             except Exception as e:
                 msg = _("Error creating site CA cert: {e}")
                 msg = msg.format(e=e)
@@ -4886,11 +4912,14 @@ class Site(OTPmeObject):
             config.ignore_policy_tags.append("interactive")
 
         if not config.realm_init:
-            master_site = self.get_master_site()
-            if config.site != master_site.name:
-                msg = _("Only master site can add new sites: {master_site}")
-                msg = msg.format(master_site=master_site.name)
-                return callback.error(msg)
+            if self.name.startswith(f"{config.site}."):
+                self.sub = config.site_uuid
+            else:
+                master_site = self.get_master_site()
+                if config.site != master_site.name:
+                    msg = _("Only master site can add new sites: {master_site}")
+                    msg = msg.format(master_site=master_site.name)
+                    return callback.error(msg)
 
         if not site_address:
             # Try to get site address from DNS.
@@ -4944,15 +4973,15 @@ class Site(OTPmeObject):
         self.user_role_uuid = stuff.gen_uuid()
         # Add site REALM_USER role to REALM_USERS_GROUP.
         if not config.realm_init:
-            #master_site = self.get_master_site()
-            if self.uuid != master_site.uuid:
-                realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
-                realm_users_group.add_role(role_uuid=self.user_role_uuid,
-                                            force=True,
-                                            callback=callback)
-                # Write role object.
-                callback.write_modified_objects()
-                cache.flush()
+            if not self.sub:
+                if self.uuid != master_site.uuid:
+                    realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
+                    realm_users_group.add_role(role_uuid=self.user_role_uuid,
+                                                force=True,
+                                                callback=callback)
+                    # Write role object.
+                    callback.write_modified_objects()
+                    cache.flush()
 
         # Set config site.
         config.set_site(name=self.name,
@@ -5104,6 +5133,9 @@ class Site(OTPmeObject):
         if not no_node:
             self.create_master_node(node_name=node_name,
                                     callback=callback)
+        if self.sub:
+            self.add_index("sub", True)
+
         # Add site using parent class.
         return self._write(callback=callback)
 
@@ -5218,7 +5250,13 @@ class Site(OTPmeObject):
             id_ranges = "uidNumber:s:70000-80000,gidNumber:s:70000-80000"
         id_ranges = id_ranges.split(",")
         for id_range in id_ranges:
-            id_range_policy.add_id_range(id_range=id_range, force=True)
+            if not id_range_policy.add_id_range(id_range=id_range,
+                                        force=True,
+                                        verify_acls=False,
+                                        callback=callback):
+                msg = _("Failed to add ID range: {id_range}")
+                msg = msg.format(id_range=id_range)
+                return callback.error(msg)
         id_range_policy._write(callback=callback)
         # Create base policies.
         self.add_base_policies(callback=callback)
@@ -5464,12 +5502,12 @@ class Site(OTPmeObject):
 
         # Add per-site users group.
         users_group = Group(name=config.users_group,
-                    realm=self.realm,
-                    site=self.name)
+                            realm=self.realm,
+                            site=self.name)
         if users_group.exists():
             users_group.add_default_policies()
         else:
-            if not users_group.add(verify_acls=False, callback=callback):
+            if not users_group.add(force=True, verify_acls=False, callback=callback):
                 msg = _("Problem adding site users group '{users_group_path}'")
                 msg = msg.format(users_group_path=users_group.path)
                 return callback.error(msg)
@@ -5554,7 +5592,11 @@ class Site(OTPmeObject):
             default_value = config.valid_config_params[parameter]['default']
             if default_value is None:
                 continue
-            self.set_config_param(parameter, default_value, callback=callback)
+            self.set_config_param(parameter,
+                                default_value,
+                                verify_acls=False,
+                                force=True,
+                                callback=callback)
 
         # Add template objects.
         self.add_object_templates(callback=callback)
@@ -5671,8 +5713,10 @@ class Site(OTPmeObject):
         # Add oidc_default_scopes paramter.
         if default_scopes:
             self.set_config_param(parameter="oidc_default_scopes",
-                                    value=list(default_scopes),
-                                    callback=callback)
+                                value=list(default_scopes),
+                                verify_acls=False,
+                                force=True,
+                                callback=callback)
         # Write objects.
         callback.write_modified_objects()
         cache.flush()
@@ -5925,6 +5969,7 @@ class Site(OTPmeObject):
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
+        add_to_trash: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -5962,29 +6007,38 @@ class Site(OTPmeObject):
             object_type = object_id.object_type
             if object_id.site != self.name:
                 continue
-            if not object_type in objects:
+            if object_type == "site":
+                continue
+            if object_type not in objects:
                 objects[object_type] = []
             objects[object_type].append(object_id)
 
         # Delete objects in the correct order.
         for object_type in reversed(config.object_add_order):
-            if not object_type in objects:
+            if object_type not in objects:
                 continue
             for object_id in objects[object_type]:
                 msg = _("Deleting: {object_id}")
                 msg = msg.format(object_id=object_id)
                 callback.send(msg)
-                if config.auth_token:
-                    deleted_by = _("token:{token_path}")
-                    deleted_by = deleted_by.format(token_path=config.auth_token.rel_path)
-                else:
-                    deleted_by = "API"
-                trash.add(object_id, deleted_by)
+                # The objects of the site go the same way the site
+                # itself does: without add_to_trash nothing of it is
+                # kept, or a site deleted past the trash would still
+                # leave everything it contained in there.
+                if add_to_trash:
+                    if config.auth_token:
+                        deleted_by = _("token:{token_path}")
+                        deleted_by = deleted_by.format(token_path=config.auth_token.rel_path)
+                    else:
+                        deleted_by = "API"
+                    trash.add(object_id, deleted_by)
                 backend.delete_object(object_id, cluster=True)
 
         # Delete object using parent class.
         return super().delete(verbose_level=verbose_level,
-                                    force=force, callback=callback)
+                            force=force,
+                            add_to_trash=add_to_trash,
+                            callback=callback)
 
     def remove_orphans(
         self,

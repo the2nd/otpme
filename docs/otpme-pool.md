@@ -51,8 +51,9 @@ Add a node to the pool.
 **remove_node *pool* *node***  
 Remove a node from the pool.
 
-**list_nodes *pool***  
-List nodes in the pool.
+**list_nodes \[**--return-type** *TYPE*\] *pool***  
+List nodes in the pool. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Policy Management
 
@@ -62,8 +63,9 @@ Attach a policy to the pool.
 **remove_policy *pool* *policy***  
 Remove a policy from the pool.
 
-**list_policies *pool***  
-List policies attached to the pool.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *pool***  
+List policies attached to the pool. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -94,6 +96,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 **dump_info \[**--language** *LANG*\] *pool***  
 Dump the info text to stdout.
 
+## Object Changelog
+
+**changelog *pool***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *pool* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *pool* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *pool***  
+Clear the object's entire changelog.
+
 ## Import/Export
 
 **export \[**--password** *PASS*\] *pool***  
@@ -117,6 +135,12 @@ Display only specified fields.
 
 **--node-limit *N***  
 Limit number of nodes shown.
+
+**--token-limit *N***  
+Limit number of member tokens shown.
+
+**--role-limit *N***  
+Limit number of member roles shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.

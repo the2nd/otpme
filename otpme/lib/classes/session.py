@@ -131,7 +131,17 @@ def register():
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'name' ]
     read_oid_schema = [ 'realm', 'site', 'name' ]
-    session_oid_re = r'session|([a-fA-F\d]{32})'
+    realm_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    # Our name is the session id the schema above names: user,
+    # accessgroup, password type, uuid and hash, joined by ":". The line
+    # below described a bare 32 char hash, which no session OID has
+    # looked like for a long time -- the unescaped "|" reduced the
+    # pattern to "^session" and nobody noticed.
+    session_name_re = '([0-9A-Za-z][0-9A-Za-z_.@:-]*)'
+    #session_oid_re = r'session|([a-fA-F\d]{32})'
+    session_oid_re = (f'session[|]{realm_name_re}[/]{site_name_re}'
+                    f'[/]{session_name_re}')
     oid.register_oid_schema(object_type="session",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

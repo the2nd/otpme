@@ -168,11 +168,11 @@ Take over the current sign public keys of the users that have a token assigned, 
 .B add_token \fIshare\fR \fItoken_path\fR
 Add a token to the share. With SOTP signing enabled the sign public key of the tokens user is stored in the share.
 .TP
-.B remove_token \fIshare\fR \fItoken_path\fR
-Remove a token from the share. The users sign public key is removed with their last token, like the share key of an encrypted share.
+.B remove_token \fR[\fB\-\-keep\-share\-key\fR|\fB\-\-remove\-share\-key\fR] \fIshare\fR \fItoken_path\fR
+Remove a token from the share. The users sign public key is removed with their last token, like the share key of an encrypted share. On an encrypted share, \fB\-\-keep\-share\-key\fR retains the user's share key even after their last token is removed; \fB\-\-remove\-share\-key\fR forces removal immediately.
 .TP
-.B list_tokens \fIshare\fR
-List tokens assigned to the share.
+.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIshare\fR
+List tokens assigned to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
 .B add_role \fIshare\fR \fIrole\fR
 Add a role to the share. Not supported by encrypted shares and by shares with SOTP signing enabled.
@@ -183,8 +183,8 @@ Remove a role from the share.
 .B list_roles \fR[\fB\-r\fR] \fIshare\fR
 List roles assigned to the share. Use \fB\-r\fR for recursive listing.
 .TP
-.B list_users \fIshare\fR
-List users of the share.
+.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+List users of the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Host Management
 .TP
 .B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIhost\fR
@@ -221,8 +221,20 @@ Also remove persisted share mounts on hosts.
 Keep persisted share mounts on hosts (transient unmount only).
 .RE
 .TP
-.B list_hosts \fIshare\fR
-List hosts assigned to the share.
+.B list_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+List hosts assigned to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.TP
+.B add_group \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIgroup\fR
+Add a (host) group to the share. Every host in the group inherits the share assignment.
+.TP
+.B remove_group \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR \fIgroup\fR
+Remove a host group from the share.
+.TP
+.B list_groups \fIshare\fR
+List host groups assigned to the share.
+.TP
+.B mount_timeout \fIshare\fR \fR[\fItimeout\fR]
+Set the idle timeout after which a mount drops its unused connection. \fB0\fR disables the timeout (the connection stays open as long as the mount does).
 .TP
 .B limit_hosts \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-persist\-mount\fR|\fB\-\-no\-persist\-mount\fR] \fIshare\fR
 Limit share access to assigned hosts and host groups.
@@ -292,8 +304,8 @@ Add a pool to the share.
 .B remove_pool \fIshare\fR \fIpool\fR
 Remove a pool from the share.
 .TP
-.B list_pools \fIshare\fR
-List pools assigned to the share.
+.B list_pools \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+List pools assigned to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
 .B add_node \fIshare\fR \fInode\fR
 Add a node to the share.
@@ -301,8 +313,8 @@ Add a node to the share.
 .B remove_node \fIshare\fR \fInode\fR
 Remove a node from the share.
 .TP
-.B list_nodes \fIshare\fR
-List nodes assigned to the share.
+.B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
+List nodes assigned to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
 .TP
 .B add_policy \fIshare\fR \fIpolicy\fR
@@ -311,8 +323,8 @@ Attach a policy to the share.
 .B remove_policy \fIshare\fR \fIpolicy\fR
 Remove a policy from the share.
 .TP
-.B list_policies \fIshare\fR
-List policies attached to the share.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIshare\fR
+List policies attached to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS ACL Management
 .TP
 .B add_acl \fIshare\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -329,6 +341,19 @@ Enable ACL inheritance from parent objects.
 .TP
 .B disable_acl_inheritance \fIshare\fR
 Disable ACL inheritance.
+.SS Object Changelog
+.TP
+.B changelog \fIshare\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIshare\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIshare\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIshare\fR
+Clear the object's entire changelog.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIshare\fR

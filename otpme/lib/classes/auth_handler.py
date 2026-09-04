@@ -1018,9 +1018,10 @@ class AuthHandler(object):
                 self.auth_message = "AUTH_REALM_DISABLED"
                 return
 
-            if not self.user_site.auth_enabled:
+            this_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+            if not this_site.auth_enabled:
                 log_msg = _("Authentication with site is disabled: {site_realm}/{site_name}", log=True)[1]
-                log_msg = log_msg.format(site_realm=self.user_site.realm, site_name=self.user_site.name)
+                log_msg = log_msg.format(site_realm=this_site.realm, site_name=this_site.name)
                 self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
@@ -2276,8 +2277,9 @@ class AuthHandler(object):
             session_age = (now - ref_time) if ref_time else float('inf')
             # Sessions are sorted oldest-first; once we hit one that's still
             # within the relogin timeout, all remaining ones are younger.
-            if session_age < self.auth_group.relogin_timeout:
-                break
+            if self.auth_group.relogin_timeout > 0:
+                if session_age < self.auth_group.relogin_timeout:
+                    break
             log_msg = _("Deleting session '{session_name}' based on max_sessions/relogin_timeout configured for this group.", log=True)[1]
             log_msg = log_msg.format(session_name=session_x.name)
             self.logger.debug(log_msg)

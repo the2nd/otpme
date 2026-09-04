@@ -1783,8 +1783,8 @@ class OTPmeServer1(object):
         try:
             peer_fqdn = self.client_cn
             peer_name = peer_fqdn.split(".")[0]
-            peer_site = peer_fqdn.split(".")[1]
-            peer_realm = ".".join(peer_fqdn.split(".")[2:])
+            peer_site = ".".join(reversed(peer_fqdn.split(".")[1:-2]))
+            peer_realm = ".".join(peer_fqdn.split(".")[-2:])
         except Exception:
             log_msg = _("Got invalid client cert CN from client: {self.client_cn}", log=True)[1]
             self.logger.warning(log_msg)

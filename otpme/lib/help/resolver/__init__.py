@@ -50,10 +50,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver del {resolver}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver del [--no-trash] {resolver}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete resolver.'),
+                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
                                 },
                 },
 

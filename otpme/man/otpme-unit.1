@@ -39,11 +39,14 @@ Move unit to a different unit. Use \fB\-m\fR to merge objects into destination, 
 Re-index the object to fix potential index problems.
 .SS Unit Configuration
 .TP
-.B config \fR[\fB\-d\fR] \fIunit\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIunit\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fIunit\fR [\fIparameter\fR]
 Show unit config parameters.
+.TP
+.B get_config \fIunit\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B description \fIunit\fR \fR[\fIdescription\fR]
 Set unit description.
@@ -54,6 +57,19 @@ opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIunit\fR
 Dump the info text to stdout.
+.SS Object Changelog
+.TP
+.B changelog \fIunit\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIunit\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIunit\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIunit\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fIunit\fR \fIpolicy\fR
@@ -62,8 +78,8 @@ Add policy to unit.
 .B remove_policy \fIunit\fR \fIpolicy\fR
 Remove policy from unit.
 .TP
-.B list_policies \fR[\fIunit\fR]
-List assigned policies.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fR[\fIunit\fR]
+List assigned policies. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
 .SS ACL Management
 .TP
 .B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIunit\fR \fIowner_type\fR \fIowner\fR \fIacl\fR

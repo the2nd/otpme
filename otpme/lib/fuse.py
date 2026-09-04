@@ -224,6 +224,11 @@ class OTPmeFS(fuse.Operations):
                                     encrypt_session=False,
                                     connect_timeout=3,
                                     timeout=None)
+        except SOTPSigningRequired as e:
+            self.sotp_signing = True
+            msg = _("Error getting daemon connection: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg) from e
         except Exception as e:
             msg = _("Failed to get daemon connection: {e}")
             msg = msg.format(e=e)

@@ -11,8 +11,8 @@ manages client objects in the OTPme system. Clients are connected either via RAD
 .SH COMMANDS
 .SS Client Management
 .TP
-.B add \fIclient\fR \fR[\fIaddress\fR]
-Create a new client, optionally with an IP address.
+.B add \fR[\fB\-\-enable\-oidc\fR] [\fB\-\-scopes\fR \fISCOPES\fR] [\fB\-\-add\-scopes\fR \fISCOPES\fR] [\fB\-\-no\-default\-scopes\fR] \fIclient\fR \fR[\fIaddress\fR]
+Create a new client, optionally with an IP address. See the OIDC section below for the scope flags.
 .TP
 .B del \fIclient\fR
 Delete a client.
@@ -48,8 +48,8 @@ Add a token to the client.
 .B remove_token \fIclient\fR \fItoken_path\fR
 Remove a token from the client.
 .TP
-.B list_tokens \fIclient\fR
-List tokens assigned to the client.
+.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIclient\fR
+List tokens assigned to the client. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to filter by token type.
 .TP
 .B add_role \fIclient\fR \fIrole\fR
 Add a role to the client.
@@ -59,6 +59,16 @@ Remove a role from the client.
 .TP
 .B list_roles \fIclient\fR
 List roles assigned to the client.
+.TP
+.B list_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIclient\fR
+List OIDC scopes assigned to the client.
+.SS dot1x
+.TP
+.B enable_dot1x \fIclient\fR
+Enable 802.1x authentication for this client.
+.TP
+.B disable_dot1x \fIclient\fR
+Disable 802.1x authentication for this client.
 .SS Login Control
 .TP
 .B limit_logins \fIclient\fR
@@ -120,6 +130,84 @@ Enable SSO popup for this client.
 .TP
 .B disable_sso_popup \fIclient\fR
 Disable SSO popup for this client.
+.SS OIDC Relying Party Configuration
+An OIDC client (Relying Party, RP) is enabled per site; see
+.B enable_oidc
+in
+.BR otpme-site (1)
+for the OP-side setup.
+.TP
+.B enable_oidc \fIclient\fR
+Enable OIDC authentication for this client (the RP).
+.TP
+.B disable_oidc \fIclient\fR
+Disable OIDC authentication for this client.
+.TP
+.B add_oidc_redirect_uri \fIclient\fR \fIuri\fR / \fBdel_oidc_redirect_uri \fIclient\fR \fIuri\fR
+Add or remove an allowed OIDC redirect URI (\fBredirect_uri\fR) for the RP.
+.TP
+.B show_oidc_redirect_uris \fIclient\fR
+List the RP's allowed redirect URIs.
+.TP
+.B add_oidc_logout_redirect_uri \fIclient\fR \fIuri\fR / \fBdel_oidc_logout_redirect_uri \fIclient\fR \fIuri\fR
+Add or remove an allowed OIDC post-logout redirect URI.
+.TP
+.B show_oidc_logout_redirect_uris \fIclient\fR
+List the RP's allowed post-logout redirect URIs.
+.TP
+.B add_oidc_grant_type \fIclient\fR \fIgrant_type\fR / \fBdel_oidc_grant_type \fIclient\fR \fIgrant_type\fR
+Allow or disable an OIDC grant type (\fBauthorization_code\fR, \fBrefresh_token\fR, \fBclient_credentials\fR, \fBurn:ietf:params:oauth:grant-type:device_code\fR).
+.TP
+.B show_oidc_grant_types \fIclient\fR
+List the RP's allowed grant types.
+.TP
+.B add_oidc_response_type \fIclient\fR \fIresponse_type\fR / \fBdel_oidc_response_type \fIclient\fR \fIresponse_type\fR
+Allow or disable an OIDC response type (\fBcode\fR).
+.TP
+.B show_oidc_response_types \fIclient\fR
+List the RP's allowed response types.
+.TP
+.B oidc_auth_method \fIclient\fR \fImethod\fR
+Set the token-endpoint auth method for the RP (\fBclient_secret_basic\fR, \fBclient_secret_post\fR, \fBnone\fR).
+.TP
+.B oidc_id_token_alg \fIclient\fR \fIalg\fR
+Set the ID Token signing algorithm for the RP (\fBRS256\fR, \fBRS384\fR, \fBRS512\fR, \fBES256\fR, \fBES384\fR, \fBES512\fR, \fBEdDSA\fR).
+.TP
+.B oidc_subject_type \fIclient\fR \fBpublic\fR|\fBpairwise\fR
+Set the OIDC subject type. With \fBpairwise\fR the RP receives a \fIsub\fR that is unique per (RP, user) pair; see
+.B sso_fqdn
+and the pairwise secret in
+.BR otpme-site (1).
+.TP
+.B oidc_sector_identifier_uri \fR[\fB\-\-validate\fR] [\fB\-\-clear\fR] \fIclient\fR \fR[\fIuri\fR]
+Set or clear the RP's OIDC sector identifier URI (only relevant for pairwise subjects). \fB\-\-validate\fR fetches the URI immediately and verifies every registered \fBredirect_uri\fR is listed; without it the check is deferred to sign-time. \fB\-\-clear\fR removes the URI.
+.TP
+.B oidc_backchannel_logout_uri \fR[\fB\-\-clear\fR] \fIclient\fR \fR[\fIuri\fR]
+Set or clear the RP's OIDC back-channel logout URI (server-to-server logout notification). \fB\-\-clear\fR removes it.
+.TP
+.B enable_oidc_force_backchannel_logout \fIclient\fR / \fBdisable_oidc_force_backchannel_logout \fIclient\fR
+Force / stop forcing OIDC back-channel logout POSTs to the RP.
+.TP
+.B enable_oidc_backchannel_tls_verify \fIclient\fR / \fBdisable_oidc_backchannel_tls_verify \fIclient\fR
+Enable / disable TLS certificate verification for back-channel logout POSTs. Only disable for lab/dev RPs; in production pin a CA via
+.B oidc_backchannel_ca_cert
+instead.
+.TP
+.B oidc_backchannel_ca_cert \fR[\fB\-\-clear\fR] \fIclient\fR \fR[\fIca_cert_file\fR]
+Pin a PEM CA bundle (read from file) used to verify the RP TLS cert on back-channel logout. Replaces the system trust store for this client. \fB\-\-clear\fR removes the pinned bundle.
+.SS Object Changelog
+.TP
+.B changelog \fIclient\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIclient\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIclient\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIclient\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fIclient\fR \fIpolicy\fR
@@ -128,8 +216,8 @@ Attach a policy to the client.
 .B remove_policy \fIclient\fR \fIpolicy\fR
 Remove a policy from the client.
 .TP
-.B list_policies \fIclient\fR
-List policies attached to the client.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIclient\fR
+List policies attached to the client. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
 .SS ACL Management
 .TP
 .B add_acl \fIclient\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -148,11 +236,14 @@ Enable ACL inheritance from parent objects.
 Disable ACL inheritance.
 .SS Configuration and Attributes
 .TP
-.B config \fR[\fB\-d\fR] \fIclient\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIclient\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fIclient\fR [\fIparameter\fR]
 Show all configuration parameters.
+.TP
+.B get_config \fIclient\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B description \fIclient\fR \fR[\fIdescription\fR]
 Set client description.
@@ -202,6 +293,9 @@ Display only specified fields.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
+.TP
+.B \-\-scope\-limit \fIN\fR
+Limit number of OIDC scopes shown per client.
 .TP
 .B \-\-limit \fIN\fR
 Limit number of items shown per object.

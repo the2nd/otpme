@@ -48,8 +48,8 @@ Attach a policy to the realm.
 .B remove_policy \fIrealm\fR \fIpolicy\fR
 Remove a policy from the realm.
 .TP
-.B list_policies \fIrealm\fR
-List policies attached to the realm.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrealm\fR
+List policies attached to the realm. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS ACL Management
 .TP
 .B add_acl \fIrealm\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -99,6 +99,19 @@ Dump the info text to stdout.
 .TP
 .B touch \fIrealm\fR
 Re-index the object to fix potential index problems.
+.SS Object Changelog
+.TP
+.B changelog \fIrealm\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIrealm\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIrealm\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIrealm\fR
+Clear the object's entire changelog.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIrealm\fR
@@ -156,6 +169,11 @@ Add the given word dictionaries for password strength checking.
 .TP
 .B \-\-id\-ranges \fIrange1,range2\fR
 ID ranges to add during initialization.
+.TP
+.B \-\-no\-index\-indices
+Skip creation of index-DB indices during
+.BR init .
+Use only for special setups (e.g. very small test realms) where the extra indices are not wanted; the default is to create them.
 .SH OPTIONS
 .SS Display Options
 .TP

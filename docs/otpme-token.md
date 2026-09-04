@@ -48,9 +48,6 @@ Mobile OTP (mOTP).
 **otp_push**  
 Push notification-based OTP.
 
-**script_otp**  
-OTP generation via external script.
-
 **link**  
 Link to another user's token.
 
@@ -122,11 +119,15 @@ Re-index the object to fix potential index problems.
 
 ## Token Configuration
 
-**config \[**-d**\] *token* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *token* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *token* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *token* *parameter***  
+Show the value of a single configuration parameter.
 
 **auto_disable \[**-u**\] *token* *time***  
 Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use **-u** to
@@ -214,9 +215,16 @@ List deployable token types.
 
 ## Deploy - FIDO2 and U2F
 
-**deploy \[**-d**\] \[**-r**\] *token***  
+**deploy \[**-d**\] \[**-r**\] \[**--no-pin**\] \[**--uv** *uv*\] *token***  
 Register a FIDO2 or U2F hardware key. The device must be connected and
 will prompt for a touch.
+
+**--no-pin**  
+Do not set a PIN on the FIDO2 authenticator during deploy.
+
+**--uv *uv***  
+Set the FIDO2 user verification requirement (**discouraged**,
+**preferred**, **required**). See also the **uv** command below.
 
 **-r**  
 Replace existing token (keep UUID).
@@ -280,12 +288,21 @@ Enable debug output.
 
 ## Deploy - YubiKey PIV Applet
 
-**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--backup** *file*\] \[**--restore** *file*\] \[**--restore-from-server**\] \[**--backup-key-file** *file*\] \[**--add-user-key**\] \[*token*\]**  
-Initialize the PIV applet on a YubiKey and generate an RSA key. Default
-backup path: */dev/shm/\<username\>\_\<token\>.pem*.
+**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--sign-algo** *algo*\] \[**--encrypt-algo** *algo*\] \[**--backup** *file*\] \[**--restore** *file*\] \[**--restore-from-server**\] \[**--backup-key-file** *file*\] \[**--add-user-key**\] \[*token*\]**  
+Initialize the PIV applet on a YubiKey and generate the sign and encrypt
+keys. Default backup path: */dev/shm/\<username\>\_\<token\>.pem*.
 
 **--key-len *bits***  
-Generate RSA key with the given key length in bits.
+Generate RSA key with the given key length in bits (only when the chosen
+algo is RSA).
+
+**--sign-algo *algo***  
+Algorithm for the sign slot 9A: **rsa** (default) or **ed25519** (needs
+YubiKey FW 5.7+).
+
+**--encrypt-algo *algo***  
+Algorithm for the encrypt slot 9D: **rsa** (default) or **x25519**
+(needs YubiKey FW 5.7+).
 
 **--backup *file***  
 Write key backup to *file*.
@@ -326,20 +343,52 @@ List dynamic groups of the token.
 
 ## Listing
 
-**list_roles \[**-r**\] *token***  
-List roles assigned to the token. Use **-r** for recursive listing.
+**list_roles \[**--return-type** *TYPE*\] \[**-r**\] *token***  
+List roles assigned to the token. Use **-r** for recursive listing. Use
+**--return-type** to select the attribute returned (**name**,
+**read_oid**, **full_oid**, **uuid**).
 
-**list_hosts *token***  
-List hosts this token is assigned to.
+**list_hosts \[**--return-type** *TYPE*\] *token***  
+List hosts this token is assigned to. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_nodes *token***  
-List nodes this token is assigned to.
+**list_nodes \[**--return-type** *TYPE*\] *token***  
+List nodes this token is assigned to. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_groups *token***  
-List groups this token is assigned to.
+**list_groups \[**--return-type** *TYPE*\] *token***  
+List groups this token is assigned to. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_accessgroups *token***  
-List access groups this token is assigned to.
+**list_accessgroups \[**--return-type** *TYPE*\] *token***  
+List access groups this token is assigned to. Use **--return-type** to
+select the attribute returned (**name**, **read_oid**, **full_oid**,
+**uuid**).
+
+**list_acls *token***  
+Show ACLs assigned to the token.
+
+**list_scopes \[**--return-type** *TYPE*\] *token***  
+List OIDC scopes the token is assigned to.
+
+**list_shares \[**--return-type** *TYPE*\] *token***  
+List shares the token has access to.
+
+## Object Changelog
+
+**changelog *token***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *token* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *token* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *token***  
+Clear the object's entire changelog.
 
 ## Policy Management
 
@@ -349,8 +398,10 @@ Attach a policy to the token.
 **remove_policy *token* *policy***  
 Remove a policy from the token.
 
-**list_policies *token***  
-List policies attached to the token.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *token***  
+List policies attached to the token. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to filter by policy type.
 
 ## ACL Management
 
@@ -471,6 +522,17 @@ Remove NT hash used for MSCHAP authentication.
 **upgrade_pass_hash *token* \[*hash_type*\] \[*args*\]**  
 Upgrade password hash.
 
+**gen_mschap *token***  
+Generate an MSCHAP challenge/response pair from the token's
+second-factor token.
+
+**enable_sso_deploy *token* \[*deploy_token_type*\]**  
+Enable first-login deployment of the token via the SSO portal. Optional
+*deploy_token_type* pre-selects the token type to deploy.
+
+**disable_sso_deploy *token***  
+Disable SSO first-login deployment for the token.
+
 ## SSH Token
 
 **ssh_public_key *token* \[*ssh_public_key*\]**  
@@ -493,6 +555,10 @@ Change second factor token.
 **enable_2f / disable_2f *token***  
 Enable/disable second factor token.
 
+**get_sign_data \[**--tags** *tag1,tag2*\] *token***  
+Get the object data that has to be signed (used by external signing
+helpers).
+
 SSH tokens also support signature commands: **sign**, **resign**,
 **verify_sign**, **get_sign**, **add_sign**, **del_sign**.
 
@@ -514,6 +580,80 @@ Change OTP timedrift tolerance.
 
 **mode *token* *mode***  
 Change token operation mode.
+
+**secret *token* \[*secret*\]**  
+Change the token secret.
+
+**show_secret *token***  
+Show the token secret.
+
+**gen *token***  
+Generate a token OTP.
+
+**gen_mschap *token***  
+Generate an MSCHAP challenge/response pair from a token OTP.
+
+**enable_mschap *token* / **disable_mschap** *token***  
+Enable / disable MSCHAP authentication.
+
+**remove_nt_hash *token***  
+Remove the NT hash used for MSCHAP authentication.
+
+## OTP Push Token
+
+**password \[**--generate**\] \[**--weak-password**\] *token* \[*password*\]**  
+Change the token password (used for the push confirmation channel).
+
+**enable_mschap *token* / **disable_mschap** *token***  
+Enable / disable MSCHAP authentication.
+
+**remove_nt_hash *token***  
+Remove the NT hash used for MSCHAP authentication.
+
+## FIDO2
+
+**uv *token* *uv***  
+Set the FIDO2 user verification requirement (**discouraged**,
+**preferred**, **required**).
+
+## YubiKey PIV
+
+**sign_public_key *token* \[*public_key*\]**  
+Set the PIV token's sign public key.
+
+**encrypt_public_key *token* \[*public_key*\]**  
+Set the PIV token's encrypt public key.
+
+**dump_sign_key *token***  
+Dump the PIV token's sign public key (or backup pointer) to stdout.
+
+**dump_encrypt_key *token***  
+Dump the PIV token's encrypt public key (or backup pointer) to stdout.
+
+**dump_private_key_backup *token***  
+Dump the encrypted private-key backup for the PIV token to stdout (for
+later **otpme-token deploy --restore**).
+
+**sign \[*options*\] *token***  
+Sign an object with the PIV token.
+
+**resign \[*options*\] *token***  
+Re-sign an existing signature with the PIV token.
+
+**verify_sign \[*options*\] *token***  
+Verify a signature made by the PIV token.
+
+**get_sign *token***  
+Show a signature stored on the PIV token.
+
+**get_sign_data \[**--tags** *tag1,tag2*\] *token***  
+Get the object data that needs to be signed by the PIV token.
+
+**add_sign *token* *signature***  
+Attach an externally created signature to the PIV token.
+
+**del_sign *token* *signature***  
+Remove a signature from the PIV token.
 
 # OPTIONS
 

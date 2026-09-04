@@ -3083,7 +3083,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                                             return self.build_response(False, message)
                                         # On site delete we must redirect to the master site.
                                         if subcommand == "del":
-                                            if master_site.uuid != config.site_uuid:
+                                            allow_site_del = False
+                                            if o.name.startswith(f"{config.site}."):
+                                                allow_site_del = True
+                                            if master_site.uuid == config.site_uuid:
+                                                allow_site_del = True
+                                            if not allow_site_del:
                                                 message = (_("You have to delete sites on the master site."))
                                                 return self.build_response(False, message)
 

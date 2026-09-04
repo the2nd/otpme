@@ -49,10 +49,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-policy del {policy}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-policy del [--no-trash] {policy}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete policy.'),
+                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
                                 },
                 },
 

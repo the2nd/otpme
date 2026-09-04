@@ -659,6 +659,8 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     group_members = object_attrs[uuid]['ldif:memberUid']
                 except Exception:
                     group_members = None
+                if not isinstance(gidnumber, int) or isinstance(gidnumber, bool):
+                    continue
                 # Gen group entry.
                 map_entry = group.GroupMapEntry()
                 map_entry.name = object_name

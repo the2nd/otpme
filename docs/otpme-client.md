@@ -18,8 +18,9 @@ and can optionally have addresses, secrets, and SSO configuration.
 
 ## Client Management
 
-**add *client* \[*address*\]**  
-Create a new client, optionally with an IP address.
+**add \[**--enable-oidc**\] \[**--scopes** *SCOPES*\] \[**--add-scopes** *SCOPES*\] \[**--no-default-scopes**\] *client* \[*address*\]**  
+Create a new client, optionally with an IP address. See the OIDC section
+below for the scope flags.
 
 **del *client***  
 Delete a client.
@@ -57,8 +58,10 @@ Add a token to the client.
 **remove_token *client* *token_path***  
 Remove a token from the client.
 
-**list_tokens *client***  
-List tokens assigned to the client.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *client***  
+List tokens assigned to the client. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--token-types** to filter by token type.
 
 **add_role *client* *role***  
 Add a role to the client.
@@ -68,6 +71,17 @@ Remove a role from the client.
 
 **list_roles *client***  
 List roles assigned to the client.
+
+**list_scopes \[**--return-type** *TYPE*\] *client***  
+List OIDC scopes assigned to the client.
+
+## dot1x
+
+**enable_dot1x *client***  
+Enable 802.1x authentication for this client.
+
+**disable_dot1x *client***  
+Disable 802.1x authentication for this client.
 
 ## Login Control
 
@@ -134,6 +148,96 @@ Enable SSO popup for this client.
 **disable_sso_popup *client***  
 Disable SSO popup for this client.
 
+## OIDC Relying Party Configuration
+
+An OIDC client (Relying Party, RP) is enabled per site; see
+**enable_oidc** in **otpme-site**(1) for the OP-side setup.
+
+**enable_oidc *client***  
+Enable OIDC authentication for this client (the RP).
+
+**disable_oidc *client***  
+Disable OIDC authentication for this client.
+
+**add_oidc_redirect_uri *client* *uri* / **del_oidc_redirect_uri** *client* *uri***  
+Add or remove an allowed OIDC redirect URI (**redirect_uri**) for the
+RP.
+
+**show_oidc_redirect_uris *client***  
+List the RP's allowed redirect URIs.
+
+**add_oidc_logout_redirect_uri *client* *uri* / **del_oidc_logout_redirect_uri** *client* *uri***  
+Add or remove an allowed OIDC post-logout redirect URI.
+
+**show_oidc_logout_redirect_uris *client***  
+List the RP's allowed post-logout redirect URIs.
+
+**add_oidc_grant_type *client* *grant_type* / **del_oidc_grant_type** *client* *grant_type***  
+Allow or disable an OIDC grant type (**authorization_code**,
+**refresh_token**, **client_credentials**,
+**urn:ietf:params:oauth:grant-type:device_code**).
+
+**show_oidc_grant_types *client***  
+List the RP's allowed grant types.
+
+**add_oidc_response_type *client* *response_type* / **del_oidc_response_type** *client* *response_type***  
+Allow or disable an OIDC response type (**code**).
+
+**show_oidc_response_types *client***  
+List the RP's allowed response types.
+
+**oidc_auth_method *client* *method***  
+Set the token-endpoint auth method for the RP (**client_secret_basic**,
+**client_secret_post**, **none**).
+
+**oidc_id_token_alg *client* *alg***  
+Set the ID Token signing algorithm for the RP (**RS256**, **RS384**,
+**RS512**, **ES256**, **ES384**, **ES512**, **EdDSA**).
+
+**oidc_subject_type *client* **public**\|**pairwise****  
+Set the OIDC subject type. With **pairwise** the RP receives a *sub*
+that is unique per (RP, user) pair; see **sso_fqdn** and the pairwise
+secret in **otpme-site**(1).
+
+**oidc_sector_identifier_uri \[**--validate**\] \[**--clear**\] *client* \[*uri*\]**  
+Set or clear the RP's OIDC sector identifier URI (only relevant for
+pairwise subjects). **--validate** fetches the URI immediately and
+verifies every registered **redirect_uri** is listed; without it the
+check is deferred to sign-time. **--clear** removes the URI.
+
+**oidc_backchannel_logout_uri \[**--clear**\] *client* \[*uri*\]**  
+Set or clear the RP's OIDC back-channel logout URI (server-to-server
+logout notification). **--clear** removes it.
+
+**enable_oidc_force_backchannel_logout *client* / **disable_oidc_force_backchannel_logout** *client***  
+Force / stop forcing OIDC back-channel logout POSTs to the RP.
+
+**enable_oidc_backchannel_tls_verify *client* / **disable_oidc_backchannel_tls_verify** *client***  
+Enable / disable TLS certificate verification for back-channel logout
+POSTs. Only disable for lab/dev RPs; in production pin a CA via
+**oidc_backchannel_ca_cert** instead.
+
+**oidc_backchannel_ca_cert \[**--clear**\] *client* \[*ca_cert_file*\]**  
+Pin a PEM CA bundle (read from file) used to verify the RP TLS cert on
+back-channel logout. Replaces the system trust store for this client.
+**--clear** removes the pinned bundle.
+
+## Object Changelog
+
+**changelog *client***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *client* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *client* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *client***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *client* *policy***  
@@ -142,8 +246,10 @@ Attach a policy to the client.
 **remove_policy *client* *policy***  
 Remove a policy from the client.
 
-**list_policies *client***  
-List policies attached to the client.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *client***  
+List policies attached to the client. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**)
+and **--policy-types** to filter by policy type.
 
 ## ACL Management
 
@@ -164,11 +270,15 @@ Disable ACL inheritance.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *client* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *client* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *client* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *client* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *client* \[*description*\]**  
 Set client description.
@@ -221,6 +331,9 @@ Display only specified fields.
 
 **--policy-limit *N***  
 Limit number of policies shown.
+
+**--scope-limit *N***  
+Limit number of OIDC scopes shown per client.
 
 **--limit *N***  
 Limit number of items shown per object.

@@ -29,6 +29,9 @@ List backup snapshots.
 **ls \[**--full-path**\] \[**--recursive**\] *backup_object* *snapshot* \[*path*\]**  
 List contents of a backup snapshot.
 
+**status**  
+List backups currently running on this host.
+
 # OPTIONS
 
 ## Start Options

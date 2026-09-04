@@ -278,7 +278,8 @@ class OTPmeHost(OTPmeClientObject):
     @property
     def fqdn(self):
         """ Set instance variables. """
-        fqdn = f"{self.name}.{self.site}.{self.realm}"
+        site_part = ".".join(reversed(self.site.split(".")))
+        fqdn = f"{self.name}.{site_part}.{self.realm}"
         return fqdn
 
     def set_variables(self):
@@ -306,7 +307,7 @@ class OTPmeHost(OTPmeClientObject):
         if not peer:
             msg = _("Unknown peer: {peer_uuid}")
             msg = msg.format(peer_uuid=peer_uuid)
-            raise OTPmeException(msg)
+            raise UnknownObject(msg)
         # Objects not to sync.
         skip_admin = True
         include_templates = False
@@ -317,8 +318,14 @@ class OTPmeHost(OTPmeClientObject):
         # Other sites should not sent us sites.
         own_host = backend.get_object(uuid=config.uuid)
         if peer.realm != own_host.realm or peer.site != own_host.site:
-            sync_object_types.remove("site")
-            sync_object_types.remove("data_revision")
+            try:
+                sync_object_types.remove("site")
+            except ValueError:
+                pass
+            try:
+                sync_object_types.remove("data_revision")
+            except ValueError:
+                pass
         valid_object_types = list(sync_object_types)
         result = backend.search(object_type="site",
                                 realm=realm,
@@ -328,7 +335,7 @@ class OTPmeHost(OTPmeClientObject):
         if not result:
             msg = _("Unknown site: {site}")
             msg = msg.format(site=site)
-            raise OTPmeException(msg)
+            raise UnknownObject(msg)
 
         _site = result[0]
 
@@ -448,7 +455,7 @@ class OTPmeHost(OTPmeClientObject):
                 token_options = valid_tokens[token.uuid]['token_options']
             except Exception:
                 token_options = {}
-            if not user.uuid in possible_tokens:
+            if user.uuid not in possible_tokens:
                 possible_tokens[user.uuid] = {}
             entry = {token.uuid : [user, token, token_options]}
             possible_tokens[user.uuid].update(entry)
@@ -1351,6 +1358,7 @@ class OTPmeHost(OTPmeClientObject):
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
+        add_to_trash: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1408,7 +1416,9 @@ class OTPmeHost(OTPmeClientObject):
 
         # Delete object using parent class.
         return super().delete(verbose_level=verbose_level,
-                                    force=force, callback=callback)
+                                    force=force,
+                                    add_to_trash=add_to_trash,
+                                    callback=callback)
 
     def remove_orphans(
         self,

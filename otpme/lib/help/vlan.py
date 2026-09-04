@@ -57,10 +57,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-vlan del {vlan}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-vlan del [--no-trash] {vlan}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete VLAN.'),
+                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
                                 },
                 },
 

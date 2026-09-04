@@ -178,6 +178,7 @@ class OTPmeHostP1(OTPmeServer1):
                             "acquire_lock",
                             "release_lock",
                             "reload_radius",
+                            "do_daemon_reload",
                         ]
 
         # Commands that queue expensive daemon jobs or trigger cluster-wide
@@ -219,6 +220,13 @@ class OTPmeHostP1(OTPmeServer1):
         and self.client_user != "otpme":
             message = _("Permission denied.")
             status = False
+
+        elif command == "do_daemon_reload":
+            self._send_daemon_msg(daemon="controld",
+                                    command="reload",
+                                    timeout=1)
+            status = True
+            message = _("Daemon reload queued.")
 
         elif command == "get_realm":
             message = config.realm
@@ -855,6 +863,20 @@ class OTPmeHostP1(OTPmeServer1):
             except Exception:
                 message = {'message':"INCOMPLETE_COMMAND"}
                 status = False
+                return self.build_response(status, message, encrypt=False)
+            # Check realm auth status.
+            this_realm = backend.get_object(object_type="realm",
+                                            uuid=config.realm_uuid)
+            if not this_realm.auth_enabled:
+                status = True
+                message = {'message':"Realm auth disabled.", 'try_other_node':False}
+                return self.build_response(status, message, encrypt=False)
+            # Check site auth status.
+            this_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            if not this_site.auth_enabled:
+                status = True
+                message = {'message':"Site auth disabled.", 'try_other_node':False}
                 return self.build_response(status, message, encrypt=False)
             # Check user status.
             auth_user = backend.get_object(uuid=user_uuid)

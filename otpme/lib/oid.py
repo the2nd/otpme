@@ -33,7 +33,12 @@ valid_object_owners = {}
 
 # Some useful default regex.
 int_re = '[0-9]*'
-uuid_re = r'[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z'
+# Without the trailing \Z. Every user of this puts it in the middle of a
+# larger OID pattern, and \Z anchors to the end of the string -- nothing
+# behind it could ever match. Whoever needs the anchor adds it, which is
+# what the OID checks do anyway (they compile "^<pattern>$").
+#uuid_re = r'[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z'
+uuid_re = r'[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}'
 
 def register_site_getter(object_type, getter):
     """ Register function to get site of object. """
@@ -517,6 +522,23 @@ class OTPmeOid(object):
         return self.__str__()
 
     def __hash__(self):
+        """ Our hash, over the OID string.
+
+        Over __str__(), so it is the hash of the full OID whenever we
+        have one. That is what the rest of the tree needs: dicts and
+        sets of OIDs are keyed by the full OID *string* and looked up
+        with one of us -- the sync list is (backend.get_sync_list()
+        keys by full_oid, sync1.get_object_command() asks
+        "object_id not in self.sync_list"). Hashing anything else puts
+        us in another bucket and the lookup silently misses.
+
+        Note this is not consistent with __eq__() for one pair: an OID
+        that carries only the read form and its resolved twin compare
+        equal but hash differently. Both forms cannot hash alike and
+        still match their own string. So do not mix a resolved and an
+        unresolved OID of the same object as keys of the same dict --
+        compare them with == instead.
+        """
         return hash(self.__str__())
 
     def __str__(self):
@@ -532,38 +554,48 @@ class OTPmeOid(object):
     def __gt__(self, other):
         return self.__str__() > other.__str__()
 
+    def __le__(self, other):
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __ge__(self, other):
+        return self.__gt__(other) or self.__eq__(other)
+
     def __eq__(self, other):
-        if hasattr(other, "__dict__"):
-            own_dict = dict(self.__dict__)
-            try:
-                own_dict.pop('need_full')
-            except KeyError:
-                pass
-            try:
-                own_dict.pop('resolve')
-            except KeyError:
-                pass
-            other_dict = dict(other.__dict__)
-            try:
-                other_dict.pop('need_full')
-            except KeyError:
-                pass
-            try:
-                other_dict.pop('resolve')
-            except KeyError:
-                pass
-        return self.__str__() == other.__str__()
+        """ Do we name the same object as the given OID?
+
+        The full OID is the exact one, but not every OID carries it: an
+        OID built from a read OID has none. So we compare the full ones
+        when both sides have them and fall back to the read OID, which
+        names the same object without the site. That is safe here
+        because names are realm wide, there are no two users of that
+        name in different sites.
+
+        Comparing __str__() instead, as we did, made a resolved and an
+        unresolved OID of the same object come out unequal -- one is the
+        full OID, the other the read OID.
+        """
+        other_full = getattr(other, "full_oid", None)
+        other_read = getattr(other, "read_oid", None)
+        if other_full is None and other_read is None:
+            # Not an OID. Comparing against the OID string is done in a
+            # few places, so that keeps working.
+            if isinstance(other, str):
+                return self.__str__() == other
+            return NotImplemented
+        if self.full_oid and other_full:
+            return self.full_oid == other_full
+        if self.read_oid and other_read:
+            return self.read_oid == other_read
+        return self.__str__() == str(other)
 
     def __ne__(self, other):
-        if hasattr(other, "__dict__"):
-            own_dict = dict(self.__dict__)
-            own_dict.pop('need_full')
-            own_dict.pop('resolve')
-            other_dict = dict(other.__dict__)
-            other_dict.pop('need_full')
-            other_dict.pop('resolve')
-            return own_dict != own_dict
-        return self.__str__() != other.__str__()
+        # Out of __eq__(), so the two cannot say different things. The
+        # version before this one compared a dict with itself and
+        # therefore called every OID equal to every other.
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
 
     @property
     def backend_object(self):

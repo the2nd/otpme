@@ -89,8 +89,9 @@ permissions.
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
-**list_tokens *role***  
-List tokens assigned to the role.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *role***  
+List tokens assigned to the role. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Role Nesting
 
@@ -122,6 +123,16 @@ Keep persisted share mounts on hosts (transient unmount only).
 **list_roles \[**-r**\] *role***  
 List roles assigned to the role. Use **-r** for recursive listing.
 
+**list_acls *role***  
+Show ACLs assigned to the role.
+
+**list_scopes \[**--return-type** *TYPE*\] *role***  
+List OIDC scopes the role is assigned to. **--return-type** selects the
+attribute to return (**name**, **read_oid**, **full_oid**, **uuid**).
+
+**list_shares \[**-r**\] \[**--return-type** *TYPE*\] *role***  
+List shares granted via this role. **-r** walks child roles too.
+
 ## VLAN Assignment
 
 A role is not assigned a VLAN from here. The VLAN names the role, not
@@ -143,8 +154,9 @@ the token, user, host or device decides (see **otpme**(7)).
 
 ## User and Group Listing
 
-**list_users *role***  
-List users of the role.
+**list_users \[**--return-type** *TYPE*\] *role***  
+List users of the role. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 **list_dynamic_groups *role***  
 List dynamic groups of the role.
@@ -185,8 +197,9 @@ Add a sync user to the role.
 **remove_sync_user *role* *user***  
 Remove a sync user from the role.
 
-**list_sync_users *role***  
-List sync users of the role.
+**list_sync_users \[**--return-type** *TYPE*\] *role***  
+List sync users of the role. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Policy Management
 
@@ -196,8 +209,9 @@ Attach a policy to the role.
 **remove_policy *role* *policy***  
 Remove a policy from the role.
 
-**list_policies *role***  
-List policies attached to the role.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *role***  
+List policies attached to the role. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -242,11 +256,15 @@ attributes.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *role* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *role* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *role* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *role* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *role* \[*description*\]**  
 Set role description.
@@ -257,6 +275,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 
 **dump_info \[**--language** *LANG*\] *role***  
 Dump the info text to stdout.
+
+## Object Changelog
+
+**changelog *role***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *role* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *role* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *role***  
+Clear the object's entire changelog.
 
 ## Import/Export
 

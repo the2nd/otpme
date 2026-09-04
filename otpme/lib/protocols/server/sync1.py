@@ -116,7 +116,7 @@ class OTPmeSyncP1(OTPmeServer1):
         # Do atfork stuff.
         multiprocessing.atfork(quiet=True)
 
-    def get_site(self, realm, site):
+    def get_site_objects(self, realm, site):
         """ Get site object and all its objects needed to start a sync. """
         result = backend.search(realm=realm,
                                 object_type="site",
@@ -187,6 +187,29 @@ class OTPmeSyncP1(OTPmeServer1):
             sync_checksum = backend.get_sync_checksum(node.oid)
             site_objects.append([node.oid.full_oid, node_config, sync_checksum])
 
+        # Get all CAs.
+        all_site_cas = backend.search(object_type="ca",
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=site.realm,
+                                        site=site.name,
+                                        return_type="instance")
+        for ca in all_site_cas:
+            object_config = ca.get_sync_config(peer=self.peer)
+            node_config = json.encode(object_config, encoding="hex")
+            # Add ca units.
+            unit_uuid = ca.unit_uuid
+            while unit_uuid:
+                unit = backend.get_object(object_type="unit", uuid=unit_uuid)
+                object_config = unit.get_sync_config(peer=self.peer)
+                encoded_config = json.encode(object_config, encoding="hex")
+                sync_checksum = backend.get_sync_checksum(unit.oid)
+                site_objects.append([unit.oid.full_oid, encoded_config, sync_checksum])
+                unit_uuid = unit.unit_uuid
+            # Add master ca config.
+            sync_checksum = backend.get_sync_checksum(ca.oid)
+            site_objects.append([ca.oid.full_oid, node_config, sync_checksum])
+
         return site_objects
 
     def get_local_token_data(self, token, data_type):
@@ -221,21 +244,31 @@ class OTPmeSyncP1(OTPmeServer1):
         if self.peer.realm_uuid != config.realm_uuid:
             realm = config.realm
 
+        # Get all sites.
+        all_sites = backend.search(realm=realm,
+                                object_type="site",
+                                attribute="uuid",
+                                value="*",
+                                return_type="instance")
         if offer_all_sites:
-            sync_sites = backend.search(realm=realm,
-                                    object_type="site",
-                                    attribute="uuid",
-                                    value="*",
-                                    return_type="instance")
+            sync_sites = list(all_sites)
         else:
             own_site = backend.get_object(object_type="site",
                                         uuid=config.site_uuid)
             sync_sites = [own_site]
+            for site in all_sites:
+                if not site.sub:
+                    continue
+                if site.sub != own_site.uuid:
+                    continue
+                sync_sites.append(site)
 
         object_configs = {}
         for x in sync_sites:
+            if not x.enabled:
+                continue
             # Get site and its master node to be synced.
-            site_objects = self.get_site(realm=x.realm, site=x.name)
+            site_objects = self.get_site_objects(realm=x.realm, site=x.name)
             if not site_objects:
                 continue
             object_configs[x.oid.full_oid] = site_objects
@@ -1029,9 +1062,19 @@ class OTPmeSyncP1(OTPmeServer1):
             sync_params = self.peer_sync_params[self.peer.uuid][sync_realm][sync_site]
         except KeyError:
             # Cache sync parameters for peer to speedup processing.
-            sync_params = self.peer.get_sync_parameters(sync_realm,
-                                                        sync_site,
-                                                        self.peer.uuid)
+            try:
+                sync_params = self.peer.get_sync_parameters(sync_realm,
+                                                            sync_site,
+                                                            self.peer.uuid)
+            except UnknownObject as e:
+                status = status_codes.UNKNOWN_OBJECT
+                response, \
+                log_msg = _("Failed to get sync parameters for host: {host}: {site}", log=True)
+                site_id = f"{sync_realm}/{sync_site}"
+                response = response.format(host=self.peer.name, site=site_id)
+                log_msg = log_msg.format(host=self.peer.name, site=site_id)
+                self.logger.warning(log_msg)
+                return self.build_response(status, response)
             if self.peer.uuid not in self.peer_sync_params:
                 self.peer_sync_params[self.peer.uuid] = {}
             if sync_realm not in self.peer_sync_params[self.peer.uuid]:

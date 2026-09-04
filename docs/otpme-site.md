@@ -49,11 +49,15 @@ Change site auth FQDN.
 **mgmt_fqdn *site* *fqdn***  
 Change site management FQDN.
 
-**config \[**-d**\] *site* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *site* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *site* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *site* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *site* \[*description*\]**  
 Set site description.
@@ -101,33 +105,34 @@ Dump site certificate chain to stdout.
 **renew_cert *site***  
 Renew site certificate.
 
+**site_cert *site* \[*cert_file*\]**  
+Change the site certificate. Without *cert_file* the certificate is read
+from stdin.
+
 ## RADIUS Certificate
 
-**radius_cert *site* *cert_file***  
-Change RADIUS certificate.
+**radius_cert \[**--key** *radius_key*\] \[**--ca-cert** *radius_ca_cert*\] *site* \[*radius_cert*\]**  
+Change the RADIUS certificate. The optional **--key** and **--ca-cert**
+flags set the matching private key and CA certificate in one call.
 
 **radius_key *site* *key_file***  
 Change RADIUS certificate key.
 
-**del_radius_cert *site***  
-Delete RADIUS certificate.
-
-**del_radius_key *site***  
-Delete RADIUS key.
+**radius_ca_cert *site* \[*radius_ca_cert*\]**  
+Change the RADIUS CA certificate used to verify the RADIUS certificate
+above.
 
 ## SSO Configuration
 
-**sso_cert *site* *cert_file***  
-Change SSO certificate.
+**sso_fqdn *site* *fqdn***  
+Change the site's SSO FQDN (see the OIDC OP section below).
+
+**sso_cert \[**--key** *sso_key*\] *site* \[*cert_file*\]**  
+Change the SSO certificate. Use **--key** to set the matching private
+key in the same call.
 
 **sso_key *site* *key_file***  
 Change SSO certificate key.
-
-**del_sso_cert *site***  
-Delete SSO certificate.
-
-**del_sso_key *site***  
-Delete SSO key.
 
 **sso_secret *site* *secret***  
 Change SSO secret.
@@ -196,18 +201,22 @@ never advertised (see **oidc_allow_plain_pkce**).
 
 **enable_oidc *site***  
 Enable the OIDC OP on this site. On first activation, an active signing
-key (**gen_oidc_key**) and a pairwise secret are auto-generated.
+key (**renew_oidc_key**) and a pairwise secret are auto-generated.
 
 **disable_oidc *site***  
 Disable the OIDC OP. Existing keys and secrets are kept on disk so
 **enable_oidc** resumes without re-issuing tokens.
 
-**gen_oidc_key \[**--key-type** *preset*\] \[**--kty** *RSA\|EC\|OKP*\] \[**--size** *N*\] \[**--alg** *alg*\] \[**--retired-max-age** *seconds*\] *site***  
+**renew_oidc_key \[**--key-type** *preset*\] \[**--kty** *RSA\|EC\|OKP*\] \[**--size** *N*\] \[**--alg** *alg*\] *site***  
 Rotate the active OIDC signing key. The previous active key is demoted
-to **retired** and removed from JWKS once *retired_max_age* (default
-7200s) has elapsed, so RPs that fetched ID Tokens just before rotation
-can still verify them. Presets: **rsa-2048**, **rsa-3072**,
-**rsa-4096**, **ec-p256**, **ec-p384**, **ec-p521**, **ed25519**.
+to **retired** and removed from JWKS once the site's
+**oidc_retired_max_age** config parameter (default 7200s) has elapsed,
+so RPs that fetched ID Tokens just before rotation can still verify
+them. Presets: **rsa**, **rsa-3072**, **rsa-4096**, **ec**, **ec-p256**,
+**ec-p384**, **ec-p521**, **ed25519**. Direct configuration: **--kty**
+(**RSA**/**EC**/**OKP**), **--size** (RSA bits or EC/OKP curve),
+**--alg**
+(**RS256**/**RS384**/**RS512**/**ES256**/**ES384**/**ES512**/**EdDSA**).
 
 **revoke_oidc_key *site* *kid***  
 Permanently remove a signing key from JWKS. Tokens signed by it stop
@@ -274,6 +283,22 @@ Delete a FIDO2 CA certificate by subject.
 **list_fido2_ca_certs *site***  
 List FIDO2 CA certificates.
 
+## Object Changelog
+
+**changelog *site***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *site* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *site* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *site***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *site* *policy***  
@@ -282,8 +307,10 @@ Attach a policy to the site.
 **remove_policy *site* *policy***  
 Remove a policy from the site.
 
-**list_policies *site***  
-List policies attached to the site.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *site***  
+List policies attached to the site. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to filter by policy type.
 
 ## ACL Management
 

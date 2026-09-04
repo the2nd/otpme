@@ -60,8 +60,9 @@ Attach a policy to the realm.
 **remove_policy *realm* *policy***  
 Remove a policy from the realm.
 
-**list_policies *realm***  
-List policies attached to the realm.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *realm***  
+List policies attached to the realm. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -115,6 +116,22 @@ Dump the info text to stdout.
 
 **touch *realm***  
 Re-index the object to fix potential index problems.
+
+## Object Changelog
+
+**changelog *realm***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *realm* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *realm* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *realm***  
+Clear the object's entire changelog.
 
 ## Import/Export
 
@@ -178,6 +195,11 @@ Add the given word dictionaries for password strength checking.
 
 **--id-ranges *range1,range2***  
 ID ranges to add during initialization.
+
+**--no-index-indices**  
+Skip creation of index-DB indices during **init**. Use only for special
+setups (e.g. very small test realms) where the extra indices are not
+wanted; the default is to create them.
 
 # OPTIONS
 

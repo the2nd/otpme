@@ -67,8 +67,9 @@ Add a token to the group.
 .B remove_token \fR[\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken_path\fR
 Remove a token from the group.
 .TP
-.B list_tokens \fIgroup\fR
+.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIgroup\fR
 List tokens assigned to the group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
 .TP
 .B add_role \fIgroup\fR \fIrole\fR
 Add a role to the group.
@@ -76,15 +77,18 @@ Add a role to the group.
 .B remove_role \fIgroup\fR \fIrole\fR
 Remove a role from the group.
 .TP
-.B list_roles \fIgroup\fR
+.B list_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
 List roles assigned to the group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS User Management
 .TP
-.B list_users \fIgroup\fR
+.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
 List users in the group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
-.B list_default_group_users \fIgroup\fR
+.B list_default_group_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
 List users that have this group as their default group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Host Management
 .TP
 .B add_host \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIgroup\fR \fIhost\fR
@@ -115,8 +119,9 @@ Do not send notification to all online hosts on revoked share permissions.
 Keep persisted share mounts on hosts (transient unmount only).
 .RE
 .TP
-.B list_hosts \fIgroup\fR
+.B list_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
 List hosts in the group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Sync User Management
 .TP
 .B add_sync_user \fIgroup\fR \fIuser\fR
@@ -125,8 +130,22 @@ Add a sync user to the group.
 .B remove_sync_user \fIgroup\fR \fIuser\fR
 Remove a sync user from the group.
 .TP
-.B list_sync_users \fIgroup\fR
+.B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIgroup\fR
 List sync users in the group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.SS Object Changelog
+.TP
+.B changelog \fIgroup\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIgroup\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIgroup\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIgroup\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fIgroup\fR \fIpolicy\fR
@@ -135,8 +154,9 @@ Attach a policy to the group.
 .B remove_policy \fIgroup\fR \fIpolicy\fR
 Remove a policy from the group.
 .TP
-.B list_policies \fIgroup\fR
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIgroup\fR
 List policies attached to the group.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to limit the listing to the given policy types.
 .SS ACL Management
 .TP
 .B add_acl \fIgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -155,11 +175,14 @@ Enable ACL inheritance from parent objects.
 Disable ACL inheritance.
 .SS Configuration and Attributes
 .TP
-.B config \fR[\fB\-d\fR] \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fIgroup\fR [\fIparameter\fR]
 Show all configuration parameters.
+.TP
+.B get_config \fIgroup\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B description \fIgroup\fR \fR[\fIdescription\fR]
 Set group description.
@@ -215,6 +238,9 @@ Limit number of roles shown.
 .TP
 .B \-\-token\-limit \fIN\fR
 Limit number of tokens shown.
+.TP
+.B \-\-host\-limit \fIN\fR
+Limit number of hosts shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.

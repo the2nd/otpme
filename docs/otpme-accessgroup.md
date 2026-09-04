@@ -60,8 +60,11 @@ public key of the tokens user is stored in the access group.
 Remove a token from the access group. The users sign public key is
 removed with their last token.
 
-**list_tokens *accessgroup***  
-List tokens assigned to the access group.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *accessgroup***  
+List tokens assigned to the access group. Use **--return-type** to
+select the attribute returned (**name**, **read_oid**, **full_oid**,
+**uuid**) and **--token-types** to limit the listing to the given token
+types.
 
 **add_role *accessgroup* *role***  
 Add a role to the access group. All tokens with this role are
@@ -83,14 +86,20 @@ based on their access group membership.
 **remove_host *accessgroup* *host***  
 Remove a host from the access group.
 
+**list_hosts *accessgroup***  
+List hosts assigned to the access group.
+
 ## Device Assignment
 
 **add_device *accessgroup* *device***  
 Add a device to the access group. This is used for MAC Authentication
-Bypass (MAB) port authentication of network devices such as IP phones.
+Bypass (MAB) port authentication of network devices such as printers.
 
 **remove_device *accessgroup* *device***  
 Remove a device from the access group.
+
+**list_devices *accessgroup***  
+List devices assigned to the access group.
 
 ## VLANs
 
@@ -210,6 +219,22 @@ groups.
 **remove_child_session *accessgroup* *session_group***  
 Remove a child session group.
 
+## Object Changelog
+
+**changelog *accessgroup***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *accessgroup* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *accessgroup* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *accessgroup***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *accessgroup* *policy***  
@@ -218,8 +243,11 @@ Attach a policy to the access group.
 **remove_policy *accessgroup* *policy***  
 Remove a policy from the access group.
 
-**list_policies *accessgroup***  
-List policies attached to the access group.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *accessgroup***  
+List policies attached to the access group. Use **--return-type** to
+select the attribute returned (**name**, **read_oid**, **full_oid**,
+**uuid**) and **--policy-types** to limit the listing to the given
+policy types.
 
 ## ACL Management
 
@@ -240,11 +268,15 @@ Disable ACL inheritance.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *accessgroup* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *accessgroup* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *accessgroup* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *accessgroup* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *accessgroup* \[*description*\]**  
 Set access group description.

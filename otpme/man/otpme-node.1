@@ -42,8 +42,9 @@ Add a token to the node. Use \fB\-i\fR to limit login to specific interfaces (e.
 .B remove_token \fR[\fB\-\-keep\-sign\fR] \fInode\fR \fItoken_path\fR
 Remove a token from the node.
 .TP
-.B list_tokens \fInode\fR
+.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fInode\fR
 List tokens assigned to the node.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to limit the listing to the given token types.
 .TP
 .B add_role \fInode\fR \fIrole\fR
 Add a role to the node.
@@ -62,8 +63,9 @@ Limit logins to tokens and roles explicitly assigned to this node.
 Allow logins from all authorized tokens.
 .SS User and Group Listing
 .TP
-.B list_users \fInode\fR
+.B list_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fInode\fR
 List users on the node.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
 .B list_dynamic_groups \fInode\fR
 List dynamic groups of the node.
@@ -121,6 +123,19 @@ Disable the node vote script.
 .TP
 .B get_ssh_authorized_keys \fInode\fR \fR[\fIuser\fR]
 Get SSH authorized keys for the node, optionally for a specific user.
+.SS Object Changelog
+.TP
+.B changelog \fInode\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fInode\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fInode\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fInode\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fInode\fR \fIpolicy\fR
@@ -129,8 +144,9 @@ Attach a policy to the node.
 .B remove_policy \fInode\fR \fIpolicy\fR
 Remove a policy from the node.
 .TP
-.B list_policies \fInode\fR
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fInode\fR
 List policies attached to the node.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to limit the listing to the given policy types.
 .SS ACL Management
 .TP
 .B add_acl \fInode\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -149,11 +165,14 @@ Enable ACL inheritance from parent objects.
 Disable ACL inheritance.
 .SS Configuration and Attributes
 .TP
-.B config \fR[\fB\-d\fR] \fInode\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fInode\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fInode\fR [\fIparameter\fR]
 Show all configuration parameters.
+.TP
+.B get_config \fInode\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B description \fInode\fR \fR[\fIdescription\fR]
 Set node description.

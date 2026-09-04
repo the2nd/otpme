@@ -78,8 +78,11 @@ Move policy to a different unit.
 .B show_config \fIpolicy\fR [\fIparameter\fR]
 Show all policy configuration parameters.
 .TP
-.B config \fR[\fB\-d\fR] \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B get_config \fIpolicy\fR \fIparameter\fR
+Show the value of a single configuration parameter.
+.TP
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B description \fIpolicy\fR \fR[\fIdescription\fR]
 Set policy description.
@@ -99,8 +102,8 @@ Add a policy to this policy.
 .B remove_policy \fIpolicy\fR \fIchild_policy\fR
 Remove a policy from this policy.
 .TP
-.B list_policies \fIpolicy\fR
-List policies assigned to this policy.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpolicy\fR
+List policies assigned to this policy. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS ACL Management
 .TP
 .B add_acl \fIpolicy\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -117,6 +120,19 @@ Enable ACL inheritance from parent objects.
 .TP
 .B disable_acl_inheritance \fIpolicy\fR
 Disable ACL inheritance.
+.SS Object Changelog
+.TP
+.B changelog \fIpolicy\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIpolicy\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIpolicy\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIpolicy\fR
+Clear the object's entire changelog.
 .SS Import/Export
 .TP
 .B export \fIpolicy\fR

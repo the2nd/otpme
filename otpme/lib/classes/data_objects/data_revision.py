@@ -33,8 +33,14 @@ def register_oid():
     read_oid_schema = None
     # OID regex stuff.
     realm_name_re = oid.object_regex['realm']['name']
-    site_name_re = oid.object_regex['realm']['name']
-    data_revision_oid_re = f'data_revision|{realm_name_re}[/]{site_name_re}'
+    # The realm regex was used for the site here, which is a different
+    # shape (a realm name has a dot, a site name need not).
+    #site_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    # The separator has to be escaped, see accessgroup.py: "|" is the
+    # alternation operator, so the pattern read as "^data_revision".
+    #data_revision_oid_re = f'data_revision|{realm_name_re}[/]{site_name_re}'
+    data_revision_oid_re = f'data_revision[|]{realm_name_re}[/]{site_name_re}'
     oid.register_oid_schema(object_type="data_revision",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

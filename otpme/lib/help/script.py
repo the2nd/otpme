@@ -57,10 +57,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-script del {script}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-script del [--no-trash] {script}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete script'),
+                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
                                 },
                 },
 

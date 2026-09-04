@@ -4962,12 +4962,14 @@ class CommandHandler(object):
                 if site:
                     if not realm:
                         realm = config.realm
+                command_args = {}
                 if realm:
-                    cmd = f"{cmd} {realm}"
+                    command_args['realm'] = realm
                 if site:
-                    cmd = f"{cmd} {site}"
+                    command_args['site'] = site
                 sync_message = self.send_command(daemon="hostd",
                                                 command=cmd,
+                                                command_args=command_args,
                                                 interactive=False)
             else:
                 return self.get_help()

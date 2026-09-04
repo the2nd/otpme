@@ -350,12 +350,17 @@ class JoinHandler(object):
         self._my_site.add_base_groups(callback=callback)
         self._my_site.add_per_site_objects(callback=callback)
         # Gen mgmt fqdn cert/key.
-        self._my_site.gen_mgmt_cert()
+        self._my_site.gen_mgmt_cert(callback=callback)
+        # Gen SSO fqdn cert/key.
+        self._my_site.gen_sso_cert(callback=callback)
 
         # Finish node join and create node cert.
         self._my_host.join_realm(verify_acls=False,
                                 cert_req=host_cert_req,
+                                callback=callback,
                                 finish=True)
+        # Write objects.
+        callback.write_modified_objects()
 
         # Reload CA after node cert generation.
         self._my_site_ca = backend.get_object(object_type="ca", uuid=self._my_site.ca)

@@ -49,6 +49,12 @@ CONTROLD_QUEUE_NAME = "otpme-controld-commq"
 DAEMON_TERMINATE_WAIT = 30
 # How long a daemon that ignored SIGTERM gets after the SIGKILL.
 DAEMON_KILL_WAIT = 5
+# How long we wait for the daemon handler process to finish the
+# shutdown, see signal_handler(). It stops every child daemon in there,
+# so this has to cover all of them: DAEMON_TERMINATE_WAIT plus
+# DAEMON_KILL_WAIT for each, with room for the index and cache it stops
+# afterwards.
+DAEMON_HANDLER_CLEANUP_WAIT = 300
 
 def register():
     """ Register daemon stuff. """
@@ -266,6 +272,9 @@ class ControlDaemon(UnixDaemon):
         # Indicates that there is an ongoing config reload.
         self.loading = False
         self.need_restart = False
+        # Indicates that our signal handler already started the
+        # shutdown, so a second signal does not run it again.
+        self.shutdown_started = False
         # Will hold site address if we are site master.
         self.floating_address = None
         # Will hold daemon names we have to handle and their start order.
@@ -288,6 +297,24 @@ class ControlDaemon(UnixDaemon):
         if self.daemon_startup.value:
             return
         signal_name = stuff.get_signal_name(_signal)
+        if signal_name == "SIGHUP":
+            log_msg = _("Received 'SIGHUP'.", log=True)[1]
+            self.logger.warning(log_msg)
+            if not self.loading:
+                # Notify ourselves about the reload singal.
+                self.comm_handler.send(recipient="controld", command="reload")
+            return
+
+        # A second signal while we are on our way out would run all of
+        # the below again, from inside the first run. Asked before we
+        # log anything, because a signal that arrives while we write
+        # that line would already be a second run. Our own attribute and
+        # not a shared one: the daemon handler process has to get
+        # through here just like we do.
+        if self.shutdown_started:
+            return
+        self.shutdown_started = True
+
         if signal_name == "SIGINT":
             log_msg = _("Exiting on Ctrl+C", log=True)[1]
             self.logger.warning(log_msg)
@@ -295,30 +322,59 @@ class ControlDaemon(UnixDaemon):
         if signal_name == "SIGTERM":
             log_msg = _("Exiting on 'SIGTERM'.", log=True)[1]
             self.logger.warning(log_msg)
-        if signal_name == "SIGHUP":
-            log_msg = _("Received 'SIGHUP'.", log=True)[1]
-            self.logger.warning(log_msg)
-
-        if signal_name == "SIGHUP":
-            if not self.loading:
-                # Notify ourselves about the reload singal.
-                self.comm_handler.send(recipient="controld", command="reload")
-            return
 
         config.daemon_shutdown = True
         config.master_failover = True
 
-        # Do shutdown stuff only in daemon handler process.
-        if not config.daemonize:
-            if self.pid == os.getpid():
-                while not self._cleanup_done.value:
-                    time.sleep(0.01)
+        # Shutdown happens in the daemon handler process. It is the one
+        # that started the child daemons, so it is the only one that can
+        # stop them: self.childs is filled after the fork, our copy of
+        # it stays empty. We ask it to go down and wait for it to say it
+        # is done.
+        #
+        # Both modes take this way now. In background mode we used to
+        # terminate the handler first and then run the cleanup below
+        # ourselves -- with an empty self.childs, so stop_all_childs()
+        # had nothing to work with and every daemon it should have
+        # stopped stayed behind.
+        if self.pid == os.getpid():
+            if self.daemon_handler_proc:
+                try:
+                    self.daemon_handler_proc.terminate()
+                except Exception as e:
+                    log_msg = _("Failed to stop daemon handler process: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
+            cleanup_done = False
+            deadline = time.time() + DAEMON_HANDLER_CLEANUP_WAIT
+            while time.time() < deadline:
+                if self._cleanup_done.value:
+                    cleanup_done = True
+                    break
+                time.sleep(0.01)
+            if cleanup_done:
                 os._exit(0)
-
-        # Stop daemon handler process.
-        if self.daemon_handler_proc:
-            self.daemon_handler_proc.terminate()
-            self.daemon_handler_proc.join()
+            # It did not get there. We cannot stop the child daemons in
+            # its place, but the floating IP, the cache and the index
+            # are ours as much as they are its, so we do what we can
+            # instead of leaving all of it behind.
+            log_msg = _("Daemon handler process did not finish its shutdown within {timeout} seconds. Cleaning up what we can.", log=True)[1]
+            log_msg = log_msg.format(timeout=DAEMON_HANDLER_CLEANUP_WAIT)
+            self.logger.critical(log_msg)
+            # The child daemons are its children, so taking the tree
+            # down is the only thing that keeps them from outliving us.
+            # kill_pid() goes over the children before the process
+            # itself, which is what makes that work.
+            if self.daemon_handler_proc:
+                try:
+                    stuff.kill_pid(self.daemon_handler_proc.pid,
+                                signal=9,
+                                recursive=True,
+                                timeout=DAEMON_KILL_WAIT)
+                except Exception as e:
+                    log_msg = _("Failed to kill daemon handler process: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
 
         # Stop all child daemons.
         self.stop_all_childs()
@@ -602,6 +658,23 @@ class ControlDaemon(UnixDaemon):
                     self.childs[x] = {}
                 continue
             if x not in self.childs:
+                continue
+            # The daemons we start on demand (ldapd and idled, started
+            # by clusterd when we join the cluster) are on purpose not
+            # in child_daemons, and the list above does not carry them
+            # either. Forgetting a running one here would leave a
+            # process that nobody stops and nobody watches: these two
+            # lists are what stop_all_childs() and ensure_daemons()
+            # walk. So keep it, and put it back on the list a reload
+            # just rebuilt without it.
+            daemon_proc = self.get_child(x)
+            try:
+                child_running = daemon_proc.is_alive()
+            except Exception:
+                child_running = False
+            if child_running:
+                if x not in self.daemons:
+                    self.daemons.append(x)
                 continue
             self.childs.pop(x)
             log_msg = _("Removing child daemon.", log=True)[1]
@@ -1322,7 +1395,10 @@ class ControlDaemon(UnixDaemon):
 
         if restart_childs:
             self.stop_all_childs()
-            for x in self.childs:
+            # Over a copy: a daemon that fails to start takes itself out
+            # of self.childs again (see add_child()), which we must not
+            # do while we walk it.
+            for x in list(self.childs):
                 self.start_daemon(x)
         else:
             # Reload child daemons.
@@ -1340,6 +1416,14 @@ class ControlDaemon(UnixDaemon):
 
     def _reload_child(self, daemon_name):
         """ Send reload command to child daemon. """
+        if not self.get_child(daemon_name):
+            # We have none: its start failed and add_child() took it
+            # back out again. There is nothing to reload, and
+            # ensure_daemon() is the one that starts it over.
+            log_msg = _("Not reloading child daemon that is not running: {daemon}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon_name)
+            self.logger.warning(log_msg)
+            return
         log_msg = _("Sending reload command to child daemon: {daemon}", log=True)[1]
         log_msg = log_msg.format(daemon=daemon_name)
         self.logger.info(log_msg)
@@ -1403,6 +1487,18 @@ class ControlDaemon(UnixDaemon):
                                         target=daemon.run,
                                         target_args=(comm_handler,),
                                         target_kwargs=target_kwargs)
+        # Written down before we know whether it made it: a daemon that
+        # does not report back is running nevertheless, together with
+        # everything it forked, and stop_child() below is what gets rid
+        # of it. Without the entry it would be a process we never heard
+        # of -- it survives every shutdown we do from here on, because
+        # stop_all_childs() only knows what stands in here, and it keeps
+        # answering: the listen sockets of ldapd carry SO_REUSEPORT, so
+        # a leftover does not even keep the next one from starting.
+        self.childs[daemon.name] = {
+                            'status'    : 'starting',
+                            'instance'  : p,
+                            }
         startup_timeout = 15
         try:
             sender, \
@@ -1413,6 +1509,8 @@ class ControlDaemon(UnixDaemon):
             log_msg = _("Error getting startup response from {daemon}: {error}", log=True)[1]
             log_msg = log_msg.format(daemon=daemon.name, error=e)
             self.logger.critical(log_msg, exc_info=True)
+            self.stop_child(daemon.name)
+            self.childs.pop(daemon.name, None)
             return False
 
         if response == "ready":
@@ -1427,6 +1525,8 @@ class ControlDaemon(UnixDaemon):
             self.logger.critical(log_msg)
 
         if daemon_status is False:
+            self.stop_child(daemon.name)
+            self.childs.pop(daemon.name, None)
             return
 
         # Add daemon instance and queues used for communication to shared
@@ -1505,5 +1605,23 @@ class ControlDaemon(UnixDaemon):
 
     def stop_all_childs(self):
         """ Stop all child daemons. """
-        for daemon in reversed(self.daemons):
-            self.stop_child(daemon)
+        # Not self.daemons alone: ldapd and idled are started on demand
+        # by clusterd (clusterd.start_ldapd()) and are not part of the
+        # static list configure() builds. A daemon we hold a child entry
+        # for has to be stopped, or it stays behind -- ldapd keeps its
+        # LDAP port that way, and its listen sockets carry SO_REUSEPORT,
+        # so the next one starts next to it instead of over it.
+        stop_order = list(self.daemons)
+        for daemon in self.childs:
+            if daemon in stop_order:
+                continue
+            stop_order.append(daemon)
+        for daemon in reversed(stop_order):
+            # One that fails must not take the rest of the shutdown with
+            # it: everything after it in the list would stay running.
+            try:
+                self.stop_child(daemon)
+            except Exception as e:
+                log_msg = _("Failed to stop child daemon: {daemon}: {error}", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon, error=e)
+                self.logger.critical(log_msg, exc_info=True)

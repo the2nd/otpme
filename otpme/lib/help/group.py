@@ -61,10 +61,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group del {group}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-group del [--no-trash] {group}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete group'),
+                                    '--no-trash'            : _('Delete without moving the object to the trash.'),
                                 },
                 },
 

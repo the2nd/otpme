@@ -36,6 +36,9 @@ Logout from OTPme realm.
 .B whoami
 Show currently logged in user.
 .TP
+.B who
+Show all users currently logged in on this host (across TTYs and desktop sessions).
+.TP
 .B show_sessions
 Get otpme-agent login sessions.
 .TP
@@ -45,11 +48,17 @@ Get otpme-agent login session ID.
 .B get_login_token
 Show token of currently logged in user.
 .TP
+.B get_login_token_type
+Show token type of currently logged in user.
+.TP
 .B get_login_pass_type
 Show token password type used at login.
 .TP
 .B get_tty
 Get TTY for logged in user.
+.TP
+.B get_display
+Get \fBDISPLAY\fR of currently logged in user.
 .TP
 .B get_sotp \fR[\fB\-\-site\fR \fIsite\fR]
 Get a SOTP for logged in user.
@@ -65,6 +74,9 @@ Try to renegotiate login session.
 .TP
 .B reset_reauth
 Reset auth_on_action reauth.
+.TP
+.B do_reauth
+Trigger a manual \fBauth_on_action\fR reauth, e.g. from a helper script that wants to force the next protected action to prompt for reauthentication.
 .SS Synchronization
 .TP
 .B sync \fR[\fB\-\-realm\fR \fIrealm\fR] [\fB\-\-site\fR \fIsite\fR] [\fIsync_type\fR]

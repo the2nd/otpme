@@ -53,6 +53,16 @@ Read passphrase from stdin.
 **--auth-token *token***  
 Emulate login with given token in API mode.
 
+**-u *username***  
+User used for authentication (e.g. when joining the realm as an ordinary
+user rather than the local root).
+
+**--impersonate-token \[*token*\]**  
+Work as the given token. Needs admin permissions.
+
+**--fetch-scripts**  
+Fetch scripts from the server instead of using cached ones.
+
 ## Communication Options
 
 **--socket**  
@@ -68,6 +78,14 @@ Object type to act on (e.g. token type).
 
 **-f**  
 Do not ask any user questions.
+
+**--no-pager**  
+Do not page command output through a pager (e.g. **less**) even when it
+exceeds the terminal size. See also **USE_PAGER** in **otpme.conf**(5).
+
+**--changelog *text***  
+Add the given text as a custom entry to the object changelog written by
+this command. Only meaningful for commands that change an object.
 
 **--print-raw-sign-data**  
 Print raw data to sign instead of sign info.
@@ -223,6 +241,9 @@ Print warning if function/method is called more than given count.
 
 **--debug-profile-sort *cumtime\|ncalls\|tottime***  
 Statistic output sorting.
+
+**--debug-profile-print-callers *func1,func2***  
+Print callers of the given functions in the cProfile output.
 
 ## Job Options
 

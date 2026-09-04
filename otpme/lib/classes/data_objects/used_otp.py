@@ -34,8 +34,15 @@ def register_oid():
     read_oid_schema = None
     # OID regex stuff.
     realm_name_re = oid.object_regex['realm']['name']
-    site_name_re = oid.object_regex['realm']['name']
-    used_otp_oid_re = (f'used_otp|{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}[/][a-f0-9]*')
+    # The realm regex was used for the site here, which is a different
+    # shape (a realm name has a dot, a site name need not).
+    #site_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    # Separator escaped, see accessgroup.py, and the last part is the
+    # object hash, not an empty-able one.
+    #used_otp_oid_re = (f'used_otp|{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}[/][a-f0-9]*')
+    used_otp_oid_re = (f'used_otp[|]{realm_name_re}[/]{site_name_re}'
+                    f'[/]{oid.uuid_re}[/][a-f0-9]+')
     oid.register_oid_schema(object_type="used_otp",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

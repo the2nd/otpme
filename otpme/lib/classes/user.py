@@ -299,6 +299,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1469,9 +1470,24 @@ def register_oid():
     # OID regex stuff.
     # allow "@" in usernames
     unit_path_re = oid.object_regex['unit']['path']
+    realm_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    unit_name_re = oid.object_regex['unit']['name']
     user_name_re = '([0-9a-z]([0-9a-z_.@-]*[0-9a-z]){0,})'
     user_path_re = f'{unit_path_re}[/]{user_name_re}'
-    user_oid_re = f'user|{user_path_re}'
+    # Upper case on purpose, unlike user_name_re above: the name checker
+    # below lets the base objects past the regex and one of them is
+    # TOKENSTORE, while is_oid() has no such exception. Which name may
+    # be used stays the name checkers business, this one only says what
+    # an OID looks like.
+    user_oid_name_re = '([0-9A-Za-z]([0-9A-Za-z_.@-]*[0-9A-Za-z]){0,})'
+    # An OID is not a path, see accessgroup.py. Our read OID is realm
+    # and name alone -- no site either -- so site and unit go into one
+    # optional part: "user|<realm>/<name>" or
+    # "user|<realm>/<site>/<unit>.../<name>".
+    #user_oid_re = f'user|{user_path_re}'
+    user_oid_re = (f'user[|]{realm_name_re}[/]'
+                f'({site_name_re}[/]({unit_name_re}[/])+)?{user_oid_name_re}')
     oid.register_oid_schema(object_type="user",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -6897,6 +6913,7 @@ class User(OTPmeObject):
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
+        add_to_trash: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -6972,6 +6989,7 @@ class User(OTPmeObject):
             token_del_status = token.delete(force=True,
                                         verify_acls=False,
                                         remove_default_token=True,
+                                        add_to_trash=add_to_trash,
                                         callback=callback,
                                         **kwargs)
             if not token_del_status:
@@ -6997,7 +7015,9 @@ class User(OTPmeObject):
 
         # Delete object using parent class.
         del_status = super().delete(verbose_level=verbose_level,
-                                            force=force, callback=callback)
+                                            force=force,
+                                            add_to_trash=add_to_trash,
+                                            callback=callback)
         return del_status
 
     def remove_orphans(

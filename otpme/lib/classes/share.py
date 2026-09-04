@@ -407,7 +407,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
-                    'oargs'             : ['share_notifications', 'persist_mount'],
+                    'oargs'             : ['share_notifications', 'persist_mount', 'add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1089,9 +1089,16 @@ def register_oid():
     read_oid_schema = [ 'realm', 'site', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
+    realm_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    unit_name_re = oid.object_regex['unit']['name']
     share_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     share_path_re = f'{unit_path_re}[/]{share_name_re}'
-    share_oid_re = f'share|{share_path_re}'
+    # An OID is not a path, see accessgroup.py: no leading slash, and
+    # the unit part is optional because the read OID has none.
+    #share_oid_re = f'share|{share_path_re}'
+    share_oid_re = (f'share[|]{realm_name_re}[/]{site_name_re}'
+                f'([/]{unit_name_re})*[/]{share_name_re}')
     oid.register_oid_schema(object_type="share",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

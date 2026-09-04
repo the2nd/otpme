@@ -21,6 +21,7 @@ from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.pki import utils
+from otpme.lib import connections
 from otpme.lib.audit import audit_log
 from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
@@ -33,6 +34,7 @@ from otpme.lib.typing import match_class_typing
 from otpme.lib.register import register_module
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
+from otpme.lib.daemon.clusterd import cluster_daemon_reload
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.classes.otpme_object import name_len_setter
 
@@ -242,6 +244,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -741,9 +744,18 @@ def register_oid():
     full_oid_schema = [ 'name' ]
     read_oid_schema = None
     # OID regex stuff.
-    realm_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
+    # Exactly one dot, with something before and after it: a realm is a
+    # domain of two labels, "hboss.intern". Neither a deeper one
+    # ("sub.hboss.intern") nor a name that starts or ends with the dot.
+    # Every other OID regex builds on this one -- they read it back out
+    # of oid.object_regex['realm']['name'] -- so the rule reaches the
+    # site, unit and object OIDs as well.
+    realm_name_re = '([0-9a-z][0-9a-z_-]*[.][0-9a-z_-]*[0-9a-z])'
     realm_path_re = f'/{realm_name_re}'
-    realm_oid_re = f'realm|{realm_path_re}'
+    # An OID is not a path, see accessgroup.py: no leading slash. We
+    # have no read schema, so the name is all there is.
+    #realm_oid_re = f'realm|{realm_path_re}'
+    realm_oid_re = f'realm[|]{realm_name_re}'
     oid.register_oid_schema(object_type="realm",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -1199,7 +1211,10 @@ class Realm(OTPmeObject):
         return callback.ok(self.ca_data)
 
     @object_lock(full_lock=True)
-    @backend.transaction
+    # NOTE: No transaction for this method because we need to ensure
+    #       that CA data was written to backend before sending daemon
+    #       reload command.
+    #@backend.transaction
     def update_ca_data(
         self,
         force: bool=False,
@@ -1256,6 +1271,7 @@ class Realm(OTPmeObject):
                                     value="*",
                                     return_type="instance",
                                     realm=self.name)
+        found_ca_cert = False
         for site in site_list:
             # Skip sites that do not have a CA yet.
             if not site.ca:
@@ -1266,9 +1282,17 @@ class Realm(OTPmeObject):
                 msg = msg.format(site_ca=site.ca)
                 return callback.error(msg)
             if site_ca.cert:
+                found_ca_cert = True
                 ca_data = f"{ca_data}{site_ca.cert}"
             if site_ca.crl:
                 ca_data = f"{ca_data}{site_ca.crl}"
+
+        if not found_ca_cert:
+            msg = _("Found no CA certs.")
+            return callback.error(msg)
+
+        # Update CA data in ssl files.
+        update_ssl_files(ca_data=ca_data)
 
         if self.ca_data == ca_data:
             return callback.ok()
@@ -1276,10 +1300,26 @@ class Realm(OTPmeObject):
         # Set new ca_data.
         self.ca_data = ca_data
 
-        # Update CA data in ssl files.
-        update_ssl_files(ca_data=ca_data)
+        write_status = self._write(callback=callback)
 
-        return self._write(callback=callback)
+        # Reload daemons on changed CA data.
+        if not config.use_api and not config.realm_join:
+            if not cluster_daemon_reload():
+                try:
+                    hostd_conn = connections.get("hostd")
+                except Exception as e:
+                    msg = _("Failed to get hostd reload connection: {e}")
+                    msg = msg.format(e=e)
+                    return callback.error(msg)
+                try:
+                    hostd_conn.do_daemon_reload()
+                except Exception as e:
+                    msg = _("Failed to send hostd reload command: {e}")
+                    msg = msg.format(e=e)
+                    return callback.error(msg)
+                finally:
+                    hostd_conn.close()
+        return write_status
 
     @object_lock(full_lock=True)
     def init(
@@ -1724,6 +1764,7 @@ class Realm(OTPmeObject):
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
+        add_to_trash: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1755,7 +1796,9 @@ class Realm(OTPmeObject):
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,
-                                    force=force, callback=callback)
+                                    force=force,
+                                    add_to_trash=add_to_trash,
+                                    callback=callback)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show realm config. """

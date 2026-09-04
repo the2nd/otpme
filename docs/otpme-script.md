@@ -91,8 +91,9 @@ Attach a policy to the script.
 **remove_policy *script* *policy***  
 Remove a policy from the script.
 
-**list_policies *script***  
-List policies attached to the script.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *script***  
+List policies attached to the script. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -122,6 +123,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 
 **dump_info \[**--language** *LANG*\] *script***  
 Dump the info text to stdout.
+
+## Object Changelog
+
+**changelog *script***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *script* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *script* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *script***  
+Clear the object's entire changelog.
 
 ## Import/Export
 
@@ -187,13 +204,6 @@ Select signature by username.
 
 Global options are available for all commands. See **otpme**(1) for
 details.
-
-# CONFIG PARAMETERS
-
-Configuration parameters can be set with the **config** command and
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
 
 # EXAMPLES
 

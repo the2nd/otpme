@@ -251,3 +251,13 @@ class OTPmeHostP1(OTPmeClient1):
         binary_data = self.connection.send(command, command_args)
         return status, response
 
+    def do_daemon_reload(self):
+        """ Send daemon reload command. """
+        command = "do_daemon_reload"
+        command_args = {}
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        return status
+

@@ -329,6 +329,9 @@ class HostDaemon(OTPmeDaemon):
             self.logger.debug(log_msg)
             return
 
+        # Update last notify timestamp.
+        self.last_notify[last_notify_id] = time.time()
+
         log_msg = _("Sending sync notification: {notify_id}", log=True)[1]
         log_msg = log_msg.format(notify_id=last_notify_id)
         self.logger.info(log_msg)
@@ -407,14 +410,14 @@ class HostDaemon(OTPmeDaemon):
             self.logger.warning(log_msg)
             return False
 
-        # Update last notify timestamp.
-        self.last_notify[last_notify_id] = time.time()
-
         return response
 
     @handle_sync_child()
     def sync_sites(self, **kwargs):
         """ Make sure our sites list is in sync with the master site. """
+        if self.host_type == "node":
+            if not config.cluster_status:
+                return
         # Acquire sync lock.
         sync_lock = self.acquire_sync_lock("objects")
         try:
@@ -493,8 +496,12 @@ class HostDaemon(OTPmeDaemon):
         log_msg = _("Starting sync of realms/sites...", log=True)[1]
         self.logger.debug(log_msg)
 
-        sync_sites = {}
+        sync_sites = []
+        failed_sites = []
+        added_objects = 0
+        updated_objects = 0
         removed_objects = 0
+        update_realm_ca_data = False
         for site in connect_sites:
             # Connect to site master node.
             try:
@@ -523,62 +530,174 @@ class HostDaemon(OTPmeDaemon):
                 self.logger.warning(log_msg)
                 sync_conn.close()
                 sync_status = False
+                failed_sites.append(site)
                 continue
 
             # Close sync connection.
             sync_conn.close()
 
+            callback = config.get_callback()
+            callback.disable()
+
             # Get sites and their objects from response.
             for x in response:
                 site_oid = oid.get(object_id=x)
-                if site_oid != site.oid:
-                    log_msg = _("Uuuh received wrong site object from site {site}: {site_oid}", log=True)[1]
-                    log_msg = log_msg.format(site=site.oid, site_oid=site_oid)
-                    self.logger.critical(log_msg)
-                    continue
-                # Will hold all valid site objects.
-                site_objects = []
+                sub_site = False
+                if site_oid.name.startswith(f"{site.oid.name}."):
+                    sub_site = True
+                if config.realm_master_node:
+                    if site_oid.site != site.oid.site:
+                        if not sub_site:
+                            log_msg = _("Uuuh received wrong site object from site: {site}: {site_oid}", log=True)[1]
+                            log_msg = log_msg.format(site=site.oid, site_oid=site_oid)
+                            self.logger.critical(log_msg)
+                            continue
+                # Remember site we synced
+                sync_sites.append(site_oid)
                 # Get object configs from response.
                 x_objects = response[site_oid]
                 # Load and verify all site objects.
                 for x in x_objects:
                     # Get object ID.
                     object_id = oid.get(object_id=x[0])
+                    # Check for valid object type.
+                    object_type = object_id.object_type
+                    if object_type != "realm":
+                        if object_type != "site":
+                            if object_type != "unit":
+                                if object_type != "node":
+                                    if object_type != "ca":
+                                        log_msg = _("Rececived not permitted object from sites sync: {object_id}", log=True)[1]
+                                        log_msg = log_msg.format(object_id=new_object.oid)
+                                        self.logger.critical(log_msg)
+                                        continue
                     # Get object config.
                     encoded_config = x[1]
                     object_config = json.decode(encoded_config, encoding="hex")
                     object_checksum = x[2]
                     # Load instance.
                     try:
-                        o = backend.get_instance_from_oid(object_id, object_config)
+                        new_object = backend.get_instance_from_oid(object_id, object_config)
                     except Exception as e:
                         log_msg = _("Failed to load object: {object_id}: {error}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id, error=e)
                         self.logger.critical(log_msg)
                         continue
-                    # Check for valid object type.
-                    if o.type != "realm":
-                        if o.type != "site":
-                            if o.type != "unit":
-                                if o.type != "node":
-                                    log_msg = _("Rececived not permitted object from sites sync: {object_id}", log=True)[1]
-                                    log_msg = log_msg.format(object_id=o.oid)
-                                    self.logger.critical(log_msg)
-                                    continue
                     # Make sure the object is valid.
                     try:
-                        validate_received_object(site_oid, o)
+                        validate_received_object(site_oid, new_object)
                     except Exception as e:
                         log_msg = _("Received invalid object: {error}", log=True)[1]
                         log_msg = log_msg.format(error=e)
                         self.logger.critical(log_msg)
                         continue
-                    # Add object to list.
-                    site_objects.append((o, object_checksum))
 
-                # Add site objects.
-                if site_objects:
-                    sync_sites[site_oid] = site_objects
+                    # Get OID.
+                    x_oid = new_object.oid
+                    # Get object config to write to backend.
+                    object_config = new_object.object_config.copy()
+                    # Get current object.
+                    cur_object = backend.get_object(object_id=x_oid)
+                    if cur_object:
+                        # Get object type.
+                        object_type = new_object.type
+                        # No need to update object if checksum matches.
+                        sync_checksum = backend.get_sync_checksum(x_oid)
+                        if sync_checksum == object_checksum:
+                            continue
+                        # We to stop if cluster is not ready, because we need a
+                        # sane master node status.
+                        if self.host_type == "node":
+                            if not config.cluster_status:
+                                break
+                        if config.master_node:
+                            # Realm/site objects need some special handling (e.g.
+                            # preserve auth/sync settings.
+                            if object_type == "realm" or object_type == "site":
+                                # Preserve description.
+                                if cur_object.description != new_object.description:
+                                    new_object.change_description(cur_object.description,
+                                                                    force=True,
+                                                                    changelog=False,
+                                                                    verify_acls=False)
+                                # Preserve auth/sync settings.
+                                if cur_object.auth_enabled:
+                                    if not new_object.auth_enabled:
+                                        new_object.enable_auth(force=True,
+                                                    changelog=False,
+                                                    verify_acls=False,
+                                                    callback=callback)
+                                else:
+                                    if new_object.auth_enabled:
+                                        new_object.disable_auth(force=True,
+                                                    changelog=False,
+                                                    verify_acls=False,
+                                                    callback=callback)
+                                if cur_object.sync_enabled:
+                                    if not new_object.sync_enabled:
+                                        new_object.enable_sync(force=True,
+                                                    changelog=False,
+                                                    verify_acls=False,
+                                                    callback=callback)
+                                else:
+                                    if new_object.sync_enabled:
+                                        new_object.disable_sync(force=True,
+                                                    changelog=False,
+                                                    verify_acls=False,
+                                                    callback=callback)
+                                # Update object config.
+                                new_object.update_object_config()
+                                # Get object config of updated object.
+                                object_config = new_object.object_config.copy()
+                        # Dont update sub sites from parent sites. Sub sites are synced
+                        # from their own sites.
+                        if config.realm_master_node:
+                            if sub_site:
+                                continue
+                        # Update sync checksum of object.
+                        object_config['SYNC_CHECKSUM'] = object_checksum
+                        updated_objects += 1
+                        log_msg = _("Updating object: {oid}", log=True)[1]
+                        log_msg = log_msg.format(oid=x_oid)
+                        self.logger.info(log_msg)
+                    else:
+                        # Do not (re)-add own sub site from master site (e.g. delete on this site).
+                        if not config.realm_master_node:
+                            if sub_site:
+                                continue
+                        log_msg = _("Adding new object: {oid}", log=True)[1]
+                        log_msg = log_msg.format(oid=x_oid)
+                        self.logger.info(log_msg)
+                        added_objects += 1
+
+                    # Write object to backend. We cannot use new_object._write() because this
+                    # triggers other things we do not want/need on sync.
+                    try:
+                        backend.write_config(object_id=x_oid,
+                                        object_config=object_config,
+                                        full_data_update=True,
+                                        full_acl_update=True,
+                                        full_index_update=True,
+                                        full_ldif_update=True)
+                    except Exception as e:
+                        log_msg = _("Failed to write object: {oid}: {error}", log=True)[1]
+                        log_msg = log_msg.format(oid=x_oid, error=e)
+                        self.logger.critical(log_msg)
+                        config.raise_exception()
+                    # For CAs we have to update CA data and reload daemons.
+                    if object_type == "ca":
+                        update_realm_ca_data = True
+
+        # Update realm CA data which reloads daemons.
+        if update_realm_ca_data:
+            if self.host_type == "node":
+                if not config.realm_master_node:
+                    update_realm_ca_data = False
+        if update_realm_ca_data:
+            log_msg = _("Updating realm CA data...", log=True)[1]
+            self.logger.info(log_msg)
+            realm = backend.get_object(uuid=config.realm_uuid)
+            realm.update_ca_data(force=True, verify_acls=False)
 
         # If we got no sync sites (e.g. realm master node with no other sites)
         # we have nothing to do.
@@ -588,67 +707,7 @@ class HostDaemon(OTPmeDaemon):
                 return True
             return False
 
-        # Add/update sites and objects.
-        added_objects = 0
-        updated_objects = 0
-        for site_oid in sync_sites:
-            # Add site and objects we need to start the sync (e.g. master
-            # node).
-            for o, object_checksum in sync_sites[site_oid]:
-                # Get OID.
-                x_oid = o.oid
-                # Get object config to write to backend.
-                object_config = o.object_config.copy()
-                # Get current object.
-                x_object = backend.get_object(object_id=x_oid)
-                if x_object:
-                    # Get object type.
-                    object_type = o.type
-                    # No need to update object if checksum matches.
-                    sync_checksum = backend.get_sync_checksum(x_oid)
-                    if sync_checksum == object_checksum:
-                        continue
-                    if config.master_node:
-                        # Realm/site objects need some special handling (e.g.
-                        # preserve auth/sync settings.
-                        if object_type == "realm" or object_type == "site":
-                            # Preserve auth/sync settings.
-                            o.auth_enabled = x_object.auth_enabled
-                            o.sync_enabled = x_object.sync_enabled
-                            # Update object config.
-                            o._set_variables()
-                            o.set_variables()
-                            o.update_object_config()
-                            # Get object config of updated object.
-                            object_config = o.object_config.copy()
-                    # Update sync checksum of object.
-                    object_config['SYNC_CHECKSUM'] = object_checksum
-                    updated_objects += 1
-                    log_msg = _("Updating object: {oid}", log=True)[1]
-                    log_msg = log_msg.format(oid=x_oid)
-                    self.logger.info(log_msg)
-                else:
-                    log_msg = _("Adding new object: {oid}", log=True)[1]
-                    log_msg = log_msg.format(oid=x_oid)
-                    self.logger.info(log_msg)
-                    added_objects += 1
-
-                # Write object to backend. We cannot use o._write() because this
-                # triggers other things we do not want/need on sync.
-                try:
-                    backend.write_config(object_id=x_oid,
-                                    object_config=object_config,
-                                    full_data_update=True,
-                                    full_acl_update=True,
-                                    full_index_update=True,
-                                    full_ldif_update=True)
-                except Exception as e:
-                    log_msg = _("Failed to write object: {oid}: {error}", log=True)[1]
-                    log_msg = log_msg.format(oid=x_oid, error=e)
-                    self.logger.critical(log_msg)
-                    config.raise_exception()
-
-        # Nodes must not delete realms/sites as they are deleted by clusterd.
+        # Nodes must not delete realms/sites as they must be deleted by hand.
         if self.host_type == "node":
             if sync_status:
                 self.update_realm_data()
@@ -661,6 +720,9 @@ class HostDaemon(OTPmeDaemon):
                                         value="*",
                                         return_type="instance")
             for site in local_sites:
+                # If site is in failed sites dont remove it (temporary failure).
+                if site.oid in failed_sites:
+                    continue
                 # If the site is in the list of sites we received from master node
                 # there is no need to remove it.
                 if site.oid in sync_sites:
@@ -838,6 +900,8 @@ class HostDaemon(OTPmeDaemon):
 
         # Objects must be synced for all sites or the given realm/site.
         if sync_type == "objects":
+            if realm is None:
+                realm = config.realm
             if realm and site:
                 attribute = "name"
                 value = site
@@ -895,12 +959,12 @@ class HostDaemon(OTPmeDaemon):
             if not site.enabled:
                 log_msg = _("Ignoring disabled site: {site}", log=True)[1]
                 log_msg = log_msg.format(site=site.oid)
-                self.logger.info(log_msg)
+                self.logger.warning(log_msg)
                 continue
             if not site.sync_enabled:
                 log_msg = _("Synchronization disabled for site: {site}", log=True)[1]
                 log_msg = log_msg.format(site=site.oid)
-                self.logger.info(log_msg)
+                self.logger.warning(log_msg)
                 continue
 
             # Check for existing sync child.
@@ -1040,7 +1104,7 @@ class HostDaemon(OTPmeDaemon):
                 sync_conn = None
                 log_msg = _("Connection to syncd failed: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
-                self.logger.warning(log_msg, exc_info=True)
+                self.logger.warning(log_msg)
                 # Update sync status.
                 config.update_sync_status(realm=realm,
                                         site=site,
@@ -1081,7 +1145,7 @@ class HostDaemon(OTPmeDaemon):
                     sync_proto = sync_cache.protocol
                     if sync_proto:
                         log_msg = _("Sync connection failed. Trying to merge orphan sync cache.", log=True)[1]
-                        self.logger.info(log_msg)
+                        self.logger.warning(log_msg)
 
                 # Cannot sync without protocol version.
                 if not sync_proto:
@@ -1131,12 +1195,12 @@ class HostDaemon(OTPmeDaemon):
                 except ConnectionQuit as e:
                     log_msg = _("Connection lost running sync: {sync_type}: {error}", log=True)[1]
                     log_msg = log_msg.format(sync_type=sync_type, error=e)
-                    self.logger.warning(log_msg, exc_info=True)
+                    self.logger.warning(log_msg)
                     return False
                 except Exception as e:
                     log_msg = _("Error running sync: {realm}/{site}: {sync_type}: {error}", log=True)[1]
                     log_msg = log_msg.format(realm=realm, site=site, sync_type=sync_type, error=e)
-                    self.logger.critical(log_msg, exc_info=True)
+                    self.logger.critical(log_msg)
                     # Update sync status.
                     config.update_sync_status(realm=realm,
                                             site=site,
@@ -1244,7 +1308,7 @@ class HostDaemon(OTPmeDaemon):
                     ssh_sync_status = False
                     log_msg = _("Failed to update SSH authorized_keys: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
-                    self.logger.critical(log_msg, exc_info=True)
+                    self.logger.critical(log_msg)
                 finally:
                     # Release sync lock.
                     sync_lock.release_lock()
@@ -1733,7 +1797,7 @@ class HostDaemon(OTPmeDaemon):
         self.sync_by_command_opts = {}
         # Sync notification limit in seconds. (e.g. send sync notification max
         # each 5 seconds.)
-        self.notify_limit = 5
+        self.notify_limit = 30
         # FIXME: where to configure max_conn
         # set max client connections
         self.max_conn = 1024
@@ -1890,7 +1954,7 @@ class HostDaemon(OTPmeDaemon):
                     msg, log_msg = _("Error receiving daemon message: {error}", log=True)
                     msg = msg.format(error=e)
                     log_msg = log_msg.format(error=e)
-                    self.logger.critical(log_msg, exc_info=True)
+                    self.logger.critical(log_msg)
                     raise OTPmeException(msg) from e
 
                 now = time.time()
@@ -2175,7 +2239,7 @@ class HostDaemon(OTPmeDaemon):
             except Exception as e:
                 log_msg = _("Unhandled error in hostd: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
-                self.logger.critical(log_msg, exc_info=True)
+                self.logger.critical(log_msg)
                 config.raise_exception()
 
         self.shutdown_sync_childs()

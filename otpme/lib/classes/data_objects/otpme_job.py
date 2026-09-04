@@ -40,8 +40,13 @@ def register_oid():
     read_oid_schema = None
     # OID regex stuff.
     realm_name_re = oid.object_regex['realm']['name']
-    site_name_re = oid.object_regex['realm']['name']
-    job_oid_re = (f'job|{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}')
+    # The realm regex was used for the site here, which is a different
+    # shape (a realm name has a dot, a site name need not).
+    #site_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    # Separator escaped, see accessgroup.py.
+    #job_oid_re = (f'job|{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}')
+    job_oid_re = (f'job[|]{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}')
     oid.register_oid_schema(object_type="job",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

@@ -80,10 +80,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site del {site}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-site del [--no-trash] {site}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete site.'),
+                                    '--no-trash'            : _('Delete the site and everything in it without moving anything to the trash.'),
                                 },
                 },
 

@@ -321,7 +321,12 @@ class DefaultrolesPolicy(Policy):
     @backend.transaction
     @audit_log()
     @object_changelog("add role {role_name}")
-    def add_role(self, role_name, force=False, run_policies=True,
+    def add_role(
+        self,
+        role_name: str,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default role. """
         # Get role by name.
@@ -342,10 +347,11 @@ class DefaultrolesPolicy(Policy):
             msg = _("Role already added to this policy.")
             return callback.error(msg)
 
-        if not role.verify_acl("add:token"):
-            msg = _("Permission denied: {role}")
-            msg = msg.format(role=role.name)
-            return callback.error(msg)
+        if verify_acls:
+            if not role.verify_acl("add:token"):
+                msg = _("Permission denied: {role}")
+                msg = msg.format(role=role.name)
+                return callback.error(msg)
 
         msg = _("Add default role '{role_name}' to policy '{policy_name}'?: ")
         msg = msg.format(role_name=role_name, policy_name=self.name)

@@ -103,8 +103,12 @@ Move policy to a different unit.
 **show_config *policy* \[*parameter*\]**  
 Show all policy configuration parameters.
 
-**config \[**-d**\] *policy* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**get_config *policy* *parameter***  
+Show the value of a single configuration parameter.
+
+**config \[**-d**\] \[**-a**\] *policy* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **description *policy* \[*description*\]**  
 Set policy description.
@@ -126,8 +130,9 @@ Add a policy to this policy.
 **remove_policy *policy* *child_policy***  
 Remove a policy from this policy.
 
-**list_policies *policy***  
-List policies assigned to this policy.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *policy***  
+List policies assigned to this policy. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -145,6 +150,22 @@ Enable ACL inheritance from parent objects.
 
 **disable_acl_inheritance *policy***  
 Disable ACL inheritance.
+
+## Object Changelog
+
+**changelog *policy***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *policy* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *policy* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *policy***  
+Clear the object's entire changelog.
 
 ## Import/Export
 

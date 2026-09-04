@@ -248,6 +248,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -672,9 +673,16 @@ def register_oid():
     read_oid_schema = None
     # OID regex stuff.
     site_path_re = oid.object_regex['site']['path']
+    realm_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
     unit_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     unit_path_re = f'{site_path_re}([/]{unit_name_re}){{1,}}'
-    unit_oid_re = f'unit|{unit_path_re}'
+    # An OID is not a path, see accessgroup.py: no leading slash. We
+    # have no read schema, so there is one form -- realm, site and the
+    # rel_path, which is one or more unit names.
+    #unit_oid_re = f'unit|{unit_path_re}'
+    unit_oid_re = (f'unit[|]{realm_name_re}[/]{site_name_re}'
+                f'([/]{unit_name_re}){{1,}}')
     oid.register_oid_schema(object_type="unit",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

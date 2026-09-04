@@ -32,6 +32,13 @@ from otpme.lib.exceptions import *
 
 # Seconds we give a worker to go down before we get harder about it.
 WORKER_STOP_TIMEOUT = 5
+# Seconds we give the thread that restarts dead workers to notice that
+# we are going down, see stop_workers().
+WATCH_THREAD_STOP_TIMEOUT = 5
+# Passes stop_workers() makes over the worker list. More than one
+# because the watch thread may still put a worker into it while we are
+# on our way out, see there.
+WORKER_STOP_PASSES = 2
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
 REGISTER_AFTER = []
@@ -49,6 +56,7 @@ class LdapDaemon(OTPmeDaemon):
         self.worker_procs = []
         self.worker_sockets = []
         self.workers_shutdown = False
+        self.watch_thread = None
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
@@ -276,7 +284,10 @@ class LdapDaemon(OTPmeDaemon):
             # does not need them either.
             self.worker_sockets.append(self.create_worker_sockets())
             self.worker_procs.append(self.start_worker(x_id, ssl_context))
-        multiprocessing.start_thread(name=f"{self.name}-workers",
+        # Kept because stop_workers() waits for it: a worker it adds
+        # after we took our list of processes is one nobody stops.
+        self.watch_thread = multiprocessing.start_thread(
+                                    name=f"{self.name}-workers",
                                     target=self.watch_workers,
                                     target_args=(ssl_context,),
                                     daemon=True)
@@ -306,6 +317,16 @@ class LdapDaemon(OTPmeDaemon):
                 if x_proc.is_alive():
                     continue
                 x_proc.join()
+                # Asked again after the join, because that is where we
+                # spend our time: stop_workers() may have started while
+                # we waited, and a worker we add after it went over the
+                # list is one that nobody stops. It would keep its share
+                # of the LDAP port after we are gone -- the listen
+                # sockets carry SO_REUSEPORT, so a stale worker does not
+                # even keep the next ldapd from starting, it just
+                # answers next to it.
+                if self.workers_shutdown:
+                    break
                 log_msg = _("ldapd worker {idx} died, starting a new one.", log=True)[1]
                 log_msg = log_msg.format(idx=x_id)
                 self.logger.warning(log_msg)
@@ -359,28 +380,53 @@ class LdapDaemon(OTPmeDaemon):
         if self.workers_shutdown:
             return
         self.workers_shutdown = True
-        for x_proc in self.worker_procs:
+        # Let the watch thread see the flag before we go over the list.
+        # It restarts workers that died, and one it starts after we are
+        # through the list stays behind -- with a share of the LDAP
+        # port, because the listen sockets carry SO_REUSEPORT.
+        if self.watch_thread is not None:
             try:
-                x_proc.terminate()
+                self.watch_thread.join(timeout=WATCH_THREAD_STOP_TIMEOUT)
             except Exception:
                 pass
+        # And more than one pass over the list, for the case the join
+        # above ran into its timeout: the thread may be somewhere we
+        # cannot see, and still add a worker while we work.
+        for _stop_pass in range(WORKER_STOP_PASSES):
+            workers = [x for x in self.worker_procs if x.is_alive()]
+            if not workers:
+                break
+            for x_proc in workers:
+                try:
+                    x_proc.terminate()
+                except Exception:
+                    pass
+            for x_proc in workers:
+                try:
+                    x_proc.join(timeout=WORKER_STOP_TIMEOUT)
+                except Exception:
+                    pass
+                if not x_proc.is_alive():
+                    continue
+                # Whoever stops us waits for our whole process tree, so a
+                # worker we leave behind holds up the shutdown of the node.
+                log_msg = _("ldapd worker {pid} ignored SIGTERM, killing it.", log=True)[1]
+                log_msg = log_msg.format(pid=x_proc.pid)
+                self.logger.warning(log_msg)
+                try:
+                    x_proc.kill()
+                    x_proc.join(timeout=WORKER_STOP_TIMEOUT)
+                except Exception:
+                    pass
+        # Say it instead of leaving it to whoever finds the process
+        # weeks later: one that outlives us still answers LDAP requests,
+        # with whatever it had in memory when we started it.
         for x_proc in self.worker_procs:
-            try:
-                x_proc.join(timeout=WORKER_STOP_TIMEOUT)
-            except Exception:
-                pass
             if not x_proc.is_alive():
                 continue
-            # Whoever stops us waits for our whole process tree, so a
-            # worker we leave behind holds up the shutdown of the node.
-            log_msg = _("ldapd worker {pid} ignored SIGTERM, killing it.", log=True)[1]
+            log_msg = _("ldapd worker {pid} survived our shutdown.", log=True)[1]
             log_msg = log_msg.format(pid=x_proc.pid)
-            self.logger.warning(log_msg)
-            try:
-                x_proc.kill()
-                x_proc.join(timeout=WORKER_STOP_TIMEOUT)
-            except Exception:
-                pass
+            self.logger.critical(log_msg)
 
     def reload_workers(self):
         """ Tell the workers to drop their caches. """

@@ -18,14 +18,14 @@ source. The objects it imports are created without ACL checks, in the unit named
 .SH COMMANDS
 .SS Resolver Management
 .TP
-.B add \fIresolver\fR
-Create a new resolver. Requires \fB\-\-type\fR before the command.
+.B add \fR[\fB\-\-template\fR \fITEMPLATE\fR] \fIresolver\fR
+Create a new resolver. Requires \fB\-\-type\fR before the command. \fB\-\-template\fR (LDAP only) copies its settings from the named resolver template.
 .TP
 .B del \fIresolver\fR
 Delete a resolver.
 .TP
-.B show \fR[\fIresolver\fR]
-Display resolver information. Without arguments, shows all resolvers.
+.B show \fR[\fB\-a\fR] \fR[\fIresolver\fR]
+Display resolver information. Use \fB\-a\fR to show all resolvers.
 .TP
 .B list \fR[\fIregex\fR]
 List resolvers, optionally filtered by regex pattern.
@@ -102,6 +102,9 @@ Add an LDAP attribute mapping for an object type. Maps a source LDAP attribute t
 .TP
 .B del_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIattribute\fR
 Remove an LDAP attribute mapping.
+.TP
+.B ca_data \fIresolver\fR \fR[\fIca_cert_file\fR]
+Set the CA certificate(s) used to verify the LDAP server's TLS certificate. Pass a PEM file whose contents are stored on the resolver and shipped to every node that runs it. Call with an empty file argument to clear.
 .SS Policy Management
 .TP
 .B add_policy \fIresolver\fR \fIpolicy\fR
@@ -110,8 +113,8 @@ Attach a policy to the resolver.
 .B remove_policy \fIresolver\fR \fIpolicy\fR
 Remove a policy from the resolver.
 .TP
-.B list_policies \fIresolver\fR
-List policies attached to the resolver.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIresolver\fR
+List policies attached to the resolver. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS ACL Management
 .TP
 .B add_acl \fIresolver\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -130,8 +133,8 @@ Enable ACL inheritance from parent objects.
 Disable ACL inheritance.
 .SS Configuration and Attributes
 .TP
-.B config \fR[\fB\-d\fR] \fIresolver\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIresolver\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B description \fIresolver\fR \fR[\fIdescription\fR]
 Set resolver description.
@@ -142,6 +145,19 @@ opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIresolver\fR
 Dump the info text to stdout.
+.SS Object Changelog
+.TP
+.B changelog \fIresolver\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIresolver\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIresolver\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIresolver\fR
+Clear the object's entire changelog.
 .SS Import/Export
 .TP
 .B export \fIresolver\fR

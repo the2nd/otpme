@@ -360,29 +360,35 @@ class OTPmeDaemon(object):
                 # Default: dual-stack wildcard via IPv6.
                 c_listen_sockets = [f"[::]:{listen_port}"]
 
+        # Cert, key and CA data no longer ask for a restart. The listen
+        # sockets build a new SSL context between two connections, so
+        # the new material reaches the next client without anybody being
+        # dropped, see ListenSocket.check_ssl_reload().
+        ssl_data_changed = False
+
         if self.cert:
             if self.cert != config.host_data['cert']:
                 log_msg = _("Certificate changed.", log=True)[1]
                 self.logger.info(log_msg)
-                restart = True
-        else:
-            self.cert = config.host_data['cert']
+                ssl_data_changed = True
+        self.cert = config.host_data['cert']
 
         if self.key:
             if self.key != config.host_data['key']:
                 log_msg = _("Private key changed.", log=True)[1]
                 self.logger.info(log_msg)
-                restart = True
-        else:
-            self.key = config.host_data['key']
+                ssl_data_changed = True
+        self.key = config.host_data['key']
 
         if self.ca_data:
             if self.ca_data != config.host_data['ca_data']:
                 log_msg = _("CA certificate chain or CRLs changed.", log=True)[1]
                 self.logger.info(log_msg)
-                restart = True
-        else:
-            self.ca_data = config.host_data['ca_data']
+                ssl_data_changed = True
+        self.ca_data = config.host_data['ca_data']
+
+        if ssl_data_changed:
+            self.reload_ssl()
 
         if config.host_data['type'] == "node":
             result = backend.search(object_type="site",
@@ -595,6 +601,26 @@ class OTPmeDaemon(object):
         self.sockets[new_socket] = socket_data
         # Return new socket.
         return new_socket
+
+    def reload_ssl(self):
+        """ Let our listen sockets pick up new cert, key and CA data.
+
+        We do no accepting ourselves, so this only marks the material as
+        changed. The listen process and, where there is a worker pool,
+        every worker builds its own context from it between two
+        connections.
+        """
+        for sock in self.sockets:
+            try:
+                sock.reload_ssl()
+            except Exception as e:
+                log_msg = _("Failed to reload SSL data of socket '{socket}': {error}", log=True)[1]
+                log_msg = log_msg.format(socket=sock.socket_uri, error=e)
+                self.logger.critical(log_msg, exc_info=True)
+                continue
+            log_msg = _("Reloading SSL data of socket: {socket}", log=True)[1]
+            log_msg = log_msg.format(socket=sock.socket_uri)
+            self.logger.info(log_msg)
 
     def close_sockets(self):
         """ Close listen sockets. """

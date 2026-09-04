@@ -292,3 +292,5 @@ class LockWaitAbortObjectDeleted(LockWaitAbort):
 class SmartcardAuthFailed(AuthFailed):
     pass
 
+class SOTPSigningRequired(AuthFailed):
+    pass

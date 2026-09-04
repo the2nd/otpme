@@ -143,6 +143,16 @@ class ListenSocket(object):
         self.ca_data_file = None
         self.listen_process = None
         self._shutdown = None
+        # The context we wrap accepted connections with. Not the
+        # listening socket: that one is wrapped once and for all, and
+        # its context could never be exchanged again -- which is what a
+        # cert reload has to do.
+        self.ssl_context = None
+        # Shared string that says which generation of the SSL material
+        # is current, and the one we built our context from. Every
+        # process that accepts compares the two, see check_ssl_reload().
+        self._ssl_token = None
+        self._ssl_token_seen = None
         self.conn_handling = conn_handling
         self.worker_count = worker_count
         # Upper bound the pool may grow to while every worker is busy.
@@ -338,6 +348,19 @@ class ListenSocket(object):
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
+        # Built before we fork, so the listen process and every worker
+        # below it share this one and see a reload we ask for later.
+        if self.use_ssl:
+            try:
+                token_name = f"{self.name}-ssl-{stuff.gen_secret(32)}"
+                self._ssl_token = multiprocessing.get_shm_string(token_name,
+                                                        size=128,
+                                                        value=stuff.gen_secret(32))
+                self._ssl_token_seen = self._ssl_token.value
+            except Exception as e:
+                log_msg = _("Failed to get shared string for SSL reload: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
         # Create queue to get init done info from self._listen()
         init_done = multiprocessing.MessageQueue("listensocket-initq")
         # Start listenting in new process.
@@ -406,94 +429,7 @@ class ListenSocket(object):
         try:
             # Setup SSL wrapper for socket.
             if self.use_ssl:
-                from otpme.lib.pki.cert import SSLCert
-                # Encrypt cert private key with password.
-                passphrase = stuff.gen_secret(len=32)
-                passphrase = passphrase.encode("ascii")
-                _cert = SSLCert(key=self.ssl_key)
-                ssl_key = _cert.encrypt_key(passphrase=passphrase)
-                # Temp file paths.
-                self.cert_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-cert.pem")
-                self.key_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-key.pem")
-                self.ca_data_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-ca_data.pem")
-
-                # Build dict with all temp files to create.
-                tmp_files = {}
-                tmp_files[self.cert_file] = self.ssl_cert
-                tmp_files[self.key_file] = ssl_key
-                tmp_files[self.ca_data_file] = self.ssl_ca_data
-
-                # Create all needed temp files.
-                for tmp_file in tmp_files:
-                    file_content = tmp_files[tmp_file]
-                    # try to create file
-                    if os.path.exists(tmp_file):
-                        log_msg = _("Cert file '{file}' exists, removing.", log=True)[1]
-                        log_msg = log_msg.format(file=tmp_file)
-                        self.logger.warning(log_msg)
-                    # Create file.
-                    fd = open(tmp_file, "w")
-                    # Set permissions.
-                    filetools.set_fs_permissions(path=tmp_file,
-                                                mode=0o600,
-                                                recursive=False)
-                    # Set ownership.
-                    filetools.set_fs_ownership(path=tmp_file,
-                                                user=self.user,
-                                                group=self.group,
-                                                recursive=False)
-                    # Write file content.
-                    file_content = str(file_content)
-                    fd.write(file_content)
-                    fd.close()
-
-                # Check if we need to verify client certficates.
-                if self.ssl_verify_client:
-                    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                    # FIXME: Is this all we need to enable PFS with python 2.7??
-                    # Enable PFS.
-                    # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
-                    #ctx.set_ecdh_curve('prime256v1')
-                    ctx.set_ecdh_curve('secp384r1')
-                    ctx.load_cert_chain(certfile=self.cert_file,
-                                        keyfile=self.key_file,
-                                        password=passphrase)
-                    ctx.load_verify_locations(cafile=self.ca_data_file,
-                                            capath=None, cadata=None)
-                    ctx.verify_mode = ssl.CERT_REQUIRED
-                    ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
-                    self._socket = ctx.wrap_socket(self._socket,
-                                            server_side=True,
-                                            do_handshake_on_connect=False,
-                                            suppress_ragged_eofs=True,
-                                            server_hostname=None)
-                else:
-                    #ctx = ssl.create_default_context()
-                    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                    # FIXME: Is this all we need to enable PFS with python 2.7??
-                    # Enable PFS.
-                    # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
-                    #ctx.set_ecdh_curve('prime256v1')
-                    ctx.set_ecdh_curve('secp384r1')
-                    ctx.check_hostname = False
-                    ctx.load_cert_chain(certfile=self.cert_file,
-                                        keyfile=self.key_file,
-                                        password=passphrase)
-                    ctx.load_verify_locations(cafile=self.ca_data_file,
-                                            capath=None, cadata=None)
-                    # We need cert optional because on host/node leave we need the host.
-                    ctx.verify_mode = ssl.CERT_OPTIONAL
-                    # Override default verify_flags (which include
-                    # VERIFY_X509_STRICT since Python 3.10) — STRICT trips
-                    # over real-world CA quirks and triggers a
-                    # certificate_unknown alert before we can inspect the
-                    # client cert. Match the REQUIRED branch.
-                    ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
-                    self._socket = ctx.wrap_socket(self._socket,
-                                            server_side=True,
-                                            do_handshake_on_connect=False,
-                                            suppress_ragged_eofs=True,
-                                            server_hostname=None)
+                self.ssl_context = self.build_ssl_context()
             # Start listening on socket. The backlog is the queue of
             # connections the kernel finished on its own and nobody has
             # accepted yet. It is what carries a login storm while all
@@ -505,10 +441,9 @@ class ListenSocket(object):
             # path ldapd, freeradius and the web portal take to authd.
             self._socket.listen(config.socket_backlog)
 
-            # Using SSLContext.wrap_socket() with newer python versions it's
-            # possible to remove cert/key files after socket initialization.
-            if self.use_ssl:
-                self.remove_cert_files()
+            # The temp files are gone already: build_ssl_context() takes
+            # them off disk as soon as the context has read them, and it
+            # has to, because a reload writes a new set.
 
             if self.use_ssl:
                 if self.ssl_verify_client:
@@ -761,6 +696,16 @@ class ListenSocket(object):
         new_client_socket = None
         try:
             new_connection, new_client_socket = self._socket.accept()
+            # Wrapped here and not once around the listening socket:
+            # that one could never be given another context, and a cert
+            # reload has to do exactly that. Whoever is already being
+            # served keeps the context they were accepted with.
+            if self.use_ssl:
+                new_connection = self.ssl_context.wrap_socket(new_connection,
+                                            server_side=True,
+                                            do_handshake_on_connect=False,
+                                            suppress_ragged_eofs=True,
+                                            server_hostname=None)
             # We are out of the accept queue and busy from here on. The
             # TLS handshake below is part of that: a client that stalls
             # it holds this worker just as much as one in an auth flow.
@@ -957,6 +902,10 @@ class ListenSocket(object):
                 if not self.may_serve_in_thread():
                     time.sleep(WORKER_THREAD_POLL_INTERVAL)
                     continue
+            # Between two connections, and in every worker: each of them
+            # has its own copy of us and would otherwise keep handing
+            # out the certificate it started with.
+            self.check_ssl_reload()
             new_connection, client = self._accept_connection(worker_idx=worker_idx)
             if new_connection is None:
                 # Nothing came in, or the handshake failed. Either way
@@ -1055,6 +1004,9 @@ class ListenSocket(object):
         while True:
             if self.shutdown:
                 break
+            # Between two connections, so nobody is served with a
+            # context that is swapped underneath them.
+            self.check_ssl_reload()
             new_connection, client = self._accept_connection()
             if new_connection is None:
                 time.sleep(0.01)
@@ -1230,6 +1182,174 @@ class ListenSocket(object):
 
         return True
 
+    def load_ssl_material(self):
+        """ Take cert, key and CA data over from the host data.
+
+        Our material is the hosts, and the daemon handed us a copy of it
+        when it created us (OTPmeDaemon.setup_sockets()). On a reload we
+        read it again -- config.host_data is a shared dict, so it is the
+        current one in every process of ours and nothing has to travel
+        through a queue.
+        """
+        try:
+            self.ssl_cert = config.host_data['cert']
+            self.ssl_key = config.host_data['key']
+            self.ssl_ca_data = config.host_data['ca_data']
+        except Exception as e:
+            log_msg = _("Failed to read SSL data from host data: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            return False
+        return True
+
+    def build_ssl_context(self):
+        """ Build the context we wrap accepted connections with.
+
+        Runs at startup and again after a reload, in whichever process
+        does the accepting -- the listen process and, with a worker
+        pool, every one of the workers. Each of them writes its own temp
+        files, so two rebuilding at the same time cannot get in each
+        others way: the names carry a random part, and the files are
+        gone again as soon as the context has read them.
+        """
+        from otpme.lib.pki.cert import SSLCert
+        # Encrypt cert private key with password.
+        passphrase = stuff.gen_secret(len=32)
+        passphrase = passphrase.encode("ascii")
+        _cert = SSLCert(key=self.ssl_key)
+        ssl_key = _cert.encrypt_key(passphrase=passphrase)
+        # Temp file paths.
+        self.cert_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-cert.pem")
+        self.key_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-key.pem")
+        self.ca_data_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-ca_data.pem")
+
+        # Build dict with all temp files to create.
+        tmp_files = {}
+        tmp_files[self.cert_file] = self.ssl_cert
+        tmp_files[self.key_file] = ssl_key
+        tmp_files[self.ca_data_file] = self.ssl_ca_data
+
+        # Create all needed temp files.
+        for tmp_file in tmp_files:
+            file_content = tmp_files[tmp_file]
+            # try to create file
+            if os.path.exists(tmp_file):
+                log_msg = _("Cert file '{file}' exists, removing.", log=True)[1]
+                log_msg = log_msg.format(file=tmp_file)
+                self.logger.warning(log_msg)
+            # Create file.
+            fd = open(tmp_file, "w")
+            # Set permissions.
+            filetools.set_fs_permissions(path=tmp_file,
+                                        mode=0o600,
+                                        recursive=False)
+            # Set ownership.
+            filetools.set_fs_ownership(path=tmp_file,
+                                        user=self.user,
+                                        group=self.group,
+                                        recursive=False)
+            # Write file content.
+            file_content = str(file_content)
+            fd.write(file_content)
+            fd.close()
+
+        try:
+            # Check if we need to verify client certficates.
+            if self.ssl_verify_client:
+                ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                # FIXME: Is this all we need to enable PFS with python 2.7??
+                # Enable PFS.
+                # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
+                #ctx.set_ecdh_curve('prime256v1')
+                ctx.set_ecdh_curve('secp384r1')
+                ctx.load_cert_chain(certfile=self.cert_file,
+                                    keyfile=self.key_file,
+                                    password=passphrase)
+                ctx.load_verify_locations(cafile=self.ca_data_file,
+                                        capath=None, cadata=None)
+                ctx.verify_mode = ssl.CERT_REQUIRED
+                ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
+            else:
+                #ctx = ssl.create_default_context()
+                ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                # FIXME: Is this all we need to enable PFS with python 2.7??
+                # Enable PFS.
+                # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
+                #ctx.set_ecdh_curve('prime256v1')
+                ctx.set_ecdh_curve('secp384r1')
+                ctx.check_hostname = False
+                ctx.load_cert_chain(certfile=self.cert_file,
+                                    keyfile=self.key_file,
+                                    password=passphrase)
+                ctx.load_verify_locations(cafile=self.ca_data_file,
+                                        capath=None, cadata=None)
+                # We need cert optional because on host/node leave we need the host.
+                ctx.verify_mode = ssl.CERT_OPTIONAL
+                # Override default verify_flags (which include
+                # VERIFY_X509_STRICT since Python 3.10) — STRICT trips
+                # over real-world CA quirks and triggers a
+                # certificate_unknown alert before we can inspect the
+                # client cert. Match the REQUIRED branch.
+                ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
+        finally:
+            # The context has read them by now, and a private key has no
+            # business staying on disk any longer than that.
+            self.remove_cert_files()
+        return ctx
+
+    def reload_ssl(self):
+        """ Tell whoever accepts to build a new SSL context.
+
+        Called in the daemon process, which does no accepting itself, so
+        it only marks the material as changed. The processes that do
+        pick that up between two connections, see check_ssl_reload().
+        """
+        if not self.use_ssl:
+            return
+        if self._ssl_token is None:
+            return
+        self._ssl_token.value = stuff.gen_secret(32)
+
+    def check_ssl_reload(self):
+        """ Build a new SSL context if the material changed.
+
+        Called between connections, so a client that is being served
+        keeps the context it was accepted with, and every process that
+        accepts gets there on its own -- with a worker pool each of them
+        has its own copy of us and would otherwise keep handing out the
+        old certificate.
+        """
+        if not self.use_ssl:
+            return
+        if self._ssl_token is None:
+            return
+        try:
+            token = self._ssl_token.value
+        except Exception as e:
+            log_msg = _("Failed to read SSL reload token: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            return
+        if token == self._ssl_token_seen:
+            return
+        # Remembered even if the rebuild fails: retrying it on every
+        # round of the accept loop would write temp files and log the
+        # same error thousands of times. The next reload sets a new
+        # token and we try again then.
+        self._ssl_token_seen = token
+        if not self.load_ssl_material():
+            return
+        try:
+            self.ssl_context = self.build_ssl_context()
+        except Exception as e:
+            log_msg = _("Failed to reload SSL context, keeping the old one: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg, exc_info=True)
+            return
+        log_msg = _("Reloaded certificate, key and CA data: {uri}", log=True)[1]
+        log_msg = log_msg.format(uri=self.socket_uri)
+        self.logger.info(log_msg)
+
     def remove_cert_files(self):
         """ Remove temporary SSL cert/key files. """
         if self.cert_file:
@@ -1318,6 +1438,13 @@ class ListenSocket(object):
         # Close shared bool.
         if self._shutdown:
             self._shutdown.close()
+        # Close shared string.
+        if self._ssl_token:
+            try:
+                self._ssl_token.close()
+                self._ssl_token.unlink()
+            except Exception:
+                pass
 
 class Connection(object):
     """ Class to handle send/recv data. """

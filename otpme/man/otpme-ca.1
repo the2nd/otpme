@@ -43,6 +43,13 @@ Export the CA private key to stdout. Use \fB\-p\fR to encrypt with a passphrase.
 .TP
 .B dump_ca_chain \fIca\fR
 Export the CA certificate chain to stdout.
+.TP
+.B create_client_cert \fR[\fIX.509 options\fR] \fIca\fR \fIcn\fR \fIcert_out_file\fR \fIkey_out_file\fR
+Create a client certificate signed by the CA and write it to \fIcert_out_file\fR/\fIkey_out_file\fR. Used for non-OTPme hosts that need to authenticate against \fBbackupd\fR; see \fBBACKUP_CLIENT_CERT\fR in
+.BR otpme.conf (5).
+The X.509 options are the same as for
+.B add
+(\fB\-\-country\fR, \fB\-\-state\fR, \fB\-\-locality\fR, \fB\-\-organization\fR, \fB\-\-ou\fR, \fB\-\-email\fR, \fB\-\-valid\fR, \fB\-\-key\-len\fR).
 .SS CRL Management
 .TP
 .B crl_validity \fIca\fR \fIdays\fR
@@ -55,11 +62,14 @@ Export the certificate revocation list to stdout.
 Remove outdated certificates from the CRL.
 .SS Configuration
 .TP
-.B config \fR[\fB\-d\fR] \fIca\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIca\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fIca\fR [\fIparameter\fR]
 Show all configuration parameters.
+.TP
+.B get_config \fIca\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B description \fIca\fR \fR[\fIdescription\fR]
 Set CA description.
@@ -70,6 +80,19 @@ opened in the editor specified by the \fBEDITOR\fR environment variable.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIca\fR
 Dump the info text to stdout.
+.SS Object Changelog
+.TP
+.B changelog \fIca\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIca\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIca\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIca\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fIca\fR \fIpolicy\fR
@@ -78,8 +101,9 @@ Attach a policy to the CA.
 .B remove_policy \fIca\fR \fIpolicy\fR
 Remove a policy from the CA.
 .TP
-.B list_policies \fR[\fIca\fR]
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fR[\fIca\fR]
 List policies attached to the CA.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to limit the listing to the given policy types.
 .SS ACL Management
 .TP
 .B add_acl \fIca\fR \fIowner_type\fR \fIowner\fR \fIacl\fR

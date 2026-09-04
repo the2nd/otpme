@@ -71,8 +71,10 @@ Add a token to the group.
 **remove_token \[**--keep-sign**\] *group* *token_path***  
 Remove a token from the group.
 
-**list_tokens *group***  
-List tokens assigned to the group.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *group***  
+List tokens assigned to the group. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--token-types** to limit the listing to the given token types.
 
 **add_role *group* *role***  
 Add a role to the group.
@@ -80,16 +82,20 @@ Add a role to the group.
 **remove_role *group* *role***  
 Remove a role from the group.
 
-**list_roles *group***  
-List roles assigned to the group.
+**list_roles \[**--return-type** *TYPE*\] *group***  
+List roles assigned to the group. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## User Management
 
-**list_users *group***  
-List users in the group.
+**list_users \[**--return-type** *TYPE*\] *group***  
+List users in the group. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_default_group_users *group***  
-List users that have this group as their default group.
+**list_default_group_users \[**--return-type** *TYPE*\] *group***  
+List users that have this group as their default group. Use
+**--return-type** to select the attribute returned (**name**,
+**read_oid**, **full_oid**, **uuid**).
 
 ## Host Management
 
@@ -118,8 +124,9 @@ permissions.
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
-**list_hosts *group***  
-List hosts in the group.
+**list_hosts \[**--return-type** *TYPE*\] *group***  
+List hosts in the group. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Sync User Management
 
@@ -129,8 +136,25 @@ Add a sync user to the group.
 **remove_sync_user *group* *user***  
 Remove a sync user from the group.
 
-**list_sync_users *group***  
-List sync users in the group.
+**list_sync_users \[**--return-type** *TYPE*\] *group***  
+List sync users in the group. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+
+## Object Changelog
+
+**changelog *group***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *group* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *group* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *group***  
+Clear the object's entire changelog.
 
 ## Policy Management
 
@@ -140,8 +164,10 @@ Attach a policy to the group.
 **remove_policy *group* *policy***  
 Remove a policy from the group.
 
-**list_policies *group***  
-List policies attached to the group.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *group***  
+List policies attached to the group. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to limit the listing to the given policy types.
 
 ## ACL Management
 
@@ -162,11 +188,15 @@ Disable ACL inheritance.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *group* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *group* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *group* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *group* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *group* \[*description*\]**  
 Set group description.
@@ -226,6 +256,9 @@ Limit number of roles shown.
 
 **--token-limit *N***  
 Limit number of tokens shown.
+
+**--host-limit *N***  
+Limit number of hosts shown.
 
 **--policy-limit *N***  
 Limit number of policies shown.

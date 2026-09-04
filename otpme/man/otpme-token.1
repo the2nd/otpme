@@ -46,9 +46,6 @@ Mobile OTP (mOTP).
 .B otp_push
 Push notification-based OTP.
 .TP
-.B script_otp
-OTP generation via external script.
-.TP
 .B link
 Link to another user's token.
 .SH COMMANDS
@@ -127,11 +124,14 @@ Move token to another user. Use \fB\-r\fR to replace existing token keeping its 
 Re-index the object to fix potential index problems.
 .SS Token Configuration
 .TP
-.B config \fR[\fB\-d\fR] \fItoken\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fItoken\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
 .B show_config \fItoken\fR [\fIparameter\fR]
 Show all configuration parameters.
+.TP
+.B get_config \fItoken\fR \fIparameter\fR
+Show the value of a single configuration parameter.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fItoken\fR \fItime\fR
 Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable if unused for the given time.
@@ -212,8 +212,16 @@ Hardware tokens must be deployed before use. Deployment configures the physical 
 List deployable token types.
 .SS Deploy \- FIDO2 and U2F
 .TP
-.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] \fItoken\fR
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-\-no\-pin\fR] [\fB\-\-uv\fR \fIuv\fR] \fItoken\fR
 Register a FIDO2 or U2F hardware key. The device must be connected and will prompt for a touch.
+.TP
+.B \-\-no\-pin
+Do not set a PIN on the FIDO2 authenticator during deploy.
+.TP
+.B \-\-uv \fIuv\fR
+Set the FIDO2 user verification requirement (\fBdiscouraged\fR, \fBpreferred\fR, \fBrequired\fR). See also the
+.B uv
+command below.
 .TP
 .B \-r
 Replace existing token (keep UUID).
@@ -270,11 +278,17 @@ Replace existing token (keep UUID).
 Enable debug output.
 .SS Deploy \- YubiKey PIV Applet
 .TP
-.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-key\-len\fR \fIbits\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fB\-\-restore\-from\-server\fR] [\fB\-\-backup\-key\-file\fR \fIfile\fR] [\fB\-\-add\-user\-key\fR] [\fItoken\fR]
-Initialize the PIV applet on a YubiKey and generate an RSA key. Default backup path: \fI/dev/shm/<username>_<token>.pem\fR.
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-key\-len\fR \fIbits\fR] [\fB\-\-sign\-algo\fR \fIalgo\fR] [\fB\-\-encrypt\-algo\fR \fIalgo\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fB\-\-restore\-from\-server\fR] [\fB\-\-backup\-key\-file\fR \fIfile\fR] [\fB\-\-add\-user\-key\fR] [\fItoken\fR]
+Initialize the PIV applet on a YubiKey and generate the sign and encrypt keys. Default backup path: \fI/dev/shm/<username>_<token>.pem\fR.
 .TP
 .B \-\-key\-len \fIbits\fR
-Generate RSA key with the given key length in bits.
+Generate RSA key with the given key length in bits (only when the chosen algo is RSA).
+.TP
+.B \-\-sign\-algo \fIalgo\fR
+Algorithm for the sign slot 9A: \fBrsa\fR (default) or \fBed25519\fR (needs YubiKey FW 5.7+).
+.TP
+.B \-\-encrypt\-algo \fIalgo\fR
+Algorithm for the encrypt slot 9D: \fBrsa\fR (default) or \fBx25519\fR (needs YubiKey FW 5.7+).
 .TP
 .B \-\-backup \fIfile\fR
 Write key backup to \fIfile\fR.
@@ -311,20 +325,42 @@ Remove a dynamic group from the token.
 List dynamic groups of the token.
 .SS Listing
 .TP
-.B list_roles \fR[\fB\-r\fR] \fItoken\fR
-List roles assigned to the token. Use \fB\-r\fR for recursive listing.
+.B list_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-r\fR] \fItoken\fR
+List roles assigned to the token. Use \fB\-r\fR for recursive listing. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
-.B list_hosts \fItoken\fR
-List hosts this token is assigned to.
+.B list_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+List hosts this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
-.B list_nodes \fItoken\fR
-List nodes this token is assigned to.
+.B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+List nodes this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
-.B list_groups \fItoken\fR
-List groups this token is assigned to.
+.B list_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+List groups this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
-.B list_accessgroups \fItoken\fR
-List access groups this token is assigned to.
+.B list_accessgroups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+List access groups this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.TP
+.B list_acls \fItoken\fR
+Show ACLs assigned to the token.
+.TP
+.B list_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+List OIDC scopes the token is assigned to.
+.TP
+.B list_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+List shares the token has access to.
+.SS Object Changelog
+.TP
+.B changelog \fItoken\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fItoken\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fItoken\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fItoken\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fItoken\fR \fIpolicy\fR
@@ -333,8 +369,8 @@ Attach a policy to the token.
 .B remove_policy \fItoken\fR \fIpolicy\fR
 Remove a policy from the token.
 .TP
-.B list_policies \fItoken\fR
-List policies attached to the token.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fItoken\fR
+List policies attached to the token. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
 .SS ACL Management
 .TP
 .B add_acl \fItoken\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -441,6 +477,15 @@ Remove NT hash used for MSCHAP authentication.
 .TP
 .B upgrade_pass_hash \fItoken\fR \fR[\fIhash_type\fR] \fR[\fIargs\fR]
 Upgrade password hash.
+.TP
+.B gen_mschap \fItoken\fR
+Generate an MSCHAP challenge/response pair from the token's second-factor token.
+.TP
+.B enable_sso_deploy \fItoken\fR \fR[\fIdeploy_token_type\fR]
+Enable first-login deployment of the token via the SSO portal. Optional \fIdeploy_token_type\fR pre-selects the token type to deploy.
+.TP
+.B disable_sso_deploy \fItoken\fR
+Disable SSO first-login deployment for the token.
 .SS SSH Token
 .TP
 .B ssh_public_key \fItoken\fR \fR[\fIssh_public_key\fR]
@@ -460,6 +505,9 @@ Change second factor token.
 .TP
 .B enable_2f / disable_2f \fItoken\fR
 Enable/disable second factor token.
+.TP
+.B get_sign_data \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
+Get the object data that has to be signed (used by external signing helpers).
 .PP
 SSH tokens also support signature commands: \fBsign\fR, \fBresign\fR, \fBverify_sign\fR, \fBget_sign\fR, \fBadd_sign\fR, \fBdel_sign\fR.
 .SS Link Token
@@ -479,6 +527,76 @@ Change OTP timedrift tolerance.
 .TP
 .B mode \fItoken\fR \fImode\fR
 Change token operation mode.
+.TP
+.B secret \fItoken\fR \fR[\fIsecret\fR]
+Change the token secret.
+.TP
+.B show_secret \fItoken\fR
+Show the token secret.
+.TP
+.B gen \fItoken\fR
+Generate a token OTP.
+.TP
+.B gen_mschap \fItoken\fR
+Generate an MSCHAP challenge/response pair from a token OTP.
+.TP
+.B enable_mschap \fItoken\fR / \fBdisable_mschap \fItoken\fR
+Enable / disable MSCHAP authentication.
+.TP
+.B remove_nt_hash \fItoken\fR
+Remove the NT hash used for MSCHAP authentication.
+.SS OTP Push Token
+.TP
+.B password \fR[\fB\-\-generate\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
+Change the token password (used for the push confirmation channel).
+.TP
+.B enable_mschap \fItoken\fR / \fBdisable_mschap \fItoken\fR
+Enable / disable MSCHAP authentication.
+.TP
+.B remove_nt_hash \fItoken\fR
+Remove the NT hash used for MSCHAP authentication.
+.SS FIDO2
+.TP
+.B uv \fItoken\fR \fIuv\fR
+Set the FIDO2 user verification requirement (\fBdiscouraged\fR, \fBpreferred\fR, \fBrequired\fR).
+.SS YubiKey PIV
+.TP
+.B sign_public_key \fItoken\fR \fR[\fIpublic_key\fR]
+Set the PIV token's sign public key.
+.TP
+.B encrypt_public_key \fItoken\fR \fR[\fIpublic_key\fR]
+Set the PIV token's encrypt public key.
+.TP
+.B dump_sign_key \fItoken\fR
+Dump the PIV token's sign public key (or backup pointer) to stdout.
+.TP
+.B dump_encrypt_key \fItoken\fR
+Dump the PIV token's encrypt public key (or backup pointer) to stdout.
+.TP
+.B dump_private_key_backup \fItoken\fR
+Dump the encrypted private-key backup for the PIV token to stdout (for later
+.BR "otpme-token deploy --restore" ).
+.TP
+.B sign \fR[\fIoptions\fR] \fItoken\fR
+Sign an object with the PIV token.
+.TP
+.B resign \fR[\fIoptions\fR] \fItoken\fR
+Re-sign an existing signature with the PIV token.
+.TP
+.B verify_sign \fR[\fIoptions\fR] \fItoken\fR
+Verify a signature made by the PIV token.
+.TP
+.B get_sign \fItoken\fR
+Show a signature stored on the PIV token.
+.TP
+.B get_sign_data \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fItoken\fR
+Get the object data that needs to be signed by the PIV token.
+.TP
+.B add_sign \fItoken\fR \fIsignature\fR
+Attach an externally created signature to the PIV token.
+.TP
+.B del_sign \fItoken\fR \fIsignature\fR
+Remove a signature from the PIV token.
 .SH OPTIONS
 .TP
 .B \-\-type \fITYPE\fR

@@ -524,8 +524,8 @@ class OTPmeClient(OTPmeClientBase):
         try:
             self.peer_fqdn = self.peer_cn
             self.peer_name = self.peer_fqdn.split(".")[0]
-            self.peer_site = self.peer_fqdn.split(".")[1]
-            self.peer_realm = ".".join(self.peer_fqdn.split(".")[2:])
+            self.peer_site = ".".join(reversed(self.peer_fqdn.split(".")[1:-2]))
+            self.peer_realm = ".".join(self.peer_fqdn.split(".")[-2:])
         except Exception:
             msg, log_msg = _("Got invalid client cert CN from client: {cn}", log=True)
             msg = msg.format(cn=self.peer_cn)
@@ -3077,7 +3077,7 @@ class OTPmeClient1(OTPmeClientBase):
         else:
             if self.sotp_signing and not self.sotp_sign_method:
                 msg = _("SOTP signing required.")
-                raise OTPmeException(msg)
+                raise SOTPSigningRequired(msg)
 
         # Verify site signature.
         if self.verify_preauth:

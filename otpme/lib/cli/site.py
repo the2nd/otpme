@@ -39,6 +39,7 @@ REGISTER_AFTER = ["otpme.lib.filetools"]
 def register():
     return_attributes = [
                         'name',
+                        'sub',
                         'auth_fqdn',
                         'mgmt_fqdn',
                         'sso_fqdn',
@@ -86,6 +87,11 @@ def row_getter(realm, site, site_order, site_data, acls,
     for site_uuid in site_order:
         row = []
         site_name = site_data[site_uuid]['name']
+        site_address = site_data[site_uuid]['address'][0]
+        try:
+            sub = site_data[site_uuid]['sub'][0]
+        except KeyError:
+            sub = False
         try:
             site_auth_fqdn = site_data[site_uuid]['auth_fqdn'][0]
         except KeyError:
@@ -98,7 +104,6 @@ def row_getter(realm, site, site_order, site_data, acls,
             site_sso_fqdn = site_data[site_uuid]['sso_fqdn'][0]
         except KeyError:
             site_sso_fqdn = "Unknown"
-        site_address = site_data[site_uuid]['address'][0]
         try:
             enabled = site_data[site_uuid]['enabled'][0]
         except Exception:
@@ -141,7 +146,10 @@ def row_getter(realm, site, site_order, site_data, acls,
             if site_uuid == config.realm_master_uuid:
                 site_type = "Master"
             else:
-                site_type = "Slave"
+                if sub:
+                    site_type = "Sub"
+                else:
+                    site_type = "Slave"
             if not enabled:
                 site_type = f"{site_type} (D)"
             row.append(site_type)

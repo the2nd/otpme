@@ -204,6 +204,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
+                    'oargs'             : ['add_to_trash'],
                     'job_type'          : 'process',
                     },
                 },
@@ -563,9 +564,16 @@ def register_oid():
     read_oid_schema = [ 'realm', 'site', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
+    realm_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    unit_name_re = oid.object_regex['unit']['name']
     resolver_name_re = '([0-9a-z]([0-9a-z_.-]*[0-9a-z]){0,})'
     resolver_path_re = f'{unit_path_re}[/]{resolver_name_re}'
-    resolver_oid_re = f'resolver|{resolver_path_re}'
+    # An OID is not a path, see accessgroup.py: no leading slash, and
+    # the unit part is optional because the read OID has none.
+    #resolver_oid_re = f'resolver|{resolver_path_re}'
+    resolver_oid_re = (f'resolver[|]{realm_name_re}[/]{site_name_re}'
+                    f'([/]{unit_name_re})*[/]{resolver_name_re}')
     oid.register_oid_schema(object_type="resolver",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
@@ -2111,6 +2119,7 @@ class Resolver(OTPmeObject):
         force: bool=False,
         run_policies: bool=True,
         verify_acls: bool=True,
+        add_to_trash: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2184,7 +2193,9 @@ class Resolver(OTPmeObject):
 
         # Delete object using parent class.
         del_status = OTPmeObject.delete(self, verbose_level=verbose_level,
-                                        force=force, callback=callback)
+                                        force=force,
+                                        add_to_trash=add_to_trash,
+                                        callback=callback)
 
         if del_status is False or delete_status is False:
             del_lock.release_lock()

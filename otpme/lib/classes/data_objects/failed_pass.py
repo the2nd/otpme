@@ -36,8 +36,16 @@ def register_oid():
     read_oid_schema = None
     # OID regex stuff.
     realm_name_re = oid.object_regex['realm']['name']
-    site_name_re = oid.object_regex['realm']['name']
-    failed_pass_oid_re = f'failed_pass|{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}[:{oid.uuid_re}[/][a-f0-9]*'
+    # The realm regex was used for the site here, which is a different
+    # shape (a realm name has a dot, a site name need not).
+    #site_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    # Separator escaped, see accessgroup.py. The two uuids are separated
+    # by a slash like every other field, not by ":" -- and that "[:" was
+    # an unclosed character class on top of it.
+    #failed_pass_oid_re = f'failed_pass|{realm_name_re}[/]{site_name_re}[/]{oid.uuid_re}[:{oid.uuid_re}[/][a-f0-9]*'
+    failed_pass_oid_re = (f'failed_pass[|]{realm_name_re}[/]{site_name_re}'
+                        f'[/]{oid.uuid_re}[/]{oid.uuid_re}[/][a-f0-9]+')
     oid.register_oid_schema(object_type="failed_pass",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

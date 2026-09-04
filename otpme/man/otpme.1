@@ -46,6 +46,15 @@ Read passphrase from stdin.
 .TP
 .B \-\-auth\-token \fItoken\fR
 Emulate login with given token in API mode.
+.TP
+.B \-u \fIusername\fR
+User used for authentication (e.g. when joining the realm as an ordinary user rather than the local root).
+.TP
+.B \-\-impersonate\-token \fR[\fItoken\fR]
+Work as the given token. Needs admin permissions.
+.TP
+.B \-\-fetch\-scripts
+Fetch scripts from the server instead of using cached ones.
 .SS Communication Options
 .TP
 .B \-\-socket
@@ -60,6 +69,13 @@ Object type to act on (e.g. token type).
 .TP
 .B \-f
 Do not ask any user questions.
+.TP
+.B \-\-no\-pager
+Do not page command output through a pager (e.g. \fBless\fR) even when it exceeds the terminal size. See also \fBUSE_PAGER\fR in
+.BR otpme.conf (5).
+.TP
+.B \-\-changelog \fItext\fR
+Add the given text as a custom entry to the object changelog written by this command. Only meaningful for commands that change an object.
 .TP
 .B \-\-print\-raw\-sign\-data
 Print raw data to sign instead of sign info.
@@ -209,6 +225,9 @@ Print warning if function/method is called more than given count.
 .TP
 .B \-\-debug\-profile\-sort \fIcumtime|ncalls|tottime\fR
 Statistic output sorting.
+.TP
+.B \-\-debug\-profile\-print\-callers \fIfunc1,func2\fR
+Print callers of the given functions in the cProfile output.
 .SS Job Options
 .TP
 .B \-\-lock\-timeout \fIseconds\fR

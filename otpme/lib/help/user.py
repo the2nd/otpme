@@ -72,10 +72,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user del {user}'),
-                    'cmd'   :   '<|objects|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user del [--no-trash] {user}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|objects|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete user'),
+                                    '--no-trash'            : _('Delete the user and their tokens without moving anything to the trash.'),
                                 },
                 },
 

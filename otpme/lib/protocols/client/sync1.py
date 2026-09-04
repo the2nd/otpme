@@ -219,6 +219,13 @@ class OTPmeSyncP1(OTPmeClient1):
                 msg = _("Peer site disabled synchronization with us: {realm}/{site}")
                 msg = msg.format(realm=realm, site=site)
                 raise SyncDisabled(msg)
+            if status_code == status_codes.UNKNOWN_OBJECT:
+                msg, \
+                log_msg = _("Peer site does not own object: {realm}/{site}",  log=True)
+                msg = msg.format(realm=realm, site=site)
+                log_msg = log_msg.format(realm=realm, site=site)
+                self.logger.warning(log_msg)
+                raise UnknownObject(msg)
             if status:
                 return response
             try_count += 1
@@ -444,6 +451,9 @@ class OTPmeSyncP1(OTPmeClient1):
         except SyncDisabled:
             # Pass on exception to calling method.
             raise
+        except UnknownObject:
+            # Skip unknown sites.
+            return True
         except OTPmeException as e:
             log_msg = _("Error getting remote sync list: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -502,6 +512,9 @@ class OTPmeSyncP1(OTPmeClient1):
             except SyncDisabled:
                 # Pass on exception to calling method.
                 raise
+            except UnknownObject:
+                # Skip unknown sites.
+                return True
             except Exception as e:
                 log_msg = _("Error getting remote sync list: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -559,6 +572,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 except SyncDisabled:
                     # Pass on exception to calling method.
                     raise
+                except UnknownObject:
+                    # Skip unknown sites.
+                    return True
                 except Exception as e:
                     log_msg = _("Error getting remote sync list: {e}", log=True)[1]
                     log_msg = log_msg.format(e=e)
@@ -773,6 +789,9 @@ class OTPmeSyncP1(OTPmeClient1):
             except SyncDisabled:
                 # Pass on exception to calling method.
                 raise
+            except UnknownObject:
+                # Skip unknown sites.
+                return True
             except Exception as e:
                 log_msg = _("Error getting remote sync list: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -1157,13 +1176,16 @@ class OTPmeSyncP1(OTPmeClient1):
             self.mass_add_work_queue = None
             self.mass_add_result_queue = None
 
-        # Update realm CA data if the master node  received a changed CA.
+        # Update realm CA data if we received a changed CA.
         if update_realm_ca_data:
-            if config.realm_master_node:
-                log_msg = _("Updating realm CA data...", log=True)[1]
-                self.logger.info(log_msg)
-                realm = backend.get_object(uuid=config.realm_uuid)
-                realm.update_ca_data(force=True, verify_acls=False)
+            if config.host_data['type'] == "node":
+                if not config.realm_master_node:
+                    update_realm_ca_data = False
+        if update_realm_ca_data:
+            log_msg = _("Updating realm CA data...", log=True)[1]
+            self.logger.info(log_msg)
+            realm = backend.get_object(uuid=config.realm_uuid)
+            realm.update_ca_data(force=True, verify_acls=False)
 
     def _process_object_worker_loop(self, work_queue, result_queue,
         realm, site, own_realm, own_site, sync_older_objects):

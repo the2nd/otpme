@@ -65,10 +65,11 @@ cmd_help = {
                 },
 
     'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit del {unit}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit del [--no-trash] {unit}'),
+                    'cmd'   :   '--no-trash :add_to_trash=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete unit'),
+                                    '--no-trash'            : _('Delete the unit and everything in it without moving anything to the trash.'),
                                 },
                 },
 

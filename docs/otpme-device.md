@@ -47,6 +47,10 @@ Re-index the device to fix potential index problems.
 **move \[**--keep-acls**\] *device* *unit***  
 Move device to a different unit.
 
+**auto_disable \[**-u**\] *device* *time***  
+Set auto-disable value (e.g. "1d" or "09:53 13.06.2023"). Use **-u** to
+disable the object if it was unused for the given time.
+
 ## MAC Address
 
 **mac *device* *mac_address***  
@@ -81,6 +85,9 @@ Set a configuration parameter. Use **-d** to delete (reset to default),
 **show_config *device* \[*parameter*\]**  
 Show all configuration parameters.
 
+**get_config *device* *parameter***  
+Show the value of a single configuration parameter.
+
 **description *device* \[*description*\]**  
 Set device description.
 
@@ -91,6 +98,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 **dump_info \[**--language** *LANG*\] *device***  
 Dump the info text to stdout.
 
+## Object Changelog
+
+**changelog *device***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *device* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *device* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *device***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *device* *policy***  
@@ -99,8 +122,10 @@ Attach a policy to the device.
 **remove_policy *device* *policy***  
 Remove a policy from the device.
 
-**list_policies *device***  
-List policies attached to the device.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *device***  
+List policies attached to the device. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**)
+and **--policy-types** to limit the listing to the given policy types.
 
 ## ACL Management
 

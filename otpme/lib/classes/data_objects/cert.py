@@ -33,8 +33,14 @@ def register_oid():
     read_oid_schema = [ 'realm', 'fingerprint' ]
     # OID regex stuff.
     realm_name_re = oid.object_regex['realm']['name']
-    site_name_re = oid.object_regex['realm']['name']
-    cert_oid_re = f'cert|{realm_name_re}[/]{site_name_re}[/][a-z0-9]+'
+    # The realm regex was used for the site here, which is a different
+    # shape (a realm name has a dot, a site name need not).
+    #site_name_re = oid.object_regex['realm']['name']
+    site_name_re = oid.object_regex['site']['name']
+    # Separator escaped, see accessgroup.py, and the site is optional:
+    # our read OID is realm and fingerprint alone.
+    #cert_oid_re = f'cert|{realm_name_re}[/]{site_name_re}[/][a-z0-9]+'
+    cert_oid_re = f'cert[|]{realm_name_re}[/]({site_name_re}[/])?[a-z0-9]+'
     oid.register_oid_schema(object_type="cert",
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,

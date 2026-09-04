@@ -145,6 +145,22 @@ Remove a device from the VLAN.
 Set the 802.1Q VLAN ID (1-4094). Without *vlan_id* the VLAN ID is
 removed and the VLAN name is sent to the switch instead.
 
+## Object Changelog
+
+**changelog *vlan***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *vlan* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *vlan* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *vlan***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *vlan* *policy***  
@@ -153,8 +169,10 @@ Attach a policy to the VLAN.
 **remove_policy *vlan* *policy***  
 Remove a policy from the VLAN.
 
-**list_policies *vlan***  
-List policies attached to the VLAN.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *vlan***  
+List policies attached to the VLAN. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to filter by policy type.
 
 ## ACL Management
 

@@ -31,14 +31,16 @@ delegated via ACLs.
 
 ## Resolver Management
 
-**add *resolver***  
+**add \[**--template** *TEMPLATE*\] *resolver***  
 Create a new resolver. Requires **--type** before the command.
+**--template** (LDAP only) copies its settings from the named resolver
+template.
 
 **del *resolver***  
 Delete a resolver.
 
-**show \[*resolver*\]**  
-Display resolver information. Without arguments, shows all resolvers.
+**show \[**-a**\] \[*resolver*\]**  
+Display resolver information. Use **-a** to show all resolvers.
 
 **list \[*regex*\]**  
 List resolvers, optionally filtered by regex pattern.
@@ -126,6 +128,12 @@ attribute name is used.
 **del_ldap_attribute *resolver* *object_type* *attribute***  
 Remove an LDAP attribute mapping.
 
+**ca_data *resolver* \[*ca_cert_file*\]**  
+Set the CA certificate(s) used to verify the LDAP server's TLS
+certificate. Pass a PEM file whose contents are stored on the resolver
+and shipped to every node that runs it. Call with an empty file argument
+to clear.
+
 ## Policy Management
 
 **add_policy *resolver* *policy***  
@@ -134,8 +142,9 @@ Attach a policy to the resolver.
 **remove_policy *resolver* *policy***  
 Remove a policy from the resolver.
 
-**list_policies *resolver***  
-List policies attached to the resolver.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *resolver***  
+List policies attached to the resolver. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -156,8 +165,9 @@ Disable ACL inheritance.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *resolver* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *resolver* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **description *resolver* \[*description*\]**  
 Set resolver description.
@@ -168,6 +178,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 
 **dump_info \[**--language** *LANG*\] *resolver***  
 Dump the info text to stdout.
+
+## Object Changelog
+
+**changelog *resolver***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *resolver* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *resolver* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *resolver***  
+Clear the object's entire changelog.
 
 ## Import/Export
 

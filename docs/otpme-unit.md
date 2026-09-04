@@ -48,11 +48,15 @@ Re-index the object to fix potential index problems.
 
 ## Unit Configuration
 
-**config \[**-d**\] *unit* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *unit* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *unit* \[*parameter*\]**  
 Show unit config parameters.
+
+**get_config *unit* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *unit* \[*description*\]**  
 Set unit description.
@@ -64,6 +68,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 **dump_info \[**--language** *LANG*\] *unit***  
 Dump the info text to stdout.
 
+## Object Changelog
+
+**changelog *unit***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *unit* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *unit* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *unit***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *unit* *policy***  
@@ -72,8 +92,10 @@ Add policy to unit.
 **remove_policy *unit* *policy***  
 Remove policy from unit.
 
-**list_policies \[*unit*\]**  
-List assigned policies.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] \[*unit*\]**  
+List assigned policies. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to filter by policy type.
 
 ## ACL Management
 

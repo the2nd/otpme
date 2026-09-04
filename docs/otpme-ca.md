@@ -54,6 +54,14 @@ passphrase.
 **dump_ca_chain *ca***  
 Export the CA certificate chain to stdout.
 
+**create_client_cert \[*X.509* options\] *ca* *cn* *cert_out_file* *key_out_file***  
+Create a client certificate signed by the CA and write it to
+*cert_out_file*/*key_out_file*. Used for non-OTPme hosts that need to
+authenticate against **backupd**; see **BACKUP_CLIENT_CERT** in
+**otpme.conf**(5). The X.509 options are the same as for **add**
+(**--country**, **--state**, **--locality**, **--organization**,
+**--ou**, **--email**, **--valid**, **--key-len**).
+
 ## CRL Management
 
 **crl_validity *ca* *days***  
@@ -67,11 +75,15 @@ Remove outdated certificates from the CRL.
 
 ## Configuration
 
-**config \[**-d**\] *ca* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *ca* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *ca* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *ca* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *ca* \[*description*\]**  
 Set CA description.
@@ -83,6 +95,22 @@ opened in the editor specified by the **EDITOR** environment variable.
 **dump_info \[**--language** *LANG*\] *ca***  
 Dump the info text to stdout.
 
+## Object Changelog
+
+**changelog *ca***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *ca* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *ca* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *ca***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *ca* *policy***  
@@ -91,8 +119,10 @@ Attach a policy to the CA.
 **remove_policy *ca* *policy***  
 Remove a policy from the CA.
 
-**list_policies \[*ca*\]**  
-List policies attached to the CA.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] \[*ca*\]**  
+List policies attached to the CA. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to limit the listing to the given policy types.
 
 ## ACL Management
 

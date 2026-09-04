@@ -41,6 +41,14 @@ Move host to a different unit.
 **touch *host***  
 Re-index the object to fix potential index problems.
 
+**auto_disable \[**-u**\] *host* *time***  
+Set auto-disable value (e.g. "1d" or "09:53 13.06.2023"). Use **-u** to
+disable the object if it was unused for the given time.
+
+**mac *host* *mac_address***  
+Set the host's MAC address. Used for MAB port authentication (see the
+VLAN Assignment section below).
+
 ## Token and Role Assignment
 
 **add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] *host* *token_path***  
@@ -50,8 +58,10 @@ interfaces (e.g. tty, gui, ssh).
 **remove_token \[**--keep-sign**\] *host* *token_path***  
 Remove a token from the host.
 
-**list_tokens *host***  
-List tokens assigned to the host.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *host***  
+List tokens assigned to the host. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--token-types** to limit the listing to the given token types.
 
 **add_role *host* *role***  
 Add a role to the host.
@@ -91,14 +101,17 @@ role is overridden by one that names the host itself.
 
 ## User and Group Listing
 
-**list_users *host***  
-List users on the host.
+**list_users \[**--return-type** *TYPE*\] *host***  
+List users on the host. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_sync_users *host***  
-List sync users on the host.
+**list_sync_users \[**--return-type** *TYPE*\] *host***  
+List sync users on the host. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_sync_groups *host***  
-List sync groups on the host.
+**list_sync_groups \[**--return-type** *TYPE*\] *host***  
+List sync groups on the host. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 **list_dynamic_groups *host***  
 List dynamic groups of the host.
@@ -181,6 +194,22 @@ Set or display the host's public key.
 **get_ssh_authorized_keys *host* \[*user*\]**  
 Get SSH authorized keys for the host, optionally for a specific user.
 
+## Object Changelog
+
+**changelog *host***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *host* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *host* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *host***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *host* *policy***  
@@ -189,8 +218,10 @@ Attach a policy to the host.
 **remove_policy *host* *policy***  
 Remove a policy from the host.
 
-**list_policies *host***  
-List policies attached to the host.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *host***  
+List policies attached to the host. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to limit the listing to the given policy types.
 
 ## ACL Management
 
@@ -211,11 +242,15 @@ Disable ACL inheritance.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *host* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *host* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *host* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *host* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *host* \[*description*\]**  
 Set host description.

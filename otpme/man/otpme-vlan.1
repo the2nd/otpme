@@ -142,6 +142,19 @@ Remove a device from the VLAN.
 .B vlan_id \fIvlan\fR \fR[\fIvlan_id\fR]
 Set the 802.1Q VLAN ID (1-4094). Without \fIvlan_id\fR the VLAN ID is
 removed and the VLAN name is sent to the switch instead.
+.SS Object Changelog
+.TP
+.B changelog \fIvlan\fR
+Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+.TP
+.B edit_changelog \fIvlan\fR \fIchangelog_id\fR
+Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.TP
+.B del_changelog \fIvlan\fR \fIchangelog_id\fR
+Remove a single entry from the object's changelog.
+.TP
+.B clear_changelog \fIvlan\fR
+Clear the object's entire changelog.
 .SS Policy Management
 .TP
 .B add_policy \fIvlan\fR \fIpolicy\fR
@@ -150,8 +163,8 @@ Attach a policy to the VLAN.
 .B remove_policy \fIvlan\fR \fIpolicy\fR
 Remove a policy from the VLAN.
 .TP
-.B list_policies \fIvlan\fR
-List policies attached to the VLAN.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIvlan\fR
+List policies attached to the VLAN. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
 .SS ACL Management
 .TP
 .B add_acl \fIvlan\fR \fIowner_type\fR \fIowner\fR \fIacl\fR

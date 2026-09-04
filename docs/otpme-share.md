@@ -220,12 +220,16 @@ token on the share are removed.
 Add a token to the share. With SOTP signing enabled the sign public key
 of the tokens user is stored in the share.
 
-**remove_token *share* *token_path***  
+**remove_token \[**--keep-share-key**\|**--remove-share-key**\] *share* *token_path***  
 Remove a token from the share. The users sign public key is removed with
-their last token, like the share key of an encrypted share.
+their last token, like the share key of an encrypted share. On an
+encrypted share, **--keep-share-key** retains the user's share key even
+after their last token is removed; **--remove-share-key** forces removal
+immediately.
 
-**list_tokens *share***  
-List tokens assigned to the share.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *share***  
+List tokens assigned to the share. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 **add_role *share* *role***  
 Add a role to the share. Not supported by encrypted shares and by shares
@@ -237,8 +241,9 @@ Remove a role from the share.
 **list_roles \[**-r**\] *share***  
 List roles assigned to the share. Use **-r** for recursive listing.
 
-**list_users *share***  
-List users of the share.
+**list_users \[**--return-type** *TYPE*\] *share***  
+List users of the share. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Host Management
 
@@ -273,8 +278,24 @@ Also remove persisted share mounts on hosts.
 **--no-persist-mount**  
 Keep persisted share mounts on hosts (transient unmount only).
 
-**list_hosts *share***  
-List hosts assigned to the share.
+**list_hosts \[**--return-type** *TYPE*\] *share***  
+List hosts assigned to the share. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+
+**add_group \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *group***  
+Add a (host) group to the share. Every host in the group inherits the
+share assignment.
+
+**remove_group \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share* *group***  
+Remove a host group from the share.
+
+**list_groups *share***  
+List host groups assigned to the share.
+
+**mount_timeout *share* \[*timeout*\]**  
+Set the idle timeout after which a mount drops its unused connection.
+**0** disables the timeout (the connection stays open as long as the
+mount does).
 
 **limit_hosts \[**--share-notify**\|**--no-share-notify**\] \[**--persist-mount**\|**--no-persist-mount**\] *share***  
 Limit share access to assigned hosts and host groups.
@@ -362,8 +383,9 @@ Add a pool to the share.
 **remove_pool *share* *pool***  
 Remove a pool from the share.
 
-**list_pools *share***  
-List pools assigned to the share.
+**list_pools \[**--return-type** *TYPE*\] *share***  
+List pools assigned to the share. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 **add_node *share* *node***  
 Add a node to the share.
@@ -371,8 +393,9 @@ Add a node to the share.
 **remove_node *share* *node***  
 Remove a node from the share.
 
-**list_nodes *share***  
-List nodes assigned to the share.
+**list_nodes \[**--return-type** *TYPE*\] *share***  
+List nodes assigned to the share. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Policy Management
 
@@ -382,8 +405,9 @@ Attach a policy to the share.
 **remove_policy *share* *policy***  
 Remove a policy from the share.
 
-**list_policies *share***  
-List policies attached to the share.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *share***  
+List policies attached to the share. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## ACL Management
 
@@ -401,6 +425,22 @@ Enable ACL inheritance from parent objects.
 
 **disable_acl_inheritance *share***  
 Disable ACL inheritance.
+
+## Object Changelog
+
+**changelog *share***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *share* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *share* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *share***  
+Clear the object's entire changelog.
 
 ## Import/Export
 

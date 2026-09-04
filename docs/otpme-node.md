@@ -50,8 +50,10 @@ interfaces (e.g. tty, gui, ssh).
 **remove_token \[**--keep-sign**\] *node* *token_path***  
 Remove a token from the node.
 
-**list_tokens *node***  
-List tokens assigned to the node.
+**list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *node***  
+List tokens assigned to the node. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--token-types** to limit the listing to the given token types.
 
 **add_role *node* *role***  
 Add a role to the node.
@@ -72,8 +74,9 @@ Allow logins from all authorized tokens.
 
 ## User and Group Listing
 
-**list_users *node***  
-List users on the node.
+**list_users \[**--return-type** *TYPE*\] *node***  
+List users on the node. Use **--return-type** to select the attribute
+returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 **list_dynamic_groups *node***  
 List dynamic groups of the node.
@@ -141,6 +144,22 @@ Disable the node vote script.
 **get_ssh_authorized_keys *node* \[*user*\]**  
 Get SSH authorized keys for the node, optionally for a specific user.
 
+## Object Changelog
+
+**changelog *node***  
+Show the object's changelog (chronological list of changes with author,
+timestamp and optional custom text passed via **--changelog**).
+
+**edit_changelog *node* *changelog_id***  
+Open the given changelog entry in the editor named by **EDITOR** to edit
+its custom text.
+
+**del_changelog *node* *changelog_id***  
+Remove a single entry from the object's changelog.
+
+**clear_changelog *node***  
+Clear the object's entire changelog.
+
 ## Policy Management
 
 **add_policy *node* *policy***  
@@ -149,8 +168,10 @@ Attach a policy to the node.
 **remove_policy *node* *policy***  
 Remove a policy from the node.
 
-**list_policies *node***  
-List policies attached to the node.
+**list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *node***  
+List policies attached to the node. Use **--return-type** to select the
+attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
+**--policy-types** to limit the listing to the given policy types.
 
 ## ACL Management
 
@@ -171,11 +192,15 @@ Disable ACL inheritance.
 
 ## Configuration and Attributes
 
-**config \[**-d**\] *node* *parameter* \[*value*\]**  
-Set a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] \[**-a**\] *node* *parameter* \[*value*\]**  
+Set a configuration parameter. Use **-d** to delete (reset to default)
+or **-a** to append the value to a list-typed parameter.
 
 **show_config *node* \[*parameter*\]**  
 Show all configuration parameters.
+
+**get_config *node* *parameter***  
+Show the value of a single configuration parameter.
 
 **description *node* \[*description*\]**  
 Set node description.
