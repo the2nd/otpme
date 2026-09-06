@@ -343,7 +343,7 @@
     async function deleteDeviceToken(name, label) {
         const urls = getUrls();
         const i18n = getPageI18n();
-        const tpl = i18n.labelConfirmDeleteDeviceToken || 'Delete device token "%(name)s"?';
+        const tpl = i18n.labelConfirmDeleteDeviceToken || 'Delete device token "{name}"?';
         if (!confirm(interpolate(tpl, {name: label}))) {
             return;
         }
@@ -420,14 +420,19 @@
                     enabled: !!p.enabled,
                     onChange: (desired) => togglePasskey(p.name, desired),
                     fallbackError: i18n.labelFailedTogglePasskey || 'Failed to update passkey.',
+                    lockedReason: p.is_current ? noDisableReason() : null,
                 }));
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-secondary btn-small';
                 btn.textContent = i18n.labelDeleteBtn || 'Delete';
-                btn.addEventListener('click',
-                    () => deletePasskey(p.name, p.device_name || p.name));
-                actions.appendChild(btn);
+                if (p.is_current) {
+                    actions.appendChild(lockControl(btn, noDeleteReason()));
+                } else {
+                    btn.addEventListener('click',
+                        () => deletePasskey(p.name, p.device_name || p.name));
+                    actions.appendChild(btn);
+                }
                 li.appendChild(actions);
                 listEl.appendChild(li);
             }
@@ -439,6 +444,73 @@
         }
     }
 
+    // The WebAuthn registration dance. Identical for a passkey and for
+    // a security key -- ask the server for create-options, let the
+    // browser talk to the authenticator, post back what it signed. The
+    // two differ in where they post and what they call the thing, which
+    // is what the arguments are for. Throws; the caller reports.
+    async function registerWebAuthnCredential(opts) {
+        const beginResp = await fetchJSON(opts.beginUrl, {
+            method: 'POST',
+            body: JSON.stringify({device_name: opts.deviceName}),
+        });
+        const beginResult = await beginResp.json();
+        if (!beginResp.ok) {
+            throw new Error(beginResult.error || opts.beginFailed);
+        }
+
+        // python-fido2 serialises challenge/user.id/excludeCredentials[].id
+        // as base64url strings — the browser API needs ArrayBuffers.
+        const publicKey = beginResult.publicKey;
+        publicKey.challenge = base64urlToBuffer(publicKey.challenge);
+        publicKey.user.id = base64urlToBuffer(publicKey.user.id);
+        if (publicKey.excludeCredentials) {
+            publicKey.excludeCredentials = publicKey.excludeCredentials.map(cred => ({
+                ...cred,
+                id: base64urlToBuffer(cred.id),
+            }));
+        }
+
+        opts.statusEl.textContent = opts.confirmLabel;
+        const credential = await navigator.credentials.create({publicKey: publicKey});
+
+        const regResponse = {
+            id: credential.id,
+            rawId: bufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                attestationObject: bufferToBase64url(credential.response.attestationObject),
+                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+            },
+            clientExtensionResults: credential.getClientExtensionResults(),
+        };
+
+        opts.statusEl.textContent = opts.completingLabel;
+        const completeResp = await fetchJSON(opts.completeUrl, {
+            method: 'POST',
+            body: JSON.stringify(regResponse),
+        });
+        const completeResult = await completeResp.json();
+        if (!completeResp.ok) {
+            throw new Error(completeResult.error || opts.completeFailed);
+        }
+        return completeResult;
+    }
+
+    // What both add-buttons check before touching the WebAuthn API.
+    // Returns an error message, or null when it is safe to go ahead.
+    function webAuthnUnavailable() {
+        const i18n = getPageI18n();
+        if (!window.isSecureContext) {
+            return i18n.labelHttpsRequired || 'WebAuthn requires HTTPS.';
+        }
+        if (!window.PublicKeyCredential) {
+            return i18n.labelWebauthnUnsupported
+                    || 'WebAuthn is not supported in this browser.';
+        }
+        return null;
+    }
+
     async function addPasskey() {
         const urls = getUrls();
         const i18n = getPageI18n();
@@ -447,12 +519,9 @@
         statusEl.textContent = '';
         errorEl.textContent = '';
 
-        if (!window.isSecureContext) {
-            errorEl.textContent = i18n.labelHttpsRequired || 'WebAuthn requires HTTPS.';
-            return;
-        }
-        if (!window.PublicKeyCredential) {
-            errorEl.textContent = i18n.labelWebauthnUnsupported || 'WebAuthn is not supported in this browser.';
+        const unavailable = webAuthnUnavailable();
+        if (unavailable) {
+            errorEl.textContent = unavailable;
             return;
         }
 
@@ -467,50 +536,18 @@
         statusEl.textContent = i18n.labelPreparingPasskey || 'Preparing passkey registration...';
 
         try {
-            const beginResp = await fetchJSON(urls.urlPasskeyRegisterBegin, {
-                method: 'POST',
-                body: JSON.stringify({device_name: deviceName}),
+            await registerWebAuthnCredential({
+                beginUrl:        urls.urlPasskeyRegisterBegin,
+                completeUrl:     urls.urlPasskeyRegisterComplete,
+                deviceName:      deviceName,
+                statusEl:        statusEl,
+                confirmLabel:    i18n.labelConfirmPasskey
+                                || 'Confirm on your device to create the passkey...',
+                completingLabel: i18n.labelCompletingPasskey || 'Completing registration...',
+                beginFailed:     i18n.labelFailedStartPasskey
+                                || 'Failed to start passkey registration.',
+                completeFailed:  i18n.labelPasskeyRegFailed || 'Passkey registration failed.',
             });
-            const beginResult = await beginResp.json();
-            if (!beginResp.ok) {
-                throw new Error(beginResult.error || i18n.labelFailedStartPasskey || 'Failed to start passkey registration.');
-            }
-
-            // python-fido2 serialises challenge/user.id/excludeCredentials[].id
-            // as base64url strings — the browser API needs ArrayBuffers.
-            const publicKey = beginResult.publicKey;
-            publicKey.challenge = base64urlToBuffer(publicKey.challenge);
-            publicKey.user.id = base64urlToBuffer(publicKey.user.id);
-            if (publicKey.excludeCredentials) {
-                publicKey.excludeCredentials = publicKey.excludeCredentials.map(cred => ({
-                    ...cred,
-                    id: base64urlToBuffer(cred.id),
-                }));
-            }
-
-            statusEl.textContent = i18n.labelConfirmPasskey || 'Confirm on your device to create the passkey...';
-            const credential = await navigator.credentials.create({publicKey: publicKey});
-
-            const regResponse = {
-                id: credential.id,
-                rawId: bufferToBase64url(credential.rawId),
-                type: credential.type,
-                response: {
-                    attestationObject: bufferToBase64url(credential.response.attestationObject),
-                    clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                },
-                clientExtensionResults: credential.getClientExtensionResults(),
-            };
-
-            statusEl.textContent = i18n.labelCompletingPasskey || 'Completing registration...';
-            const completeResp = await fetchJSON(urls.urlPasskeyRegisterComplete, {
-                method: 'POST',
-                body: JSON.stringify(regResponse),
-            });
-            const completeResult = await completeResp.json();
-            if (!completeResp.ok) {
-                throw new Error(completeResult.error || i18n.labelPasskeyRegFailed || 'Passkey registration failed.');
-            }
             statusEl.textContent = i18n.labelPasskeyAdded || 'Passkey added.';
             document.getElementById('passkeyName').value = '';
             loadPasskeys();
@@ -525,11 +562,223 @@
         }
     }
 
+    // ---- FIDO2 security keys ----
+
+    async function addFido2Token() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const statusEl = document.getElementById('fido2Status');
+        const errorEl = document.getElementById('fido2Error');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+
+        const unavailable = webAuthnUnavailable();
+        if (unavailable) {
+            errorEl.textContent = unavailable;
+            return;
+        }
+
+        const deviceName = document.getElementById('fido2DeviceName').value.trim();
+        if (!deviceName) {
+            errorEl.textContent = i18n.labelKeyNameRequired || 'Key name is required.';
+            return;
+        }
+
+        const btn = document.getElementById('addFido2Btn');
+        btn.disabled = true;
+        statusEl.textContent = i18n.labelAddingFido2 || 'Registering security key...';
+
+        try {
+            await registerWebAuthnCredential({
+                beginUrl:        urls.urlFido2AddBegin,
+                completeUrl:     urls.urlFido2AddComplete,
+                deviceName:      deviceName,
+                statusEl:        statusEl,
+                confirmLabel:    i18n.labelTouchKey || 'Touch your security key...',
+                completingLabel: i18n.labelCompletingPasskey || 'Completing registration...',
+                beginFailed:     i18n.labelFailedAddFido2
+                                || 'Failed to register security key.',
+                completeFailed:  i18n.labelFailedAddFido2
+                                || 'Failed to register security key.',
+            });
+            statusEl.textContent = i18n.labelFido2Added || 'Security key registered.';
+            document.getElementById('fido2DeviceName').value = '';
+            loadFido2Tokens();
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedAddFido2
+                    || 'Failed to register security key.';
+            statusEl.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function deleteFido2Token(name, label) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmDeleteFido2 || 'Delete security key "{name}"?';
+        if (!confirm(interpolate(tpl, {name: label}))) {
+            return;
+        }
+        const errorEl = document.getElementById('fido2Error');
+        errorEl.textContent = '';
+        try {
+            const resp = await fetchJSON(urls.urlDelFido2, {
+                method: 'POST',
+                body: JSON.stringify({name: name}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedDeleteFido2
+                        || 'Failed to delete security key.');
+            }
+            preserveScrollAround(loadFido2Tokens);
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedDeleteFido2
+                    || 'Failed to delete security key.';
+        }
+    }
+
+    async function toggleFido2Token(name, desired) {
+        const urls = getUrls();
+        const resp = await fetchJSON(urls.urlToggleFido2, {
+            method: 'POST',
+            body: JSON.stringify({name: name, enabled: desired}),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            throw new Error(result.error || getPageI18n().labelFailedToggleFido2
+                    || 'Failed to update security key.');
+        }
+        return result.enabled;
+    }
+
+    async function loadFido2Tokens() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const card = document.getElementById('fido2Card');
+        const listEl = document.getElementById('fido2List');
+        if (!card || !listEl) return;
+        listEl.innerHTML = '';
+        try {
+            const resp = await fetchJSON(urls.urlListFido2);
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedLoadFido2
+                        || 'Failed to load security keys.');
+            }
+            // allowed=false means sso_allow_fido2 is off for this user;
+            // the whole card stays hidden, as the passkey card does.
+            if (!result.allowed) {
+                card.classList.add('is-hidden');
+                return;
+            }
+            card.classList.remove('is-hidden');
+            const tokens = result.fido2_tokens || [];
+            const ssoToken = result.sso_token || {};
+            if (tokens.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = i18n.labelNoFido2 || 'No security keys registered yet.';
+                listEl.appendChild(li);
+                return;
+            }
+            for (const t of tokens) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'device-label';
+                label.textContent = t.device_name || t.name;
+                if (t.is_sso_token) {
+                    const badge = document.createElement('span');
+                    badge.className = 'device-badge';
+                    badge.textContent = i18n.labelSsoToken || 'Default token';
+                    label.appendChild(document.createTextNode(' '));
+                    label.appendChild(badge);
+                }
+                li.appendChild(label);
+                const actions = document.createElement('span');
+                actions.className = 'device-token-actions';
+                // The SSO token stays enabled and stays put, same as in
+                // the tiqr list. Everything else can be switched off,
+                // removed, or promoted.
+                if (!t.is_sso_token) {
+                    actions.appendChild(buildEnableToggle({
+                        enabled: !!t.enabled,
+                        onChange: (desired) => toggleFido2Token(t.name, desired),
+                        fallbackError: i18n.labelFailedToggleFido2
+                                || 'Failed to update security key.',
+                        lockedReason: t.is_current ? noDisableReason() : null,
+                    }));
+                    const promoteBtn = document.createElement('button');
+                    promoteBtn.type = 'button';
+                    promoteBtn.className = 'btn btn-secondary btn-small';
+                    promoteBtn.textContent = i18n.labelMakeSsoToken || 'Make default token';
+                    promoteBtn.addEventListener('click',
+                        () => promoteToken(t.name, t.device_name || t.name,
+                                        ssoToken,
+                                        {statusId: 'fido2Status',
+                                        errorId: 'fido2Error'}));
+                    actions.appendChild(promoteBtn);
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'btn btn-secondary btn-small';
+                    delBtn.textContent = i18n.labelDeleteBtn || 'Delete';
+                    if (t.is_current) {
+                        actions.appendChild(lockControl(delBtn, noDeleteReason()));
+                    } else {
+                        delBtn.addEventListener('click',
+                            () => deleteFido2Token(t.name, t.device_name || t.name));
+                        actions.appendChild(delBtn);
+                    }
+                }
+                li.appendChild(actions);
+                listEl.appendChild(li);
+            }
+        } catch (e) {
+            const li = document.createElement('li');
+            li.className = 'error-msg';
+            li.textContent = e.message || i18n.labelFailedLoadFido2
+                    || 'Failed to load security keys.';
+            listEl.appendChild(li);
+        }
+    }
+
     // Build a small enable/disable toggle switch used next to the
      // delete button on each device-token / passkey row. The visual
      // markup matches the toggle-switch used by the admin-access card
      // (see settings.html) so the styles from base.css apply.
-    function buildEnableToggle({enabled, onChange, fallbackError}) {
+    function noDeleteReason() {
+        const i18n = getPageI18n();
+        return i18n.labelCurrentTokenNoDelete
+                || 'You are signed in with this one. Sign in with another '
+                    + 'factor to remove it.';
+    }
+
+    function noDisableReason() {
+        const i18n = getPageI18n();
+        return i18n.labelCurrentTokenNoDisable
+                || 'You are signed in with this one. Sign in with another '
+                    + 'factor to switch it off.';
+    }
+
+    // Turn a control off with a reason the user can read. The server
+    // refuses these anyway; showing why beats letting somebody press
+    // the button and get an error back.
+    //
+    // The reason goes on a wrapper, not on the control: a disabled
+    // element fires no pointer events, so a title sitting on it would
+    // never show a tooltip. Returns the wrapper -- append that.
+    function lockControl(el, reason) {
+        el.disabled = true;
+        el.setAttribute('aria-label', reason);
+        const holder = document.createElement('span');
+        holder.className = 'locked-control';
+        holder.title = reason;
+        holder.appendChild(el);
+        return holder;
+    }
+
+    function buildEnableToggle({enabled, onChange, fallbackError, lockedReason}) {
         const i18n = getPageI18n();
         const wrapper = document.createElement('label');
         wrapper.className = 'toggle-switch';
@@ -541,6 +790,13 @@
             ? (i18n.labelTokenEnabled || 'Enabled')
             : (i18n.labelTokenDisabled || 'Disabled');
         input.setAttribute('aria-label', input.title);
+        if (lockedReason) {
+            // The label around it is not disabled, so it can carry the
+            // tooltip -- no extra wrapper needed here.
+            input.disabled = true;
+            input.setAttribute('aria-label', lockedReason);
+            wrapper.title = lockedReason;
+        }
         const track = document.createElement('span');
         track.className = 'toggle-track';
         track.setAttribute('aria-hidden', 'true');
@@ -598,7 +854,7 @@
     async function deletePasskey(name, label) {
         const urls = getUrls();
         const i18n = getPageI18n();
-        const tpl = i18n.labelConfirmDeletePasskey || 'Delete passkey "%(name)s"?';
+        const tpl = i18n.labelConfirmDeletePasskey || 'Delete passkey "{name}"?';
         if (!confirm(interpolate(tpl, {name: label}))) {
             return;
         }
@@ -618,6 +874,307 @@
             preserveScrollAround(loadPasskeys);
         } catch (e) {
             errorEl.textContent = e.message || i18n.labelFailedDeletePasskey || 'Failed to delete passkey.';
+        }
+    }
+
+    // ---- tiqr ----
+    //
+    // The list shows every enrolled phone, the SSO token among them.
+    // That one is marked and has no delete button: removing it would
+    // take the recovery flow with it, which looks up a token of that
+    // name. Moving the role to another phone is the "Make SSO token"
+    // button, which renames instead of deleting so no phone is lost.
+
+    let tiqrPollTimer = null;
+
+    function stopTiqrPolling() {
+        if (tiqrPollTimer === null) return;
+        clearTimeout(tiqrPollTimer);
+        tiqrPollTimer = null;
+    }
+
+    async function loadTiqrTokens() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const card = document.getElementById('tiqrCard');
+        const listEl = document.getElementById('tiqrList');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        try {
+            const resp = await fetchJSON(urls.urlListTiqr);
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedLoadTiqr || 'Failed to load phones.');
+            }
+            // allowed=false means sso_allow_tiqr is off for this user;
+            // hide the whole card, as the other two do.
+            if (card && !result.allowed) {
+                card.classList.add('is-hidden');
+                return;
+            }
+            if (card) card.classList.remove('is-hidden');
+            const tokens = result.tiqr_tokens || [];
+            // Whatever holds the SSO role right now. Promoting renames
+            // it, and it need not be one of the phones below -- it can
+            // just as well be a security key.
+            const ssoToken = result.sso_token || {};
+            if (tokens.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = i18n.labelNoTiqr || 'No phones enrolled yet.';
+                listEl.appendChild(li);
+                return;
+            }
+            for (const t of tokens) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'device-label';
+                label.textContent = t.device_name || t.name;
+                if (t.is_sso_token) {
+                    const badge = document.createElement('span');
+                    badge.className = 'device-badge';
+                    badge.textContent = i18n.labelSsoToken || 'Default token';
+                    label.appendChild(document.createTextNode(' '));
+                    label.appendChild(badge);
+                }
+                li.appendChild(label);
+                const actions = document.createElement('span');
+                actions.className = 'device-token-actions';
+                // The SSO token stays enabled and stays put. Everything
+                // else can be switched off, removed, or promoted.
+                if (!t.is_sso_token) {
+                    actions.appendChild(buildEnableToggle({
+                        enabled: !!t.enabled,
+                        onChange: (desired) => toggleTiqrToken(t.name, desired),
+                        fallbackError: i18n.labelFailedToggleTiqr || 'Failed to update phone.',
+                        lockedReason: t.is_current ? noDisableReason() : null,
+                    }));
+                    const promoteBtn = document.createElement('button');
+                    promoteBtn.type = 'button';
+                    promoteBtn.className = 'btn btn-secondary btn-small';
+                    promoteBtn.textContent = i18n.labelMakeSsoToken || 'Make default token';
+                    promoteBtn.addEventListener('click',
+                        () => promoteToken(t.name, t.device_name || t.name,
+                                        ssoToken,
+                                        {statusId: 'tiqrStatus',
+                                        errorId: 'tiqrError'}));
+                    actions.appendChild(promoteBtn);
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'btn btn-secondary btn-small';
+                    delBtn.textContent = i18n.labelDeleteBtn || 'Delete';
+                    if (t.is_current) {
+                        actions.appendChild(lockControl(delBtn, noDeleteReason()));
+                    } else {
+                        delBtn.addEventListener('click',
+                            () => deleteTiqrToken(t.name, t.device_name || t.name));
+                        actions.appendChild(delBtn);
+                    }
+                }
+                li.appendChild(actions);
+                listEl.appendChild(li);
+            }
+        } catch (e) {
+            const li = document.createElement('li');
+            li.className = 'error-msg';
+            li.textContent = e.message || i18n.labelFailedLoadTiqr || 'Failed to load phones.';
+            listEl.appendChild(li);
+        }
+    }
+
+    function showTiqrEnrollBox(show) {
+        const box = document.getElementById('tiqrEnrollBox');
+        const form = document.getElementById('tiqrAddForm');
+        if (box) box.classList.toggle('is-hidden', !show);
+        if (form) form.classList.toggle('is-hidden', show);
+    }
+
+    async function addTiqrToken() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const statusEl = document.getElementById('tiqrStatus');
+        const errorEl = document.getElementById('tiqrError');
+        errorEl.textContent = '';
+        const deviceName = document.getElementById('tiqrDeviceName').value.trim();
+        if (!deviceName) {
+            errorEl.textContent = i18n.labelTiqrNameRequired || 'Device name is required.';
+            return;
+        }
+        const btn = document.getElementById('addTiqrBtn');
+        btn.disabled = true;
+        statusEl.textContent = i18n.labelPreparingTiqr || 'Preparing enrollment...';
+        try {
+            const resp = await fetchJSON(urls.urlTiqrEnrollBegin, {
+                method: 'POST',
+                body: JSON.stringify({device_name: deviceName}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedStartTiqr || 'Failed to start tiqr enrollment.');
+            }
+            const img = document.getElementById('tiqrQrcodeImg');
+            if (img) img.src = result.qrcode_img || '';
+            // The code only. enroll_url is deliberately not put into a
+            // link -- see the comment in settings.html.
+            showTiqrEnrollBox(true);
+            statusEl.textContent = i18n.labelWaitingTiqr || 'Waiting for your phone...';
+            pollTiqrEnrollment();
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedStartTiqr || 'Failed to start tiqr enrollment.';
+            statusEl.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function pollTiqrEnrollment() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const statusEl = document.getElementById('tiqrStatus');
+        const errorEl = document.getElementById('tiqrError');
+        // The grant expires after tiqr_enrollment_expiry (five minutes
+        // by default). Give up a little after that rather than polling
+        // forever on a page somebody left open.
+        const deadline = Date.now() + 330000;
+        stopTiqrPolling();
+
+        async function tick() {
+            if (Date.now() > deadline) {
+                stopTiqrPolling();
+                showTiqrEnrollBox(false);
+                statusEl.textContent = '';
+                errorEl.textContent = i18n.labelTiqrTimeout || 'The code expired. Please try again.';
+                return;
+            }
+            try {
+                const resp = await fetchJSON(urls.urlTiqrEnrollStatus);
+                const result = await resp.json();
+                if (resp.ok && result.status === 'ok') {
+                    stopTiqrPolling();
+                    showTiqrEnrollBox(false);
+                    document.getElementById('tiqrDeviceName').value = '';
+                    statusEl.textContent = i18n.labelTiqrAdded || 'Phone enrolled.';
+                    preserveScrollAround(loadTiqrTokens);
+                    return;
+                }
+            } catch (e) {
+                // A single failed poll is not worth aborting the whole
+                // enrollment over; the next tick tries again.
+            }
+            tiqrPollTimer = setTimeout(tick, 2000);
+        }
+
+        tiqrPollTimer = setTimeout(tick, 2000);
+    }
+
+    function cancelTiqrEnrollment() {
+        stopTiqrPolling();
+        showTiqrEnrollBox(false);
+        const statusEl = document.getElementById('tiqrStatus');
+        if (statusEl) statusEl.textContent = '';
+    }
+
+    async function toggleTiqrToken(name, enabled) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const resp = await fetchJSON(urls.urlToggleTiqr, {
+            method: 'POST',
+            body: JSON.stringify({name: name, enabled: enabled}),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            throw new Error(result.error || i18n.labelFailedToggleTiqr || 'Failed to update phone.');
+        }
+        return !!result.enabled;
+    }
+
+    async function deleteTiqrToken(name, label) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmDeleteTiqr || 'Remove phone "{name}"?';
+        if (!confirm(interpolate(tpl, {name: label}))) {
+            return;
+        }
+        const statusEl = document.getElementById('tiqrStatus');
+        const errorEl = document.getElementById('tiqrError');
+        errorEl.textContent = '';
+        try {
+            const resp = await fetchJSON(urls.urlDelTiqr, {
+                method: 'POST',
+                body: JSON.stringify({name: name}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedDeleteTiqr || 'Failed to remove phone.');
+            }
+            statusEl.textContent = i18n.labelTiqrDeleted || 'Phone removed.';
+            preserveScrollAround(loadTiqrTokens);
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedDeleteTiqr || 'Failed to remove phone.';
+        }
+    }
+
+    // Shared by every card whose tokens may hold the SSO role. The card
+    // only says where to write status and errors; everything else about
+    // a promotion is the same whether the thing being promoted is a
+    // phone or a security key.
+    async function promoteToken(name, label, ssoToken, {statusId, errorId}) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmPromoteTiqr
+                || 'Make "{name}" your default token? Your current one keeps working under a new name.';
+        if (!confirm(interpolate(tpl, {name: label}))) {
+            return;
+        }
+        const statusEl = document.getElementById(statusId);
+        const errorEl = document.getElementById(errorId);
+        errorEl.textContent = '';
+        // Ask for the name the current SSO token continues under. Always,
+        // not only when the server could not work one out: it is the name
+        // the user will look for in their own list afterwards, so it is
+        // theirs to pick. The suggestion is the label it already carries.
+        const body = {name: name};
+        if (ssoToken && ssoToken.name) {
+            const nameTpl = i18n.labelPromptOldTiqrName
+                    || 'Name for your current default token ("{name}"), which keeps working:';
+            // The question names the token by its label; the input is
+            // prefilled with the server's suggestion, which is a free
+            // name of the right shape. Not the label -- that is often
+            // the SSO name itself, the one name the answer cannot be.
+            const answer = prompt(
+                    interpolate(nameTpl, {name: ssoToken.label || ssoToken.name}),
+                    ssoToken.suggested || '');
+            // Cancelled: the whole promotion is off. Sending none would
+            // silently let the server pick instead.
+            if (answer === null) {
+                return;
+            }
+            if (!answer.trim()) {
+                errorEl.textContent = i18n.labelNeedOldTiqrName
+                        || 'Please enter a name for your current default token.';
+                return;
+            }
+            body.old_name = answer.trim();
+        }
+        try {
+            const resp = await fetchJSON(urls.urlPromoteToken, {
+                method: 'POST',
+                body: JSON.stringify(body),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedPromoteTiqr || 'Failed to change the default token.');
+            }
+            statusEl.textContent = i18n.labelTiqrPromoted || 'Default token changed.';
+            // The token that just lost the role may sit on the other
+            // card, so redraw both -- not only the one the button was
+            // on.
+            preserveScrollAround(async () => {
+                await loadTiqrTokens();
+                await loadFido2Tokens();
+            });
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedPromoteTiqr || 'Failed to change the default token.';
         }
     }
 
@@ -946,7 +1503,7 @@
         if (!urls) return;
         const i18n = getPageI18n();
         const tpl = i18n.labelConfirmRevoke
-                || 'Disconnect "%(name)s"? Active sessions for this application will be terminated.';
+                || 'Disconnect "{name}"? Active sessions for this application will be terminated.';
         if (!confirm(interpolate(tpl, {name: label}))) {
             return;
         }
@@ -1051,6 +1608,15 @@
         if (addPasskeyBtn) addPasskeyBtn.addEventListener('click', addPasskey);
         attachNameSanitizer(document.getElementById('passkeyName'));
 
+        const addFido2Btn = document.getElementById('addFido2Btn');
+        if (addFido2Btn) addFido2Btn.addEventListener('click', addFido2Token);
+        attachNameSanitizer(document.getElementById('fido2DeviceName'));
+
+        const addTiqrBtn = document.getElementById('addTiqrBtn');
+        if (addTiqrBtn) addTiqrBtn.addEventListener('click', addTiqrToken);
+        const tiqrCancelBtn = document.getElementById('tiqrCancelBtn');
+        if (tiqrCancelBtn) tiqrCancelBtn.addEventListener('click', cancelTiqrEnrollment);
+
         const adminToggle = document.getElementById('adminAccessToggle');
         if (adminToggle) adminToggle.addEventListener('change', onAdminAccessToggle);
 
@@ -1068,6 +1634,8 @@
         Promise.all([
             loadDeviceTokens().catch(() => {}),
             loadPasskeys().catch(() => {}),
+            loadFido2Tokens().catch(() => {}),
+            loadTiqrTokens().catch(() => {}),
             loadAdminAccess().catch(() => {}),
             loadRecoveryMail().catch(() => {}),
             loadOidcConsents().catch(() => {}),

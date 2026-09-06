@@ -138,11 +138,14 @@ class OTPmeFsP1(OTPmeFsServer1):
         self.share_handler_thread = multiprocessing.start_thread(name=self.name,
                                                 target=self.handle_share_setttings)
 
-    def set_proctitle(self, username, share):
+    def set_proctitle(self, username, share, mounted=False):
         """ Set proctitle to contain sharename. """
         if config.use_api:
             return
-        new_proctitle ="{proctitle} User: {username} Share: {share}"
+        if mounted:
+            new_proctitle ="{proctitle} User: {username} Share: {share} (mounted)"
+        else:
+            new_proctitle ="{proctitle} User: {username} Share: {share}"
         new_proctitle = new_proctitle.format(proctitle=self.proctitle,
                                             username=username,
                                             share=share)
@@ -340,6 +343,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 response = {'try_other_node':False, 'message':message}
                 return self.build_response(status, response)
             share = result[0]
+            self.set_proctitle(self.username, share)
             self.share_uuid = share.uuid
             if not share.enabled:
                 status = status_codes.PERMISSION_DENIED
@@ -817,7 +821,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                         response = {'try_other_node':False, 'message':message}
                         return self.build_response(status, response)
                     self.privileges_dropped = True
-            self.set_proctitle(self.username, share)
+            self.set_proctitle(self.username, share, mounted=True)
             if self.encrypted:
                 if self.restore_share:
                     mount_result['restore_share'] = True

@@ -43,6 +43,24 @@ YubiKey GPG applet authentication.
 .B motp
 Mobile OTP (mOTP).
 .TP
+.B tiqr
+Smartphone challenge-response via the tiqr app (OCRA, RFC 6287). The
+browser shows a QR code, the phone answers it over its own connection,
+and the browser is signed in without anything being typed. Enrolled
+from the SSO portal, not with
+.BR "otpme-token add" ;
+see
+.BR otpme-site (1)
+for the site settings
+.RB ( tiqr_secret ", " sso_allow_tiqr_deploy ", " tiqr_challenge_expiry )
+and
+.BR otpme-user (1)
+for
+.BR default_sso_token_name .
+Note that tiqr is not phishing resistant: nothing binds the response to
+the browser that asked, so a relayed challenge yields the attacker a
+session. Use FIDO2 where that matters.
+.TP
 .B otp_push
 Push notification-based OTP.
 .TP

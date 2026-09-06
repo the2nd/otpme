@@ -83,6 +83,7 @@ read_value_acls = {
                                 "oidc",
                                 "oidc_keys",
                                 "oidc_pairwise_secret",
+                                "tiqr_secret",
                                 "auth",
                                 "sync",
                                 "ca",
@@ -145,6 +146,7 @@ write_value_acls = {
                                 "sso_secret",
                                 "sso_csrf_secret",
                                 "oidc_pairwise_secret",
+                                "tiqr_secret",
                                 "cluster_key",
                                 ],
                     "renew"     : [
@@ -685,7 +687,19 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'change_oidc_pairwise_secret',
-                    'oargs'             : ['secret', 'force'],
+                    # No 'force' here: mgmt1.get_method_args() passes it
+                    # to every method as a global arg and skips it in the
+                    # oargs loop, so listing it does nothing.
+                    'oargs'             : ['secret'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'tiqr_secret'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_tiqr_secret',
+                    'oargs'             : ['secret'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -2094,6 +2108,30 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Allow FIDO2 security keys in the SSO portal -- signing in with one
+    # and managing them on the settings page, the same span
+    # sso_allow_passkeys covers for passkeys.
+    #
+    # Unlike that one this resolves fail-open: FIDO2 login has always
+    # worked and is not something an upgrade may switch off. Turning it
+    # off is a deliberate act, and it takes the deploy page with it --
+    # sso_allow_fido2_deploy only narrows what this allows.
+    config.register_config_parameter(name="sso_allow_fido2",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    # Allow tiqr in the SSO portal -- signing in with a phone and
+    # managing phones on the settings page, including enrolling one.
+    #
+    # Default on, like the other two: a tiqr login needs a phone that
+    # somebody enrolled deliberately, so this being on costs nothing
+    # where no phone exists. What keeps tiqr off an install that has
+    # not set it up is sso_allow_tiqr_deploy, which is off by default
+    # and only narrows what this allows.
+    config.register_config_parameter(name="sso_allow_tiqr",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
     # Put SSO device tokens to trash
     config.register_config_parameter(name="add_device_token_to_trash",
                                     ctype=bool,
@@ -2340,6 +2378,14 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=['site', 'unit', 'user', 'token'])
+    # Allow tiqr token deploy in SSO portal. Off by default: it needs a
+    # tiqr secret on the site and the app installed on a phone, so it
+    # should be a deliberate choice rather than an option that appears
+    # on the deploy page of every install.
+    config.register_config_parameter(name="sso_allow_tiqr_deploy",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['site', 'unit', 'user', 'token'])
     # Allow totp token deploy in SSO portal.
     config.register_config_parameter(name="sso_allow_totp_deploy",
                                     ctype=bool,
@@ -2363,6 +2409,27 @@ def register_config():
     config.register_config_parameter(name="sso_show_recover_link",
                                     ctype=bool,
                                     default_value=False,
+                                    object_types=['site'])
+    # Whether the login mask offers "Security Key" and "Sign in with
+    # tiqr" at all. Purely what the page shows -- what may actually be
+    # used is sso_allow_fido2 / sso_allow_tiqr, and those still decide.
+    # Site scope because the login page has no user yet: the mask is
+    # rendered before anybody has typed a name, so a per-user cascade
+    # could not be resolved without leaking who exists.
+    #
+    # Worth having separately: on a site where only a handful of people
+    # use a security key, everyone else is looking at a button that
+    # does nothing for them. Note that hiding it does take the method
+    # away in practice -- the button is the only way into the assertion
+    # flow from the login mask -- so this is about a site that has made
+    # that choice, not about tidying up a mask people still need.
+    config.register_config_parameter(name="sso_show_fido2_button",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=['site'])
+    config.register_config_parameter(name="sso_show_tiqr_button",
+                                    ctype=bool,
+                                    default_value=True,
                                     object_types=['site'])
     # Start this number of authd workers. These stay for good, which is
     # what keeps their caches warm, so this should carry the normal day.
@@ -2764,6 +2831,7 @@ class Site(OTPmeObject):
         # by enable_oidc() on activation; Site sync replicates it to
         # every sso_host so multi-host OPs compute identical subs.
         self.oidc_pairwise_secret = None
+        self.tiqr_secret = None
         self.required_votes = 0
         self.cluster_key = None
         self.fido2_ca_certs = {}
@@ -2814,6 +2882,13 @@ class Site(OTPmeObject):
                                 "CONFIG_PARAMS:sso_rate_limit_settings",
                                 "CONFIG_PARAMS:sso_rate_limit_recover",
                                 "CONFIG_PARAMS:sso_show_recover_link",
+                                # Read locally when the login mask is
+                                # rendered, like sso_show_recover_link
+                                # above -- an SSO host that never got
+                                # them would show the buttons whatever
+                                # the site says.
+                                "CONFIG_PARAMS:sso_show_fido2_button",
+                                "CONFIG_PARAMS:sso_show_tiqr_button",
                                 ],
                         },
 
@@ -2972,6 +3047,13 @@ class Site(OTPmeObject):
 
             'OIDC_PAIRWISE_SECRET'      : {
                                             'var_name'      : 'oidc_pairwise_secret',
+                                            'type'          : str,
+                                            'required'      : False,
+                                            'encryption'    : config.disk_encryption,
+                                        },
+
+            'TIQR_SECRET'               : {
+                                            'var_name'      : 'tiqr_secret',
                                             'type'          : str,
                                             'required'      : False,
                                             'encryption'    : config.disk_encryption,
@@ -3708,6 +3790,56 @@ class Site(OTPmeObject):
             pass
         emit_audit("Crypto", "oidc_pairwise_secret_generated",
                    level='warning',
+                   actor=actor,
+                   site=self.name,
+                   reason=audit_reason)
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:tiqr_secret'])
+    @object_lock()
+    @backend.transaction
+    @audit_log(ignore_args=['secret'])
+    @object_changelog("change tiqr secret")
+    def change_tiqr_secret(
+        self,
+        secret: str=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Rotate the per-Site tiqr HMAC key.
+
+        Without ``secret`` a fresh 64 byte key is autogenerated. Pass
+        ``secret`` only when re-importing a known value during a site
+        clone -- otherwise omit it so nobody ever picks this by hand.
+
+        Rotating is cheap and needs no confirmation: the key only
+        derives the challenge and the poll id of a login attempt, both
+        of which live for tiqr_challenge_expiry seconds. Logins that are
+        in flight at that moment fail and can be retried. Enrolled
+        phones, token secrets and sessions are untouched.
+        """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+        if secret:
+            self.tiqr_secret = secret
+            audit_reason = "rotate_explicit"
+        else:
+            self.tiqr_secret = stuff.gen_secret(len=64, encoding="hex")
+            audit_reason = "rotate_autogen"
+        actor = None
+        try:
+            if config.auth_token:
+                actor = config.auth_token.rel_path
+        except Exception:
+            pass
+        emit_audit("Crypto", "tiqr_secret_generated",
                    actor=actor,
                    site=self.name,
                    reason=audit_reason)
@@ -4966,6 +5098,11 @@ class Site(OTPmeObject):
         # Set flask secrets.
         self.sso_secret = stuff.gen_secret(len=64, encoding="hex")
         self.sso_csrf_secret = stuff.gen_secret(len=64, encoding="hex")
+        # Derives the challenge and the poll id of a tiqr login. Made
+        # here rather than on first use: a tiqr login must never have to
+        # write to the site object, least of all from an unauthenticated
+        # request that could hit any node.
+        self.tiqr_secret = stuff.gen_secret(len=64, encoding="hex")
         # Set cluster key.
         self.cluster_key = stuff.gen_secret(len=64, encoding="hex")
 
@@ -6203,6 +6340,13 @@ class Site(OTPmeObject):
             lines.append(f'OIDC_PAIRWISE_SECRET="{pw_secret}"')
         else:
             lines.append('OIDC_PAIRWISE_SECRET=""')
+
+        if self.verify_acl("view:tiqr_secret") \
+        or self.verify_acl("edit:tiqr_secret"):
+            tiqr_secret = self.tiqr_secret or ""
+            lines.append(f'TIQR_SECRET="{tiqr_secret}"')
+        else:
+            lines.append('TIQR_SECRET=""')
 
         if self.verify_acl("view:mgmt_cert"):
             lines.append(f'MGMT_CERT="{self.mgmt_cert}"')

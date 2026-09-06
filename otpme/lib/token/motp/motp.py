@@ -321,6 +321,8 @@ class MotpToken(Token):
         self.token_type = "motp"
         # Set password type.
         self.pass_type = "otp"
+        # A short OTP the user types, same reasoning as HOTP.
+        self.count_fails = True
         self.otp_type = "time"
 
         # Set default values.

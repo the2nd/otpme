@@ -58,6 +58,10 @@ dependencies = [
     "lz4>=4.3.2",
     "mfusepy>=3.1.1",
     "netifaces>=0.8",
+    # OCRA (RFC 6287) for tiqr tokens. Not a replacement for pyotp, which
+    # stays responsible for HOTP/TOTP. 1.4.5 is what the vectors in
+    # tests/unit/test_ocra.py were checked against.
+    "oath>=1.4.5",
     "orjson>=3.11.0",
     "paramiko>=3.5.0",
     "passlib>=1.7.2",
@@ -214,6 +218,11 @@ otpme = [
 # (tests/*.sh) and the pre-existing 999-test_backup.py are not picked
 # up by pytest because they don't match python_files below and aren't
 # under testpaths.
+#
+# tests/web/ is deliberately NOT in here: it loads the real OTPmeConfig
+# while tests/unit installs a stub as otpme.lib.config, and whichever
+# runs first decides what every module imported afterwards sees. Run it
+# as its own invocation, the way runtests.sh does.
 testpaths = ["tests/unit"]
 python_files = ["test_*.py"]
 addopts = "-q --strict-markers"

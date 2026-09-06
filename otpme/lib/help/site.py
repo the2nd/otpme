@@ -444,10 +444,17 @@ cmd_help = {
 
     'oidc_pairwise_secret'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site oidc_pairwise_secret {site} [secret]'),
-                    'cmd'   :   '--force :force=True: <|object|> [secret]',
+                    'cmd'   :   '<|object|> [secret]',
                     '_help' :   {
                                     'cmd'                   : _('Rotate OIDC pairwise sub HMAC secret. Auto-generates if no secret given. WARNING: invalidates every existing pairwise sub on RPs.'),
-                                    '-f'                    : _('Do not ask for confirmation.'),
+                                },
+                },
+
+    'tiqr_secret'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site tiqr_secret {site} [secret]'),
+                    'cmd'   :   '<|object|> [secret]',
+                    '_help' :   {
+                                    'cmd'                   : _('Rotate tiqr HMAC secret. Auto-generates if no secret given. Only affects tiqr logins currently in progress.'),
                                 },
                 },
 

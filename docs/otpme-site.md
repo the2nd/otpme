@@ -227,12 +227,21 @@ replacement is generated automatically.
 List the OIDC signing keys currently on the site (active, retired, and
 their algorithms / kid).
 
-**oidc_pairwise_secret \[**--force**\] *site* \[*secret*\]**  
+**oidc_pairwise_secret *site* \[*secret*\]**  
 Rotate (or set) the pairwise sub HMAC secret for this site. Without
-*secret* a fresh 64-hex-char key is auto-generated. **WARNING:**
-rotating invalidates every existing pairwise *sub* on every RP -- RPs
-that key their account model on *sub* will see a "fresh" user on next
-login. Coordinate with each RP before rotating.
+*secret* a fresh 64-hex-char key is auto-generated. Asks for
+confirmation; use the global **-f** to skip it. **WARNING:** rotating
+invalidates every existing pairwise *sub* on every RP -- RPs that key
+their account model on *sub* will see a "fresh" user on next login.
+Coordinate with each RP before rotating.
+
+**tiqr_secret *site* \[*secret*\]**  
+Rotate (or set) the tiqr HMAC secret for this site. Without *secret* a
+fresh 64-byte key is auto-generated. The secret derives the challenge
+and the poll id of a tiqr login attempt, both of which live for
+**tiqr_challenge_expiry** seconds, so rotating only breaks logins that
+are in progress at that moment. Enrolled phones, token secrets and
+existing sessions are unaffected.
 
 Site / Unit / Client config parameters relevant to OIDC:
 

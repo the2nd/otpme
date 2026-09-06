@@ -210,6 +210,8 @@ class U2fToken(Token):
         self.token_type = "u2f"
         # Set password type.
         self.pass_type = "smartcard"
+        # A signature over a server-issued challenge, like fido2.
+        self.count_fails = False
         # Set default values.
         self.reg_app_id = None
         self.reg_challenge = None

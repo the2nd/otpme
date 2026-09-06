@@ -827,9 +827,10 @@ site's **sso_allow_passkeys**. Own-site users are always trusted.
 Object types: site
 
 **sso_allow_fido2_deploy (bool, default: true)**  
-Whether end users may register a new FIDO2 token through the SSO portal
-Settings page. Set to false to restrict FIDO2 deployment to
-administrator workflows.  
+Whether FIDO2 may be chosen as the token type of a first-login
+deployment or an SSO-token recovery. Set to false to restrict those to
+administrator workflows. Registering further keys from the Settings page
+is governed by **sso_allow_fido2**, which this parameter narrows.  
 Object types: site, unit, user, token
 
 **force_fido2_rp (str, default: realm)**  
@@ -841,10 +842,107 @@ passkeys are unaffected. Valid values: *realm* (use the realm name) or
 Object types: site, unit, user
 
 **sso_allow_totp_deploy (bool, default: true)**  
-Whether end users may register a new TOTP token through the SSO portal
-Settings page. Set to false to restrict TOTP deployment to administrator
-workflows.  
+Whether TOTP may be chosen as the token type of a first-login deployment
+or an SSO-token recovery. Set to false to restrict those to
+administrator workflows. TOTP has no Settings card of its own.  
 Object types: site, unit, user, token
+
+**sso_allow_tiqr_deploy (bool, default: false)**  
+Whether tiqr may be chosen as the token type of a first-login deployment
+or an SSO-token recovery. Off by default because tiqr needs a
+**tiqr_secret** on the site and the tiqr app on a phone - it should be a
+deliberate choice rather than a button that appears on every install.
+Enrolling further phones from the Settings page is governed by
+**sso_allow_tiqr**, which this parameter narrows: a type nobody may sign
+in with is not one to hand somebody as their new token.  
+Object types: site, unit, user, token
+
+**sso_allow_tiqr (bool, default: true)**  
+Whether tiqr may be used in the SSO portal at all - signing in by
+confirming on a phone, and managing phones on the Settings page
+including enrolling one. Set to false to refuse tiqr authentication
+entirely and hide the card.  
+Resolves fail-open: only an explicit false blocks, so adding the
+parameter underneath a running installation cannot switch off a login
+that works today. Note that this defaults to *true* while
+**sso_allow_tiqr_deploy** defaults to *false*, which is what keeps tiqr
+out of the way on an installation that never set it up: a tiqr login
+needs a phone somebody enrolled deliberately.  
+Object types: site, unit, user
+
+**sso_allow_fido2 (bool, default: true)**  
+Whether FIDO2 security keys may be used in the SSO portal at all -
+signing in with one, and managing them on the Settings page including
+registering another. Set to false to refuse FIDO2 authentication
+entirely and hide the card; it takes **sso_allow_fido2_deploy** with
+it.  
+Resolves fail-open, unlike **sso_allow_passkeys**: FIDO2 login predates
+this parameter and must not stop working because nobody set it. Only an
+explicit false blocks.  
+Object types: site, unit, user
+
+**sso_show_fido2_button (bool, default: true)**  
+
+**sso_show_tiqr_button (bool, default: true)**  
+Whether the login mask offers the **Security Key** and **Sign in with
+tiqr** buttons. Purely about what the page shows; whether the method may
+be used is **sso_allow_fido2** and **sso_allow_tiqr**. Site scope,
+because the mask is rendered before anybody has typed a name and a
+per-user cascade could not be resolved without answering questions about
+who exists.  
+Note that the button is the only way into that flow from the login mask,
+so hiding it does take the method away in practice. It is never hidden
+on the re-authentication page: a user whose token is a security key or a
+phone has no password field there, and would be left with nothing to
+press.  
+Object types: site
+
+**sso_show_recover_link (bool, default: false)**  
+Whether the login page shows the **Lost access to your SSO token?**
+link. Off by default. Independent of the per-user
+**allow_sso_account_recovery** cascade: this one hides the entry point
+at site scope, so a site that does not offer recovery at all does not
+expose the flow. With it off, **/recover** redirects back to
+**/login**.  
+Object types: site
+
+**tiqr_ocra_suite (str, default: OCRA-1:HOTP-SHA1-6:QH10-S)**  
+OCRA suite (RFC 6287) offered to the app when a phone is enrolled. The
+suite a token actually uses is stored on the token itself, because the
+apps bake it into the account at enrollment: changing this parameter
+affects only phones enrolled from then on and never invalidates existing
+ones. The default is what the tiqr apps have always used; note that its
+bare **-S** is a tiqr deviation from the RFC and means a 64 byte session
+field.  
+Object types: site, unit, user
+
+**tiqr_challenge_expiry (int, default: 180)**  
+Seconds a tiqr login challenge stays answerable. The session key in the
+QR code carries its own creation time, so this bounds the window without
+any server-side state. It is also half of what bounds guessing of the
+six digit response - see the rate limit on the **/tiqr/auth** route.  
+Object types: site, unit, user
+
+**tiqr_enrollment_expiry (int, default: 300)**  
+Seconds an enrollment grant stays valid, i.e. how long the user has to
+scan the enrollment QR code and finish in the app.  
+Object types: site, unit, user
+
+**tiqr_service_display_name (str)**  
+Name the tiqr app shows for this service in its account list. Empty
+means the realm name is used.  
+Object types: site
+
+**tiqr_auth_scheme (str, default: tiqrauth)**  
+URL scheme of the authentication link handed to the phone. Has to match
+the app that is handed out; the stock tiqr apps register this one.
+Change it only when shipping your own build of the app.  
+Object types: site
+
+**tiqr_enroll_scheme (str, default: tiqrenroll)**  
+URL scheme of the enrollment link handed to the phone, alongside
+**tiqr_auth_scheme**.  
+Object types: site
 
 **sso_rate_limit_login (str, default: 100/minute)**  
 Per-IP rate limit on the SSO portal /login POST endpoint. Coarse DoS

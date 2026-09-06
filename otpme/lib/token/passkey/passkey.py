@@ -191,6 +191,8 @@ class PasskeyToken(Token):
         self._recursive_default_acls = get_recursive_default_acls()
         self.token_type = "passkey"
         self.pass_type = "smartcard"
+        # A signature over a server-issued challenge, like fido2.
+        self.count_fails = False
         self.credential_data = None
         self.rp = None
         self.allow_offline = False

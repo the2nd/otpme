@@ -257,3 +257,24 @@ app.register_blueprint(oidc_bp, url_prefix='/oidc')
 # driven form (consent) ships with its own per-render nonce stored
 # server-side in flask_session (see oidc/views.py _oidc_consent_nonce).
 csrf.exempt(oidc_bp)
+
+# The tiqr endpoints are reached by the phone app, which has no Flask
+# session and therefore no CSRF token to present. What authorises them
+# instead is the signed grant in the URL (enrollment) or the OCRA
+# response itself (authentication).
+#
+# /tiqr is the phone and nothing else, so the CSRF boundary is a URL
+# boundary too: everything under this prefix is exempt, without
+# exception. The browser halves of the same flows live in views.py
+# under /login/tiqr (starting a login, polling for its result, typing
+# the response) and /settings/tiqr (managing enrolled phones), and keep
+# their CSRF protection.
+#
+# Worth keeping that way. The phone URLs are fixed by the protocol --
+# they travel into the app inside the enrollment metadata and cannot be
+# changed afterwards -- while the browser ones are free. Mixing the two
+# under one prefix would mean a route added to this blueprint by
+# mistake becomes exempt with nothing in its URL to show it.
+from otpme.web.app.tiqr import tiqr_bp
+app.register_blueprint(tiqr_bp, url_prefix='/tiqr')
+csrf.exempt(tiqr_bp)

@@ -339,6 +339,8 @@ class YubikeypivToken(Token):
         self.token_type = "yubikey_piv"
         # Set password type.
         self.pass_type = "smartcard"
+        # A signature from the PIV applet over a server-issued challenge.
+        self.count_fails = False
         # Public keys come in pairs: sign for ECDSA-style verify,
         # encrypt for HPKE/RSA-OAEP wrap. On YubiKey-PIV they live in
         # slots 9A (AUTHENTICATION) and 9D (KEY_MANAGEMENT) respectively.

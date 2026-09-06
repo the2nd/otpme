@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import traceback
 import setproctitle
+from urllib.parse import quote
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
 
@@ -33,8 +34,11 @@ from otpme.lib import stuff
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 
+from otpme.lib import qrcode
 from otpme.lib.protocols import status_codes
+from otpme.lib.protocols import tiqr_helpers
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.token.tiqr import tiqr as tiqr_token
 
 from otpme.lib.exceptions import *
 
@@ -60,10 +64,36 @@ SSO_RECOVERY_TOKEN_BYTES = 32
 # ``allow_sso_token_recovery`` list is authoritative for *whether*
 # recovery is allowed; this list tracks *which* provisioning paths
 # the deploy handlers actually implement (TOTP secret+QR, WebAuthn
-# attestation, plain-password change). Adding a new token type =
-# add a branch in ``recovery_deploy_begin`` +
+# attestation, tiqr enrollment grant, plain-password change). Adding
+# a new token type = add a branch in ``recovery_deploy_begin`` +
 # ``recovery_deploy_verify`` + this tuple.
-SSO_RECOVERY_DEPLOY_TYPES = ("totp", "fido2", "password")
+SSO_RECOVERY_DEPLOY_TYPES = ("totp", "fido2", "tiqr", "password")
+
+# Token types a user may hand the SSO role to from the portal. Every one
+# of them has a card of its own on the settings page, which is what
+# makes promoting it meaningful: you can see the thing you are choosing.
+# Passkeys are deliberately out -- they are meant as peers of the login
+# token, not as the token the recovery flow looks for.
+PROMOTABLE_TOKEN_TYPES = ("tiqr", "fido2")
+
+# Token types the portal can provision, and the parameter that says
+# whether a user may be handed one. Order is what the deploy page shows.
+DEPLOY_TOKEN_TYPES = ("totp", "fido2", "tiqr", "password")
+DEPLOY_ALLOW_PARAMS = {
+            "totp":     "sso_allow_totp_deploy",
+            "fido2":    "sso_allow_fido2_deploy",
+            "tiqr":     "sso_allow_tiqr_deploy",
+            "password": "sso_allow_password_deploy",
+            }
+
+# On top of the deploy parameter above, these types have a switch that
+# governs whether they may be used in the portal at all -- signing in
+# included. Handing somebody a token of a type they cannot sign in with
+# would be a way to lock them out, so deploying requires both.
+DEPLOY_TYPE_ENABLED_PARAMS = {
+            "fido2":    "sso_allow_fido2",
+            "tiqr":     "sso_allow_tiqr",
+            }
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
@@ -71,6 +101,19 @@ PROTOCOL_VERSION = "OTPme-sso-1.0"
 
 def register():
     config.register_otpme_protocol("ssod", PROTOCOL_VERSION, server=True)
+
+def _is_current_token(token):
+    """ Is this the token the current session is signed in with?
+
+    config.auth_token is set by verify_sso_jwt from the UUID the JWT
+    carries. Deleting or disabling that very token locks the user out
+    rather than sending them to a clean re-auth -- the next request
+    would look for a token that is gone. Four handlers refuse it for
+    that reason, and the passkey and tiqr listings flag it so the
+    buttons are not offered in the first place. """
+    if config.auth_token is None:
+        return False
+    return config.auth_token.uuid == token.uuid
 
 def get_apps(token):
     """ Return SSO app metadata visible to the given token. """
@@ -422,24 +465,26 @@ class OTPmeSsoP1(OTPmeServer1):
                                             user=user,
                                             command_args=command_args,
                                             mgmt=True)
-        # Gate per-type deploy via config parameters (site/unit/user/token
-        # walk). Default True for totp/fido2 keeps legacy behaviour;
-        # password defaults False (weaker credential, admin has to opt
-        # in). Unknown token_type falls through and is rejected later
-        # by add_token().
-        allow_param = {
-            "totp":     "sso_allow_totp_deploy",
-            "fido2":    "sso_allow_fido2_deploy",
-            "password": "sso_allow_password_deploy",
-        }.get(token_type)
-        if allow_param is not None \
-        and not user.get_config_parameter(allow_param):
+        # Unknown token_type falls through here and is rejected later by
+        # add_token(), which is where the list of real types lives.
+        if not self._deploy_type_allowed(user, token_type):
             msg = _("Deploy of token type '{tt}' is not allowed.")
             msg = msg.format(tt=token_type)
             return self.build_response(False, {'message': msg, 'status': False})
         # Prepare deploy.
         login_token = config.auth_token
         login_token_name = login_token.name
+        # The portal deploys the token it is meant to deploy, not
+        # whichever one you happened to sign in with. Without this a
+        # user who logged in with an extra tiqr phone would silently
+        # overwrite that phone instead of their SSO token -- harmless
+        # while the SSO token was the only way in, but no longer true
+        # now that additional tokens can log in as well.
+        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        if sso_token_name and login_token_name != sso_token_name:
+            msg = _("Please sign in with your '{name}' token to deploy.")
+            msg = msg.format(name=sso_token_name)
+            return self.build_response(False, {'message': msg, 'status': False})
         # Password: no staging token at all. The user's chosen
         # credential is the ONLY password we ever set; deploy_verify
         # creates the token with add_token(replace=True) in one step.
@@ -465,6 +510,70 @@ class OTPmeSsoP1(OTPmeServer1):
                             add_to_trash=add_to_trash,
                             callback=callback)
             user._write(callback=callback)
+        # tiqr: no staging token either, for the same reason as the
+        # passkey flow -- the slot appears only once the phone has
+        # delivered its secret. The enrollment grant simply names
+        # DEPLOY_NAME as the token to create, so the whole regular
+        # enrollment path applies unchanged and deploy_verify finds an
+        # ordinary tiqr token waiting to be moved into place.
+        if token_type == "tiqr":
+            device_name = command_args.get('device_name')
+            device_name = str(device_name).strip() if device_name else ""
+            # The device name is not just a label: it is the name this
+            # token is renamed to when the SSO role is later handed to
+            # another phone. Check here that it survives sanitizing and
+            # that the resulting name is free, so the user hears about
+            # it now instead of at promotion time.
+            promote_name = tiqr_helpers.sanitize_token_name(device_name)
+            if not promote_name:
+                msg = _("Invalid device name.")
+                if not device_name:
+                    msg = _("Device name required.")
+                return self.build_response(False,
+                                {'message': msg, 'status': False})
+            if user.token(promote_name):
+                msg = _("A token with this name already exists.")
+                return self.build_response(False,
+                                {'message': msg, 'status': False})
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
+            enroll_key = tiqr_helpers.build_enroll_key(
+                                    tiqr_token.get_site_secret(),
+                                    tiqr_helpers.ENROLL_SCOPE_METADATA,
+                                    expiry,
+                                    user_uuid=user.uuid,
+                                    token_name=DEPLOY_NAME,
+                                    device_name=device_name,
+                                    login_token_uuid=login_token.uuid)
+            metadata_url = (f"https://{my_site.sso_fqdn}/tiqr/metadata"
+                            f"?enrollment_key={quote(enroll_key, safe='')}")
+            enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
+            enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme,
+                                                    metadata_url)
+            try:
+                qrcode_data = qrcode.gen_qrcode(enroll_url, fmt="svg")
+                if isinstance(qrcode_data, bytes):
+                    qrcode_data = qrcode_data.decode('utf-8')
+                qrcode_img = ("data:image/svg+xml;base64,"
+                            + base64.b64encode(qrcode_data.encode()).decode())
+            except Exception as e:
+                log_msg = _("tiqr: QR code generation failed: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False,
+                                {'message':'DEPLOY_FAILED', 'status':False})
+            response = {
+                        'token_type'                : token_type,
+                        'deploy_token_name'         : DEPLOY_NAME,
+                        'deploy_login_token_name'   : login_token_name,
+                        'enroll_url'                : enroll_url,
+                        'qrcode_img'                : qrcode_img,
+                    }
+            log_msg = _("SSO deploy started for user '{user_name}', token type 'tiqr'.", log=True)[1]
+            log_msg = log_msg.format(user_name=user.name)
+            self.logger.info(log_msg)
+            return self.build_response(True, response)
         # Create sso-deploy token (OATH or FIDO2) under the user.
         try:
             user.add_token(token_name=DEPLOY_NAME,
@@ -542,11 +651,8 @@ class OTPmeSsoP1(OTPmeServer1):
                                     user=user,
                                     command_args=command_args,
                                     mgmt=True)
-        gates = (("totp",     "sso_allow_totp_deploy"),
-                 ("fido2",    "sso_allow_fido2_deploy"),
-                 ("password", "sso_allow_password_deploy"))
-        allowed = [tt for tt, param in gates
-                   if user.get_config_parameter(param)]
+        allowed = [tt for tt in DEPLOY_TOKEN_TYPES
+                   if self._deploy_type_allowed(user, tt)]
         return self.build_response(True,
                             {'token_types': allowed, 'status': True})
 
@@ -635,6 +741,14 @@ class OTPmeSsoP1(OTPmeServer1):
         if deploy_token.token_type == "fido2":
             if not deploy_token.credential_data:
                 response = {'message':'Security key not registered yet.', 'status':False}
+                return self.build_response(False, response)
+        elif deploy_token.token_type == "tiqr":
+            # The token existing at all already means the phone
+            # answered -- the enrollment creates it only on success.
+            # is_deployed() is the same check the fido2 branch above
+            # makes on credential_data.
+            if not deploy_token.is_deployed():
+                response = {'message':'Phone not enrolled yet.', 'status':False}
                 return self.build_response(False, response)
         else:
             otp = str(token_data.get('otp', ''))
@@ -799,7 +913,16 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {
                     'message': 'REGISTRATION_FAILED', 'status': False})
         reg_state = state_data['state']
-        token_uuid = state_data['token_uuid']
+        # fido2_add_begin stores its own shape in the same dict (it has
+        # a token_name, not a uuid -- there is no token yet). Its state
+        # ids belong to fido2_add_complete; handing one here is a client
+        # mixing up two flows, not something to raise on.
+        token_uuid = state_data.get('token_uuid')
+        if not token_uuid:
+            log_msg = _("Fido2 reg state is not from a deploy registration.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                    'message': 'REGISTRATION_FAILED', 'status': False})
         # Get fido2 token
         fido2_token = backend.get_object(uuid=token_uuid)
         if not fido2_token:
@@ -849,6 +972,55 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         response = {'message':log_msg, 'status':True}
         return self.build_response(True, response)
+
+    def _mirror_login_token_memberships(self, user, token, login_token,
+        callback, flow):
+        """ Give a fresh token the same reach as the login token.
+
+        Roles, direct access groups and direct groups get copied from
+        the token the user actually presented in the current SSO JWT
+        (config.auth_token, set by verify_sso_jwt) -- that is the real
+        "login token" for this session, not necessarily
+        user.default_token. Without them, logging in with the new token
+        fails with "token is not valid for accessgroup 'SSO'".
+
+        Only the direct memberships: what comes via a role follows by
+        itself once the role is mirrored.
+
+        Cross-site memberships are deliberately skipped: writing them
+        would require an ssod->ssod fan-out to each remote site, which
+        is not built yet. The user can re-run the add on the other site
+        if they need cross-site coverage.
+        """
+        if login_token is None:
+            return
+        token_path = f"{user.name}/{token.name}"
+        members = (
+                ("role", login_token.get_roles(return_type="instance")),
+                ("access group", login_token.get_access_groups(
+                                                include_roles=False,
+                                                return_type="instance")),
+                ("group", login_token.get_groups(include_roles=False,
+                                                return_type="instance")),
+                )
+        for label, objects in members:
+            for member in objects:
+                if member.site != config.site:
+                    continue
+                try:
+                    member.add_token(token_path=token_path,
+                                    force=True,
+                                    verify_acls=False,
+                                    run_policies=False,
+                                    callback=callback)
+                    member._write(callback=callback)
+                except Exception as e:
+                    log_msg = _("{flow}: failed to mirror {label} '{name}' onto '{token}': {e}", log=True)[1]
+                    log_msg = log_msg.format(flow=flow,
+                                            label=label,
+                                            name=member.name,
+                                            token=token.rel_path, e=e)
+                    self.logger.warning(log_msg)
 
     def _sanitize_passkey_token_name(self, device_name):
         """ Build a valid passkey token name from a user-supplied label.
@@ -1009,6 +1181,12 @@ class OTPmeSsoP1(OTPmeServer1):
                         'name'          : token.name,
                         'device_name'   : token.description or token.name,
                         'enabled'       : bool(token.enabled),
+                        # The one this session is signed in with. Both
+                        # deleting and disabling it are refused (see
+                        # del_passkey), so the UI can say so up front
+                        # instead of letting the user find out by
+                        # pressing the button.
+                        'is_current'    : _is_current_token(token),
                     })
         return self.build_response(True, {'passkeys': passkeys, 'allowed': True, 'status': True})
 
@@ -1226,67 +1404,10 @@ class OTPmeSsoP1(OTPmeServer1):
         token._write(callback=callback)
         # A passkey is meant to be a peer of the login token: same
         # authorization, just a different factor on a different device.
-        # Copy role + direct AG + direct group memberships from the
-        # token the user actually presented in the current SSO JWT
-        # (config.auth_token, set by verify_sso_jwt) -- that's the real
-        # "login token" for this session, not necessarily
-        # user.default_token. Otherwise login with the passkey fails
-        # with "token is not valid for accessgroup 'SSO'".
-        #
-        # Cross-site memberships are deliberately skipped: writing them
-        # would require an ssod->ssod fan-out to each remote site, which
-        # is not built yet. The user can re-run the add on the other
-        # site if they need cross-site coverage.
-        login_token = config.auth_token
-        if login_token is not None:
-            token_path = f"{user.name}/{token.name}"
-            for role in login_token.get_roles(return_type="instance"):
-                if role.site != config.site:
-                    continue
-                try:
-                    role.add_token(token_path=token_path,
-                                    force=True,
-                                    verify_acls=False,
-                                    run_policies=False,
-                                    callback=callback)
-                    role._write(callback=callback)
-                except Exception as e:
-                    log_msg = _("Passkey: failed to mirror role '{role}' onto '{token}': {e}", log=True)[1]
-                    log_msg = log_msg.format(role=role.name,
-                                            token=token.rel_path, e=e)
-                    self.logger.warning(log_msg)
-            for ag in login_token.get_access_groups(include_roles=False,
-                                                    return_type="instance"):
-                if ag.site != config.site:
-                    continue
-                try:
-                    ag.add_token(token_path=token_path,
-                                force=True,
-                                verify_acls=False,
-                                run_policies=False,
-                                callback=callback)
-                    ag._write(callback=callback)
-                except Exception as e:
-                    log_msg = _("Passkey: failed to mirror access group '{ag}' onto '{token}': {e}", log=True)[1]
-                    log_msg = log_msg.format(ag=ag.name,
-                                            token=token.rel_path, e=e)
-                    self.logger.warning(log_msg)
-            for grp in login_token.get_groups(include_roles=False,
-                                                return_type="instance"):
-                if grp.site != config.site:
-                    continue
-                try:
-                    grp.add_token(token_path=token_path,
-                                force=True,
-                                verify_acls=False,
-                                run_policies=False,
-                                callback=callback)
-                    grp._write(callback=callback)
-                except Exception as e:
-                    log_msg = _("Passkey: failed to mirror group '{grp}' onto '{token}': {e}", log=True)[1]
-                    log_msg = log_msg.format(grp=grp.name,
-                                            token=token.rel_path, e=e)
-                    self.logger.warning(log_msg)
+        self._mirror_login_token_memberships(user, token,
+                                            config.auth_token,
+                                            callback,
+                                            flow="Passkey")
         cred_hash = hashlib.sha256(auth_data.credential_data).hexdigest()[:16]
         emit_audit("Crypto", "passkey_credential_added",
                         user=user.name,
@@ -1300,6 +1421,1205 @@ class OTPmeSsoP1(OTPmeServer1):
                     'name'          : token.name,
                     'device_name'   : token.description,
                 })
+
+    # ---- FIDO2 security keys (self-service) ----------------------------
+    #
+    # The same span the passkey commands above cover, for the other kind
+    # of WebAuthn credential. Two differences run through all of it:
+    #
+    #   * A security key is cross-platform and needs no resident
+    #     credential. That is what tells the two apart, so the register
+    #     options say so rather than demanding residentKey like a
+    #     passkey does.
+    #
+    #   * The gate resolves fail-open. FIDO2 login predates
+    #     sso_allow_fido2 and must not stop working because nobody has
+    #     set it; see _sso_allow_fido2_for_user in auth1.py, which
+    #     resolves the same cascade for the login path. There is no
+    #     trusts mechanism either: sso_allow_passkeys_trusts exists
+    #     because passkey *login* is decided per home site, which is a
+    #     different question from who may manage their own keys.
+
+    def _resolve_fido2_allowed(self, user):
+        """ The sso_allow_fido2 cascade (user -> unit -> site). """
+        try:
+            value = user.get_config_parameter("sso_allow_fido2")
+        except Exception:
+            return True
+        if value is None:
+            return True
+        return bool(value)
+
+    def _sanitize_fido2_token_name(self, device_name):
+        """ Build a fido2 token name from a user-supplied label. """
+        return tiqr_helpers.sanitize_token_name(device_name, prefix="fido2-")
+
+    def _get_user_fido2_token(self, user, token_name):
+        """ One of the user's own fido2 tokens, by name. """
+        token = user.token(token_name)
+        if token is None:
+            return None
+        if token.token_type != "fido2":
+            return None
+        return token
+
+    def list_fido2_tokens(self, username, sso_jwt, command_args):
+        """ The user's security keys.
+
+        Like the tiqr listing this includes the SSO token when that is a
+        fido2 one, flagged, so somebody with two keys sees both -- and
+        the one that matters most is not the hidden one.
+
+        Keys without credential_data are left out: an empty fido2 slot
+        is what an administrator creates for the older
+        fido2_register_begin path, and it is not something the user can
+        do anything with here. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            # Read only, so no need to go to the master.
+            return self.ssod_redirect_command(command="list_fido2_tokens",
+                                            user=user,
+                                            command_args=command_args)
+        if not self._resolve_fido2_allowed(user):
+            return self.build_response(True, {'fido2_tokens': [],
+                                            'allowed': False,
+                                            'status': True})
+        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        fido2_tokens = []
+        for token_uuid in user.tokens:
+            try:
+                token = backend.get_object(object_type="token", uuid=token_uuid)
+            except Exception as e:
+                log_msg = _("Failed to read token object: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                continue
+            if not token or token.token_type != "fido2":
+                continue
+            if not token.credential_data:
+                continue
+            fido2_tokens.append({
+                        'name'          : token.name,
+                        'device_name'   : token.description or token.name,
+                        'enabled'       : bool(token.enabled),
+                        'is_sso_token'  : token.name == sso_token_name,
+                        'is_current'    : _is_current_token(token),
+                    })
+        sso_token = user.token(sso_token_name)
+        sso_token_label = None
+        sso_token_suggested_name = None
+        if sso_token is not None:
+            sso_token_label = (getattr(sso_token, 'device_name', None)
+                            or getattr(sso_token, 'description', None)
+                            or sso_token.name)
+            sso_token_suggested_name = self._suggest_displaced_token_name(
+                                                        user, sso_token)
+        return self.build_response(True, {
+                            'fido2_tokens': fido2_tokens,
+                            'allowed': True,
+                            'sso_token_name': sso_token_name,
+                            'sso_token_type': (sso_token.token_type
+                                            if sso_token else None),
+                            'sso_token_label': sso_token_label,
+                            'sso_token_suggested_name': sso_token_suggested_name,
+                            'status': True})
+
+    def fido2_add_begin(self, username, sso_jwt, command_args):
+        """ Start registering another security key.
+
+        Unlike fido2_register_begin this needs no empty token slot to
+        exist: like the passkey flow the token is created on success, so
+        a cancelled registration leaves nothing behind. """
+        try:
+            rp_id = command_args['rp_id']
+            device_name = command_args['device_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        device_name = str(device_name).strip() if device_name else ""
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="fido2_add_begin",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_fido2_allowed(user):
+            return self.build_response(False,
+                    {'message':'Security keys are not enabled.',
+                    'status':False})
+        token_name = self._sanitize_fido2_token_name(device_name)
+        if not token_name:
+            msg = 'Invalid device name.'
+            if not device_name:
+                msg = 'Device name required.'
+            return self.build_response(False,
+                            {'message': msg, 'status':False})
+        if user.token(token_name):
+            return self.build_response(False,
+                    {'message':'A token with this name already exists.',
+                    'status':False})
+        # excludeCredentials: every credential this user already has, of
+        # either kind. Browsers use it to refuse binding the same
+        # authenticator twice, which is the difference between "you
+        # already registered this key" and a second entry nobody can
+        # tell apart from the first.
+        existing_credentials = []
+        for tok_uuid in user.tokens:
+            tok = backend.get_object(object_type="token", uuid=tok_uuid)
+            if not tok:
+                continue
+            if tok.token_type not in ("fido2", "passkey"):
+                continue
+            if not tok.credential_data:
+                continue
+            try:
+                cred_data = decode(tok.credential_data, "hex")
+                existing_credentials.append(AttestedCredentialData(cred_data))
+            except Exception:
+                continue
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        # "direct" like fido2_register_begin, not the "none" the passkey
+        # flow uses: a security key is a device with an attestation
+        # worth having, a synced passkey usually is not.
+        fido2_server = Fido2Server(rp_data, attestation="direct")
+        user_data = {"id":          user.uuid.encode(),
+                    "name":         user.name,
+                    "displayName":  user.name}
+        try:
+            create_options, reg_state = fido2_server.register_begin(
+                user_data,
+                credentials=existing_credentials,
+                user_verification="preferred",
+                authenticator_attachment="cross-platform",
+            )
+        except Exception as e:
+            log_msg = _("FIDO2 register_begin failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':f'Failed to start registration: {e}',
+                    'status':False})
+        # Same shared dict the deploy flow uses, with a shape of its own
+        # -- token_name because there is no token yet. Both completes
+        # check which shape they got.
+        fido2_state_id = stuff.gen_secret(len=32)
+        multiprocessing.fido2_reg_states.add(
+                key=fido2_state_id,
+                value={'state':       reg_state,
+                       'device_name': device_name,
+                       'token_name':  token_name},
+                expire=300)
+        return self.build_response(True, {
+                    'create_options'    : dict(create_options),
+                    'fido2_state_id'    : fido2_state_id,
+                })
+
+    def fido2_add_complete(self, username, sso_jwt, command_args):
+        """ Verify the registration and create the security key token.
+
+        Born deployed, like a passkey: an empty slot is not something
+        this path leaves behind. """
+        try:
+            rp_id = command_args['rp_id']
+            fido2_state_id = command_args['fido2_state_id']
+            registration_data = command_args['registration_data']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="fido2_add_complete",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_fido2_allowed(user):
+            return self.build_response(False,
+                    {'message':'Security keys are not enabled.',
+                    'status':False})
+        # Single use: a second complete with the same state id inside
+        # the TTL misses, which is what stops a replay.
+        try:
+            state_data = multiprocessing.fido2_reg_states.delete(fido2_state_id)
+        except KeyError:
+            log_msg = _("FIDO2 reg state missing.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':'REGISTRATION_FAILED', 'status':False})
+        token_name = state_data.get('token_name')
+        if not token_name:
+            # A state id from the deploy flow, which registers into an
+            # existing slot. Not ours to finish.
+            log_msg = _("FIDO2 reg state is not from a self-service registration.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':'REGISTRATION_FAILED', 'status':False})
+        device_name = state_data.get('device_name') or token_name
+        reg_state = state_data['state']
+        if user.token(token_name):
+            # Somebody was faster, or the name was taken while the user
+            # was touching the key.
+            return self.build_response(False,
+                    {'message':'A token with this name already exists.',
+                    'status':False})
+        rp_data = {"id": rp_id, "name": "OTPme RP"}
+        fido2_server = Fido2Server(rp_data, attestation="direct")
+        try:
+            auth_data = fido2_server.register_complete(reg_state,
+                                                    registration_data)
+        except Exception as e:
+            log_msg = _("FIDO2 registration failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':'REGISTRATION_FAILED', 'status':False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.add_token(token_name=token_name,
+                            token_type="fido2",
+                            no_token_infos=True,
+                            gen_qrcode=False,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to add fido2 token: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':f'Failed to create token: {e}', 'status':False})
+        token = user.token(token_name)
+        if not token:
+            return self.build_response(False,
+                    {'message':'Failed to create token.', 'status':False})
+        token.rp = rp_id
+        token.credential_data = encode(auth_data.credential_data, "hex")
+        token.description = device_name
+        token.update_index('description', token.description)
+        token._write(callback=callback)
+        # Same reach as the token the user signed in with -- otherwise
+        # the new key is not valid for the SSO accessgroup and the next
+        # login with it fails.
+        self._mirror_login_token_memberships(user, token,
+                                            config.auth_token,
+                                            callback,
+                                            flow="FIDO2")
+        cred_hash = hashlib.sha256(auth_data.credential_data).hexdigest()[:16]
+        emit_audit("Crypto", "fido2_credential_added",
+                        user=user.name,
+                        token=token.rel_path,
+                        credential_fingerprint=cred_hash)
+        log_msg = _("Security key '{token}' registered for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {
+                    'status'        : True,
+                    'name'          : token.name,
+                    'device_name'   : token.description,
+                })
+
+    def del_fido2_token(self, username, sso_jwt, command_args):
+        """ Delete one of the user's own security keys.
+
+        Not the SSO token: losing it takes the recovery flow with it,
+        which looks for a token of that name. Moving that role to
+        another key is what promote_token is for. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="del_fido2_token",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_fido2_allowed(user):
+            return self.build_response(False,
+                    {'message':'Security keys are not enabled.',
+                    'status':False})
+        token = self._get_user_fido2_token(user, token_name)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if token_name == user.get_config_parameter("default_sso_token_name"):
+            return self.build_response(False,
+                    {'message':'Cannot delete the default token. Make another '
+                            'token the default token first.',
+                    'status':False})
+        if _is_current_token(token):
+            return self.build_response(False,
+                    {'message':'Cannot delete the security key you are '
+                            'currently signed in with. Sign in with another '
+                            'factor first.',
+                    'status':False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+            user.del_token(token_name=token_name,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            add_to_trash=add_to_trash,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to delete security key '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        emit_audit("Crypto", "fido2_token_deleted",
+                        user=user.name,
+                        token=f"{user.name}/{token_name}")
+        log_msg = _("Security key '{token}' deleted for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token_name, user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {'status':True})
+
+    def _set_fido2_token_enabled(self, username, sso_jwt, command_args,
+        enable):
+        """ Shared body of enable_fido2_token / disable_fido2_token. """
+        command = "enable_fido2_token" if enable else "disable_fido2_token"
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command=command,
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_fido2_allowed(user):
+            return self.build_response(False,
+                    {'message':'Security keys are not enabled.',
+                    'status':False})
+        token = self._get_user_fido2_token(user, token_name)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if not enable:
+            if token_name == user.get_config_parameter("default_sso_token_name"):
+                return self.build_response(False,
+                        {'message':'Cannot disable the default token.',
+                        'status':False})
+            if _is_current_token(token):
+                return self.build_response(False,
+                        {'message':'Cannot disable the security key you are '
+                                'currently signed in with.',
+                        'status':False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            if enable:
+                token.enable(force=True, verify_acls=False,
+                            run_policies=True, callback=callback)
+            else:
+                token.disable(force=True, verify_acls=False,
+                            run_policies=True, callback=callback)
+            token._write(callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to change security key '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        return self.build_response(True, {'status':True,
+                                        'enabled':bool(token.enabled)})
+
+    def enable_fido2_token(self, username, sso_jwt, command_args):
+        return self._set_fido2_token_enabled(username, sso_jwt,
+                                            command_args, True)
+
+    def disable_fido2_token(self, username, sso_jwt, command_args):
+        return self._set_fido2_token_enabled(username, sso_jwt,
+                                            command_args, False)
+
+    def _tiqr_service_identifier(self, my_site):
+        """ What the app shows as the name of the service. """
+        service_identifier = my_site.get_config_parameter("tiqr_service_display_name")
+        if not service_identifier:
+            service_identifier = config.realm
+        return service_identifier
+
+    def tiqr_enroll_begin(self, username, sso_jwt, command_args):
+        """ Start enrolling a phone. Creates no token.
+
+        Like the passkey flow, the slot materializes only on success, so
+        a cancelled attempt leaves no debris. What the phone needs to
+        create it travels in a signed grant instead. """
+        try:
+            device_name = command_args['device_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        device_name = str(device_name).strip() if device_name else ""
+        if not device_name:
+            return self.build_response(False,
+                            {'message':'Device name required.', 'status':False})
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            # No mgmt: this writes nothing. Unlike the passkey flow it
+            # keeps no state on the master either -- what the phone
+            # needs travels in the signed grant -- so any node can
+            # answer.
+            return self.ssod_redirect_command(command="tiqr_enroll_begin",
+                                            user=user,
+                                            command_args=command_args)
+        if not self._resolve_tiqr_allowed(user):
+            return self.build_response(False,
+                    {'message':'tiqr is not enabled.', 'status':False})
+
+        token_name = tiqr_helpers.sanitize_token_name(device_name)
+        if not token_name:
+            return self.build_response(False,
+                            {'message':'Invalid device name.', 'status':False})
+        if user.token(token_name):
+            return self.build_response(False,
+                    {'message':'A tiqr token with this name already exists.',
+                    'status':False})
+
+        # The token the user presented in this session, not
+        # user.default_token. This is the only point in the flow where a
+        # session exists to read it, so it travels in the grant.
+        login_token = config.auth_token
+        if login_token is None:
+            return self.build_response(False,
+                            {'message':'No login token.', 'status':False})
+
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
+        enroll_key = tiqr_helpers.build_enroll_key(
+                                tiqr_token.get_site_secret(),
+                                tiqr_helpers.ENROLL_SCOPE_METADATA,
+                                expiry,
+                                user_uuid=user.uuid,
+                                token_name=token_name,
+                                device_name=device_name,
+                                login_token_uuid=login_token.uuid)
+        metadata_url = (f"https://{my_site.sso_fqdn}/tiqr/metadata"
+                        f"?enrollment_key={quote(enroll_key, safe='')}")
+        enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
+        enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme, metadata_url)
+        # The same URL twice: as a QR for a second device, and as a link
+        # the app opens directly when the browser is on the phone
+        # itself. The custom scheme works for both -- a universal link
+        # would need the app associated with our domain, which only
+        # holds for an app published under your own name.
+        try:
+            qrcode_data = qrcode.gen_qrcode(enroll_url, fmt="svg")
+            if isinstance(qrcode_data, bytes):
+                qrcode_data = qrcode_data.decode('utf-8')
+            qrcode_img = ("data:image/svg+xml;base64,"
+                        + base64.b64encode(qrcode_data.encode()).decode())
+        except Exception as e:
+            log_msg = _("tiqr: QR code generation failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'ENROLL_FAILED', 'status':False})
+        log_msg = _("tiqr enrollment started for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {
+                    'status'        : True,
+                    'enroll_url'    : enroll_url,
+                    'qrcode_img'    : qrcode_img,
+                    'token_name'    : token_name,
+                    'device_name'   : device_name,
+                })
+
+    def tiqr_enroll_metadata(self, command_args):
+        """ The phone fetching what it needs to enroll.
+
+        Unauthenticated: the grant in the URL is the authorisation, and
+        it buys nothing but this. The second grant handed out here is
+        the only one that may deliver a secret, so photographing the QR
+        is not enough without fetching this first. """
+        enroll_key = command_args.get('enrollment_key')
+        if not enroll_key:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        site_secret = tiqr_token.get_site_secret()
+        try:
+            claims = tiqr_helpers.parse_enroll_key(site_secret, enroll_key,
+                                    tiqr_helpers.ENROLL_SCOPE_METADATA)
+        except ValueError as e:
+            log_msg = _("tiqr: rejected enrollment key: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+
+        user = backend.get_object(uuid=claims['user_uuid'])
+        if user is None:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="tiqr_enroll_metadata",
+                                            user=user,
+                                            command_args=command_args)
+
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        # A second grant, same claims, different scope. Its window
+        # starts here rather than at begin, so a phone that scans late
+        # still gets the full time to send its secret.
+        expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
+        secret_key = tiqr_helpers.build_enroll_key(
+                                site_secret,
+                                tiqr_helpers.ENROLL_SCOPE_SECRET,
+                                expiry,
+                                user_uuid=claims['user_uuid'],
+                                token_name=claims['token_name'],
+                                device_name=claims.get('device_name'),
+                                login_token_uuid=claims['login_token_uuid'])
+        base_url = f"https://{my_site.sso_fqdn}"
+        service_identifier = self._tiqr_service_identifier(my_site)
+        metadata = {
+                'service'   : {
+                    'displayName'       : service_identifier,
+                    'identifier'        : service_identifier,
+                    'logoUrl'           : f"{base_url}/static/otpme.png",
+                    'infoUrl'           : base_url,
+                    'authenticationUrl' : f"{base_url}/tiqr/auth",
+                    'ocraSuite'         : user.get_config_parameter("tiqr_ocra_suite"),
+                    'enrollmentUrl'     : (f"{base_url}/tiqr/enroll"
+                                        f"?enrollment_secret={quote(secret_key, safe='')}"),
+                },
+                'identity'  : {
+                    'identifier'    : user.name,
+                    'displayName'   : user.name,
+                },
+            }
+        return self.build_response(True, {'status':True, 'metadata':metadata})
+
+    def tiqr_enroll_finish(self, command_args):
+        """ The phone delivering the secret it generated.
+
+        Unauthenticated, and the only request in the flow that writes.
+        It can create exactly the token the signed grant names, for the
+        user it names, with the reach of the token it names -- nothing
+        else. """
+        enroll_secret = command_args.get('enrollment_secret')
+        secret = command_args.get('secret')
+        if not enroll_secret or not secret:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        site_secret = tiqr_token.get_site_secret()
+        try:
+            claims = tiqr_helpers.parse_enroll_key(site_secret, enroll_secret,
+                                        tiqr_helpers.ENROLL_SCOPE_SECRET)
+        except ValueError as e:
+            log_msg = _("tiqr: rejected enrollment secret: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        try:
+            # The apps generate it as hex. Anything else would fail on
+            # the first login instead of here.
+            bytes.fromhex(secret)
+        except (ValueError, TypeError):
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+
+        user = backend.get_object(uuid=claims['user_uuid'])
+        if user is None:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        if user.site != config.site:
+            # To the master: this creates a token and writes the role,
+            # access group and group memberships onto it. No multi
+            # master in OTPme, so tree object writes have to land there.
+            return self.ssod_redirect_command(command="tiqr_enroll_finish",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+
+        token_name = claims['token_name']
+        if user.token(token_name):
+            # Somebody was faster with this grant. The first one wins;
+            # the user starts over and gets a new one.
+            log_msg = _("tiqr: token '{token}' already exists.", log=True)[1]
+            log_msg = log_msg.format(token=token_name)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+
+        # Without the token named in the grant there is nothing to
+        # inherit reach from -- the settings flow mirrors its
+        # memberships, the deploy flows replace it and take over its
+        # UUID -- and the new token would be created unusable either
+        # way. Better to fail than to leave that behind.
+        login_token = backend.get_object(uuid=claims['login_token_uuid'])
+        if login_token is None:
+            log_msg = _("tiqr: login token of the enrollment is gone.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+
+        callback = self.get_callback()
+        # Same reason as everywhere else here: without it a refusal
+        # inside add_token or, worse, inside the membership mirroring
+        # below just returns. The phone would finish its enrollment and
+        # end up with a token that cannot reach anything, and the only
+        # sign of it would be the login failing later.
+        callback.raise_exception = True
+        try:
+            user.add_token(token_name=token_name,
+                            token_type="tiqr",
+                            no_token_infos=True,
+                            gen_qrcode=False,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("tiqr: failed to add token for user '{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(user_name=user.name, e=e)
+            self.logger.critical(log_msg)
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+
+        token = user.token(token_name)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        token.secret = secret
+        token.ocra_suite = user.get_config_parameter("tiqr_ocra_suite")
+        token.identity_id = user.name
+        token.device_name = claims.get('device_name')
+        # Stored for a push implementation that does not exist yet;
+        # pushing to the stock apps would need SURF's credentials.
+        token.notification_type = command_args.get('notification_type')
+        token.notification_address = command_args.get('notification_address')
+        token._write(callback=callback)
+
+        # Only the settings flow mirrors. The deploy flows name their
+        # token DEPLOY_NAME, and their verify step moves it onto the
+        # SSO token with replace=True -- Token.move() then hands over
+        # the replaced token's UUID, and roles, groups and access
+        # groups are keyed by exactly that UUID, so the reach comes
+        # along by itself. Mirroring first would write this token's
+        # temporary UUID into those objects and leave it behind as a
+        # dangling member the moment the UUID is swapped.
+        #
+        # A user-chosen device name can never collide with DEPLOY_NAME:
+        # sanitize_token_name() prefixes every one of them with
+        # TOKEN_NAME_PREFIX.
+        if token_name != DEPLOY_NAME:
+            self._mirror_login_token_memberships(user, token, login_token,
+                                                callback, flow="tiqr")
+
+        emit_audit("Crypto", "tiqr_token_enrolled",
+                        user=user.name,
+                        token=token.rel_path,
+                        device_name=token.device_name)
+        log_msg = _("tiqr token '{token}' enrolled for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {'status':True})
+
+    def _deploy_type_allowed(self, user, token_type):
+        """ May this token type be deployed for this user?
+
+        Two questions, not one: whether deploying it is allowed
+        (sso_allow_*_deploy) and, for the types that have such a switch,
+        whether it may be used in the portal at all (sso_allow_fido2 /
+        sso_allow_tiqr, which also govern signing in with one).
+
+        A type we do not gate at all passes: deploy_begin lets an
+        unknown type through on purpose, so that add_token() is the one
+        place that decides what a real token type is. """
+        deploy_param = DEPLOY_ALLOW_PARAMS.get(token_type)
+        if deploy_param is None:
+            return True
+        if not user.get_config_parameter(deploy_param):
+            return False
+        enabled_param = DEPLOY_TYPE_ENABLED_PARAMS.get(token_type)
+        if enabled_param is None:
+            return True
+        value = user.get_config_parameter(enabled_param)
+        # Fail-open, matching _resolve_fido2_allowed /
+        # _resolve_tiqr_allowed: only an explicit False blocks.
+        if value is None:
+            return True
+        return bool(value)
+
+    def _resolve_tiqr_allowed(self, user):
+        """ The sso_allow_tiqr cascade (user -> unit -> site).
+
+        Fail-open, like the FIDO2 one -- an explicit False blocks. What
+        keeps tiqr off an install that never set it up is
+        sso_allow_tiqr_deploy, which is off by default. """
+        try:
+            value = user.get_config_parameter("sso_allow_tiqr")
+        except Exception:
+            return True
+        if value is None:
+            return True
+        return bool(value)
+
+    def _get_user_tiqr_token(self, user, token_name):
+        """ One of the user's own tiqr tokens, by name. """
+        token = user.token(token_name)
+        if token is None:
+            return None
+        if token.token_type != "tiqr":
+            return None
+        return token
+
+    def _get_user_managed_token(self, user, token_name):
+        """ One of the user's own tokens, by name, of a type they are
+        allowed to manage themselves. Anything else is not ours to
+        touch from the portal. """
+        token = user.token(token_name)
+        if token is None:
+            return None
+        if token.token_type not in PROMOTABLE_TOKEN_TYPES:
+            return None
+        return token
+
+    def list_tiqr_tokens(self, username, sso_jwt, command_args):
+        """ The user's enrolled phones.
+
+        The SSO token is in here too when it is a tiqr one, flagged so
+        the UI can mark it and leave out the delete button. Hiding it
+        would be worse: somebody with two phones would see one, and the
+        one they cannot see is the one that matters most. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            # Read only, so no need to go to the master.
+            return self.ssod_redirect_command(command="list_tiqr_tokens",
+                                            user=user,
+                                            command_args=command_args)
+        if not self._resolve_tiqr_allowed(user):
+            return self.build_response(True, {'tiqr_tokens': [],
+                                            'allowed': False,
+                                            'status': True})
+        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        tiqr_tokens = []
+        for token_uuid in user.tokens:
+            try:
+                token = backend.get_object(object_type="token", uuid=token_uuid)
+            except Exception as e:
+                log_msg = _("Failed to read token object: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                continue
+            if not token or token.token_type != "tiqr":
+                continue
+            # Enrollment creates the token only on success, so anything
+            # without a secret is residue from an older path.
+            if not token.is_deployed():
+                continue
+            tiqr_tokens.append({
+                        'name'          : token.name,
+                        'device_name'   : token.device_name or token.name,
+                        'enabled'       : bool(token.enabled),
+                        'is_sso_token'  : token.name == sso_token_name,
+                        # Not the same thing as is_sso_token: since a
+                        # second phone can sign in as well, the one you
+                        # are holding need not be the one that carries
+                        # the SSO role.
+                        'is_current'    : _is_current_token(token),
+                    })
+        # What holds the SSO role right now, even when it is not a phone
+        # and therefore not in the list above. Promoting a phone renames
+        # that token, so the UI has to be able to ask the user what to
+        # call it -- and to say which thing it is asking about.
+        sso_token = user.token(sso_token_name)
+        sso_token_type = sso_token.token_type if sso_token else None
+        sso_token_label = None
+        sso_token_suggested_name = None
+        if sso_token is not None:
+            # The label names the thing in the question we ask; the
+            # suggestion is what goes into the input next to it. They
+            # differ on purpose -- the label may well be the SSO name
+            # itself, which is the one name the answer must not be.
+            sso_token_label = (getattr(sso_token, 'device_name', None)
+                            or getattr(sso_token, 'description', None)
+                            or sso_token.name)
+            sso_token_suggested_name = self._suggest_displaced_token_name(
+                                                        user, sso_token)
+        return self.build_response(True, {
+                            'tiqr_tokens': tiqr_tokens,
+                            'allowed': True,
+                            'sso_token_name': sso_token_name,
+                            'sso_token_type': sso_token_type,
+                            'sso_token_label': sso_token_label,
+                            'sso_token_suggested_name': sso_token_suggested_name,
+                            'status': True})
+
+    def del_tiqr_token(self, username, sso_jwt, command_args):
+        """ Delete one of the user's own tiqr tokens.
+
+        Not the SSO token: losing it takes the recovery flow with it,
+        which looks for a token of that name. Moving that role to
+        another phone is what promote_token is for. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="del_tiqr_token",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_tiqr_allowed(user):
+            return self.build_response(False,
+                    {'message':'tiqr is not enabled.', 'status':False})
+        token = self._get_user_tiqr_token(user, token_name)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if token_name == user.get_config_parameter("default_sso_token_name"):
+            return self.build_response(False,
+                    {'message':'Cannot delete the default token. Make another '
+                            'phone the default token first.',
+                    'status':False})
+        # Refuse to delete the token of the current session, the same
+        # way del_passkey does. The JWT would still carry its UUID and
+        # the next request's verify_sso_jwt would fail to load
+        # config.auth_token -- the user would be locked out instead of
+        # getting a clean re-auth prompt.
+        #
+        # Not covered by the SSO-token check above: since tiqr, a second
+        # phone can sign in as well, so the token you are holding need
+        # not be the one named by default_sso_token_name.
+        if _is_current_token(token):
+            return self.build_response(False,
+                    {'message':'Cannot delete the phone you are currently '
+                            'signed in with. Sign in with another factor first.',
+                    'status':False})
+        callback = self.get_callback()
+        # Or a refusal inside del_token -- a policy, say -- would go
+        # through callback.error(), which only returns unless this is
+        # set, and the except below would never see it. The phone would
+        # be reported as deleted and still be there.
+        callback.raise_exception = True
+        try:
+            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+            user.del_token(token_name=token_name,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            add_to_trash=add_to_trash,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("tiqr: failed to delete token '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        emit_audit("Crypto", "tiqr_token_deleted",
+                        user=user.name,
+                        token=token_name)
+        return self.build_response(True, {'status':True})
+
+    def _set_tiqr_token_enabled(self, username, sso_jwt, command_args,
+        enable):
+        """ Shared body of enable_tiqr_token / disable_tiqr_token. """
+        command = "enable_tiqr_token" if enable else "disable_tiqr_token"
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command=command,
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_tiqr_allowed(user):
+            return self.build_response(False,
+                    {'message':'tiqr is not enabled.', 'status':False})
+        token = self._get_user_tiqr_token(user, token_name)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        # Disabling the SSO token would leave the portal without one
+        # that works, and the user without a way back in.
+        if not enable:
+            if token_name == user.get_config_parameter("default_sso_token_name"):
+                return self.build_response(False,
+                        {'message':'Cannot disable the default token.',
+                        'status':False})
+            # Nor the phone of the current session, which the check
+            # above does not cover -- a second phone can sign in too.
+            # Same guard the passkey flow has on both its paths.
+            if _is_current_token(token):
+                return self.build_response(False,
+                        {'message':'Cannot disable the phone you are currently '
+                                'signed in with.',
+                        'status':False})
+        callback = self.get_callback()
+        try:
+            if enable:
+                token.enable(force=True, verify_acls=False,
+                            run_policies=True, callback=callback)
+            else:
+                token.disable(force=True, verify_acls=False,
+                            run_policies=True, callback=callback)
+            token._write(callback=callback)
+        except Exception as e:
+            log_msg = _("tiqr: failed to change token '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        return self.build_response(True, {'status':True,
+                                        'enabled':bool(enable)})
+
+    def enable_tiqr_token(self, username, sso_jwt, command_args):
+        """ Enable one of the user's own tiqr tokens. """
+        return self._set_tiqr_token_enabled(username, sso_jwt,
+                                            command_args, True)
+
+    def disable_tiqr_token(self, username, sso_jwt, command_args):
+        """ Disable one of the user's own tiqr tokens. """
+        return self._set_tiqr_token_enabled(username, sso_jwt,
+                                            command_args, False)
+
+    def _token_rename_blocked(self, token):
+        """ Why this token cannot be renamed, or None.
+
+        Only the reason Token.rename() refuses on its own. Checking it
+        up front lets promote_token find out before it has renamed
+        anything -- afterwards is too late, see there. """
+        if not token.is_default_token():
+            return None
+        if token.get_config_parameter('allow_default_token_rename'):
+            return None
+        msg = _("Token '{name}' is your default token and renaming it is not allowed.")
+        return msg.format(name=token.name)
+
+    def _displaced_token_name(self, token, wanted_name):
+        """ The name the token losing the SSO role should carry.
+
+        ``wanted_name`` is what the user typed, and it is what we use
+        when there is one -- sanitized, because it arrives from a
+        browser and goes into an object name. Falling back: the device
+        name for a phone, the description for a passkey, which is where
+        each flow puts the label the user gave the thing.
+
+        The prefix is the token's own type, so the name says what the
+        entry is. A displaced security key must not end up called
+        'tiqr-something'. """
+        label = wanted_name
+        if not label:
+            label = getattr(token, 'device_name', None)
+        if not label:
+            label = getattr(token, 'description', None)
+        if not label:
+            return None
+        prefix = f"{token.token_type}-"
+        return tiqr_helpers.sanitize_token_name(label, prefix=prefix)
+
+    def _suggest_displaced_token_name(self, user, token):
+        """ A name to offer for the token that is about to lose the SSO
+        role.
+
+        It arrives prefilled in a dialog, so somebody will just press
+        OK -- it has to be free, and it has to be a name they would not
+        regret. The label the token carries if it has one, because that
+        is what its owner calls the thing. Its current name is no help:
+        that is the SSO name it is losing. Failing a label, and whenever
+        the derived name is taken, a random suffix. """
+        prefix = f"{token.token_type}-"
+        label = (getattr(token, 'device_name', None)
+                or getattr(token, 'description', None))
+        suggestion = tiqr_helpers.sanitize_token_name(label, prefix=prefix)
+        if suggestion and not user.token(suggestion):
+            return suggestion
+        for _attempt in range(8):
+            suffix = stuff.gen_secret(len=2, encoding="hex")
+            suggestion = f"{prefix}{suffix}"
+            if not user.token(suggestion):
+                return suggestion
+        return None
+
+    def promote_token(self, username, sso_jwt, command_args):
+        """ Make another of the user's tokens the SSO token.
+
+        Works for any type the portal lets a user manage themselves
+        (PROMOTABLE_TOKEN_TYPES), so the role can move from a phone to a
+        security key and back.
+
+        The role is decided by the name alone -- default_sso_token_name
+        -- so this is two renames and nothing else. Nothing is deleted:
+        the token that held the role keeps working under a name of its
+        own, which the caller should have shown the user beforehand.
+
+        Order matters: the SSO name has to be free before the new token
+        can take it. Which is also why everything that can refuse is
+        asked first. Renaming the old one and then finding out that the
+        new one cannot take the name would leave the user with no SSO
+        token at all -- and that is the token their recovery flow looks
+        for. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        old_token_name = command_args.get('old_token_name')
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="promote_token",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+
+        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        if token_name == sso_token_name:
+            return self.build_response(False,
+                    {'message':'This is already the default token.',
+                    'status':False})
+        token = self._get_user_managed_token(user, token_name)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+
+        callback = self.get_callback()
+        # Without this every refusal inside rename() -- a policy, a name
+        # that turns out to be taken, an expired lock -- goes through
+        # callback.error(), which only *returns* unless it is set. The
+        # renames then quietly do nothing while this method carries on
+        # to log a promotion that never happened.
+        callback.raise_exception = True
+        old_token = user.token(sso_token_name)
+
+        # Everything that can refuse, before anything is renamed.
+        blocked = self._token_rename_blocked(token)
+        if blocked is not None:
+            return self.build_response(False,
+                    {'message': blocked, 'status':False})
+        if old_token is not None:
+            old_token_name = self._displaced_token_name(old_token,
+                                                        old_token_name)
+            if not old_token_name:
+                return self.build_response(False,
+                        {'message':'A name for the current default token is required.',
+                        'status':False})
+            if user.token(old_token_name):
+                return self.build_response(False,
+                        {'message':'A token with this name already exists.',
+                        'status':False})
+            blocked = self._token_rename_blocked(old_token)
+            if blocked is not None:
+                return self.build_response(False,
+                        {'message': blocked, 'status':False})
+
+        if old_token is not None:
+            try:
+                old_token.rename(new_name=old_token_name,
+                                force=True,
+                                verify_acls=False,
+                                callback=callback)
+            except Exception as e:
+                log_msg = _("Failed to rename the SSO token: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False,
+                                {'message':str(e), 'status':False})
+
+        try:
+            token.rename(new_name=sso_token_name,
+                        force=True,
+                        verify_acls=False,
+                        callback=callback)
+        except Exception as e:
+            log_msg = _("Failed to promote token '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        emit_audit("Crypto", "token_promoted",
+                        user=user.name,
+                        token=sso_token_name,
+                        token_type=token.token_type,
+                        previous=old_token_name)
+        log_msg = _("Token '{token}' ({token_type}) is now the SSO token of '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token_name,
+                                token_type=token.token_type,
+                                user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {'status':True,
+                                        'name':sso_token_name,
+                                        'old_name':old_token_name})
 
     def del_passkey(self, username, sso_jwt, command_args):
         """ Delete one of the user's own passkey tokens. """
@@ -1329,7 +2649,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # verify_sso_jwt would fail to load config.auth_token -- the
         # user would be locked out instead of getting a clean re-auth
         # prompt. Force them to sign in with another factor first.
-        if config.auth_token is not None and config.auth_token.uuid == token.uuid:
+        if _is_current_token(token):
             return self.build_response(False, {
                 'message': 'Cannot delete the passkey you are currently '
                            'signed in with. Sign in with another factor first.',
@@ -1881,11 +3201,8 @@ class OTPmeSsoP1(OTPmeServer1):
         # the auth-flow get_allowed_deploy_token_types uses, so the
         # recovery-complete UI renders the same button set the
         # regular /deploy page would.
-        gates = (("totp",     "sso_allow_totp_deploy"),
-                 ("fido2",    "sso_allow_fido2_deploy"),
-                 ("password", "sso_allow_password_deploy"))
-        allowed_deploy_types = [tt for tt, param in gates
-                                if user.get_config_parameter(param)]
+        allowed_deploy_types = [tt for tt in DEPLOY_TOKEN_TYPES
+                                if self._deploy_type_allowed(user, tt)]
         return self.build_response(True, {
                 'valid':                True,
                 'status':               True,
@@ -1952,15 +3269,14 @@ class OTPmeSsoP1(OTPmeServer1):
         if err is not None:
             return err
         # Type gate: user may pick any type the site admin has enabled
-        # via sso_allow_*_deploy -- deliberately independent of the
-        # SSO-token's own type, so a fido2 user can recover as
-        # password (or vice versa) when admin policy allows it.
-        allow_param = {
-            "totp":     "sso_allow_totp_deploy",
-            "fido2":    "sso_allow_fido2_deploy",
-            "password": "sso_allow_password_deploy",
-        }.get(token_type)
-        if allow_param is None or not user.get_config_parameter(allow_param):
+        # -- deliberately independent of the SSO-token's own type, so a
+        # fido2 user can recover as password (or vice versa) when admin
+        # policy allows it. Unlike deploy_begin an unknown type is
+        # refused here rather than left to add_token: this path is
+        # unauthenticated, and it answers everything the same way.
+        if token_type not in DEPLOY_ALLOW_PARAMS:
+            return self._recovery_invalid()
+        if not self._deploy_type_allowed(user, token_type):
             return self._recovery_invalid()
         # Password: no staging token. recovery_deploy_verify creates
         # the token with the user's chosen credential in one shot via
@@ -1995,6 +3311,82 @@ class OTPmeSsoP1(OTPmeServer1):
                 log_msg = log_msg.format(u=user.name, e=e)
                 self.logger.warning(log_msg)
                 return self._recovery_invalid()
+        # tiqr: no staging token here either. The signed enrollment
+        # grant names DEPLOY_NAME, so the regular unauth enrollment
+        # path (tiqr_enroll_metadata -> tiqr_enroll_finish) creates the
+        # token once the phone has delivered its secret, and
+        # recovery_deploy_verify finds it waiting.
+        #
+        # There is no logged-in token in this flow, so the grant names
+        # the lost SSO token. It is not mirrored from -- the move in
+        # recovery_deploy_verify takes over its UUID and with it every
+        # membership -- but naming it makes the enrollment refuse if it
+        # disappeared in the meantime, which would leave the move with
+        # nothing to replace and the new token without any reach.
+        if token_type == "tiqr":
+            device_name = command_args.get('device_name')
+            device_name = str(device_name).strip() if device_name else ""
+            # Same reasoning as in deploy_begin: the device name is the
+            # name this token gets on a later promotion, so it has to
+            # survive sanitizing and be free now.
+            #
+            # This is the one spot in the recovery flow that answers
+            # with a real message instead of the uniform 'invalid'.
+            # It is something the user typed and can fix, and by the
+            # time we are here the recovery token has already been
+            # verified -- so nobody learns anything from it who could
+            # not already see the deploy form. Telling them the link
+            # expired would just send them back for another mail.
+            promote_name = tiqr_helpers.sanitize_token_name(device_name)
+            if not promote_name:
+                msg = _("Invalid device name.")
+                if not device_name:
+                    msg = _("Device name required.")
+                return self.build_response(False,
+                                {'message': msg, 'status': False})
+            if user.token(promote_name):
+                msg = _("A token with this name already exists.")
+                return self.build_response(False,
+                                {'message': msg, 'status': False})
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
+            enroll_key = tiqr_helpers.build_enroll_key(
+                                    tiqr_token.get_site_secret(),
+                                    tiqr_helpers.ENROLL_SCOPE_METADATA,
+                                    expiry,
+                                    user_uuid=user.uuid,
+                                    token_name=DEPLOY_NAME,
+                                    device_name=device_name,
+                                    login_token_uuid=sso_token.uuid)
+            metadata_url = (f"https://{my_site.sso_fqdn}/tiqr/metadata"
+                            f"?enrollment_key={quote(enroll_key, safe='')}")
+            enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
+            enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme,
+                                                    metadata_url)
+            try:
+                qrcode_data = qrcode.gen_qrcode(enroll_url, fmt="svg")
+                if isinstance(qrcode_data, bytes):
+                    qrcode_data = qrcode_data.decode('utf-8')
+                qrcode_img = ("data:image/svg+xml;base64,"
+                            + base64.b64encode(qrcode_data.encode()).decode())
+            except Exception as e:
+                log_msg = _("Recovery deploy: tiqr QR code generation failed for '{u}': {e}", log=True)[1]
+                log_msg = log_msg.format(u=user.name, e=e)
+                self.logger.warning(log_msg)
+                return self._recovery_invalid()
+            response = {
+                        'token_type'                : token_type,
+                        'deploy_token_name'         : DEPLOY_NAME,
+                        'deploy_login_token_name'   : sso_token.name,
+                        'enroll_url'                : enroll_url,
+                        'qrcode_img'                : qrcode_img,
+                        'status'                    : True,
+                    }
+            log_msg = _("Recovery deploy started for user '{u}' (type 'tiqr').", log=True)[1]
+            log_msg = log_msg.format(u=user.name)
+            self.logger.info(log_msg)
+            return self.build_response(True, response)
         try:
             user.add_token(token_name=DEPLOY_NAME,
                             token_type=token_type,
@@ -2243,6 +3635,22 @@ class OTPmeSsoP1(OTPmeServer1):
             if deploy_token.token_type == "fido2":
                 if not deploy_token.credential_data:
                     return self._recovery_invalid()
+            elif deploy_token.token_type == "tiqr":
+                # Same check the fido2 branch makes on credential_data:
+                # the enrollment creates this token only after the
+                # phone delivered its secret, so this is the proof that
+                # the phone is done.
+                #
+                # A real message rather than the uniform 'invalid', for
+                # the same reason as the device name in
+                # recovery_deploy_begin: the recovery token is already
+                # verified at this point, and this is the one failure
+                # the user can act on -- they simply have not finished
+                # in the app yet.
+                if not deploy_token.is_deployed():
+                    msg = _("Phone not enrolled yet.")
+                    return self.build_response(False,
+                                    {'message': msg, 'status': False})
             else:
                 otp = str(token_data.get('otp', ''))
                 if not otp:
@@ -3060,6 +4468,10 @@ class OTPmeSsoP1(OTPmeServer1):
                 continue
             if token.token_type != "password":
                 continue
+            # No is_current here, unlike the passkey and tiqr listings:
+            # a device token is for WLAN, IMAP, SMTP, CardDAV and the
+            # like, never a portal login, so it is never the token this
+            # session holds.
             entry = {
                         'name'          : token.name,
                         'device_name'   : token.description or token.name,
@@ -3599,9 +5011,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # Refuse to disable the token the caller is currently signed in with.
         # See del_passkey for the rationale — the JWT would still carry the
         # token's UUID and the next request would fail verify_sso_jwt.
-        if (not enable
-                and config.auth_token is not None
-                and config.auth_token.uuid == token.uuid):
+        if not enable and _is_current_token(token):
             return self.build_response(False, {
                 'message': 'Cannot disable the device token you are currently '
                            'signed in with. Sign in with another factor first.',
@@ -3709,9 +5119,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             {'message':'Not a passkey token.', 'status':False})
 
         # Refuse to disable the passkey the caller is currently signed in with.
-        if (not enable
-                and config.auth_token is not None
-                and config.auth_token.uuid == token.uuid):
+        if not enable and _is_current_token(token):
             return self.build_response(False, {
                 'message': 'Cannot disable the passkey you are currently '
                            'signed in with. Sign in with another factor first.',
@@ -6077,10 +7485,24 @@ class OTPmeSsoP1(OTPmeServer1):
                             "resolve_user_language",
                             "fido2_register_begin",
                             "fido2_register_complete",
+                            "list_fido2_tokens",
+                            "fido2_add_begin",
+                            "fido2_add_complete",
+                            "del_fido2_token",
+                            "enable_fido2_token",
+                            "disable_fido2_token",
                             "list_passkeys",
                             "passkey_register_begin",
                             "passkey_register_complete",
                             "del_passkey",
+                            "tiqr_enroll_begin",
+                            "tiqr_enroll_metadata",
+                            "tiqr_enroll_finish",
+                            "list_tiqr_tokens",
+                            "del_tiqr_token",
+                            "enable_tiqr_token",
+                            "disable_tiqr_token",
+                            "promote_token",
                             "list_device_tokens",
                             "add_device_token",
                             "del_device_token",
@@ -6117,6 +7539,11 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_set_consent_for_client",
                         ]
 
+        # The phone talks to us without a session: the signed grant it
+        # presents is the authorisation. Same bypass of the
+        # username/sso_jwt envelope as the OIDC commands below.
+        tiqr_device_commands = ("tiqr_enroll_metadata", "tiqr_enroll_finish")
+
         # OIDC commands are server-to-server (or browser-to-server
         # for end_session); the user-facing username/sso_jwt
         # envelope is bypassed for them.
@@ -6141,6 +7568,15 @@ class OTPmeSsoP1(OTPmeServer1):
                 message = str(e)
                 status = status_codes.CLUSTER_NOT_READY
                 return self.build_response(status, message)
+
+        if command in tiqr_device_commands:
+            log_msg = _("Processing tiqr device command {command}.", log=True)[1]
+            log_msg = log_msg.format(command=command)
+            self.logger.info(log_msg)
+            if command == "tiqr_enroll_metadata":
+                return self.tiqr_enroll_metadata(command_args)
+            if command == "tiqr_enroll_finish":
+                return self.tiqr_enroll_finish(command_args)
 
         if command in oidc_commands:
             log_msg = _("Processing OIDC command {command}.", log=True)[1]
@@ -6358,6 +7794,66 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command list_passkeys.", log=True)[1]
             self.logger.info(log_msg)
             return self.list_passkeys(username, sso_jwt, command_args)
+
+        if command == "list_fido2_tokens":
+            log_msg = _("Processing command list_fido2_tokens.", log=True)[1]
+            self.logger.debug(log_msg)
+            return self.list_fido2_tokens(username, sso_jwt, command_args)
+
+        if command == "fido2_add_begin":
+            log_msg = _("Processing command fido2_add_begin.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.fido2_add_begin(username, sso_jwt, command_args)
+
+        if command == "fido2_add_complete":
+            log_msg = _("Processing command fido2_add_complete.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.fido2_add_complete(username, sso_jwt, command_args)
+
+        if command == "del_fido2_token":
+            log_msg = _("Processing command del_fido2_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.del_fido2_token(username, sso_jwt, command_args)
+
+        if command == "enable_fido2_token":
+            log_msg = _("Processing command enable_fido2_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.enable_fido2_token(username, sso_jwt, command_args)
+
+        if command == "disable_fido2_token":
+            log_msg = _("Processing command disable_fido2_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.disable_fido2_token(username, sso_jwt, command_args)
+
+        if command == "tiqr_enroll_begin":
+            log_msg = _("Processing command tiqr_enroll_begin.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.tiqr_enroll_begin(username, sso_jwt, command_args)
+
+        if command == "list_tiqr_tokens":
+            log_msg = _("Processing command list_tiqr_tokens.", log=True)[1]
+            self.logger.debug(log_msg)
+            return self.list_tiqr_tokens(username, sso_jwt, command_args)
+
+        if command == "del_tiqr_token":
+            log_msg = _("Processing command del_tiqr_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.del_tiqr_token(username, sso_jwt, command_args)
+
+        if command == "enable_tiqr_token":
+            log_msg = _("Processing command enable_tiqr_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.enable_tiqr_token(username, sso_jwt, command_args)
+
+        if command == "disable_tiqr_token":
+            log_msg = _("Processing command disable_tiqr_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.disable_tiqr_token(username, sso_jwt, command_args)
+
+        if command == "promote_token":
+            log_msg = _("Processing command promote_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.promote_token(username, sso_jwt, command_args)
 
         if command == "passkey_register_begin":
             log_msg = _("Processing command passkey_register_begin.", log=True)[1]

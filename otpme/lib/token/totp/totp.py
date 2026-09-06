@@ -307,6 +307,9 @@ class TotpToken(OathToken):
         # Set default values.
         self.token_type = "totp"
         self.pass_type = "otp"
+        # Six digits from a shared secret. RFC 6238 inherits RFC 4226's
+        # call for throttling.
+        self.count_fails = True
         self.otp_type = "time"
         self.secret_len = None
 

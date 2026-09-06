@@ -13,12 +13,29 @@
      data-url-passkey-register-complete="{{ url_for('passkey_register_complete', _external=True, _scheme='https') }}"
      data-url-del-passkey="{{ url_for('del_passkey', _external=True, _scheme='https') }}"
      data-url-toggle-passkey="{{ url_for('toggle_passkey', _external=True, _scheme='https') }}"
+     data-url-list-tiqr="{{ url_for('list_tiqr_tokens', _external=True, _scheme='https') }}"
+     data-url-tiqr-enroll-begin="{{ url_for('tiqr_enroll_begin', _external=True, _scheme='https') }}"
+     data-url-tiqr-enroll-status="{{ url_for('tiqr_enroll_status', _external=True, _scheme='https') }}"
+     data-url-del-tiqr="{{ url_for('del_tiqr_token', _external=True, _scheme='https') }}"
+     data-url-toggle-tiqr="{{ url_for('toggle_tiqr_token', _external=True, _scheme='https') }}"
+     data-url-promote-token="{{ url_for('promote_token', _external=True, _scheme='https') }}"
+     data-url-list-fido2="{{ url_for('list_fido2_tokens', _external=True, _scheme='https') }}"
+     data-url-fido2-add-begin="{{ url_for('fido2_add_begin', _external=True, _scheme='https') }}"
+     data-url-fido2-add-complete="{{ url_for('fido2_add_complete', _external=True, _scheme='https') }}"
+     data-url-del-fido2="{{ url_for('del_fido2_token', _external=True, _scheme='https') }}"
+     data-url-toggle-fido2="{{ url_for('toggle_fido2_token', _external=True, _scheme='https') }}"
      data-url-get-admin-access="{{ url_for('get_admin_access_state', _external=True, _scheme='https') }}"
      data-url-set-admin-access="{{ url_for('set_admin_access_state', _external=True, _scheme='https') }}"
      data-url-get-recovery-mail="{{ url_for('get_recovery_mail', _external=True, _scheme='https') }}"
      data-url-set-recovery-mail="{{ url_for('set_recovery_mail', _external=True, _scheme='https') }}"
      data-url-reauth="{{ url_for('reauth', _external=True, _scheme='https') }}"
      data-settings-path="{{ url_for('settings', _external=True, _scheme='https') }}"></div>
+<!-- Labels the JS picks up from dataset. A message containing a double
+     quote needs |forceescape: Jinja's newstyle gettext hands back a
+     Markup, i.e. already-safe, so autoescape leaves the quote alone and
+     it ends the attribute right there. What reached the browser was
+     'Make ' instead of the whole sentence, and every confirm dialog
+     built that way was cut off the same way. Same applies to '&'. -->
 <div id="page-i18n"
      data-label-changing-password="{{ gettext('Changing password...') }}"
      data-label-password-failed="{{ gettext('Password change failed.') }}"
@@ -38,7 +55,7 @@
      data-label-device-name-required="{{ gettext('Device name is required.') }}"
      data-label-adding-device-token="{{ gettext('Adding device token...') }}"
      data-label-device-token-created="{{ gettext('Device token created.') }}"
-     data-label-confirm-delete-device-token="{{ gettext('Delete device token \"{name}\"?') }}"
+     data-label-confirm-delete-device-token="{{ gettext('Delete device token \"{name}\"?')|forceescape }}"
      data-label-password-copied="{{ gettext('Password copied to clipboard.') }}"
      data-label-failed-copy-password="{{ gettext('Failed to copy password.') }}"
      data-label-failed-load-passkeys="{{ gettext('Failed to load passkeys.') }}"
@@ -54,10 +71,41 @@
      data-label-passkey-reg-failed="{{ gettext('Passkey registration failed.') }}"
      data-label-passkey-added="{{ gettext('Passkey added.') }}"
      data-label-failed-add-passkey="{{ gettext('Failed to add passkey.') }}"
-     data-label-confirm-delete-passkey="{{ gettext('Delete passkey \"{name}\"?') }}"
+     data-label-confirm-delete-passkey="{{ gettext('Delete passkey \"{name}\"?')|forceescape }}"
      data-label-failed-delete-passkey="{{ gettext('Failed to delete passkey.') }}"
      data-label-passkey-deleted="{{ gettext('Passkey deleted.') }}"
      data-label-failed-toggle-passkey="{{ gettext('Failed to update passkey.') }}"
+     data-label-failed-load-tiqr="{{ gettext('Failed to load phones.') }}"
+     data-label-no-tiqr="{{ gettext('No phones enrolled yet.') }}"
+     data-label-tiqr-name-required="{{ gettext('Device name is required.') }}"
+     data-label-preparing-tiqr="{{ gettext('Preparing enrollment...') }}"
+     data-label-failed-start-tiqr="{{ gettext('Failed to start tiqr enrollment.') }}"
+     data-label-waiting-tiqr="{{ gettext('Waiting for your phone...') }}"
+     data-label-tiqr-added="{{ gettext('Phone enrolled.') }}"
+     data-label-tiqr-timeout="{{ gettext('The code expired. Please try again.') }}"
+     data-label-confirm-delete-tiqr="{{ gettext('Remove phone \"{name}\"?')|forceescape }}"
+     data-label-failed-delete-tiqr="{{ gettext('Failed to remove phone.') }}"
+     data-label-tiqr-deleted="{{ gettext('Phone removed.') }}"
+     data-label-failed-toggle-tiqr="{{ gettext('Failed to update phone.') }}"
+     data-label-sso-token="{{ gettext('Default token') }}"
+     data-label-make-sso-token="{{ gettext('Make default token') }}"
+     data-label-confirm-promote-tiqr="{{ gettext('Make \"{name}\" your default token? Your current one keeps working under a new name.')|forceescape }}"
+     data-label-prompt-old-tiqr-name="{{ gettext('Name for your current default token (\"{name}\"), which keeps working:')|forceescape }}"
+     data-label-failed-load-fido2="{{ gettext('Failed to load security keys.') }}"
+     data-label-no-fido2="{{ gettext('No security keys registered yet.') }}"
+     data-label-key-name-required="{{ gettext('Key name is required.') }}"
+     data-label-touch-key="{{ gettext('Touch your security key...') }}"
+     data-label-adding-fido2="{{ gettext('Registering security key...') }}"
+     data-label-fido2-added="{{ gettext('Security key registered.') }}"
+     data-label-failed-add-fido2="{{ gettext('Failed to register security key.') }}"
+     data-label-failed-delete-fido2="{{ gettext('Failed to delete security key.') }}"
+     data-label-failed-toggle-fido2="{{ gettext('Failed to update security key.') }}"
+     data-label-confirm-delete-fido2="{{ gettext('Delete security key \"{name}\"?')|forceescape }}"
+     data-label-current-token-no-delete="{{ gettext('You are signed in with this one. Sign in with another factor to remove it.') }}"
+     data-label-current-token-no-disable="{{ gettext('You are signed in with this one. Sign in with another factor to switch it off.') }}"
+     data-label-need-old-tiqr-name="{{ gettext('Please enter a name for your current default token.') }}"
+     data-label-failed-promote-tiqr="{{ gettext('Failed to change the default token.') }}"
+     data-label-tiqr-promoted="{{ gettext('Default token changed.') }}"
      data-label-token-enabled="{{ gettext('Enabled') }}"
      data-label-token-disabled="{{ gettext('Disabled') }}"
      data-label-failed-load-consents="{{ gettext('Failed to load consents.') }}"
@@ -65,7 +113,7 @@
      data-label-scopes-prefix="{{ gettext('Scopes:') }}"
      data-label-granted-prefix="{{ gettext('Granted:') }}"
      data-label-disconnect-btn="{{ gettext('Disconnect') }}"
-     data-label-confirm-revoke="{{ gettext('Disconnect \"{name}\"? Active sessions for this application will be terminated.') }}"
+     data-label-confirm-revoke="{{ gettext('Disconnect \"{name}\"? Active sessions for this application will be terminated.')|forceescape }}"
      data-label-failed-revoke="{{ gettext('Failed to revoke consent.') }}"
      data-label-disconnected="{{ gettext('Disconnected.') }}"
      data-label-admin-access-failed-load="{{ gettext('Failed to load admin access state.') }}"
@@ -186,6 +234,62 @@
         <ul id="passkeyList" class="device-token-list"></ul>
     </div>
 
+    <!-- FIDO2 security keys. Hidden until loadFido2Tokens() sees
+         allowed=true (sso_allow_fido2), which also governs signing in
+         with one. Same shape as the tiqr card below, including the SSO
+         token being listed and promotable rather than deletable. -->
+    <div class="settings-card is-hidden" id="fido2Card">
+        <h3>{{ gettext("Security Keys") }}</h3>
+        <p class="settings-desc">{{ gettext("Sign in with a hardware security key (YubiKey, Nitrokey, Titan, ...). The key is plugged in or held to the device, and never leaves your hands.") }}</p>
+        <div class="settings-form" id="fido2AddForm">
+            <label for="fido2DeviceName">{{ gettext("Key Name") }}</label>
+            <input type="text" id="fido2DeviceName" placeholder="{{ gettext('e.g. yubikey, backup key') }}" autocomplete="off">
+            <button type="button" id="addFido2Btn" class="btn btn-primary mt-8">{{ gettext("Add Security Key") }}</button>
+            <div class="status-msg" id="fido2Status"></div>
+            <div class="error-msg" id="fido2Error"></div>
+        </div>
+        <h4>{{ gettext("Registered Keys") }}</h4>
+        <ul id="fido2List" class="device-token-list"></ul>
+    </div>
+
+    <!-- tiqr: phones enrolled for challenge-response login. The list
+         includes the SSO token when that is a tiqr one, marked and
+         without a delete button -- removing it would take the recovery
+         flow with it, which looks up a token of that name. Moving that
+         role to another phone is what the "Make SSO token" button
+         does; it renames rather than deletes, so no phone is lost. -->
+    <div class="settings-card is-hidden" id="tiqrCard">
+        <h3>{{ gettext("Smartphone Authentication App (tiqr)") }}</h3>
+        <p class="settings-desc">{{ gettext("Sign in by confirming on your phone. Scan the code with the tiqr app, or tap the link if you are reading this on the phone itself.") }}</p>
+        <div class="settings-form" id="tiqrAddForm">
+            <label for="tiqrDeviceName">{{ gettext("Device Name") }}</label>
+            <input type="text" id="tiqrDeviceName" placeholder="{{ gettext('e.g. my phone, work phone') }}" autocomplete="off">
+            <button type="button" id="addTiqrBtn" class="btn btn-primary mt-8">{{ gettext("Add Phone") }}</button>
+            <div class="status-msg" id="tiqrStatus"></div>
+            <div class="error-msg" id="tiqrError"></div>
+        </div>
+        <div class="is-hidden" id="tiqrEnrollBox">
+            {# No tap-through link here, unlike the login page. The
+               enrollment URL is tiqrenroll://https://host/... and a
+               browser will not hand that to the app: its URL parser
+               reads "https:" as a host with an empty port, drops the
+               empty port, and the app receives tiqrenroll://https//...
+               which it rejects. Tested against the app in every shape
+               that survives the parser -- none is accepted. The login
+               URL has no such problem (proper authority, no embedded
+               URL), which is why that page still offers the link. #}
+            <p class="settings-desc">{{ gettext("Scan this code with the tiqr app. You need the code on a different screen from the phone: the app only takes it through its own scanner. Waiting for your phone...") }}</p>
+            <div class="qr-container">
+                <img id="tiqrQrcodeImg" alt="{{ gettext('tiqr enrollment code') }}">
+            </div>
+            <div class="login-buttons">
+                <button type="button" id="tiqrCancelBtn" class="btn btn-secondary">{{ gettext("Cancel") }}</button>
+            </div>
+        </div>
+        <h4>{{ gettext("Enrolled Phones") }}</h4>
+        <ul id="tiqrList" class="device-token-list"></ul>
+    </div>
+
     <!-- Recovery mail: address the SSO token recovery link is sent to.
          Address lives on the user object as otpmeRecoveryMail (LDIF
          attribute). Editing requires a fresh step-up reauth (within
@@ -197,7 +301,7 @@
          /Cancel. -->
     <div class="settings-card" id="recoveryMailCard">
         <h3>{{ gettext("Recovery E-Mail") }}</h3>
-        <p class="settings-desc">{{ gettext("If you lose access to your SSO token, a re-deploy link is sent to this address. Keep it under an account only you control (private mailbox, not your work address). Editing requires re-authentication.") }}</p>
+        <p class="settings-desc">{{ gettext("If you lose access to your default token, a re-deploy link is sent to this address. Keep it under an account only you control (private mailbox, not your work address). Editing requires re-authentication.") }}</p>
         <div class="settings-form">
             <div class="recovery-mail-display" id="recoveryMailDisplay">
                 <span class="recovery-mail-value" id="recoveryMailValue"></span>

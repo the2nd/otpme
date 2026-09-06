@@ -12,7 +12,7 @@
 
     const {base64urlToBuffer, bufferToBase64url} = window.WebAuthnUtils;
 
-    async function startDeploy(tokenType) {
+    async function startDeploy(tokenType, deviceName) {
         const urls = getUrls();
         const i18n = getI18n();
         const statusEl = document.getElementById('deployStatus');
@@ -20,13 +20,24 @@
         statusEl.textContent = '';
         errorEl.textContent = '';
 
+        // tiqr needs a name for the phone before anything can start.
+        // Ask for it first, then come back here with it.
+        if (tokenType === 'tiqr' && !deviceName) {
+            document.getElementById('step-start').classList.add('is-hidden');
+            document.getElementById('step-tiqr-name').classList.remove('is-hidden');
+            document.getElementById('tiqrDeployName').focus();
+            return;
+        }
+
         document.querySelectorAll('#step-start button').forEach(b => b.disabled = true);
         statusEl.textContent = i18n.labelCreatingToken || 'Creating token...';
 
+        const beginBody = {token_type: tokenType};
+        if (deviceName) beginBody.device_name = deviceName;
         try {
             const resp = await fetchJSON(urls.urlDeployBegin, {
                 method: 'POST',
-                    body: JSON.stringify({token_type: tokenType}),
+                    body: JSON.stringify(beginBody),
             });
             const result = await resp.json();
             if (!resp.ok) {
@@ -35,6 +46,15 @@
 
             if (result.token_type === 'fido2') {
                 await deployFido2();
+            } else if (result.token_type === 'tiqr') {
+                document.getElementById('step-start').classList.add('is-hidden');
+                document.getElementById('step-tiqr-name').classList.add('is-hidden');
+                document.getElementById('step-tiqr').classList.remove('is-hidden');
+                document.getElementById('tiqrDeployQrcodeImg').src = result.qrcode_img;
+                // The code only. enroll_url is deliberately not put
+                // into a link -- see the comment in deploy.html.
+                statusEl.textContent = i18n.labelWaitingPhone || 'Waiting for your phone...';
+                pollTiqrDeploy();
             } else {
                 document.getElementById('step-start').classList.add('is-hidden');
                 document.getElementById('step-qrcode').classList.remove('is-hidden');
@@ -123,6 +143,48 @@
         }, 1500);
     }
 
+    // tiqr has nothing for the user to type: the phone answers on its
+    // own connection, and the deploy is finished by calling verify
+    // until the staging token exists. Same short-poll shape as the
+    // login page.
+    function pollTiqrDeploy() {
+        const urls = getUrls();
+        const i18n = getI18n();
+        const statusEl = document.getElementById('deployStatus');
+        const errorEl = document.getElementById('deployError');
+        // The enrollment grant lives for tiqr_enrollment_expiry (five
+        // minutes by default); give up a little after that.
+        const deadline = Date.now() + 330000;
+
+        async function tick() {
+            if (Date.now() > deadline) {
+                statusEl.textContent = '';
+                errorEl.textContent = i18n.labelTiqrExpired || 'The code expired. Please try again.';
+                return;
+            }
+            try {
+                const resp = await fetchJSON(urls.urlDeployVerify, {
+                    method: 'POST',
+                    body: JSON.stringify({}),
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    statusEl.textContent = (result.message || '') + ' Redirecting...';
+                    document.getElementById('step-tiqr').classList.add('is-hidden');
+                    setTimeout(() => {
+                        window.location.href = result.redirect;
+                    }, 1500);
+                    return;
+                }
+            } catch (e) {
+                // Still waiting, or a hiccup. Either way, try again.
+            }
+            setTimeout(tick, 2000);
+        }
+
+        setTimeout(tick, 2000);
+    }
+
     async function verifyOtp() {
         const urls = getUrls();
         const i18n = getI18n();
@@ -170,6 +232,22 @@
         const singleBtn = document.getElementById('deployBtn');
         if (singleBtn) {
             singleBtn.addEventListener('click', () => startDeploy(singleBtn.dataset.tokenType));
+        }
+        // tiqr asks for the device name first, then comes back into
+        // startDeploy with it.
+        const tiqrStartBtn = document.getElementById('tiqrDeployStartBtn');
+        if (tiqrStartBtn) {
+            tiqrStartBtn.addEventListener('click', function () {
+                const i18n = getI18n();
+                const nameEl = document.getElementById('tiqrDeployName');
+                const deviceName = nameEl.value.trim();
+                if (!deviceName) {
+                    document.getElementById('deployError').textContent =
+                        i18n.labelNeedDeviceName || 'Please enter a name for your phone.';
+                    return;
+                }
+                startDeploy('tiqr', deviceName);
+            });
         }
         const verifyBtn = document.getElementById('verifyBtn');
         if (verifyBtn) {

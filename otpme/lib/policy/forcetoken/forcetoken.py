@@ -165,7 +165,7 @@ def register_policy_object():
     """ Registger policy type. """
     # Register policy to force OTP tokens.
     call_methods = [
-                ({'change_force_pass_types': {'pass_types': 'otp,otp_push'}},),
+                ({'change_force_pass_types': {'pass_types': 'otp,otp_push,tiqr'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="force_token_otp",
@@ -173,7 +173,7 @@ def register_policy_object():
                                 call_methods=call_methods)
     # Register policy to force non-static (password) tokens.
     call_methods = [
-                ({'change_force_pass_types': {'pass_types': 'otp,otp_push,ssh_key,smartcard'}},),
+                ({'change_force_pass_types': {'pass_types': 'otp,otp_push,tiqr,ssh_key,smartcard'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="force_token_non_static",
@@ -216,7 +216,7 @@ class ForcetokenPolicy(Policy):
                     'accessgroup',
                     ]
 
-        self.force_pass_types = [ 'otp', 'ssh_key', 'smartcard' ]
+        self.force_pass_types = [ 'otp', 'ssh_key', 'smartcard', 'tiqr' ]
 
         self._sub_sync_fields = {
                     'host'  : {

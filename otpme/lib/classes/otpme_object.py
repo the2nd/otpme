@@ -11433,10 +11433,13 @@ class OTPmeDataObject(OTPmeBaseObject):
             return callback.error(msg, exception=AlreadyExists)
         # Generate object UUID.
         self.uuid = stuff.gen_uuid()
-        # Call base class add method.
+        # Call base class add method. <write> is a named parameter here,
+        # so it never reached the base class through **kwargs and asking
+        # for write=False wrote the object anyway.
         return super().add(verbose_level=verbose_level,
-                                                callback=callback,
-                                                **kwargs)
+                            callback=callback,
+                            write=write,
+                            **kwargs)
 
     def _get_base_config(self):
         """ Get base object config """

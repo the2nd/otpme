@@ -298,6 +298,9 @@ class Fido2Token(Token):
         self.token_type = "fido2"
         # Set password type.
         self.pass_type = "smartcard"
+        # A signature over a server-issued challenge. Nothing to guess,
+        # and counting would let anybody lock the account.
+        self.count_fails = False
         # Set default values.
         self.credential_data = None
         self.attestation_cert = None

@@ -24,6 +24,7 @@ modules = [
         'otpme.lib.token.script_otp.script_otp',
         'otpme.lib.token.script_static.script_static',
         'otpme.lib.token.ssh.ssh',
+        'otpme.lib.token.tiqr.tiqr',
         'otpme.lib.token.totp.totp',
         'otpme.lib.token.u2f.u2f',
         'otpme.lib.token.fido2.fido2',

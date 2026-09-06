@@ -305,6 +305,8 @@ class YubikeyhmacToken(Token):
         self.token_type = "yubikey_hmac"
         # Set password type.
         self.pass_type = "smartcard"
+        # Challenge-response against the key's HMAC secret.
+        self.count_fails = False
         self.otp_type = "time"
         self.validity_time = 0
         self.timedrift_tolerance = 0

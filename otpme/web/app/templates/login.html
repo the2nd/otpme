@@ -3,7 +3,10 @@
 {% block content %}
 <div id="page-data"
      data-url-fido2-begin="{{ url_for('fido2_auth_begin', _external=True, _scheme='https') }}"
-     data-url-fido2-complete="{{ url_for('fido2_auth_complete', _external=True, _scheme='https') }}"></div>
+     data-url-fido2-complete="{{ url_for('fido2_auth_complete', _external=True, _scheme='https') }}"
+     data-url-tiqr-begin="{{ url_for('tiqr_auth_begin', _external=True, _scheme='https') }}"
+     data-url-tiqr-status="{{ url_for('tiqr_auth_status', _external=True, _scheme='https') }}"
+     data-url-tiqr-otp="{{ url_for('tiqr_auth_otp', _external=True, _scheme='https') }}"></div>
 <div id="page-i18n"
      data-label-need-username="{{ gettext('Please enter your username first.') }}"
      data-label-https-required="{{ gettext('WebAuthn requires HTTPS. Please access this page via HTTPS.') }}"
@@ -14,6 +17,11 @@
      data-label-verifying="{{ gettext('Verifying...') }}"
      data-label-auth-failed="{{ gettext('Authentication failed.') }}"
      data-label-login-success="{{ gettext('Login successful! Redirecting...') }}"
+     data-label-tiqr-scan="{{ gettext('Scan the code with the tiqr app, or tap it if you are on your phone.') }}"
+     data-label-tiqr-waiting="{{ gettext('Waiting for your phone...') }}"
+     data-label-tiqr-expired="{{ gettext('The code expired. Please try again.') }}"
+     data-label-tiqr-failed="{{ gettext('Failed to start tiqr authentication.') }}"
+     data-label-tiqr-otp-required="{{ gettext('Please enter the code from your app.') }}"
      class="is-hidden"></div>
 <div class="login-wrapper">
   <div class="login-card">
@@ -55,12 +63,52 @@
           {% if not reauth or reauth_token_pass_type != 'smartcard' %}
             <input type="submit" value="{% if reauth %}{{ gettext('Re-authenticate') }}{% else %}{{ gettext('Sign In') }}{% endif %}" class="btn btn-primary">
           {% endif %}
+          {# sso_show_fido2_button / sso_show_tiqr_button, site scope.
+             Only what the mask offers -- whether the method may be used
+             is sso_allow_fido2 / sso_allow_tiqr, decided ssod-side once
+             the user is known.
+
+             Never hidden on the reauth page. There the button is the
+             only control a user with a smartcard-type token has: the
+             password field is not rendered for them, so hiding it would
+             leave them with nothing to press. #}
+          {% if show_fido2_button or reauth %}
           <button type="button" id="fido2LoginBtn" class="btn btn-secondary">{{ gettext("Security Key") }}</button>
+          {% endif %}
+          {% if show_tiqr_button or reauth %}
+          <button type="button" id="tiqrLoginBtn" class="btn btn-secondary">{{ gettext("Smartphone Authentication App (tiqr)") }}</button>
+          {% endif %}
         </div>
     </form>
+
+    <!-- tiqr: the QR image and the button carry the same tiqrauth://
+         URL. Scan it from a second device, tap it when this browser is
+         on the phone itself. The manual field below is for when the
+         app cannot reach the server and shows the response instead;
+         polling keeps running while it is open, because the user may
+         still be about to scan. -->
+    <div class="is-hidden" id="tiqrBox">
+      <p class="status-msg" id="tiqrHint"></p>
+      <div class="qr-container">
+        <a id="tiqrAuthLink" href="#"><img id="tiqrQrcodeImg" alt="{{ gettext('tiqr login code') }}"></a>
+      </div>
+      <div class="login-buttons">
+        <a id="tiqrOpenBtn" class="btn btn-primary" href="#">{{ gettext("Open tiqr app") }}</a>
+        <button type="button" id="tiqrManualBtn" class="btn btn-secondary">{{ gettext("Enter code manually") }}</button>
+        <button type="button" id="tiqrCancelBtn" class="btn btn-secondary">{{ gettext("Cancel") }}</button>
+      </div>
+      <div class="is-hidden" id="tiqrOtpForm">
+        <label for="tiqrOtp">{{ gettext("Code from your app") }}</label>
+        <input type="text" id="tiqrOtp" inputmode="numeric" autocomplete="one-time-code" autocapitalize="off" spellcheck="false">
+        <button type="button" id="tiqrOtpBtn" class="btn btn-primary">{{ gettext("Sign In") }}</button>
+      </div>
+    </div>
     {% if not reauth and show_recover_link %}
     <div class="login-recover-link">
-      <a href="{{ url_for('recover', _external=True, _scheme='https') }}">{{ gettext("Lost access to your SSO token?") }}</a>
+      <a href="{{ url_for('recover', _external=True, _scheme='https') }}">{# Plain words on purpose: before signing in there is no context for
+   "default token", and the person has lost a phone, a key or a
+   password -- naming any one of them would be wrong for the others. #}
+{{ gettext("Can't sign in?") }}</a>
     </div>
     {% endif %}
     <div class="status-msg" id="fido2Status"></div>

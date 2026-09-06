@@ -770,6 +770,15 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.data_objects.used_otp",
                 "otpme.lib.classes.data_objects.failed_pass",
                 "otpme.lib.classes.data_objects.token_counter",
+                # Here rather than only in the tiqr token module, which
+                # is where it is actually used: the index builds its
+                # per-object-type classes once, in backend.init(), from
+                # whatever config.object_types holds at that moment.
+                # Token types register after that, so a data object that
+                # arrives with one is missing from the index for the
+                # rest of the process -- and any search that walks all
+                # object types then dies on it.
+                "otpme.lib.classes.data_objects.tiqr_auth_result",
                 ]
 
 def register():
@@ -1220,6 +1229,20 @@ class Token(OTPmeObject):
         # class.
         self.token_type = None
         self.pass_type = None
+        # Whether a failed attempt against this token is worth counting
+        # towards the accessgroup's max_fail. True for a token whose
+        # secret somebody could arrive at by trying: a password, or an
+        # OTP short enough to guess (RFC 4226 asks for throttling on
+        # exactly that). False for anything cryptographic or bound to a
+        # server-issued challenge, where repeated attempts get an
+        # attacker no closer and counting them would hand anybody a way
+        # to lock the account.
+        #
+        # Default False, so a token type that forgets to say loses the
+        # throttling rather than gaining a lockout lever it did not ask
+        # for. AuthHandler reads this instead of guessing from
+        # pass_type; see get_user_tokens().
+        self.count_fails = False
         self.otp_type = None
         self.allow_offline = None
         self.offline_expiry = None
@@ -4354,6 +4377,13 @@ class Token(OTPmeObject):
                 if not self.ask_change_confirmation(msg, force=force, callback=callback):
                     return callback.abort()
             old_token_uuid = x_token.uuid
+            # Used OTPs and counters are keyed by token UUID, and on
+            # replace the moved token takes this one over -- so without
+            # this they would carry on as the new token's. A fresh HOTP
+            # token moved onto an old one would inherit its counter and
+            # reject every OTP until the app caught up. User.add_token()
+            # does the same before its own replace.
+            x_token.delete_used_data_objects()
             # Delete object from backend instead of calling del_token()
             # to preserve token roles etc.
             del_status = backend.delete_object(x_token.oid, cluster=True)

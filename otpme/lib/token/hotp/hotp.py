@@ -351,6 +351,9 @@ class HotpToken(OathToken):
         # Set default values.
         self.token_type = "hotp"
         self.pass_type = "otp"
+        # Six digits from a shared secret. RFC 4226 asks for throttling
+        # against exactly this, and counting failures is how we do it.
+        self.count_fails = True
         self.otp_type = "counter"
         self.secret_len = None
 

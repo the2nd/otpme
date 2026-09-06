@@ -14,6 +14,7 @@ modules = [
 	'otpme.lib.classes.data_objects.used_hash',
 	'otpme.lib.classes.data_objects.used_otp',
 	'otpme.lib.classes.data_objects.used_sotp',
+	'otpme.lib.classes.data_objects.tiqr_auth_result',
 	'otpme.lib.classes.data_objects.rsa_key',
 	'otpme.lib.classes.data_objects.cert',
     ]

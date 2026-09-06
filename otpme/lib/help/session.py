@@ -47,11 +47,10 @@ cmd_help = {
 
     'del'    : {
                     '_cmd_usage_help' : _('Usage: otpme-session del [-r -f] {session_id}'),
-                    'cmd'   :   '-r :recursive=True: -f :force=True: <|objects|>',
+                    'cmd'   :   '-r :recursive=True: <|objects|>',
                     '_help' :   {
                                     'cmd'                   : _('Delete session'),
                                     '-r'                    : _('Delete recursive (with child sessions)'),
-                                    '-f'                    : _('Force deletion'),
                                 },
                 },
 

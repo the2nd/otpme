@@ -51,7 +51,7 @@ class AuthHandler(object):
 
         self.logger = config.logger
 
-        self.valid_auth_modes = [ 'static', 'otp', 'ssh', 'smartcard', 'auto' ]
+        self.valid_auth_modes = [ 'static', 'otp', 'ssh', 'smartcard', 'tiqr', 'auto' ]
 
         # Log method that is used for failed requests (e.g. AUTH_FAILED)
         self.error_log_method = self.logger.warning
@@ -1115,7 +1115,7 @@ class AuthHandler(object):
                 msg = msg.format(user_token=token.rel_path)
                 raise OTPmeException(msg)
 
-            log_msg = _("Verifying token from request: {token_path}", log=True)[1]
+            log_msg = _("Selecting token from request: {token_path}", log=True)[1]
             log_msg = log_msg.format(token_path=token.rel_path)
             self.logger.debug(log_msg)
 
@@ -1125,6 +1125,8 @@ class AuthHandler(object):
                     self.valid_user_tokens_ssh = [ token ]
             if token_pass_type == "smartcard":
                 self.valid_user_tokens_smartcard = [ token ]
+            if token_pass_type == "tiqr":
+                self.valid_user_tokens_tiqr = [ token ]
             if token_pass_type == "static":
                 self.valid_user_tokens_static = [ token ]
             if token_pass_type == "otp":
@@ -1144,7 +1146,7 @@ class AuthHandler(object):
             self.logger.debug(log_msg)
 
             # Make sure we honor self.require_pass_types when selecting tokens.
-            select_tokens = ['otp', 'ssh', 'static', 'smartcard', 'dot1x', 'link']
+            select_tokens = ['otp', 'ssh', 'static', 'smartcard', 'tiqr', 'dot1x', 'link']
             if self.auth_mode == "static" or self.auth_mode == "auto":
                 if self.require_pass_types \
                 and "static" not in self.require_pass_types:
@@ -1184,6 +1186,19 @@ class AuthHandler(object):
             else:
                 try:
                     select_tokens.remove('smartcard')
+                except ValueError:
+                    pass
+
+            if self.auth_type == "tiqr":
+                if self.require_pass_types \
+                and "tiqr" not in self.require_pass_types:
+                    try:
+                        select_tokens.remove('tiqr')
+                    except ValueError:
+                        pass
+            else:
+                try:
+                    select_tokens.remove('tiqr')
                 except ValueError:
                     pass
 
@@ -1244,6 +1259,8 @@ class AuthHandler(object):
                             continue
                     if token.pass_type not in select_tokens:
                         continue
+                    if token.count_fails:
+                        self.count_fails_tokens.append(token)
                     if token.pass_type == "static" or token.pass_type == "script_static":
                         self.valid_user_tokens_static.append(token)
                     if token.pass_type == "otp" \
@@ -1254,6 +1271,8 @@ class AuthHandler(object):
                         self.valid_user_tokens_ssh.append(token)
                     if token.pass_type == "smartcard":
                         self.valid_user_tokens_smartcard.append(token)
+                    if token.pass_type == "tiqr":
+                        self.valid_user_tokens_tiqr.append(token)
                     if token.pass_type == "link":
                         self.valid_user_tokens_link.append(token)
 
@@ -1264,6 +1283,7 @@ class AuthHandler(object):
         and not self.valid_user_tokens_script_otp \
         and not self.valid_user_tokens_otp_push \
         and not self.valid_user_tokens_smartcard \
+        and not self.valid_user_tokens_tiqr \
         and not self.valid_user_tokens_link \
         and not self.valid_user_tokens_dot1x \
         and not self.valid_user_tokens_ssh \
@@ -1273,12 +1293,21 @@ class AuthHandler(object):
             self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_TOKEN_MISSING"
-        # Without password tokens assigned to accessgroup we must not
-        # count failed logins and must not block users.
-        if not self.valid_user_tokens_static:
+        # Without a token whose secret somebody could arrive at by
+        # trying, we must not count failed logins and must not block
+        # users. Otherwise anybody could lock out a user who has only a
+        # security key or a phone, by sending passwords that no token of
+        # theirs would ever have accepted.
+        #
+        # Which tokens those are is the token's own answer
+        # (Token.count_fails), not something read off pass_type here:
+        # that only ever recognised static passwords, leaving OTP tokens
+        # -- the case RFC 4226 explicitly asks to throttle -- uncounted,
+        # and disagreeing with the line above about script_static.
+        if not self.count_fails_tokens:
             if not self.user_default_token:
                 self.count_fails = False
-            elif self.user_default_token.pass_type != "static":
+            elif not self.user_default_token.count_fails:
                 self.count_fails = False
 
     def try_temp_pass_auth(self, verify_token, token_verify_parms):
@@ -1436,6 +1465,17 @@ class AuthHandler(object):
                     return
                 # Add smartcard data to token verify parameters.
                 token_verify_parms['smartcard_data'] = self.smartcard_data
+
+        # Handle tiqr tokens. Same shape as smartcard above, with a
+        # channel of its own: no card is involved, the app answers a
+        # challenge, and the dict is assembled here rather than sent by
+        # a host.
+        if not temp and not do_dot1x_auth:
+            if _verify_token.pass_type == "tiqr":
+                if not self.token_auth_data:
+                    return
+                # Add token auth data to token verify parameters.
+                token_verify_parms['token_auth_data'] = self.token_auth_data
 
         # Add session UUID.
         token_verify_parms['session_uuid'] = self.new_session_uuid
@@ -1670,6 +1710,8 @@ class AuthHandler(object):
                 self.auth_mode = "static"
             if self.verify_token.pass_type in [ 'smartcard' ]:
                 self.auth_mode = "smartcard"
+            if self.verify_token.pass_type in [ 'tiqr' ]:
+                self.auth_mode = "tiqr"
             if self.verify_token.pass_type in [ 'ssh_key' ]:
                 self.auth_mode = "ssh"
 
@@ -1868,6 +1910,12 @@ class AuthHandler(object):
                 self.auth_message = "LOGIN_OK_SMARTCARD"
             else:
                 self.auth_message = "AUTH_OK_SMARTCARD"
+
+        if self.auth_mode == "tiqr":
+            if self.realm_login:
+                self.auth_message = "LOGIN_OK_TIQR"
+            else:
+                self.auth_message = "AUTH_OK_TIQR"
 
         if self.auth_mode == "static":
             self.request_cacheable = True
@@ -2504,9 +2552,9 @@ class AuthHandler(object):
         auth_mode="auto", peer=None, realm_login=False, realm_logout=False,
         login_interface=None, reneg=None, reneg_salt=None, rsp_hash_type=None,
         unlock=False, session_logout=False, password=None, challenge=None,
-        response=None, smartcard_data=None, client=None, client_ip=None,
-        access_group=None, user_token=None, src_token=None, count_fails=None,
-        host_type=None, host=None, host_ip=None, replace_sessions=None,
+        response=None, smartcard_data=None, token_auth_data=None, client=None,
+        client_ip=None, access_group=None, user_token=None, src_token=None,
+        count_fails=None, host_type=None, host=None, host_ip=None, replace_sessions=None,
         require_token_types=None, require_pass_types=None, redirect_challenge=None,
         jwt_auth=False, authorize_host=True, share=None, allow_sotp_reuse=False,
         redirect_response=None, gen_jwt=None, jwt_challenge=None, sotp_ag_auth=None,
@@ -2608,6 +2656,7 @@ class AuthHandler(object):
         self.sotp_ag_auth = sotp_ag_auth
         self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data
+        self.token_auth_data = token_auth_data
         self.vlan = None
         self.share = share
         self.authorize_host = authorize_host
@@ -2710,6 +2759,9 @@ class AuthHandler(object):
         # Will hold a list of user static-password tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_static = []
+        # Of the tokens that could authenticate this request, the ones
+        # that say a failed attempt is worth counting (Token.count_fails).
+        self.count_fails_tokens = []
         # Will hold a list of user OTP tokens that could be used to authenticate
         # this request.
         self.valid_user_tokens_otp = []
@@ -2728,6 +2780,9 @@ class AuthHandler(object):
         # Will hold a list of user smartcard tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_smartcard = []
+        # Will hold a list of user tiqr tokens that could be used to
+        # authenticate this request.
+        self.valid_user_tokens_tiqr = []
         # Will hold all link tokens.
         self.valid_user_tokens_link = []
         # Will hold a list of user dot1x tokens that could be used to
@@ -2888,6 +2943,19 @@ class AuthHandler(object):
                 self.create_sessions = True
             if not self.smartcard_data:
                 self.auth_message = "AUTH_MISSING_SMARTCARD_DATA"
+                self.auth_failed = True
+
+        elif self.auth_type == "tiqr":
+            log_msg = _("Processing tiqr authentication request.", log=True)[1]
+            self.logger.debug(log_msg)
+            # Same as smartcard above: no session to verify against, and
+            # a session is only created for a realm or SSO login.
+            self.verify_sessions = False
+            self.create_sessions = False
+            if self.access_group == config.sso_access_group:
+                self.create_sessions = True
+            if not self.token_auth_data:
+                self.auth_message = "AUTH_MISSING_TOKEN_AUTH_DATA"
                 self.auth_failed = True
 
         elif self.auth_type == "jwt":
@@ -3099,7 +3167,14 @@ class AuthHandler(object):
                 self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_smartcard)
 
-        # Verify smartcard tokens.
+        # Verify tiqr tokens.
+        if not self.auth_failed and self.auth_status is False:
+            if self.valid_user_tokens_tiqr:
+                log_msg = _("Verifying tiqr tokens...", log=True)[1]
+                self.logger.debug(log_msg)
+                self.verify_user_tokens(tokens=self.valid_user_tokens_tiqr)
+
+        # Verify dot1x tokens.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_dot1x:
                 log_msg = _("Verifying dot1x tokens...", log=True)[1]

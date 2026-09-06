@@ -154,15 +154,16 @@ def cluster_daemon_reload():
         return False
     if config.host_type != "node":
         return False
+    if not multiprocessing.cluster_out_event:
+        return False
     multiprocessing.daemon_reload_queue.clear()
     reload_time = time.time() + 5
     try:
         multiprocessing.daemon_reload_queue[reload_time] = []
     except ValueError:
         pass
-    if not multiprocessing.cluster_out_event:
-        return
     multiprocessing.cluster_out_event.set()
+    return True
 
 def cluster_sync_object(action, object_id=None, object_uuid=None,
     object_type=None, object_data=None, old_object_id=None,

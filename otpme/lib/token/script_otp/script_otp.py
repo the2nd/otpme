@@ -150,6 +150,11 @@ class ScriptToken(Token):
             self.token_type = "script_static"
         # Set password type.
         self.pass_type = self.token_type
+        # True for both types this file serves: an OTP or a static
+        # password the user types, only checked by a script instead of
+        # by us. Either way it is something somebody could arrive at by
+        # trying.
+        self.count_fails = True
         # Token type "script" is itself a script so no need to en- or disable
         # the auth script.
         self.auth_script_enabled = None

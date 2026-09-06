@@ -303,6 +303,10 @@ class OtppushToken(Token):
         self.token_type = "otp_push"
         # Set password type.
         self.pass_type = "otp_push"
+        # The user types the OTP we pushed. Note the first stage sends
+        # the OTP and always 'fails'; AuthHandler switches counting off
+        # for that one request itself.
+        self.count_fails = True
         # Set default values.
         self.phone_number = None
         self.push_script = None

@@ -107,7 +107,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'delete',
-                    'oargs'             : ['recursive', 'force'],
+                    'oargs'             : ['recursive'],
                     'job_type'          : 'thread',
                     },
                 },

@@ -1349,10 +1349,45 @@ def register_config_parameters():
     #                                ctype=bool,
     #                                default_value=True,
     #                                object_types=object_types)
+    # The two default token names name two different roles, and both
+    # roles are decided by the name alone: <default_token_name> is the
+    # token used when talking to mgmtd over the socket and the one the
+    # auth handler tries first, <default_sso_token_name> is the token
+    # the SSO portal deploys and recovers. Letting them collide makes
+    # one token both, and then the guards on the mgmt default (rename
+    # and deletion, see allow_default_token_rename) fire in the middle
+    # of an SSO portal flow with a message that explains nothing there.
+    def _check_token_name_collision(value, other_parameter, **kwargs):
+        # Runs on removal too, where it must not make an existing value
+        # unremovable, and there is no object to compare against.
+        if kwargs.get('delete'):
+            return value
+        config_object = kwargs.get('config_object')
+        if config_object is None:
+            return value
+        try:
+            other_value = config_object.get_config_parameter(other_parameter)
+        except Exception:
+            return value
+        if value == other_value:
+            msg = ("Cannot use the same name for 'default_token_name' and "
+                    "'default_sso_token_name': {value}")
+            msg = msg.format(value=value)
+            raise ValueError(msg)
+        return value
+    def default_token_name_setter(value, **kwargs):
+        return _check_token_name_collision(value,
+                                        "default_sso_token_name",
+                                        **kwargs)
+    def default_sso_token_name_setter(value, **kwargs):
+        return _check_token_name_collision(value,
+                                        "default_token_name",
+                                        **kwargs)
     # Name of default token to add.
     config.register_config_parameter(name="default_token_name",
                                     ctype=str,
                                     default_value="login",
+                                    setter=default_token_name_setter,
                                     object_types=object_types)
     # Default token type to add.
     def default_token_setter(token_type, **kwargs):
@@ -1371,6 +1406,7 @@ def register_config_parameters():
     config.register_config_parameter(name="default_sso_token_name",
                                     ctype=str,
                                     default_value="sso",
+                                    setter=default_sso_token_name_setter,
                                     object_types=object_types)
     # Top-level on/off gate for the SSO-token recovery flow. When
     # False (default) the recovery UI is hidden on the login page and

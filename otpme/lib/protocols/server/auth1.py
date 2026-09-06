@@ -28,16 +28,38 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import multiprocessing
 from otpme.lib.audit import emit_audit
+from otpme.lib import qrcode
 from otpme.lib import connections
+from otpme.lib.otp.oath import ocra
 from otpme.lib.humanize import units
 from otpme.lib.encoding.base import decode
 
 from otpme.lib.protocols import status_codes
+from otpme.lib.protocols import tiqr_helpers
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.classes.data_objects import tiqr_auth_result
+from otpme.lib.token.tiqr import tiqr as tiqr_token
 
 from otpme.lib.exceptions import *
 
 DEPLOY_NAME = "sso-deploy"
+
+# tiqr result codes, as the apps expect them. Version 1 answers in plain
+# text, version 2 in JSON; the app picks via the X-TIQR-Protocol-Version
+# header. Translating these into what goes over the wire is the web
+# layer's job -- authd only says which case it is.
+#
+# The protocol also carries an "attemptsLeft" alongside INVALID_RESPONSE,
+# which we never send. It would have to count wrong responses on an
+# unauthenticated endpoint, and anyone who knows a username can post
+# those -- locking any account at will. Guessing is bounded instead by
+# the rate limit on /tiqr/auth and by the challenge expiry, and the
+# apps treat a missing attemptsLeft as "no count given".
+TIQR_AUTH_OK = "OK"
+TIQR_AUTH_INVALID_RESPONSE = "INVALID_RESPONSE"
+TIQR_AUTH_INVALID_CHALLENGE = "INVALID_CHALLENGE"
+TIQR_AUTH_INVALID_USERID = "INVALID_USERID"
+TIQR_AUTH_ACCOUNT_BLOCKED = "ACCOUNT_BLOCKED"
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
@@ -60,6 +82,43 @@ def _sso_allow_passkeys_for_user(user):
         return bool(user.get_config_parameter("sso_allow_passkeys"))
     except Exception:
         return False
+
+
+def _sso_allow_tiqr_for_user(user):
+    """ Home-side resolution of the ``sso_allow_tiqr`` cascade
+    (user → unit → site) for the tiqr login path.
+
+    Fail-open for the same reason as the FIDO2 one: an explicit False
+    blocks, an unset cascade does not. Applied where the user's tiqr
+    tokens are gathered, so a blocked user simply has none -- the QR
+    still goes out, and the attempt ends the way it does for anyone
+    without a phone. """
+    try:
+        value = user.get_config_parameter("sso_allow_tiqr")
+    except Exception:
+        return True
+    if value is None:
+        return True
+    return bool(value)
+
+
+def _sso_allow_fido2_for_user(user):
+    """ Home-side resolution of the ``sso_allow_fido2`` cascade
+    (user → unit → site) for the WebAuthn login path. Covers signing in
+    with a security key and managing them in the portal, the same span
+    ``sso_allow_passkeys`` covers for passkeys.
+
+    Resolves fail-open, which is the difference to the passkey gate:
+    FIDO2 login has always worked here, and a parameter added underneath
+    a running installation must not switch it off. It takes an explicit
+    False to block. """
+    try:
+        value = user.get_config_parameter("sso_allow_fido2")
+    except Exception:
+        return True
+    if value is None:
+        return True
+    return bool(value)
 
 
 # Per-process cache for the decoy HMAC seed -- derived from the site's
@@ -576,6 +635,7 @@ class OTPmeAuthP1(OTPmeServer1):
             # passkey), so the whole login attempt fails at the
             # signature stage indistinguishable from an unknown user.
             passkeys_allowed = _sso_allow_passkeys_for_user(user)
+            fido2_allowed = _sso_allow_fido2_for_user(user)
             for token in user_tokens:
                 # The credential belongs to the destination of a link,
                 # the assignment to the link -- so everything the
@@ -598,6 +658,9 @@ class OTPmeAuthP1(OTPmeServer1):
                         continue
                 if cred_token.token_type == "passkey" and not passkeys_allowed:
                     skipped.append(f"{token.rel_path}:passkeys_not_allowed")
+                    continue
+                if cred_token.token_type == "fido2" and not fido2_allowed:
+                    skipped.append(f"{token.rel_path}:fido2_not_allowed")
                     continue
                 # Only offer credentials that were registered for this RP: an
                 # authenticator's assertion is bound to the rpIdHash it was
@@ -856,6 +919,15 @@ class OTPmeAuthP1(OTPmeServer1):
                     continue
             if x_verify_token.token_type not in ("fido2", "passkey"):
                 continue
+            # Asked again here, not only at begin: the allow-list has
+            # already left the browser by then, and a cascade can be
+            # turned off between the two requests.
+            if x_verify_token.token_type == "passkey" \
+            and not _sso_allow_passkeys_for_user(user):
+                continue
+            if x_verify_token.token_type == "fido2" \
+            and not _sso_allow_fido2_for_user(user):
+                continue
             token = t
             verify_token = x_verify_token
             break
@@ -1032,6 +1104,465 @@ class OTPmeAuthP1(OTPmeServer1):
             app_data = self.get_apps(auth_token)
             auth_result['app_data'] = app_data
         return self.build_response(True, auth_result)
+
+    def _tiqr_sso_accessgroup(self):
+        """ The access group a tiqr login lands in.
+
+        The browser half of the flow talks to authd as the SSO client,
+        so this is the group the token has to be valid for and the
+        group a block would be counted in. """
+        return backend.get_object(object_type="accessgroup",
+                                name=config.sso_access_group,
+                                realm=config.realm,
+                                site=config.site)
+
+    def _tiqr_block_duration(self):
+        """ How long a block lasts, in minutes, as the apps show it.
+
+        OTPme lifts a block after max_fail_reset seconds without a
+        further attempt. Zero means it stands until an admin lifts it,
+        and a missing duration is exactly how the apps read that. """
+        sso_ag = self._tiqr_sso_accessgroup()
+        if sso_ag is None:
+            return None
+        max_fail_reset = sso_ag.max_fail_reset
+        if not max_fail_reset:
+            return None
+        # Round up: telling the user 0 minutes would be worse than
+        # telling them 1.
+        return -(-int(max_fail_reset) // 60)
+
+    def _get_tiqr_tokens(self, user):
+        """ Enabled, enrolled tiqr tokens of a user.
+
+        The single choke point of the tiqr login: begin, response and
+        the typed-OTP fallback all come through here, so the cascade is
+        asked once, here. """
+        if not _sso_allow_tiqr_for_user(user):
+            return []
+        tiqr_tokens = []
+        sso_ag = self._tiqr_sso_accessgroup()
+        user_tokens = user.get_tokens(access_group=sso_ag,
+                                    return_type="instance")
+        for token in user_tokens:
+            verify_token = token
+            if token.destination_token:
+                verify_token = token.dst_token
+                if not verify_token:
+                    continue
+            if verify_token.token_type != "tiqr":
+                continue
+            if not verify_token.enabled:
+                continue
+            if not verify_token.is_deployed():
+                continue
+            tiqr_tokens.append((token, verify_token))
+        return tiqr_tokens
+
+    def _tiqr_challenge_len(self, verify_token):
+        """ How long a challenge this token's OCRA suite asks for. """
+        suite_config = ocra.get_suite(verify_token.ocra_suite)
+        return suite_config.data_input.Q[1]
+
+    def _tiqr_max_age(self):
+        """ How long a tiqr challenge stays answerable. """
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        return my_site.get_config_parameter("tiqr_challenge_expiry")
+
+    def tiqr_auth_begin(self, username, command_args):
+        """ Hand the browser a challenge. Writes nothing.
+
+        Session key, challenge and poll id all come out of the site
+        secret and one fresh random session key, so no record has to
+        exist before the phone has proven it holds a token. See
+        protocols/tiqr_helpers.py for why that matters.
+
+        An unknown user, or one without a usable tiqr token, gets the
+        same shaped answer as anybody else -- otherwise the response
+        says which accounts have tiqr. """
+        begin_start = time.monotonic()
+        try:
+            user = backend.get_object(object_type="user",
+                                    name=username,
+                                    realm=config.realm,
+                                    run_policies=True,
+                                    _no_func_cache=True)
+            # Users of another site are answered by their own site, the
+            # way fido2_auth_begin redirects.
+            if user is not None and user.site != config.site:
+                status, \
+                message = self.authd_redirect_command(command="tiqr_auth_begin",
+                                                user=user,
+                                                command_args=command_args)
+                return self.build_response(status, message)
+
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            # Everything below has to come out the same shape whether
+            # the user is unknown, known without tiqr, or known with
+            # tiqr. The URL naming an identity only in the last case
+            # would say who uses tiqr -- the very thing fido2 spends
+            # its decoy credentials on hiding.
+            identity_id = username
+            site_suite = my_site.get_config_parameter("tiqr_ocra_suite")
+            challenge_len = ocra.get_suite(site_suite).data_input.Q[1]
+            if user is not None:
+                tiqr_tokens = self._get_tiqr_tokens(user)
+                if tiqr_tokens:
+                    verify_token = tiqr_tokens[0][1]
+                    identity_id = verify_token.identity_id or user.name
+                    challenge_len = self._tiqr_challenge_len(verify_token)
+            # A user we cannot name still gets a session key: the QR
+            # scans, the app just never finds a matching identity.
+            user_uuid = getattr(user, 'uuid', None) or ""
+
+            tiqr_secret = tiqr_token.get_site_secret()
+            session_key = tiqr_helpers.gen_session_key(time.time())
+            challenge = tiqr_helpers.derive_challenge(tiqr_secret,
+                                                    session_key,
+                                                    user_uuid,
+                                                    challenge_len)
+            poll_id = tiqr_helpers.derive_poll_id(tiqr_secret, session_key)
+
+            auth_scheme = my_site.get_config_parameter("tiqr_auth_scheme")
+            service_identifier = my_site.get_config_parameter("tiqr_service_display_name")
+            if not service_identifier:
+                service_identifier = config.realm
+            return_url = command_args.get('return_url')
+            auth_url = tiqr_helpers.build_auth_url(auth_scheme,
+                                                service_identifier,
+                                                session_key,
+                                                challenge,
+                                                identity_id=identity_id,
+                                                return_url=return_url)
+            # The same URL twice: as a QR for a second device, and as a
+            # link the app opens directly when the browser is on the
+            # phone itself.
+            try:
+                qrcode_data = qrcode.gen_qrcode(auth_url, fmt="svg")
+                if isinstance(qrcode_data, bytes):
+                    qrcode_data = qrcode_data.decode('utf-8')
+                qrcode_img = ("data:image/svg+xml;base64,"
+                            + base64.b64encode(qrcode_data.encode()).decode())
+            except Exception as e:
+                log_msg = _("tiqr: QR code generation failed: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False, "AUTHD_FAILED")
+            message = {
+                        'poll_id'       : poll_id,
+                        'session_key'   : session_key,
+                        'auth_url'      : auth_url,
+                        'qrcode_img'    : qrcode_img,
+                    }
+            return self.build_response(True, message)
+        finally:
+            _pad_min_duration(begin_start)
+
+    def tiqr_auth_response(self, command_args):
+        """ Take the phone's answer.
+
+        Unauthenticated by nature -- what authenticates it is the OCRA
+        response itself, and nothing is written until that verifies, so
+        a caller without a token secret leaves no trace. """
+        session_key = command_args.get('session_key')
+        response = command_args.get('response')
+        identity_id = command_args.get('identity_id')
+        if not session_key or not response:
+            return self.build_response(False, TIQR_AUTH_INVALID_CHALLENGE)
+        if not identity_id:
+            return self.build_response(False, TIQR_AUTH_INVALID_USERID)
+
+        now = time.time()
+        max_age = self._tiqr_max_age()
+        try:
+            expired = tiqr_helpers.session_key_expired(session_key, max_age, now)
+        except ValueError:
+            expired = True
+        if expired:
+            return self.build_response(False, TIQR_AUTH_INVALID_CHALLENGE)
+
+        user = backend.get_object(object_type="user",
+                                name=identity_id,
+                                realm=config.realm,
+                                run_policies=True,
+                                _no_func_cache=True)
+        if user is None:
+            return self.build_response(False, TIQR_AUTH_INVALID_USERID)
+        if user.site != config.site:
+            status, \
+            message = self.authd_redirect_command(command="tiqr_auth_response",
+                                            user=user,
+                                            command_args=command_args)
+            return self.build_response(status, message)
+
+        tiqr_secret = tiqr_token.get_site_secret()
+        # Whichever of the user's phones answered. Trying them all is
+        # what makes several enrolled devices work.
+        matched_token = None
+        matched_verify_token = None
+        for token, verify_token in self._get_tiqr_tokens(user):
+            challenge_len = self._tiqr_challenge_len(verify_token)
+            challenge = tiqr_helpers.derive_challenge(tiqr_secret,
+                                                    session_key,
+                                                    user.uuid,
+                                                    challenge_len)
+            if verify_token.verify_ocra(challenge, session_key, response):
+                matched_token = token
+                matched_verify_token = verify_token
+                break
+        if matched_verify_token is None:
+            log_msg = _("tiqr: no token matched the response: {user}", log=True)[1]
+            log_msg = log_msg.format(user=user.name)
+            self.logger.warning(log_msg)
+            return self.build_response(False, TIQR_AUTH_INVALID_RESPONSE)
+
+        # A blocked user gets no session out of this answer, so say so
+        # rather than let the app report a success that dies silently on
+        # the browser's next poll. The block itself is the shared one --
+        # counted by user.authenticate() on every login path, lifted by
+        # 'otpme-user unblock' or by max_fail_reset.
+        #
+        # Asked only now that the response verified. Earlier it would
+        # tell anyone who knows a username whether that account is
+        # blocked.
+        if user.is_blocked(config.sso_access_group,
+                            realm=config.realm,
+                            site=config.site):
+            log_msg = _("tiqr: user '{user}' is blocked.", log=True)[1]
+            log_msg = log_msg.format(user=user.name)
+            self.logger.warning(log_msg)
+            blocked = {'result': TIQR_AUTH_ACCOUNT_BLOCKED}
+            duration = self._tiqr_block_duration()
+            if duration is not None:
+                blocked['duration'] = duration
+            return self.build_response(False, blocked)
+
+        # Somebody holds a token secret, so writing is safe from here.
+        # Sweeping first keeps results whose browser never came back
+        # from piling up; OTPme has no reaper.
+        matched_verify_token.cleanup_auth_results(now)
+
+        poll_id = tiqr_helpers.derive_poll_id(tiqr_secret, session_key)
+        expiry = tiqr_helpers.get_session_key_time(session_key) + max_age
+        poll_hash = tiqr_auth_result.hash_poll_id(poll_id)
+        auth_result = tiqr_auth_result.TiqrAuthResult(
+                            realm=config.realm,
+                            site=config.site,
+                            user_uuid=user.uuid,
+                            token_uuid=matched_token.uuid,
+                            object_hash=poll_hash,
+                            session_key=session_key,
+                            response=response,
+                            expiry=expiry,
+                            no_transaction=True)
+        try:
+            # add() writes and waits for the cluster writes by default,
+            # which the browser polling another node depends on.
+            auth_result.add()
+        except AlreadyExists:
+            # Same challenge answered twice inside its window. The first
+            # answer stands.
+            log_msg = _("tiqr: duplicate response for one challenge.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(True, TIQR_AUTH_OK)
+        log_msg = _("tiqr: response accepted for token {token}", log=True)[1]
+        log_msg = log_msg.format(token=matched_verify_token.rel_path)
+        self.logger.info(log_msg)
+        return self.build_response(True, TIQR_AUTH_OK)
+
+    def _burn_tiqr_result(self, poll_id):
+        """ Consume the result for a poll id, if there is one.
+
+        Called on both collection paths so an answered challenge can be
+        turned into a session exactly once. Without it the manual OTP
+        entry and the still running poll could each produce a session
+        from the same answer. """
+        auth_result = tiqr_auth_result.get_by_poll_id(poll_id)
+        if auth_result is None:
+            return
+        try:
+            auth_result.delete()
+        except Exception as e:
+            log_msg = _("tiqr: failed to drop auth result: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+
+    def _tiqr_login(self, user, token, token_auth_data, client, client_ip,
+        sso_challenge):
+        """ Run the answered challenge through the normal auth path.
+
+        Everything that hangs off a login -- access groups, policies,
+        session creation, audit, failed-login counting -- happens here,
+        exactly where it happens for every other token type. """
+        try:
+            auth_status = user.authenticate(
+                    auth_type="tiqr",
+                    auth_mode="tiqr",
+                    client=client,
+                    client_ip=client_ip,
+                    realm_login=False,
+                    realm_logout=False,
+                    token_auth_data=token_auth_data,
+                    user_token=token,
+                )
+        except Exception as e:
+            log_msg = _("tiqr authentication failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.critical(log_msg)
+            return False, {'message':'Login failed.', 'status':False}
+        if not auth_status['status']:
+            return False, {'message':'Login failed.', 'status':False}
+        try:
+            auth_token = auth_status.pop('token')
+        except KeyError:
+            auth_token = None
+        # Gen JWT for SSO auth.
+        if auth_token and client == config.sso_client_name:
+            jwt_ag = f"{config.site}/{config.sso_access_group}"
+            try:
+                sso_jwt = self.gen_jwt(username=user.name,
+                                    token=auth_token,
+                                    reason="SSO_AUTH",
+                                    challenge=sso_challenge,
+                                    access_group=jwt_ag,
+                                    sso=True)
+            except AccessDenied as e:
+                message = _("Unable to gen SSO JWT: {e}")
+                message = message.format(e=e)
+                return False, message
+            auth_status['sso_jwt'] = sso_jwt
+            auth_status['app_data'] = self.get_apps(auth_token)
+        return True, auth_status
+
+    def tiqr_auth_status(self, client, client_ip, sso_challenge, command_args):
+        """ The browser collecting its result.
+
+        The login runs here rather than on the phone's request, so the
+        session records the browser's address and not the phone's, and
+        a token disabled in the meantime still stops the login.
+
+        Short poll: this answers right away, it never holds the request
+        open. A long poll would tie up a gunicorn worker per waiting
+        browser. """
+        poll_id = command_args.get('poll_id')
+        pending = {'status':False, 'tiqr_status':'pending'}
+        expired = {'status':False, 'tiqr_status':'challenge-expired'}
+        if not poll_id:
+            return self.build_response(True, pending)
+        auth_result = tiqr_auth_result.get_by_poll_id(poll_id)
+        if auth_result is None:
+            return self.build_response(True, pending)
+        if auth_result.expiry and time.time() > auth_result.expiry:
+            return self.build_response(True, expired)
+
+        token = backend.get_object(uuid=auth_result.token_uuid)
+        user = backend.get_object(uuid=auth_result.user_uuid,
+                                run_policies=True,
+                                _no_func_cache=True)
+        if token is None or user is None:
+            return self.build_response(True, expired)
+        # Asked again here, not only where the answer was accepted: a
+        # result already waiting when the cascade is turned off must not
+        # still be collectable for the minutes it lives.
+        if not _sso_allow_tiqr_for_user(user):
+            return self.build_response(True, expired)
+
+        verify_token = token
+        if token.destination_token:
+            verify_token = token.dst_token
+        if verify_token is None:
+            return self.build_response(True, expired)
+
+        challenge_len = self._tiqr_challenge_len(verify_token)
+        challenge = tiqr_helpers.derive_challenge(tiqr_token.get_site_secret(),
+                                                auth_result.session_key,
+                                                user.uuid,
+                                                challenge_len)
+        token_auth_data = {
+                        'challenge'     : challenge,
+                        'session_key'   : auth_result.session_key,
+                        'response'      : auth_result.response,
+                    }
+        try:
+            status, auth_status = self._tiqr_login(user, token,
+                                                token_auth_data,
+                                                client, client_ip,
+                                                sso_challenge)
+        finally:
+            # One collection per answered challenge, success or not. A
+            # phone request replayed inside the window would otherwise
+            # be collectable a second time.
+            self._burn_tiqr_result(poll_id)
+        if not status:
+            return self.build_response(False, auth_status)
+        auth_status['tiqr_status'] = "ok"
+        return self.build_response(True, auth_status)
+
+    def tiqr_auth_otp(self, client, client_ip, sso_challenge, command_args):
+        """ The fallback where the user types the response.
+
+        The tiqr apps show the six digits when they cannot reach us. The
+        browser still holds the session key, so this needs no result
+        object of its own. """
+        session_key = command_args.get('session_key')
+        response = command_args.get('response')
+        username = command_args.get('username')
+        failed = {'message':'Login failed.', 'status':False}
+        if not session_key or not response or not username:
+            return self.build_response(False, failed)
+
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm,
+                                run_policies=True,
+                                _no_func_cache=True)
+        if user is None:
+            return self.build_response(False, failed)
+        if user.site != config.site:
+            status, \
+            message = self.authd_redirect_command(command="tiqr_auth_otp",
+                                            user=user,
+                                            command_args=command_args)
+            return self.build_response(status, message)
+
+        now = time.time()
+        max_age = self._tiqr_max_age()
+        try:
+            expired = tiqr_helpers.session_key_expired(session_key, max_age, now)
+        except ValueError:
+            expired = True
+        if expired:
+            return self.build_response(False, failed)
+
+        tiqr_secret = tiqr_token.get_site_secret()
+        for token, verify_token in self._get_tiqr_tokens(user):
+            challenge_len = self._tiqr_challenge_len(verify_token)
+            challenge = tiqr_helpers.derive_challenge(tiqr_secret,
+                                                    session_key,
+                                                    user.uuid,
+                                                    challenge_len)
+            if not verify_token.verify_ocra(challenge, session_key, response):
+                continue
+            token_auth_data = {
+                            'challenge'     : challenge,
+                            'session_key'   : session_key,
+                            'response'      : response,
+                        }
+            # The phone may have got through after all, in which case a
+            # result is waiting and the still running poll would make a
+            # second session out of the same answer. Take it first.
+            poll_id = tiqr_helpers.derive_poll_id(tiqr_secret, session_key)
+            self._burn_tiqr_result(poll_id)
+            status, auth_status = self._tiqr_login(user, token,
+                                                token_auth_data,
+                                                client, client_ip,
+                                                sso_challenge)
+            if not status:
+                return self.build_response(False, auth_status)
+            return self.build_response(True, auth_status)
+        return self.build_response(False, failed)
 
     def reauth_redirect(self, user, token, verify_token, smartcard_data,
         client, client_ip):
@@ -1265,8 +1796,10 @@ class OTPmeAuthP1(OTPmeServer1):
         # passkey must not be accepted when the user's cascade doesn't
         # resolve to True. Resolve once, outside the loop.
         fido2_passkeys_allowed = None
+        fido2_keys_allowed = None
         if command == "token_verify_fido2":
             fido2_passkeys_allowed = _sso_allow_passkeys_for_user(user)
+            fido2_keys_allowed = _sso_allow_fido2_for_user(user)
         # Get accessgroup if given.
         if jwt_access_group:
             try:
@@ -1378,6 +1911,8 @@ class OTPmeAuthP1(OTPmeServer1):
                 if x_token.token_type not in ("fido2", "passkey"):
                     continue
                 if x_token.token_type == "passkey" and not fido2_passkeys_allowed:
+                    continue
+                if x_token.token_type == "fido2" and not fido2_keys_allowed:
                     continue
             if dot1x_auth:
                 if not x_token.support_dot1x:
@@ -1840,6 +2375,10 @@ class OTPmeAuthP1(OTPmeServer1):
                             "verify_mschap",
                             "fido2_auth_begin",
                             "fido2_auth_complete",
+                            "tiqr_auth_begin",
+                            "tiqr_auth_response",
+                            "tiqr_auth_status",
+                            "tiqr_auth_otp",
                         ]
 
         # Check if we got a valid command.
@@ -2014,6 +2553,8 @@ class OTPmeAuthP1(OTPmeServer1):
             auth_type = "smartcard"
         if command == "fido2_auth_complete":
             auth_type = "smartcard"
+        if command.startswith("tiqr_auth_"):
+            auth_type = "smartcard"
 
         # Set log variables.
         self.log_auth_mode = auth_mode
@@ -2040,6 +2581,28 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = _("Processing command fido2_auth_complete.", log=True)[1]
             self.logger.info(log_msg)
             return self.fido2_auth_complete(username, client, client_ip, sso_challenge, command_args)
+
+        if command == "tiqr_auth_begin":
+            log_msg = _("Processing command tiqr_auth_begin.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.tiqr_auth_begin(username, command_args)
+
+        # The phone's own request. It carries no username -- the identity
+        # it names is the tiqr identity, checked inside.
+        if command == "tiqr_auth_response":
+            log_msg = _("Processing command tiqr_auth_response.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.tiqr_auth_response(command_args)
+
+        if command == "tiqr_auth_status":
+            log_msg = _("Processing command tiqr_auth_status.", log=True)[1]
+            self.logger.debug(log_msg)
+            return self.tiqr_auth_status(client, client_ip, sso_challenge, command_args)
+
+        if command == "tiqr_auth_otp":
+            log_msg = _("Processing command tiqr_auth_otp.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.tiqr_auth_otp(client, client_ip, sso_challenge, command_args)
 
         # Check for incomplete command.
         incomplete_command = False

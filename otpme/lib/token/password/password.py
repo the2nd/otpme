@@ -324,6 +324,9 @@ class PasswordToken(Token):
         self.token_type = "password"
         # Set password type.
         self.pass_type = "static"
+        # A reusable secret somebody can work towards, which is what
+        # counting is for.
+        self.count_fails = True
         # Set default values.
         self.password_hash = None
         self.need_password = True

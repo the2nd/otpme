@@ -10,6 +10,9 @@
      data-label-deployment-failed="{{ gettext('Deployment failed.') }}"
      data-label-https-required="{{ gettext('WebAuthn requires HTTPS.') }}"
      data-label-webauthn-unsupported="{{ gettext('WebAuthn is not supported in this browser.') }}"
+     data-label-need-device-name="{{ gettext('Please enter a name for your phone.') }}"
+     data-label-waiting-phone="{{ gettext('Waiting for your phone...') }}"
+     data-label-tiqr-expired="{{ gettext('The code expired. Please try again.') }}"
      data-label-preparing-key="{{ gettext('Preparing security key registration...') }}"
      data-label-failed-start-reg="{{ gettext('Failed to start registration.') }}"
      data-label-touch-key="{{ gettext('Please touch your security key...') }}"
@@ -41,6 +44,8 @@
           {{ gettext("Authenticator App (TOTP)") }}
           {% elif tt == "fido2" %}
           {{ gettext("Security Key (FIDO2)") }}
+          {% elif tt == "tiqr" %}
+          {{ gettext("Smartphone Authentication App (tiqr)") }}
           {% else %}
           {{ tt|upper }}
           {% endif %}
@@ -51,11 +56,40 @@
       <button type="button" id="deployBtn" data-token-type="{{ deploy_token_types[0] }}" class="btn btn-primary w-full">
         {% if deploy_token_types[0] == "fido2" %}
         {{ gettext("Register Security Key") }}
+        {% elif deploy_token_types[0] == "tiqr" %}
+        {{ gettext("Set Up Smartphone Authentication App") }}
         {% else %}
         {{ gettext("Set Up Authenticator App") }}
         {% endif %}
       </button>
       {% endif %}
+    </div>
+
+    <!-- Step 1b: tiqr needs a name for the phone before it can start.
+         That name becomes the token name, and it is what the entry is
+         called if this phone is ever handed the SSO role to another
+         one later. -->
+    <div id="step-tiqr-name" class="is-hidden">
+      <label for="tiqrDeployName">{{ gettext("Device Name") }}</label>
+      <input type="text" id="tiqrDeployName" placeholder="{{ gettext('e.g. my phone') }}" autocomplete="off">
+      <button type="button" id="tiqrDeployStartBtn" class="btn btn-primary w-full">{{ gettext("Continue") }}</button>
+    </div>
+
+    <!-- Step 2c: tiqr enrollment. Code only, no tap-through link: the
+         enrollment URL is tiqrenroll://https://host/... and a browser
+         will not deliver that. Its URL parser reads "https:" as a host
+         with an empty port and drops the empty port, so the app gets
+         tiqrenroll://https//... and refuses it. Tested in every shape
+         that survives the parser; none is accepted. The login page is
+         different -- that URL has a proper authority and no embedded
+         URL, so the link there works.
+         Nothing to type afterwards: the page polls until the phone is
+         done. -->
+    <div id="step-tiqr" class="is-hidden">
+      <div class="qr-container">
+        <img id="tiqrDeployQrcodeImg" src="" alt="{{ gettext('tiqr enrollment code') }}">
+      </div>
+      <p class="deploy-hint">{{ gettext("Scan the code with the tiqr app. You need the code on a different screen from the phone: the app only takes it through its own scanner. Waiting for your phone...") }}</p>
     </div>
 
     <!-- Step 2a: QR code for OATH tokens -->

@@ -170,9 +170,15 @@ a:hover { text-decoration: underline; }
 }
 .login-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 8px;
 }
+/* Basis from the content, not the zero .btn-primary/.btn-secondary set.
+   A flex item never shrinks below its min-content width, and the labels
+   do not wrap, so with a zero basis a third button does not move to the
+   next line -- it pushes out of the card. */
+.login-buttons .btn { flex: 1 1 auto; }
 .login-card .logo-container {
   margin: 28px auto 0;
   width: 140px;
@@ -331,7 +337,13 @@ a:hover { text-decoration: underline; }
 }
 .qr-container img {
   width: 300px;
-  height: 300px;
+  /* A QR code is square, and the tiqr ones are SVG -- without a size
+     they render at whatever the document says, which is far larger than
+     the card. max-width keeps that off a narrow phone, aspect-ratio
+     keeps it from being squashed while doing so. */
+  max-width: 100%;
+  aspect-ratio: 1;
+  height: auto;
   background: white;
   border-radius: 8px;
 }
@@ -567,6 +579,13 @@ a:hover { text-decoration: underline; }
   gap: 10px;
   flex: 0 0 auto;
 }
+/* Carries the tooltip for a control that is disabled and therefore
+   fires no pointer events of its own. Has to sit in the flex row the
+   way the control it wraps would have. */
+.locked-control {
+  display: inline-flex;
+  align-items: center;
+}
 .login-recover-link {
   margin-top: 14px;
   text-align: center;
@@ -627,6 +646,20 @@ a:hover { text-decoration: underline; }
 .device-token-list .device-label {
   font-weight: 500;
   color: #222;
+}
+/* Marks the one entry that also holds a role -- currently the tiqr
+   token that serves as the SSO token. That one has no delete button,
+   so the badge is what explains why. */
+.device-token-list .device-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 400;
+  color: #4a5568;
+  background: #edf2f7;
+  border: 1px solid #dfe3ea;
+  border-radius: 10px;
+  padding: 1px 8px;
+  vertical-align: middle;
 }
 .device-token-reveal {
   background: #f5f7fa;

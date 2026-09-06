@@ -655,6 +655,308 @@ def toggle_passkey():
     new_enabled = bool(response.get('enabled')) if isinstance(response, dict) else enabled
     return jsonify({"status": "ok", "enabled": new_enabled})
 
+@app.route('/settings/fido2', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def list_fido2_tokens():
+    """ The user's security keys.
+
+    Includes the SSO token when that is a fido2 one, flagged as such --
+    same reasoning as the tiqr listing. ``allowed`` reports the
+    sso_allow_fido2 cascade so the frontend can hide the whole card. """
+    try:
+        response, error = _send_ssod_command(
+                command="list_fido2_tokens",
+                default_error=gettext("Failed to list security keys."))
+    except Exception as e:
+        logger.critical(f"list_fido2_tokens failed: {e}")
+        return jsonify({"error": gettext("Failed to list security keys.")}), 500
+    if error:
+        return error
+    fido2_tokens = []
+    allowed = False
+    sso_token = {}
+    if isinstance(response, dict):
+        fido2_tokens = response.get('fido2_tokens', []) or []
+        allowed = bool(response.get('allowed', False))
+        sso_token = {
+                    'name'      : response.get('sso_token_name'),
+                    'type'      : response.get('sso_token_type'),
+                    'label'     : response.get('sso_token_label'),
+                    'suggested' : response.get('sso_token_suggested_name'),
+                }
+    return jsonify({"fido2_tokens": fido2_tokens,
+                    "allowed": allowed,
+                    "sso_token": sso_token})
+
+@app.route('/settings/fido2/add/begin', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def fido2_add_begin():
+    """ Start registering another security key.
+
+    Same shape as passkey_register_begin: the state lives on the ssod
+    master under an opaque id, and only that id goes into the Flask
+    session -- no WebAuthn challenge or in-flight device name in a
+    cookie. """
+    data = request.json or {}
+    device_name = (data.get('device_name') or '').strip()
+    if not device_name:
+        return jsonify({"error": gettext("Device name is required.")}), 400
+    rp_id = _get_fido2_rp_id()
+    response, error = _send_ssod_command(
+            command="fido2_add_begin",
+            extra_args={'device_name': device_name, 'rp_id': rp_id},
+            default_error=gettext("Failed to start security key registration."),
+            mgmt=True)
+    if error:
+        return error
+    if not isinstance(response, dict):
+        return jsonify({"error": gettext("Failed to start security key registration.")}), 500
+    flask_session['fido2_add_state_id'] = response.get('fido2_state_id')
+    return jsonify(response.get('create_options', {}))
+
+@app.route('/settings/fido2/add/complete', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def fido2_add_complete():
+    fido2_state_id = flask_session.pop('fido2_add_state_id', None)
+    if not fido2_state_id:
+        return jsonify({"error": gettext("No security key registration in progress")}), 400
+    registration_data = request.json
+    if not registration_data:
+        return jsonify({"error": gettext("Missing registration data")}), 400
+    rp_id = _get_fido2_rp_id()
+    response, error = _send_ssod_command(
+            command="fido2_add_complete",
+            extra_args={
+                'rp_id'             : rp_id,
+                'fido2_state_id'    : fido2_state_id,
+                'registration_data' : registration_data,
+            },
+            default_error=gettext("Failed to complete security key registration."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({
+                "status"        : "ok",
+                "name"          : response.get('name'),
+                "device_name"   : response.get('device_name'),
+            })
+
+@app.route('/settings/fido2/delete', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def del_fido2_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    response, error = _send_ssod_command(
+            command="del_fido2_token",
+            extra_args={'token_name': token_name},
+            default_error=gettext("Failed to delete security key."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok"})
+
+@app.route('/settings/fido2/toggle', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def toggle_fido2_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    if 'enabled' not in data:
+        return jsonify({"error": gettext("Missing 'enabled' flag.")}), 400
+    enabled = bool(data.get('enabled'))
+    command = "enable_fido2_token" if enabled else "disable_fido2_token"
+    default_error = (gettext("Failed to enable security key.")
+                    if enabled
+                    else gettext("Failed to disable security key."))
+    response, error = _send_ssod_command(
+            command=command,
+            extra_args={'token_name': token_name},
+            default_error=default_error,
+            mgmt=True)
+    if error:
+        return error
+    new_enabled = bool(response.get('enabled')) if isinstance(response, dict) else enabled
+    return jsonify({"status": "ok", "enabled": new_enabled})
+
+@app.route('/settings/tiqr', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def list_tiqr_tokens():
+    """ The user's enrolled phones.
+
+    Includes the SSO token when that is a tiqr one, flagged as such.
+    Hiding it would be worse: somebody with two phones would see one,
+    and the one they cannot see is the one that matters most. """
+    try:
+        response, error = _send_ssod_command(
+                command="list_tiqr_tokens",
+                default_error=gettext("Failed to list tiqr tokens."))
+    except Exception as e:
+        logger.critical(f"list_tiqr_tokens failed: {e}")
+        return jsonify({"error": gettext("Failed to list tiqr tokens.")}), 500
+    if error:
+        return error
+    tiqr_tokens = []
+    allowed = False
+    sso_token = {}
+    if isinstance(response, dict):
+        tiqr_tokens = response.get('tiqr_tokens', []) or []
+        allowed = bool(response.get('allowed', False))
+        # Passed on so the promote dialog can name the token it is
+        # about to rename, which need not be one of the phones above.
+        sso_token = {
+                    'name'      : response.get('sso_token_name'),
+                    'type'      : response.get('sso_token_type'),
+                    'label'     : response.get('sso_token_label'),
+                    'suggested' : response.get('sso_token_suggested_name'),
+                }
+    return jsonify({"tiqr_tokens": tiqr_tokens,
+                    "allowed": allowed,
+                    "sso_token": sso_token})
+
+
+@app.route('/settings/tiqr/enroll/begin', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def tiqr_enroll_begin():
+    """ Start enrolling a phone.
+
+    Nothing is created here -- the token appears once the phone has
+    delivered its secret, the same way a passkey slot does. The name
+    the token will get is stashed so the status poll knows what to
+    look for. """
+    data = request.json or {}
+    device_name = (data.get('device_name') or '').strip()
+    if not device_name:
+        return jsonify({"error": gettext("Device name is required.")}), 400
+    response, error = _send_ssod_command(
+            command="tiqr_enroll_begin",
+            extra_args={'device_name': device_name},
+            default_error=gettext("Failed to start tiqr enrollment."))
+    if error:
+        return error
+    if not isinstance(response, dict):
+        return jsonify({"error": gettext("Failed to start tiqr enrollment.")}), 500
+    flask_session['tiqr_enroll_token_name'] = response.get('token_name')
+    return jsonify({
+                "status"        : "ok",
+                "enroll_url"    : response.get('enroll_url'),
+                "qrcode_img"    : response.get('qrcode_img'),
+                "device_name"   : response.get('device_name'),
+            })
+
+
+@app.route('/settings/tiqr/enroll/status', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def tiqr_enroll_status():
+    """ Has the phone finished?
+
+    Asks the same list the settings page shows rather than a command of
+    its own: the token existing there IS the answer, and there is no
+    enrollment state anywhere else to ask. """
+    token_name = flask_session.get('tiqr_enroll_token_name')
+    if not token_name:
+        return jsonify({"status": "none"})
+    response, error = _send_ssod_command(
+            command="list_tiqr_tokens",
+            default_error=gettext("Failed to list tiqr tokens."))
+    if error:
+        return error
+    tiqr_tokens = []
+    if isinstance(response, dict):
+        tiqr_tokens = response.get('tiqr_tokens', []) or []
+    for token in tiqr_tokens:
+        if token.get('name') != token_name:
+            continue
+        flask_session.pop('tiqr_enroll_token_name', None)
+        return jsonify({"status": "ok", "token": token})
+    return jsonify({"status": "pending"})
+
+
+@app.route('/settings/tiqr/delete', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def del_tiqr_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    response, error = _send_ssod_command(
+            command="del_tiqr_token",
+            extra_args={'token_name': token_name},
+            default_error=gettext("Failed to delete tiqr token."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok"})
+
+
+@app.route('/settings/tiqr/toggle', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def toggle_tiqr_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    enable = bool(data.get('enabled'))
+    command = "enable_tiqr_token" if enable else "disable_tiqr_token"
+    response, error = _send_ssod_command(
+            command=command,
+            extra_args={'token_name': token_name},
+            default_error=gettext("Failed to update tiqr token."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok", "enabled": enable})
+
+
+@app.route('/settings/promote', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def promote_token():
+    """ Make another of the user's tokens the SSO token.
+
+    Not under /settings/tiqr/ any more: a phone and a security key can
+    both hold the role, and the card the button sits on says which one
+    is meant.
+
+    Nothing is deleted: the token that held the role keeps working
+    under a new name. The caller may supply that name; without one it
+    is derived from the device name server-side. """
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    extra_args = {'token_name': token_name}
+    old_token_name = (data.get('old_name') or '').strip()
+    if old_token_name:
+        extra_args['old_token_name'] = old_token_name
+    response, error = _send_ssod_command(
+            command="promote_token",
+            extra_args=extra_args,
+            default_error=gettext("Failed to change the default token."),
+            mgmt=True)
+    if error:
+        return error
+    if not isinstance(response, dict):
+        return jsonify({"error": gettext("Failed to change the default token.")}), 500
+    return jsonify({
+                "status"    : "ok",
+                "name"      : response.get('name'),
+                "old_name"  : response.get('old_name'),
+            })
+
+
 @app.route('/settings/admin_access', methods=['GET'])
 @login_required
 @limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
@@ -949,11 +1251,13 @@ def deploy():
     if isinstance(sso_deploy, str) and sso_deploy is not True:
         deploy_token_types = [sso_deploy]
     else:
-        deploy_token_types = ["totp", "fido2"]
+        deploy_token_types = ["totp", "fido2", "tiqr"]
         # Filter by per-user/unit/site config (sso_allow_totp_deploy,
-        # sso_allow_fido2_deploy). Best-effort: if the query fails, fall
-        # back to the full list — deploy_begin enforces the same gate
-        # authoritatively, so the worst case is a button that errors out.
+        # sso_allow_fido2_deploy, sso_allow_tiqr_deploy). Best-effort:
+        # if the query fails, fall back to the full list — deploy_begin
+        # enforces the same gate authoritatively, so the worst case is
+        # a button that errors out. tiqr defaults to off, so it only
+        # shows up where an admin turned it on.
         response, _err = _send_ssod_command(
                 command="get_allowed_deploy_token_types",
                 default_error=None, mgmt=True)
@@ -982,7 +1286,7 @@ def deploy_begin():
     else:
         # User can choose.
         token_type = data.get('token_type', 'totp')
-        if token_type not in ('totp', 'fido2'):
+        if token_type not in ('totp', 'fido2', 'tiqr'):
             return jsonify({"error": gettext("Invalid token type.")}), 400
     # Send request to authd.
     sso_jwt = request.cookies.get('otpme_jwt')
@@ -994,6 +1298,10 @@ def deploy_begin():
                     'client_ip'         : client_ip,
                     'token_type'        : token_type,
                 }
+    if token_type == "tiqr":
+        # Becomes the token name, and the name this phone keeps if the
+        # SSO role is ever handed to another one.
+        verify_args['device_name'] = (data.get('device_name') or '').strip()
     ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
         status, \
@@ -1136,6 +1444,30 @@ def _show_recover_link():
     return False
 
 
+def _show_login_button(parameter):
+    """ Site-level UI toggle for one of the login mask's buttons.
+
+    Anonymous, like _show_recover_link: the mask is rendered before
+    anybody has typed a name, so there is no user whose cascade could
+    be resolved -- and resolving one would mean answering questions
+    about a name before it has been authenticated.
+
+    Whether the method may be used at all is a different question, and
+    a different parameter (sso_allow_fido2 / sso_allow_tiqr), decided
+    ssod-side once the user is known. Defaults to showing the button:
+    an unreadable site object should not silently remove a way in.
+    """
+    try:
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is not None:
+            return bool(site.get_config_parameter(parameter))
+    except Exception as e:
+        log_msg = _("{parameter} lookup failed: {error}", log=True)[1]
+        log_msg = log_msg.format(parameter=parameter, error=e)
+        logger.warning(log_msg)
+    return True
+
+
 def _rate_limit_login():
     return _site_rate_limit("sso_rate_limit_login") or "100/minute"
 
@@ -1152,6 +1484,37 @@ def _login_username_key():
         username = (request.form.get('username') or '').strip().lower()
         if username:
             return f"login-user:{username}"
+    from otpme.web.app import _ratelimit_key
+    return _ratelimit_key()
+
+
+def _tiqr_begin_username_key():
+    """ Rate-limit key for /login/tiqr/begin: username from JSON body. """
+    try:
+        data = request.get_json(silent=True) or {}
+    except Exception as e:
+        log_msg = _("Rate-limit key: get_json failed: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        logger.debug(log_msg)
+        data = {}
+    username = (data.get('username') or '').strip().lower()
+    if username:
+        return f"tiqr-user:{username}"
+    from otpme.web.app import _ratelimit_key
+    return _ratelimit_key()
+
+
+def _tiqr_otp_username_key():
+    """ Rate-limit key for /login/tiqr/otp.
+
+    The username is not in the body here -- it comes from the session
+    the begin call put it in -- but the six digit response is guessable
+    at 1 in 10^6, and tiqr's own SECURITY.md puts the burden of
+    limiting guesses on the server. So the limit follows the user
+    whose login is in progress. """
+    username = (flask_session.get('tiqr_username') or '').strip().lower()
+    if username:
+        return f"tiqr-user:{username}"
     from otpme.web.app import _ratelimit_key
     return _ratelimit_key()
 
@@ -1258,6 +1621,8 @@ def login():
         return render_template('login.html',
                                title=gettext('Sign In'),
                                form=form,
+                               show_fido2_button=_show_login_button("sso_show_fido2_button"),
+                               show_tiqr_button=_show_login_button("sso_show_tiqr_button"),
                                show_recover_link=_show_recover_link())
     # Get client IP.
     client_ip = check_forwarded_for()[0]
@@ -1508,6 +1873,8 @@ def reauth():
     return render_template('login.html',
                            title=gettext('Re-authenticate'),
                            form=form,
+                           show_fido2_button=_show_login_button("sso_show_fido2_button"),
+                           show_tiqr_button=_show_login_button("sso_show_tiqr_button"),
                            reauth=True,
                            reauth_username=username,
                            reauth_token_pass_type=flask_session.get('login_token_pass_type') or '',
@@ -1628,7 +1995,7 @@ def recover():
     if not _show_recover_link():
         return redirect(url_for('login', _external=True, _scheme='https'))
     return render_template('recover.html',
-                           title=gettext('Recover SSO token'))
+                           title=gettext('Recover Your Account'))
 
 
 @app.route('/recover', methods=['POST'])
@@ -1681,7 +2048,7 @@ def recover_complete():
         return render_template('recover_invalid.html',
                                title=gettext('Recovery link invalid'))
     return render_template('recover_complete.html',
-                           title=gettext('Recover SSO token'),
+                           title=gettext('Recover Your Account'),
                            recovery_username=username,
                            recovery_token=raw_token,
                            sso_token_name=response.get('sso_token_name') or '',
@@ -1703,11 +2070,16 @@ def recover_complete_begin():
     token_type = (data.get('token_type') or '').strip()
     if not username or not raw_token or not token_type:
         return jsonify({"error": gettext("Recovery link invalid.")}), 400
+    extra_args = {'username':       username,
+                'recovery_token': raw_token,
+                'token_type':     token_type}
+    # Only tiqr uses it; the server rejects the request without one.
+    device_name = (data.get('device_name') or '').strip()
+    if device_name:
+        extra_args['device_name'] = device_name
     response, error = _send_ssod_command_unauth(
             command="recovery_deploy_begin",
-            extra_args={'username':       username,
-                        'recovery_token': raw_token,
-                        'token_type':     token_type},
+            extra_args=extra_args,
             default_error=gettext("Recovery deployment failed."),
             mgmt=True)
     if error:
@@ -1788,7 +2160,7 @@ def recover_complete_verify():
     login_url = url_for('login', _external=True, _scheme='https')
     return jsonify({
                 "status":   "ok",
-                "message":  gettext("SSO token successfully re-deployed. Please sign in with your new credentials."),
+                "message":  gettext("Done. Please sign in with your new credentials."),
                 "redirect": login_url,
             })
 
@@ -2013,6 +2385,246 @@ def fido2_register_complete():
 
 # ---- FIDO2 Authentication (login with security key) ----
 
+@app.route('/login/tiqr/begin', methods=['POST'])
+# Same stacked limits as /login and /fido2/auth/begin: per-username
+# against brute force from large NAT pools, per-IP against
+# username-rotation. Nothing is stored server-side by this call, but it
+# is still an enumeration surface worth rate limiting.
+@limiter.limit(_rate_limit_login_user, key_func=_tiqr_begin_username_key)
+@limiter.limit(_rate_limit_login)
+def tiqr_auth_begin():
+    """ Start a tiqr login. Hands the browser a challenge.
+
+    Nothing is written: the session key, the challenge and the poll id
+    are all derived, so an unauthenticated caller leaves no trace. The
+    poll id goes into the browser's own session and never into the QR
+    -- the session key is printed there and is therefore public, while
+    only the poll id can collect the result.
+    """
+    data = request.json or {}
+    username = str(data.get('username') or '').strip()
+    if not username:
+        return jsonify({"error": gettext("Username required")}), 400
+    client_ip = check_forwarded_for()[0]
+    begin_args = {
+                    'username'      : username,
+                    'client'        : config.sso_client_name,
+                    'client_ip'     : client_ip,
+                }
+    authd_conn = get_authd_conn(username)
+    try:
+        status, \
+        status_code, \
+        auth_response, \
+        binary_data = authd_conn.send(command="tiqr_auth_begin",
+                                    command_args=begin_args)
+    except Exception as e:
+        log_msg = _("Failed to start tiqr authentication: {user_name}", log=True)[1]
+        log_msg = log_msg.format(user_name=username)
+        log_msg = f"{log_msg}: {e}"
+        logger.critical(log_msg)
+        return jsonify({"error": gettext("Failed to start tiqr authentication.")}), 500
+    finally:
+        authd_conn.close()
+    if not status or not isinstance(auth_response, dict):
+        error_msg = _ssod_error_message(auth_response,
+                                    "Failed to start tiqr authentication.")
+        return jsonify({"error": error_msg}), 400
+    # Held server-side in the signed session cookie. The poll takes the
+    # id from here and never as a parameter: whoever photographed the
+    # QR knows the session key, and must not be able to ask for the
+    # result with it.
+    flask_session['tiqr_poll_id'] = auth_response.get('poll_id')
+    flask_session['tiqr_session_key'] = auth_response.get('session_key')
+    flask_session['tiqr_username'] = username
+    return jsonify({
+                "status"        : "ok",
+                "auth_url"      : auth_response.get('auth_url'),
+                "qrcode_img"    : auth_response.get('qrcode_img'),
+            })
+
+
+@app.route('/login/tiqr/status', methods=['GET'])
+@limiter.limit(_rate_limit_login)
+def tiqr_auth_status():
+    """ Has the phone answered?
+
+    Short poll: authd looks up the result and answers immediately. A
+    long poll would tie up a gunicorn worker per waiting browser.
+    """
+    poll_id = flask_session.get('tiqr_poll_id')
+    username = flask_session.get('tiqr_username')
+    if not poll_id or not username:
+        return jsonify({"status": "none"})
+    client_ip = check_forwarded_for()[0]
+    status_args = {
+                    'username'      : username,
+                    'poll_id'       : poll_id,
+                    'client'        : config.sso_client_name,
+                    'client_ip'     : client_ip,
+                }
+    authd_conn = get_authd_conn(username)
+    try:
+        status, \
+        status_code, \
+        auth_response, \
+        binary_data = authd_conn.send(command="tiqr_auth_status",
+                                    command_args=status_args)
+    except Exception as e:
+        log_msg = _("Failed to poll tiqr authentication: {user_name}", log=True)[1]
+        log_msg = log_msg.format(user_name=username)
+        log_msg = f"{log_msg}: {e}"
+        logger.critical(log_msg)
+        return jsonify({"error": gettext("Failed to complete tiqr authentication.")}), 500
+    finally:
+        authd_conn.close()
+    if not status:
+        _clear_tiqr_session()
+        error_msg = _ssod_error_message(auth_response,
+                                    "Failed to complete tiqr authentication.")
+        return jsonify({"error": error_msg}), 400
+    if not isinstance(auth_response, dict):
+        return jsonify({"status": "pending"})
+    tiqr_status = auth_response.get('tiqr_status')
+    if tiqr_status == "pending":
+        return jsonify({"status": "pending"})
+    if tiqr_status == "challenge-expired":
+        _clear_tiqr_session()
+        return jsonify({"status": "challenge-expired"})
+    _clear_tiqr_session()
+    return _finish_sso_login(username, auth_response)
+
+
+@app.route('/login/tiqr/otp', methods=['POST'])
+@limiter.limit(_rate_limit_login_user, key_func=_tiqr_otp_username_key)
+@limiter.limit(_rate_limit_login)
+def tiqr_auth_otp():
+    """ The fallback where the user types the six digits.
+
+    The tiqr apps show the response when they cannot reach us. The
+    session key is still in the browser's session, so this needs no
+    result object -- it goes straight into the login.
+    """
+    data = request.json or {}
+    response = str(data.get('response') or '').strip()
+    session_key = flask_session.get('tiqr_session_key')
+    username = flask_session.get('tiqr_username')
+    if not response:
+        return jsonify({"error": gettext("Response required")}), 400
+    if not session_key or not username:
+        return jsonify({"error": gettext("No authentication in progress")}), 400
+    client_ip = check_forwarded_for()[0]
+    otp_args = {
+                    'username'      : username,
+                    'session_key'   : session_key,
+                    'response'      : response,
+                    'client'        : config.sso_client_name,
+                    'client_ip'     : client_ip,
+                }
+    authd_conn = get_authd_conn(username)
+    try:
+        status, \
+        status_code, \
+        auth_response, \
+        binary_data = authd_conn.send(command="tiqr_auth_otp",
+                                    command_args=otp_args)
+    except Exception as e:
+        log_msg = _("Failed to verify tiqr response: {user_name}", log=True)[1]
+        log_msg = log_msg.format(user_name=username)
+        log_msg = f"{log_msg}: {e}"
+        logger.critical(log_msg)
+        return jsonify({"error": gettext("Failed to complete tiqr authentication.")}), 500
+    finally:
+        authd_conn.close()
+    if not status or not isinstance(auth_response, dict):
+        error_msg = _ssod_error_message(auth_response,
+                                    "Failed to complete tiqr authentication.")
+        return jsonify({"error": error_msg}), 400
+    _clear_tiqr_session()
+    return _finish_sso_login(username, auth_response)
+
+
+def _clear_tiqr_session():
+    """ Drop what a finished or abandoned tiqr login left behind. """
+    flask_session.pop('tiqr_poll_id', None)
+    flask_session.pop('tiqr_session_key', None)
+    flask_session.pop('tiqr_username', None)
+
+
+def _finish_sso_login(username, auth_response):
+    """ Turn a successful authd reply into a logged-in browser.
+
+    Shared by every credential that logs in over JSON rather than the
+    login form: verify the JWT, put the user into the Flask session,
+    work out where to send them, and hand back the response with the
+    four cookies on it.
+
+    Used by /fido2/auth/complete and by the tiqr poll -- for tiqr the
+    credential was checked several requests ago, on the phone's own
+    connection, but from here on it is the same login as any other.
+    """
+    try:
+        login_token_pass_type = auth_response['login_token_pass_type']
+        login_token_type = auth_response['login_token_type']
+        login_token_deploy = auth_response['login_token_sso_deploy']
+        session_uuid = auth_response['session']
+        login_user_uuid = auth_response['login_user_uuid']
+        login_user_site_uuid = auth_response['login_user_site_uuid']
+        sso_jwt = auth_response['sso_jwt']
+        slp = auth_response['slp']
+    except KeyError as e:
+        log_msg = _("Invalid auth response: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
+        flash(gettext("Login failed."))
+        return redirect(url_for('login', _external=True, _scheme='https'))
+    # Get users site public key to verify the JWT.
+    user_site = backend.get_object(object_type="site",
+                                uuid=login_user_site_uuid)
+    site_jwt_key = user_site._cert_public_key
+    try:
+        jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')
+    except Exception as e:
+        log_msg = _("JWT verification failed: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
+        flash(gettext("Login failed."))
+        return redirect(url_for('login', _external=True, _scheme='https'))
+    # Store user data in Flask session for load_user.
+    flask_session['otpme_username'] = username
+    flask_session['sso_deploy'] = login_token_deploy
+    flask_session['login_token_pass_type'] = login_token_pass_type
+    flask_session['login_token_type'] = login_token_type
+    _stash_user_language(auth_response.get('login_user_language'))
+    # Same redirect-priority as the form-based login flow: forced
+    # enrollment beats next=, otherwise honor a stashed next= URL,
+    # otherwise default to /index.
+    if login_token_deploy:
+        redirect_target = url_for('deploy', _external=True, _scheme='https')
+    else:
+        next_after = _safe_next_url(flask_session.pop('next_after_login', None))
+        if next_after:
+            redirect_target = next_after
+        else:
+            redirect_target = url_for('index', _external=True, _scheme='https')
+    web_user = WebUser(uuid=login_user_uuid, name=username)
+    resp = make_response(jsonify({
+        "status": "ok",
+        "redirect": redirect_target,
+    }))
+    resp.set_cookie('otpme_slp', slp,
+                    httponly=True, secure=True, samesite='Lax')
+    resp.set_cookie('otpme_jwt', sso_jwt,
+                    httponly=True, secure=True, samesite='Lax')
+    resp.set_cookie('otpme_user_uuid', login_user_uuid,
+                    httponly=True, secure=True, samesite='Lax')
+    resp.set_cookie('otpme_sso_session', session_uuid,
+                    httponly=True, secure=True, samesite='Lax')
+    login_user(web_user)
+    _refresh_admin_access_state_post_login(username, sso_jwt, session_uuid)
+    return resp
+
+
 @app.route('/fido2/auth/begin', methods=['POST'])
 # Stacked per-username + per-IP limits, sharing the site-level
 # sso_rate_limit_login_user / sso_rate_limit_login configs with the
@@ -2128,62 +2740,4 @@ def fido2_auth_complete():
                            or url_for('index', _external=True,
                                       _scheme='https'))
         return jsonify({"status": "ok", "redirect": redirect_target})
-    try:
-        login_token_pass_type = auth_response['login_token_pass_type']
-        login_token_type = auth_response['login_token_type']
-        login_token_deploy = auth_response['login_token_sso_deploy']
-        session_uuid = auth_response['session']
-        login_user_uuid = auth_response['login_user_uuid']
-        login_user_site_uuid = auth_response['login_user_site_uuid']
-        sso_jwt = auth_response['sso_jwt']
-        slp = auth_response['slp']
-    except KeyError as e:
-        log_msg = _("Invalid auth response: {e}", log=True)[1]
-        log_msg = log_msg.format(e=e)
-        flash(gettext("Login failed."))
-        return redirect(url_for('login', _external=True, _scheme='https'))
-    # Get users site public key to verify the JWT.
-    user_site = backend.get_object(object_type="site",
-                                uuid=login_user_site_uuid)
-    site_jwt_key = user_site._cert_public_key
-    try:
-        jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')
-    except Exception as e:
-        log_msg = _("JWT verification failed: {e}", log=True)[1]
-        log_msg = log_msg.format(e=e)
-        logger.warning(log_msg)
-        flash(gettext("Login failed."))
-        return redirect(url_for('login', _external=True, _scheme='https'))
-    # Store user data in Flask session for load_user.
-    flask_session['otpme_username'] = username
-    flask_session['sso_deploy'] = login_token_deploy
-    flask_session['login_token_pass_type'] = login_token_pass_type
-    flask_session['login_token_type'] = login_token_type
-    _stash_user_language(auth_response.get('login_user_language'))
-    # Same redirect-priority as the form-based login flow: forced
-    # enrollment beats next=, otherwise honor a stashed next= URL,
-    # otherwise default to /index.
-    if login_token_deploy:
-        redirect_target = url_for('deploy', _external=True, _scheme='https')
-    else:
-        next_after = _safe_next_url(flask_session.pop('next_after_login', None))
-        if next_after:
-            redirect_target = next_after
-        else:
-            redirect_target = url_for('index', _external=True, _scheme='https')
-    web_user = WebUser(uuid=login_user_uuid, name=username)
-    resp = make_response(jsonify({
-        "status": "ok",
-        "redirect": redirect_target,
-    }))
-    resp.set_cookie('otpme_slp', slp,
-                    httponly=True, secure=True, samesite='Lax')
-    resp.set_cookie('otpme_jwt', sso_jwt,
-                    httponly=True, secure=True, samesite='Lax')
-    resp.set_cookie('otpme_user_uuid', login_user_uuid,
-                    httponly=True, secure=True, samesite='Lax')
-    resp.set_cookie('otpme_sso_session', session_uuid,
-                    httponly=True, secure=True, samesite='Lax')
-    login_user(web_user)
-    _refresh_admin_access_state_post_login(username, sso_jwt, session_uuid)
-    return resp
+    return _finish_sso_login(username, auth_response)

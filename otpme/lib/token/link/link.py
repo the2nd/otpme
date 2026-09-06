@@ -159,6 +159,8 @@ class LinkToken(Token):
         self.token_type = "link"
         # Set password type.
         self.pass_type = "link"
+        # Holds no secret of its own; it points at the token that does.
+        self.count_fails = False
 
         # Link tokens do not support offline logins.
         self.allow_offline = None

@@ -28,10 +28,13 @@
      data-label-need-password="{{ gettext('Please enter a new password.') }}"
      data-label-password-mismatch="{{ gettext('Passwords do not match.') }}"
      data-label-saving-password="{{ gettext('Setting new password...') }}"
+     data-label-need-device-name="{{ gettext('Please enter a name for your phone.') }}"
+     data-label-bad-device-name="{{ gettext('Please use letters or digits in the name.') }}"
+     data-label-checking-phone="{{ gettext('Checking your phone...') }}"
      class="is-hidden"></div>
 <div class="login-wrapper">
   <div class="deploy-card">
-    <h1>{{ gettext("Recover SSO Token") }}</h1>
+    <h1>{{ gettext("Recover Your Account") }}</h1>
     <p class="deploy-desc">{{ gettext("Re-deploying token '{token_name}' for user '{user_name}'.").format(token_name=sso_token_name, user_name=recovery_username) }}</p>
 
     <!-- Step 1: choose a deploy type (same shape as /deploy). The
@@ -51,6 +54,8 @@
           {{ gettext("Authenticator App (TOTP)") }}
           {% elif tt == "fido2" %}
           {{ gettext("Security Key (FIDO2)") }}
+          {% elif tt == "tiqr" %}
+          {{ gettext("Smartphone Authentication App (tiqr)") }}
           {% elif tt == "password" %}
           {{ gettext("Password") }}
           {% else %}
@@ -63,6 +68,8 @@
       <button type="button" id="deployBtn" data-token-type="{{ deploy_token_types[0] }}" class="btn btn-primary w-full">
         {% if deploy_token_types[0] == "fido2" %}
         {{ gettext("Register Security Key") }}
+        {% elif deploy_token_types[0] == "tiqr" %}
+        {{ gettext("Set Up Smartphone Authentication App") }}
         {% elif deploy_token_types[0] == "password" %}
         {{ gettext("Set New Password") }}
         {% else %}
@@ -70,6 +77,32 @@
         {% endif %}
       </button>
       {% endif %}
+    </div>
+
+    <!-- Step 1b: tiqr needs a name for the phone before it can start.
+         It is what this token is renamed to if the SSO role is later
+         handed to another phone, so the server checks it is usable
+         and still free. -->
+    <div id="step-tiqr-name" class="is-hidden">
+      <label for="tiqrDeployName">{{ gettext("Device Name") }}</label>
+      <input type="text" id="tiqrDeployName" placeholder="{{ gettext('e.g. my phone') }}" autocomplete="off">
+      <button type="button" id="tiqrDeployStartBtn" class="btn btn-primary w-full">{{ gettext("Continue") }}</button>
+    </div>
+
+    <!-- Step 2c: tiqr enrollment. Unlike /deploy this page does not
+         poll: the recovery endpoints share one tight per-username
+         rate limit (sso_rate_limit_recover), and a recovery is meant
+         to be a handful of requests. So the user taps Continue once
+         the app says it is done. -->
+    <div id="step-tiqr" class="is-hidden">
+      {# Code only, no tap-through link -- see the same block in
+         deploy.html for why a browser cannot deliver a
+         tiqrenroll:// URL to the app. #}
+      <div class="qr-container">
+        <img id="tiqrDeployQrcodeImg" src="" alt="{{ gettext('tiqr enrollment code') }}">
+      </div>
+      <p class="deploy-hint">{{ gettext("Scan the code with the tiqr app. You need the code on a different screen from the phone: the app only takes it through its own scanner. Then come back here and continue.") }}</p>
+      <button type="button" id="tiqrDeployDoneBtn" class="btn btn-primary w-full">{{ gettext("I have added the account") }}</button>
     </div>
 
     <!-- Step 2a: QR code for OATH tokens -->
@@ -94,7 +127,7 @@
 
     <!-- Step 2b: password entry for password tokens -->
     <div id="step-password" class="is-hidden">
-      <p class="deploy-hint">{{ gettext("Choose a new password for your SSO token.") }}</p>
+      <p class="deploy-hint">{{ gettext("Choose a new password to sign in with.") }}</p>
       <label for="newPasswordInput">{{ gettext("New Password") }}</label>
       <input type="password" id="newPasswordInput" autocomplete="new-password">
       <label for="newPasswordConfirmInput">{{ gettext("Confirm New Password") }}</label>
