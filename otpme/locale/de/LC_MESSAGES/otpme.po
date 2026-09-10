@@ -91,7 +91,7 @@ msgstr "OTPme-Konfigurationsverifikation fehlgeschlagen: {e}"
 #: otpme/lib/token/password/password.py:808
 #: otpme/lib/token/script_otp/script_otp.py:295
 #: otpme/lib/token/script_static/script_static.py:295
-#: otpme/lib/token/ssh/ssh.py:1189 otpme/lib/token/tiqr/tiqr.py:501
+#: otpme/lib/token/ssh/ssh.py:1189 otpme/lib/token/tiqr/tiqr.py:502
 #: otpme/lib/token/totp/totp.py:715 otpme/lib/token/u2f/u2f.py:507
 #: otpme/lib/token/yubikey_hmac/yubikey_hmac.py:737
 #: otpme/lib/token/yubikey_piv/yubikey_piv.py:892
@@ -387,8 +387,8 @@ msgstr ""
 "Autorisierung über Skript fehlgeschlagen."
 
 #: otpme/lib/backend.py:160 otpme/lib/backends/file/file.py:283
-#: otpme/lib/otpme_config.py:1786 otpme/lib/otpme_config.py:1798
-#: otpme/lib/otpme_config.py:1803 otpme/lib/otpme_config.py:1812
+#: otpme/lib/otpme_config.py:1798 otpme/lib/otpme_config.py:1810
+#: otpme/lib/otpme_config.py:1815 otpme/lib/otpme_config.py:1824
 #, python-brace-format
 msgid "Object type already registered: {object_type}"
 msgstr "Objekttyp bereits registriert: {object_type}"
@@ -2264,7 +2264,7 @@ msgstr ""
 "Token '{token_name}' bei Login verwendet ist ein Token des Benutzers "
 "'{user_name}'."
 
-#: otpme/lib/classes/auth_handler.py:351 otpme/lib/classes/auth_handler.py:1350
+#: otpme/lib/classes/auth_handler.py:351 otpme/lib/classes/auth_handler.py:1368
 #, python-brace-format
 msgid "Token '{token_name}' is missing its destination token."
 msgstr "Token '{token_name}' fehlt sein Ziel-Token."
@@ -2292,7 +2292,7 @@ msgstr ""
 "Token {token} ist einer SSO-Zugriffsgruppe zugewiesen. Authentifizierung "
 "wird fehlschlagen."
 
-#: otpme/lib/classes/auth_handler.py:427 otpme/lib/classes/auth_handler.py:3214
+#: otpme/lib/classes/auth_handler.py:427 otpme/lib/classes/auth_handler.py:3275
 #: otpme/lib/classes/conn_handler.py:114 otpme/lib/classes/conn_handler.py:127
 msgid "Internal server error"
 msgstr "Interner Serverfehler"
@@ -2444,101 +2444,101 @@ msgstr "Token existiert nicht: {user_token}"
 
 #: otpme/lib/classes/auth_handler.py:1118
 #, python-brace-format
-msgid "Verifying token from request: {token_path}"
-msgstr "Verifiziere Token aus Anfrage: {token_path}"
+msgid "Selecting token from request: {token_path}"
+msgstr ""
 
-#: otpme/lib/classes/auth_handler.py:1142
+#: otpme/lib/classes/auth_handler.py:1144
 #, python-brace-format
 msgid "Selecting user tokens based on access_group '{access_group}'"
 msgstr "Wähle Benutzer-Token basierend auf Zugriffsgruppe '{access_group}'"
 
-#: otpme/lib/classes/auth_handler.py:1274
+#: otpme/lib/classes/auth_handler.py:1292
 msgid "Unable to find a token to verify this request."
 msgstr "Kann kein Token zur Verifizierung dieser Anfrage finden."
 
-#: otpme/lib/classes/auth_handler.py:1305
-#: otpme/lib/classes/auth_handler.py:1317
-#: otpme/lib/protocols/server/auth1.py:1964
-#: otpme/lib/protocols/server/auth1.py:1976
+#: otpme/lib/classes/auth_handler.py:1323
+#: otpme/lib/classes/auth_handler.py:1335
+#: otpme/lib/protocols/server/auth1.py:1968
+#: otpme/lib/protocols/server/auth1.py:1980
 #, python-brace-format
 msgid "Verification of token (temp) '{token_name}' returned error: {error}"
 msgstr ""
 "Verifizierung von Token (temp) '{token_name}' hat Fehler zurückgegeben: "
 "{error}"
 
-#: otpme/lib/classes/auth_handler.py:1338
+#: otpme/lib/classes/auth_handler.py:1356
 #, python-brace-format
 msgid "Not verifying disabled token: {token_name}"
 msgstr "Verifiziere deaktiviertes Token nicht: {token_name}"
 
-#: otpme/lib/classes/auth_handler.py:1359
+#: otpme/lib/classes/auth_handler.py:1377
 #, python-brace-format
 msgid "Not verifying disabled destination token: {token_path}"
 msgstr "Verifiziere deaktiviertes Ziel-Token nicht: {token_path}"
 
-#: otpme/lib/classes/auth_handler.py:1378
+#: otpme/lib/classes/auth_handler.py:1396
 #: otpme/lib/protocols/otpme_server.py:1540
 #: otpme/lib/protocols/otpme_server.py:2462
 #, python-brace-format
 msgid "Unable to load second factor token of '{token_path}': {error}"
 msgstr "Kann Zweifaktor-Token von '{token_path}' nicht laden: {error}"
 
-#: otpme/lib/classes/auth_handler.py:1454
+#: otpme/lib/classes/auth_handler.py:1483
 #, python-brace-format
 msgid "Verifying {token_type}-token '{token_path}'."
 msgstr "Verifiziere {token_type}-Token '{token_path}'."
 
-#: otpme/lib/classes/auth_handler.py:1493
+#: otpme/lib/classes/auth_handler.py:1522
 #, python-brace-format
 msgid "Link token redirect connection failed: {token}: {e}"
 msgstr "Link-Token-Umleitungsverbindung fehlgeschlagen: {token}: {e}"
 
-#: otpme/lib/classes/auth_handler.py:1504
+#: otpme/lib/classes/auth_handler.py:1533
 #, python-brace-format
 msgid "Link token redirect command failed: {token}: {command}"
 msgstr "Link-Token-Umleitungsbefehl fehlgeschlagen: {token}: {command}"
 
-#: otpme/lib/classes/auth_handler.py:1522
+#: otpme/lib/classes/auth_handler.py:1551
 #, python-brace-format
 msgid "Link token not verified by its site: {token_path}: {status_code}"
 msgstr ""
 "Link-Token nicht von seinem Standort verifiziert: {token_path}: {status_code}"
 
-#: otpme/lib/classes/auth_handler.py:1551
+#: otpme/lib/classes/auth_handler.py:1580
 #, python-brace-format
 msgid "No session for '{token_path}': its site keeps the password hash."
 msgstr ""
 "Keine Sitzung für '{token_path}': dessen Standort behält den Passwort-Hash."
 
-#: otpme/lib/classes/auth_handler.py:1565
-#: otpme/lib/classes/auth_handler.py:1573
-#: otpme/lib/protocols/server/auth1.py:1933
+#: otpme/lib/classes/auth_handler.py:1594
+#: otpme/lib/classes/auth_handler.py:1602
+#: otpme/lib/protocols/server/auth1.py:1937
 #, python-brace-format
 msgid "Verification of token '{token_name}' returned error: {error}"
 msgstr ""
 "Verifizierung von Token '{token_name}' hat Fehler zurückgegeben: {error}"
 
-#: otpme/lib/classes/auth_handler.py:1639
+#: otpme/lib/classes/auth_handler.py:1668
 #, python-brace-format
 msgid "Token '{token_name}' verified successful. Sending OTP to user..."
 msgstr "Token '{token_name}' erfolgreich verifiziert. Sende OTP an Benutzer..."
 
-#: otpme/lib/classes/auth_handler.py:1651
+#: otpme/lib/classes/auth_handler.py:1680
 #, python-brace-format
 msgid "Error sending OTP to user: {error}"
 msgstr "Fehler beim Senden von OTP an Benutzer: {error}"
 
-#: otpme/lib/classes/auth_handler.py:1733
+#: otpme/lib/classes/auth_handler.py:1764
 #, python-brace-format
 msgid "Starting user authorization script: {auth_script_oid}"
 msgstr "Starte Benutzerautorisierungsskript: {auth_script_oid}"
 
-#: otpme/lib/classes/auth_handler.py:1749
+#: otpme/lib/classes/auth_handler.py:1780
 #, python-brace-format
 msgid "Error running user authorization script: {error}"
 msgstr "Fehler beim Ausführen des Benutzerautorisierungsskripts: {error}"
 
-#: otpme/lib/classes/auth_handler.py:1759
+#: otpme/lib/classes/auth_handler.py:1790
 #, python-brace-format
 msgid ""
 "User '{user_name}' authenticated successful with token '{token_name}' but "
@@ -2547,16 +2547,16 @@ msgstr ""
 "Benutzer '{user_name}' erfolgreich authentifiziert mit Token '{token_name}', "
 "aber Benutzerautorisierungsskript hat Fehler zurückgegeben."
 
-#: otpme/lib/classes/auth_handler.py:1799
+#: otpme/lib/classes/auth_handler.py:1830
 msgid "Starting token authorization script..."
 msgstr "Starte Token-Autorisierungsskript..."
 
-#: otpme/lib/classes/auth_handler.py:1810
+#: otpme/lib/classes/auth_handler.py:1841
 #, python-brace-format
 msgid "Error running token authorization script: {error}"
 msgstr "Fehler beim Ausführen des Token-Autorisierungsskripts: {error}"
 
-#: otpme/lib/classes/auth_handler.py:1819
+#: otpme/lib/classes/auth_handler.py:1850
 #, python-brace-format
 msgid ""
 "Token '{token_name}' verified successful but token authorization script "
@@ -2565,135 +2565,135 @@ msgstr ""
 "Token '{token_name}' erfolgreich verifiziert, aber Token-"
 "Autorisierungsskript hat Fehler zurückgegeben."
 
-#: otpme/lib/classes/auth_handler.py:1834
+#: otpme/lib/classes/auth_handler.py:1865
 #, python-brace-format
 msgid "Token '{token_name}' verified successful."
 msgstr "Token '{token_name}' erfolgreich verifiziert."
 
-#: otpme/lib/classes/auth_handler.py:1918
+#: otpme/lib/classes/auth_handler.py:1955
 #, python-brace-format
 msgid "Link token verify response has no JWT: {token_path}"
 msgstr "Link-Token-Verifizierungsantwort hat kein JWT: {token_path}"
 
-#: otpme/lib/classes/auth_handler.py:1926
+#: otpme/lib/classes/auth_handler.py:1963
 #, python-brace-format
 msgid "Unknown site of destination token: {token_path}"
 msgstr "Unbekannter Standort des Ziel-Tokens: {token_path}"
 
-#: otpme/lib/classes/auth_handler.py:1936
+#: otpme/lib/classes/auth_handler.py:1973
 #, python-brace-format
 msgid "JWT of destination token site failed verification: {e}"
 msgstr "JWT des Ziel-Token-Standorts fehlgeschlagen bei der Verifizierung: {e}"
 
-#: otpme/lib/classes/auth_handler.py:1951
+#: otpme/lib/classes/auth_handler.py:1988
 #, python-brace-format
 msgid "JWT of destination token site has wrong {field}: {token_path}"
 msgstr "JWT des Ziel-Token-Standorts hat falsches {field}: {token_path}"
 
-#: otpme/lib/classes/auth_handler.py:1978 otpme/lib/classes/user.py:2400
+#: otpme/lib/classes/auth_handler.py:2015 otpme/lib/classes/user.py:2400
 #: otpme/lib/classes/user.py:2530 otpme/web/app/views.py:1730
 #: otpme/web/app/views.py:2588
 #, python-brace-format
 msgid "JWT verification failed: {e}"
 msgstr "JWT-Verifizierung fehlgeschlagen: {e}"
 
-#: otpme/lib/classes/auth_handler.py:1989
+#: otpme/lib/classes/auth_handler.py:2026
 #: otpme/lib/protocols/otpme_client.py:2628
 msgid "JWT data is missing challenge."
 msgstr "JWT-Daten fehlt Challenge."
 
-#: otpme/lib/classes/auth_handler.py:2000
+#: otpme/lib/classes/auth_handler.py:2037
 msgid "Received wrong redirect challenge."
 msgstr "Falsche Redirect-Challenge erhalten."
 
-#: otpme/lib/classes/auth_handler.py:2011
+#: otpme/lib/classes/auth_handler.py:2048
 msgid "JWT data is missing login token."
 msgstr "JWT-Daten fehlt Login-Token."
 
-#: otpme/lib/classes/auth_handler.py:2031
+#: otpme/lib/classes/auth_handler.py:2068
 msgid "JWT data is missing login accessgroup."
 msgstr "JWT-Daten fehlt Login-Zugriffsgruppe."
 
-#: otpme/lib/classes/auth_handler.py:2043
+#: otpme/lib/classes/auth_handler.py:2080
 #, python-brace-format
 msgid "Invalid accessgroup: {access_group}"
 msgstr "Ungültige Zugriffsgruppe: {access_group}"
 
-#: otpme/lib/classes/auth_handler.py:2059
+#: otpme/lib/classes/auth_handler.py:2096
 #, python-brace-format
 msgid "Outer JWT accessgroup mismatch: {access_group} <> {auth_accessgroup}"
 msgstr ""
 "Äußere JWT-Zugriffsgruppe stimmt nicht überein: {access_group} <> "
 "{auth_accessgroup}"
 
-#: otpme/lib/classes/auth_handler.py:2072
+#: otpme/lib/classes/auth_handler.py:2109
 msgid "JWT data is missing auth reason."
 msgstr "JWT-Daten fehlt Authentifizierungsgrund."
 
-#: otpme/lib/classes/auth_handler.py:2081
+#: otpme/lib/classes/auth_handler.py:2118
 #, python-brace-format
 msgid "Outer JWT reason mismatch: {required_reason} <> {auth_reason}"
 msgstr ""
 "Äußerer JWT-Grund stimmt nicht überein: {required_reason} <> {auth_reason}"
 
-#: otpme/lib/classes/auth_handler.py:2097
+#: otpme/lib/classes/auth_handler.py:2134
 #: otpme/lib/protocols/otpme_client.py:3217
 #, python-brace-format
 msgid "Unable to decode inner JWT: {error}"
 msgstr "Kann innere JWT nicht dekodieren: {error}"
 
-#: otpme/lib/classes/auth_handler.py:2111
+#: otpme/lib/classes/auth_handler.py:2148
 #, python-brace-format
 msgid "Inner JWT realm mismatch: {realm} <> {jwt_site}"
 msgstr "Innere JWT-Realm stimmt nicht überein: {realm} <> {jwt_site}"
 
-#: otpme/lib/classes/auth_handler.py:2119
+#: otpme/lib/classes/auth_handler.py:2156
 #, python-brace-format
 msgid "Inner JWT site mismatch: {site} <> {jwt_site}"
 msgstr "Innere JWT-Site stimmt nicht überein: {site} <> {jwt_site}"
 
-#: otpme/lib/classes/auth_handler.py:2127
+#: otpme/lib/classes/auth_handler.py:2164
 #, python-brace-format
 msgid "Inner JWT user mismatch: {user_name} <> {jwt_user}"
 msgstr "Innerer JWT-Benutzer stimmt nicht überein: {user_name} <> {jwt_user}"
 
-#: otpme/lib/classes/auth_handler.py:2135
+#: otpme/lib/classes/auth_handler.py:2172
 #, python-brace-format
 msgid "Inner JWT reason mismatch: {required_reason} <> {jwt_reason}"
 msgstr ""
 "Innerer JWT-Grund stimmt nicht überein: {required_reason} <> {jwt_reason}"
 
-#: otpme/lib/classes/auth_handler.py:2167
+#: otpme/lib/classes/auth_handler.py:2204
 msgid "JWT data is missing auth realm."
 msgstr "JWT-Daten fehlt der Auth-Realm."
 
-#: otpme/lib/classes/auth_handler.py:2176
+#: otpme/lib/classes/auth_handler.py:2213
 msgid "JWT data is missing auth site."
 msgstr "JWT-Daten fehlt die Auth-Site."
 
-#: otpme/lib/classes/auth_handler.py:2188
+#: otpme/lib/classes/auth_handler.py:2225
 #, python-brace-format
 msgid "JWT data with unknown site: {realm}/{site}"
 msgstr "JWT-Daten mit unbekannter Site: {realm}/{site}"
 
-#: otpme/lib/classes/auth_handler.py:2242
+#: otpme/lib/classes/auth_handler.py:2279
 #, python-brace-format
 msgid "Max sessions reached for this accessgroup: {max_sessions}"
 msgstr "Maximale Sitzungen für diese Zugriffsgruppe erreicht: {max_sessions}"
 
-#: otpme/lib/classes/auth_handler.py:2246
+#: otpme/lib/classes/auth_handler.py:2283
 #, python-brace-format
 msgid "Checking for sessions older than relogin timeout: {relogin_timeout}"
 msgstr "Prüfe auf Sitzungen älter als Relogin-Timeout: {relogin_timeout}"
 
-#: otpme/lib/classes/auth_handler.py:2280
+#: otpme/lib/classes/auth_handler.py:2317
 #, python-brace-format
 msgid "Failed to clean up stale session index entry {session_uuid}: {error}"
 msgstr ""
 "Bereinigung des veralteten Sitzungsindex-Eintrags {session_uuid} "
 "fehlgeschlagen: {error}"
 
-#: otpme/lib/classes/auth_handler.py:2294
+#: otpme/lib/classes/auth_handler.py:2331
 #, python-brace-format
 msgid ""
 "Deleting session '{session_name}' based on max_sessions/relogin_timeout "
@@ -2702,14 +2702,14 @@ msgstr ""
 "Lösche Sitzung '{session_name}' basierend auf max_sessions/relogin_timeout "
 "konfiguriert für diese Gruppe."
 
-#: otpme/lib/classes/auth_handler.py:2302
+#: otpme/lib/classes/auth_handler.py:2339
 msgid ""
 "Max sessions reached for this accessgroup and no outdated session found."
 msgstr ""
 "Max. Sitzungen für diese Zugriffsgruppe erreicht und keine veraltete Sitzung "
 "gefunden."
 
-#: otpme/lib/classes/auth_handler.py:2352
+#: otpme/lib/classes/auth_handler.py:2389
 #, python-brace-format
 msgid ""
 "Cannot create sessions for MSCHAP request with token/password type: "
@@ -2718,7 +2718,7 @@ msgstr ""
 "Kann keine Sitzungen für MSCHAP-Anfrage mit Token-/Passworttyp erstellen: "
 "{pass_type}"
 
-#: otpme/lib/classes/auth_handler.py:2372
+#: otpme/lib/classes/auth_handler.py:2409
 #, python-brace-format
 msgid ""
 "OIDC /authorize without parent SSO session for user '{user}' -- nothing to "
@@ -2727,17 +2727,17 @@ msgstr ""
 "OIDC /authorize ohne übergeordnete SSO-Sitzung für Benutzer '{user}' -- "
 "nichts zum Anhängen."
 
-#: otpme/lib/classes/auth_handler.py:2393
+#: otpme/lib/classes/auth_handler.py:2430
 #, python-brace-format
 msgid "OIDC session '{sid}' created for user '{user}' (scope='{scope}')."
 msgstr "OIDC-Sitzung '{sid}' für Benutzer '{user}' erstellt (scope='{scope}')."
 
-#: otpme/lib/classes/auth_handler.py:2399
+#: otpme/lib/classes/auth_handler.py:2436
 #, python-brace-format
 msgid "Failed to create OIDCSession: {err}"
 msgstr "Erstellen der OIDCSession fehlgeschlagen: {err}"
 
-#: otpme/lib/classes/auth_handler.py:2445
+#: otpme/lib/classes/auth_handler.py:2482
 #, python-brace-format
 msgid ""
 "Adding session '{session_name}' as child session of '{auth_session_name}'."
@@ -2745,7 +2745,7 @@ msgstr ""
 "Füge Sitzung '{session_name}' als untergeordnete Sitzung von "
 "'{auth_session_name}' hinzu."
 
-#: otpme/lib/classes/auth_handler.py:2459
+#: otpme/lib/classes/auth_handler.py:2496
 #, python-brace-format
 msgid ""
 "Resetting login fail count for '{user_name}/{access_group}' from "
@@ -2754,91 +2754,95 @@ msgstr ""
 "Setze Login-Fehlerzähler für '{user_name}/{access_group}' von '{fail_count}' "
 "auf 0 zurück."
 
-#: otpme/lib/classes/auth_handler.py:2468
+#: otpme/lib/classes/auth_handler.py:2505
 #, python-brace-format
 msgid "Error resetting login fail count: {error}"
 msgstr "Fehler beim Zurücksetzen des Login-Fehlerzählers: {error}"
 
-#: otpme/lib/classes/auth_handler.py:2795
+#: otpme/lib/classes/auth_handler.py:2836
 #, python-brace-format
 msgid "Unsupported RSP hash type: {hash_type}"
 msgstr "Nicht unterstützter RSP-Hash-Typ: {hash_type}"
 
-#: otpme/lib/classes/auth_handler.py:2802
+#: otpme/lib/classes/auth_handler.py:2843
 msgid "Realm login requests must have accessgroup 'REALM' set."
 msgstr "Realm-Login-Anfragen müssen Zugriffsgruppe 'REALM' gesetzt haben."
 
-#: otpme/lib/classes/auth_handler.py:2805
+#: otpme/lib/classes/auth_handler.py:2846
 msgid "Realm login requests must contain 'host_type', 'host' and 'host_ip'."
 msgstr ""
 "Realm-Login-Anfragen müssen 'host_type', 'host' und 'host_ip' enthalten."
 
-#: otpme/lib/classes/auth_handler.py:2813
+#: otpme/lib/classes/auth_handler.py:2854
 msgid "Realm logout requests must have accessgroup 'REALM' set."
 msgstr "Realm-Logout-Anfragen müssen Zugriffsgruppe 'REALM' gesetzt haben."
 
-#: otpme/lib/classes/auth_handler.py:2816
+#: otpme/lib/classes/auth_handler.py:2857
 msgid "Realm logout requests must contain 'host_type', 'host' and 'host_ip'."
 msgstr ""
 "Realm-Logout-Anfragen müssen 'host_type', 'host' und 'host_ip' enthalten."
 
-#: otpme/lib/classes/auth_handler.py:2825
+#: otpme/lib/classes/auth_handler.py:2866
 msgid "This is a screen unlock request."
 msgstr "Dies ist eine Bildschirm-Entsperrungsanfrage."
 
-#: otpme/lib/classes/auth_handler.py:2846
+#: otpme/lib/classes/auth_handler.py:2887
 #: otpme/lib/protocols/server/join1.py:609
 #, python-brace-format
 msgid "Unknown host type: {host_type}"
 msgstr "Unbekannter Host-Typ: {host_type}"
 
-#: otpme/lib/classes/auth_handler.py:2851
+#: otpme/lib/classes/auth_handler.py:2892
 msgid "Processing MSCHAP authentication request."
 msgstr "Verarbeite MSCHAP-Authentifizierungsanfrage."
 
-#: otpme/lib/classes/auth_handler.py:2870
+#: otpme/lib/classes/auth_handler.py:2911
 msgid "Processing clear-text authentication request."
 msgstr "Verarbeite Klartext-Authentifizierungsanfrage."
 
-#: otpme/lib/classes/auth_handler.py:2877
+#: otpme/lib/classes/auth_handler.py:2918
 msgid "Processing SSH authentication request."
 msgstr "Verarbeite SSH-Authentifizierungsanfrage."
 
-#: otpme/lib/classes/auth_handler.py:2894
+#: otpme/lib/classes/auth_handler.py:2935
 msgid "Processing smartcard authentication request."
 msgstr "Verarbeite Smartcard-Authentifizierungsanfrage."
 
-#: otpme/lib/classes/auth_handler.py:2919
+#: otpme/lib/classes/auth_handler.py:2949
+msgid "Processing tiqr authentication request."
+msgstr ""
+
+#: otpme/lib/classes/auth_handler.py:2973
 #, python-brace-format
 msgid "Received invalid auth type: {auth_type}"
 msgstr "Ungültigen Auth-Typ empfangen: {auth_type}"
 
-#: otpme/lib/classes/auth_handler.py:2926
+#: otpme/lib/classes/auth_handler.py:2980
 #, python-brace-format
 msgid "Received invalid auth mode: {auth_mode}"
 msgstr "Ungültiger Auth-Modus empfangen: {auth_mode}"
 
-#: otpme/lib/classes/auth_handler.py:2965
+#: otpme/lib/classes/auth_handler.py:3019
 #, python-brace-format
 msgid "Realm logout request. Removing session '{session_name}'"
 msgstr "Realm-Logout-Anfrage. Entferne Sitzung '{session_name}'"
 
-#: otpme/lib/classes/auth_handler.py:2971
+#: otpme/lib/classes/auth_handler.py:3025
 #, python-brace-format
 msgid "Logout request. Removing session '{session_name}'"
 msgstr "Logout-Anfrage. Entferne Sitzung '{session_name}'"
 
-#: otpme/lib/classes/auth_handler.py:3022
+#: otpme/lib/classes/auth_handler.py:3076
 #, python-brace-format
 msgid "Unable to load offline encryption: {error}"
 msgstr "Offline-Verschlüsselung kann nicht geladen werden: {error}"
 
-#: otpme/lib/classes/auth_handler.py:3028
+#: otpme/lib/classes/auth_handler.py:3082
 #, python-brace-format
 msgid "Failed to generate offline encryption key: {error}"
 msgstr "Fehler beim Generieren des Offline-Verschlüsselungsschlüssels: {error}"
 
-#: otpme/lib/classes/auth_handler.py:3040
+#: otpme/lib/classes/auth_handler.py:3094
 #, python-brace-format
 msgid ""
 "Host '{host_name}' is not in accessgroup '{access_group}'. Authentication "
@@ -2847,7 +2851,7 @@ msgstr ""
 "Host '{host_name}' ist nicht in der Zugriffsgruppe '{access_group}'. Die "
 "Authentifizierung wird fehlschlagen."
 
-#: otpme/lib/classes/auth_handler.py:3046
+#: otpme/lib/classes/auth_handler.py:3100
 #, python-brace-format
 msgid ""
 "Device '{dev_name}' is not in accessgroup '{access_group}'. Authentication "
@@ -2856,60 +2860,64 @@ msgstr ""
 "Gerät '{dev_name}' ist nicht in der Zugriffsgruppe '{access_group}'. Die "
 "Authentifizierung wird fehlschlagen."
 
-#: otpme/lib/classes/auth_handler.py:3050
+#: otpme/lib/classes/auth_handler.py:3104
 #, python-brace-format
 msgid "Unknown MAC auth device type: {dev_type}"
 msgstr "Unbekannter MAC-Authentifizierungs-Gerätetyp: {dev_type}"
 
-#: otpme/lib/classes/auth_handler.py:3069
+#: otpme/lib/classes/auth_handler.py:3123
 msgid "Verifying user default token..."
 msgstr "Verifiziere Benutzer-Standard-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3076
+#: otpme/lib/classes/auth_handler.py:3130
 msgid "Verifying otp_push tokens..."
 msgstr "Verifiziere otp_push-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3089
+#: otpme/lib/classes/auth_handler.py:3143
 msgid "Verifying OTP tokens..."
 msgstr "Verifiziere OTP-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3097
+#: otpme/lib/classes/auth_handler.py:3151
 msgid "Verifying static password tokens..."
 msgstr "Verifiziere statische Passwort-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3105
+#: otpme/lib/classes/auth_handler.py:3159
 msgid "Verifying SSH tokens..."
 msgstr "Verifiziere SSH-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3112
+#: otpme/lib/classes/auth_handler.py:3166
 msgid "Verifying smartcard tokens..."
 msgstr "Verifiziere Smartcard-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3119
+#: otpme/lib/classes/auth_handler.py:3173
+msgid "Verifying tiqr tokens..."
+msgstr ""
+
+#: otpme/lib/classes/auth_handler.py:3180
 msgid "Verifying dot1x tokens..."
 msgstr "Überprüfe dot1x-Tokens..."
 
-#: otpme/lib/classes/auth_handler.py:3126
+#: otpme/lib/classes/auth_handler.py:3187
 msgid "Verifying script_static tokens..."
 msgstr "Verifiziere script_static-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3133
+#: otpme/lib/classes/auth_handler.py:3194
 msgid "Verifying script_otp tokens..."
 msgstr "Verifiziere script_otp-Token..."
 
-#: otpme/lib/classes/auth_handler.py:3140
+#: otpme/lib/classes/auth_handler.py:3201
 msgid "Verifying link tokens..."
 msgstr "Link-Tokens werden verifiziert..."
 
-#: otpme/lib/classes/auth_handler.py:3146
+#: otpme/lib/classes/auth_handler.py:3207
 msgid "Verifying temp password tokens..."
 msgstr "Temporäre Passwort-Tokens werden überprüft..."
 
-#: otpme/lib/classes/auth_handler.py:3157
+#: otpme/lib/classes/auth_handler.py:3218
 msgid "Found no valid auth token."
 msgstr "Kein gültiger Auth-Token gefunden."
 
-#: otpme/lib/classes/auth_handler.py:3229
+#: otpme/lib/classes/auth_handler.py:3290
 msgid ""
 "Logging of sensitive authentication data is enabled. You should disable "
 "LOG_AUTH_DATA in production environments!!!"
@@ -2917,42 +2925,42 @@ msgstr ""
 "Protokollierung sensibler Authentifizierungsdaten ist aktiviert. Sie sollten "
 "LOG_AUTH_DATA in Produktionsumgebungen deaktivieren!!!"
 
-#: otpme/lib/classes/auth_handler.py:3265
+#: otpme/lib/classes/auth_handler.py:3326
 msgid "Authentication request misses DH public key."
 msgstr "Authentifizierungsanfrage fehlt DH-öffentlicher Schlüssel."
 
-#: otpme/lib/classes/auth_handler.py:3269
+#: otpme/lib/classes/auth_handler.py:3330
 msgid "Generating RSP..."
 msgstr "Generiere RSP..."
 
-#: otpme/lib/classes/auth_handler.py:3300 otpme/lib/classes/site.py:1472
+#: otpme/lib/classes/auth_handler.py:3361 otpme/lib/classes/site.py:1472
 #: otpme/lib/classes/site.py:1480 otpme/lib/protocols/server/auth1.py:360
 msgid "Invalid auth JWT validity."
 msgstr "Ungültige Auth-JWT-Gültigkeit."
 
-#: otpme/lib/classes/auth_handler.py:3482
+#: otpme/lib/classes/auth_handler.py:3543
 #, python-brace-format
 msgid "Got SSH private key from token: {token_path}"
 msgstr "SSH-privater Schlüssel von Token erhalten: {token_path}"
 
-#: otpme/lib/classes/auth_handler.py:3507
+#: otpme/lib/classes/auth_handler.py:3568
 #, python-brace-format
 msgid "Realm login successful with token '{token_name}'"
 msgstr "Realm-Login erfolgreich mit Token '{token_name}'"
 
-#: otpme/lib/classes/auth_handler.py:3567
+#: otpme/lib/classes/auth_handler.py:3628
 msgid "Will not count failed logins because of max_fail=0."
 msgstr "Fehlgeschlagene Logins werden nicht gezählt wegen max_fail=0."
 
-#: otpme/lib/classes/auth_handler.py:3571
+#: otpme/lib/classes/auth_handler.py:3632
 msgid "Cannot count failed login without accessgroup."
 msgstr "Kann fehlgeschlagenen Login ohne Zugriffsgruppe nicht zählen."
 
-#: otpme/lib/classes/auth_handler.py:3575
+#: otpme/lib/classes/auth_handler.py:3636
 msgid "Cannot count failed login without password hash."
 msgstr "Kann fehlgeschlagenen Login ohne Passwort-Hash nicht zählen."
 
-#: otpme/lib/classes/auth_handler.py:3634
+#: otpme/lib/classes/auth_handler.py:3695
 msgid ""
 "WARNING: You may have hit a BUG of AuthHandler().authenticate(). "
 "Authentication failed."
@@ -3612,7 +3620,7 @@ msgstr "Zugriff verweigert: {client_name}"
 #: otpme/lib/classes/command_handler.py:6657
 #: otpme/lib/protocols/otpme_client.py:321
 #: otpme/lib/protocols/otpme_server.py:876
-#: otpme/lib/protocols/server/auth1.py:2411
+#: otpme/lib/protocols/server/auth1.py:2415
 #: otpme/lib/protocols/server/idle1.py:437
 msgid "Not logged in."
 msgstr "Nicht angemeldet."
@@ -3620,7 +3628,7 @@ msgstr "Nicht angemeldet."
 #: otpme/lib/classes/command_handler.py:208
 #: otpme/lib/classes/command_handler.py:2490
 #: otpme/lib/classes/command_handler.py:7101
-#: otpme/lib/protocols/server/auth1.py:2386
+#: otpme/lib/protocols/server/auth1.py:2390
 #: otpme/lib/protocols/server/backup1.py:542
 #: otpme/lib/protocols/server/fs1.py:293
 #: otpme/lib/protocols/server/host1.py:214
@@ -3629,7 +3637,7 @@ msgstr "Nicht angemeldet."
 #: otpme/lib/protocols/server/mgmt1.py:1972
 #: otpme/lib/protocols/server/mgmt1.py:2152
 #: otpme/lib/protocols/server/mgmt1.py:2414
-#: otpme/lib/protocols/server/sso1.py:7559
+#: otpme/lib/protocols/server/sso1.py:7628
 #, python-brace-format
 msgid "Unknown command: {command}"
 msgstr "Unbekannter Befehl: {command}"
@@ -5213,8 +5221,8 @@ msgstr "Erstelle Konfigurationsdatei: {config_file}"
 msgid "Loading config file: {config_file}"
 msgstr "Lade Konfigurationsdatei: {config_file}"
 
-#: otpme/lib/classes/otpme_agent.py:362 otpme/lib/otpme_config.py:2700
-#: otpme/lib/otpme_config.py:3126
+#: otpme/lib/classes/otpme_agent.py:362 otpme/lib/otpme_config.py:2712
+#: otpme/lib/otpme_config.py:3138
 #, python-brace-format
 msgid "Error reading config file: {error}"
 msgstr "Fehler beim Lesen der Konfigurationsdatei: {error}"
@@ -13617,7 +13625,7 @@ msgid "Removing child daemon."
 msgstr "Entfernen des Child-Daemon."
 
 #: otpme/lib/daemon/controld.py:715 otpme/lib/host.py:276 otpme/lib/host.py:387
-#: otpme/lib/__init__.py:303 otpme/lib/join.py:798
+#: otpme/lib/__init__.py:329 otpme/lib/join.py:798
 msgid "Host is not a realm member."
 msgstr "Host ist kein Realm-Mitglied."
 
@@ -29356,23 +29364,23 @@ msgstr "OTPme-Benutzer fehlt: {config.user}"
 msgid "Missing OTPme group: {config.group}"
 msgstr "OTPme-Gruppe fehlt: {config.group}"
 
-#: otpme/lib/__init__.py:277
+#: otpme/lib/__init__.py:303
 msgid "Cannot run in API mode: backend not available"
 msgstr "Kann nicht im API-Modus ausgeführt werden: Backend nicht verfügbar"
 
-#: otpme/lib/__init__.py:307
+#: otpme/lib/__init__.py:333
 msgid "Missing master encryption key."
 msgstr "Master-Verschlüsselungsschlüssel fehlt."
 
-#: otpme/lib/__init__.py:311
+#: otpme/lib/__init__.py:337
 msgid "Doing direct init..."
 msgstr "Führe direkte Initialisierung durch..."
 
-#: otpme/lib/__init__.py:315
+#: otpme/lib/__init__.py:341
 msgid "Doing hostd init..."
 msgstr "Führe hostd-Initialisierung durch..."
 
-#: otpme/lib/__init__.py:347
+#: otpme/lib/__init__.py:373
 msgid "We do not have a realm. You must first init the realm."
 msgstr "Wir haben keine Realm. Sie müssen zuerst die Realm initialisieren."
 
@@ -31011,92 +31019,92 @@ msgid "WARNING: You may have hit a BUG in acl.access_granted()."
 msgstr ""
 "WARNUNG: Sie könnten auf einen BUG in acl.access_granted() gestoßen sein."
 
-#: otpme/lib/otpme_config.py:1007
+#: otpme/lib/otpme_config.py:1019
 #, python-brace-format
 msgid "Unknown config file parameter: {name}"
 msgstr "Unbekannter Konfigurationsdatei-Parameter: {name}"
 
-#: otpme/lib/otpme_config.py:1172
+#: otpme/lib/otpme_config.py:1184
 msgid "Error reading index parameter from config file."
 msgstr "Fehler beim Lesen des Index-Parameters aus der Konfigurationsdatei."
 
-#: otpme/lib/otpme_config.py:1192
+#: otpme/lib/otpme_config.py:1204
 #, python-brace-format
 msgid "Unknown config file parameter: {config_file}: {parameter}"
 msgstr "Unbekannter Konfigurationsdatei-Parameter: {config_file}: {parameter}"
 
-#: otpme/lib/otpme_config.py:1210
+#: otpme/lib/otpme_config.py:1222
 #, python-brace-format
 msgid "Unable to set config parameter: {parameter}: {e}"
 msgstr "Konfigurationsparameter kann nicht gesetzt werden: {parameter}: {e}"
 
-#: otpme/lib/otpme_config.py:1219
+#: otpme/lib/otpme_config.py:1231
 #, python-brace-format
 msgid "Backup repo pass file is world readable: {file}"
 msgstr "Passwortdatei des Backup-Repositorys ist für alle lesbar: {file}"
 
-#: otpme/lib/otpme_config.py:1228
+#: otpme/lib/otpme_config.py:1240
 #, python-brace-format
 msgid "Failed to read backup repo pass file: {e}"
 msgstr "Passwortdatei des Backup-Repositorys konnte nicht gelesen werden: {e}"
 
-#: otpme/lib/otpme_config.py:1236
+#: otpme/lib/otpme_config.py:1248
 #, python-brace-format
 msgid "Backup key file is world readable: {file}"
 msgstr "Backup-Schlüsseldatei ist für alle lesbar: {file}"
 
-#: otpme/lib/otpme_config.py:1245
+#: otpme/lib/otpme_config.py:1257
 #, python-brace-format
 msgid "Failed to read backup key file: {e}"
 msgstr "Backup-Schlüsseldatei konnte nicht gelesen werden: {e}"
 
-#: otpme/lib/otpme_config.py:1334
+#: otpme/lib/otpme_config.py:1346
 #, python-brace-format
 msgid "Failed to load disk encryption module: {e}"
 msgstr "Fehler beim Laden des Festplattenverschlüsselungsmoduls: {e}"
 
-#: otpme/lib/otpme_config.py:1407
+#: otpme/lib/otpme_config.py:1419
 #, python-brace-format
 msgid "Tracebacks: {print_tracebacks}"
 msgstr "Tracebacks: {print_tracebacks}"
 
-#: otpme/lib/otpme_config.py:1410
+#: otpme/lib/otpme_config.py:1422
 #, python-brace-format
 msgid "Logging to file: {file_logging}"
 msgstr "Protokollierung in Datei: {file_logging}"
 
-#: otpme/lib/otpme_config.py:1413
+#: otpme/lib/otpme_config.py:1425
 #, python-brace-format
 msgid "Debug Level: {debug_levels_string}"
 msgstr "Debug-Stufe: {debug_levels_string}"
 
-#: otpme/lib/otpme_config.py:1428
+#: otpme/lib/otpme_config.py:1440
 #, python-brace-format
 msgid "Invalid OBJECT_CACHES entry '{entry}': {error}"
 msgstr "Ungültiger OBJECT_CACHES-Eintrag '{entry}': {error}"
 
-#: otpme/lib/otpme_config.py:1532
+#: otpme/lib/otpme_config.py:1544
 #, python-brace-format
 msgid "No cache region registerd for object type: {object_type}"
 msgstr "Keine Cache-Region für Objekttyp registriert: {object_type}"
 
-#: otpme/lib/otpme_config.py:1560 otpme/lib/otpme_config.py:1572
+#: otpme/lib/otpme_config.py:1572 otpme/lib/otpme_config.py:1584
 #, python-brace-format
 msgid "ACL already registered: {acl}"
 msgstr "ACL bereits registriert: {acl}"
 
-#: otpme/lib/otpme_config.py:1624
+#: otpme/lib/otpme_config.py:1636
 #, python-brace-format
 msgid "Config variable already registered: {name}"
 msgstr "Konfigurationsvariable bereits registriert: {name}"
 
-#: otpme/lib/otpme_config.py:1634
+#: otpme/lib/otpme_config.py:1646
 #, python-brace-format
 msgid "Config file parameter already registered: {config_file_parameter}"
 msgstr ""
 "Konfigurationsdatei-Parameter bereits registriert: {config_file_parameter}"
 
-#: otpme/lib/otpme_config.py:1641
+#: otpme/lib/otpme_config.py:1653
 #, python-brace-format
 msgid ""
 "User config file parameter already registered: {user_config_file_parameter}"
@@ -31104,186 +31112,186 @@ msgstr ""
 "Benutzerkonfigurationsdatei-Parameter bereits registriert: "
 "{user_config_file_parameter}"
 
-#: otpme/lib/otpme_config.py:1675
+#: otpme/lib/otpme_config.py:1687
 #, python-brace-format
 msgid "Config parameter already registered: {name}"
 msgstr "Konfigurationsparameter bereits registriert: {name}"
 
-#: otpme/lib/otpme_config.py:1695
+#: otpme/lib/otpme_config.py:1707
 #, python-brace-format
 msgid "Invalid config parameter: {name}"
 msgstr "Ungültiger Konfigurationsparameter: {name}"
 
-#: otpme/lib/otpme_config.py:1712
+#: otpme/lib/otpme_config.py:1724
 #, python-brace-format
 msgid "Token type already registered: {token_type}"
 msgstr "Token-Typ bereits registriert: {token_type}"
 
-#: otpme/lib/otpme_config.py:1724
+#: otpme/lib/otpme_config.py:1736
 #, python-brace-format
 msgid "Smartcard type already registered: {smartcard_type}"
 msgstr "Smartcard-Typ bereits registriert: {smartcard_type}"
 
-#: otpme/lib/otpme_config.py:1740
+#: otpme/lib/otpme_config.py:1752
 #, python-brace-format
 msgid "Smartcard type not registered: {smartcard_type}"
 msgstr "Smartcard-Typ nicht registriert: {smartcard_type}"
 
-#: otpme/lib/otpme_config.py:1829
+#: otpme/lib/otpme_config.py:1841
 #, python-brace-format
 msgid "Sub object type already registered: {object_type}: {stype}"
 msgstr "Unterobjekttyp bereits registriert: {object_type}: {stype}"
 
-#: otpme/lib/otpme_config.py:1841
+#: otpme/lib/otpme_config.py:1853
 #, python-brace-format
 msgid "LDAP object type already registered: {object_type}"
 msgstr "LDAP-Objekttyp bereits registriert: {object_type}"
 
-#: otpme/lib/otpme_config.py:1849
+#: otpme/lib/otpme_config.py:1861
 #, python-brace-format
 msgid "Object type backup attributes not registered: {object_type}"
 msgstr "Objekttyp-Backup-Attribute nicht registriert: {object_type}"
 
-#: otpme/lib/otpme_config.py:1897 otpme/lib/otpme_config.py:1969
+#: otpme/lib/otpme_config.py:1909 otpme/lib/otpme_config.py:1981
 #, python-brace-format
 msgid "{o_type} already registered: {name}"
 msgstr "{o_type} bereits registriert: {name}"
 
-#: otpme/lib/otpme_config.py:1938
+#: otpme/lib/otpme_config.py:1950
 #, python-brace-format
 msgid "No default unit configured for object type: {object_type}"
 msgstr "Keine Standardeinheit für Objekttyp konfiguriert: {object_type}"
 
-#: otpme/lib/otpme_config.py:1946
+#: otpme/lib/otpme_config.py:1958
 #, python-brace-format
 msgid ""
 "Default unit for object type already registered: {object_type}: {unit_path}"
 msgstr ""
 "Standardeinheit für Objekttyp bereits registriert: {object_type}: {unit_path}"
 
-#: otpme/lib/otpme_config.py:1997
+#: otpme/lib/otpme_config.py:2009
 #, python-brace-format
 msgid "Per site {object_type} already registered: {object_name}"
 msgstr "Pro Site {object_type} bereits registriert: {object_name}"
 
-#: otpme/lib/otpme_config.py:2018
+#: otpme/lib/otpme_config.py:2030
 #, python-brace-format
 msgid "Object template already registered: {object_name}"
 msgstr "Objektvorlage bereits registriert: {object_name}"
 
-#: otpme/lib/otpme_config.py:2052
+#: otpme/lib/otpme_config.py:2064
 #, python-brace-format
 msgid "Default policy already registered: {object_type}: {policy_name}"
 msgstr "Standardrichtlinie bereits registriert: {object_type}: {policy_name}"
 
-#: otpme/lib/otpme_config.py:2069
+#: otpme/lib/otpme_config.py:2081
 #, python-brace-format
 msgid "DN attribute already registered: {object_type}: {x_dn_attr}"
 msgstr "DN-Attribut bereits registriert: {object_type}: {x_dn_attr}"
 
-#: otpme/lib/otpme_config.py:2089
+#: otpme/lib/otpme_config.py:2101
 #, python-brace-format
 msgid "Default extension already registered: {object_type}: {extension_name}"
 msgstr ""
 "Standarderweiterung bereits registriert: {object_type}: {extension_name}"
 
-#: otpme/lib/otpme_config.py:2098
+#: otpme/lib/otpme_config.py:2110
 #, python-brace-format
 msgid "Extension already registered: {extension}"
 msgstr "Erweiterung bereits registriert: {extension}"
 
-#: otpme/lib/otpme_config.py:2124
+#: otpme/lib/otpme_config.py:2136
 #, python-brace-format
 msgid "LDIF attribute already registered: {extension}: {attribute}"
 msgstr "LDIF-Attribut bereits registriert: {extension}: {attribute}"
 
-#: otpme/lib/otpme_config.py:2134
+#: otpme/lib/otpme_config.py:2146
 #, python-brace-format
 msgid "LDIF index attribute already registered: {attribute}"
 msgstr "LDIF-Indexattribut bereits registriert: {attribute}"
 
-#: otpme/lib/otpme_config.py:2140
+#: otpme/lib/otpme_config.py:2152
 #, python-brace-format
 msgid "OTPme index attribute already registered: {attribute}"
 msgstr "OTPme-Indexattribut bereits registriert: {attribute}"
 
-#: otpme/lib/otpme_config.py:2152
+#: otpme/lib/otpme_config.py:2164
 #, python-brace-format
 msgid "Unsupported encryption type: {enc_type}"
 msgstr "Nicht unterstützter Verschlüsselungstyp: {enc_type}"
 
-#: otpme/lib/otpme_config.py:2165
+#: otpme/lib/otpme_config.py:2177
 #, python-brace-format
 msgid "Encryption type already registered: {enc_type}"
 msgstr "Verschlüsselungstyp bereits registriert: {enc_type}"
 
-#: otpme/lib/otpme_config.py:2176
+#: otpme/lib/otpme_config.py:2188
 #, python-brace-format
 msgid "Unsupported encoding type: {enc_type}"
 msgstr "Nicht unterstützter Kodierungstyp: {enc_type}"
 
-#: otpme/lib/otpme_config.py:2185
+#: otpme/lib/otpme_config.py:2197
 #, python-brace-format
 msgid "Encoding type already registered: {enc_type}"
 msgstr "Kodierungstyp bereits registriert: {enc_type}"
 
-#: otpme/lib/otpme_config.py:2193
+#: otpme/lib/otpme_config.py:2205
 #, python-brace-format
 msgid "Unsupported compression type: {enc_type}"
 msgstr "Nicht unterstützter Komprimierungstyp: {enc_type}"
 
-#: otpme/lib/otpme_config.py:2202
+#: otpme/lib/otpme_config.py:2214
 #, python-brace-format
 msgid "Compression type already registered: {ctype}"
 msgstr "Komprimierungstyp bereits registriert: {ctype}"
 
-#: otpme/lib/otpme_config.py:2221
+#: otpme/lib/otpme_config.py:2233
 #, python-brace-format
 msgid "ECDH curve already registered: {ecdh_curve}"
 msgstr "ECDH-Kurve bereits registriert: {ecdh_curve}"
 
-#: otpme/lib/otpme_config.py:2242
+#: otpme/lib/otpme_config.py:2254
 #, python-brace-format
 msgid "EC signing curve already registered: {signing_curve}"
 msgstr "EC-Signaturkurve bereits registriert: {signing_curve}"
 
-#: otpme/lib/otpme_config.py:2259 otpme/lib/otpme_config.py:2268
-#: otpme/lib/otpme_config.py:2277
+#: otpme/lib/otpme_config.py:2271 otpme/lib/otpme_config.py:2280
+#: otpme/lib/otpme_config.py:2289
 #, python-brace-format
 msgid "Unsupported hash type: {hash_type}"
 msgstr "Nicht unterstützter Hash-Typ: {hash_type}"
 
-#: otpme/lib/otpme_config.py:2291
+#: otpme/lib/otpme_config.py:2303
 #, python-brace-format
 msgid "Hash algorithm already registered: {hash_type}"
 msgstr "Hash-Algorithmus bereits registriert: {hash_type}"
 
-#: otpme/lib/otpme_config.py:2308
+#: otpme/lib/otpme_config.py:2320
 #, python-brace-format
 msgid "Daemon already registered: {daemon}"
 msgstr "Daemon bereits registriert: {daemon}"
 
-#: otpme/lib/otpme_config.py:2336
+#: otpme/lib/otpme_config.py:2348
 #, python-brace-format
 msgid "Protocol already registered: {protocol}"
 msgstr "Protokoll bereits registriert: {protocol}"
 
-#: otpme/lib/otpme_config.py:2349
+#: otpme/lib/otpme_config.py:2361
 #, python-brace-format
 msgid "Host type not registered for sync: {host_type}"
 msgstr "Host-Typ nicht für Sync registriert: {host_type}"
 
-#: otpme/lib/otpme_config.py:2361
+#: otpme/lib/otpme_config.py:2373
 #, python-brace-format
 msgid "Object type already registered for sync: {object_type}"
 msgstr "Objekttyp bereits für Sync registriert: {object_type}"
 
-#: otpme/lib/otpme_config.py:2375
+#: otpme/lib/otpme_config.py:2387
 #, python-brace-format
 msgid "Object type already registered for clustering: {object_type}"
 msgstr "Objekttyp bereits für Clustering registriert: {object_type}"
 
-#: otpme/lib/otpme_config.py:2387
+#: otpme/lib/otpme_config.py:2399
 msgid ""
 "WARNING!!!!! Raising exceptions is enabled (-dee). This exception would not "
 "occur in normal operation mode!"
@@ -31291,123 +31299,123 @@ msgstr ""
 "WARNUNG!!!!! Auslösen von Exceptions ist aktiviert (-dee). Diese Exception "
 "würde im normalen Betriebsmodus nicht auftreten!"
 
-#: otpme/lib/otpme_config.py:2391
+#: otpme/lib/otpme_config.py:2403
 #, python-brace-format
 msgid "Exception time: {now}"
 msgstr "Exception-Zeit: {now}"
 
-#: otpme/lib/otpme_config.py:2394
+#: otpme/lib/otpme_config.py:2406
 #, python-brace-format
 msgid "Exception PID: {pid}"
 msgstr "Exception-PID: {pid}"
 
-#: otpme/lib/otpme_config.py:2397
+#: otpme/lib/otpme_config.py:2409
 #, python-brace-format
 msgid "Exception daemon: {daemon_name}"
 msgstr "Exception-Daemon: {daemon_name}"
 
-#: otpme/lib/otpme_config.py:2405
+#: otpme/lib/otpme_config.py:2417
 #, python-brace-format
 msgid "Exception caller: {file}:{line} ({method})"
 msgstr "Ausnahme-Aufrufer: {file}:{line} ({method})"
 
-#: otpme/lib/otpme_config.py:2661
+#: otpme/lib/otpme_config.py:2673
 #, python-brace-format
 msgid "Creating directory: {conf_dir}"
 msgstr "Erstelle Verzeichnis: {conf_dir}"
 
-#: otpme/lib/otpme_config.py:2666
+#: otpme/lib/otpme_config.py:2678
 #, python-brace-format
 msgid "Creating config file: {conf_file}"
 msgstr "Erstelle Konfigurationsdatei: {conf_file}"
 
-#: otpme/lib/otpme_config.py:2674
+#: otpme/lib/otpme_config.py:2686
 #, python-brace-format
 msgid "Creating directory: {_signers_dir}"
 msgstr "Erstelle Verzeichnis: {_signers_dir}"
 
-#: otpme/lib/otpme_config.py:2715
+#: otpme/lib/otpme_config.py:2727
 #, python-brace-format
 msgid "Reloading config file '{user_conf_file}'."
 msgstr "Konfigurationsdatei '{user_conf_file}' wird neu geladen."
 
-#: otpme/lib/otpme_config.py:2719
+#: otpme/lib/otpme_config.py:2731
 #, python-brace-format
 msgid "Loading config file: {user_conf_file}"
 msgstr "Lade Konfigurationsdatei: {user_conf_file}"
 
-#: otpme/lib/otpme_config.py:2734
+#: otpme/lib/otpme_config.py:2746
 #, python-brace-format
 msgid "Unknown config file parameter: {user_conf_file}: {x}"
 msgstr "Unbekannter Konfigurationsdatei-Parameter: {user_conf_file}: {x}"
 
-#: otpme/lib/otpme_config.py:2818
+#: otpme/lib/otpme_config.py:2830
 msgid "KEY_COMMAND is not set to a file. Unable to generate AES key."
 msgstr ""
 "KEY_COMMAND ist nicht auf eine Datei gesetzt. AES-Schlüssel kann nicht "
 "generiert werden."
 
-#: otpme/lib/otpme_config.py:2828
+#: otpme/lib/otpme_config.py:2840
 #, python-brace-format
 msgid "Warning: Key file '{key_file}' exists. Overwrite?: "
 msgstr ""
 "Warnung: Schlüsseldatei '{key_file}' existiert bereits. Überschreiben?:"
 
-#: otpme/lib/otpme_config.py:2834
+#: otpme/lib/otpme_config.py:2846
 msgid "Generating encryption master key..."
 msgstr "Generiere Verschlüsselungs-Hauptschlüssel..."
 
-#: otpme/lib/otpme_config.py:2837
+#: otpme/lib/otpme_config.py:2849
 msgid "Please give master password: "
 msgstr "Bitte Master-Passwort eingeben:"
 
-#: otpme/lib/otpme_config.py:2841
+#: otpme/lib/otpme_config.py:2853
 msgid "Please give new master password: "
 msgstr "Bitte neues Master-Passwort eingeben:"
 
-#: otpme/lib/otpme_config.py:2843
+#: otpme/lib/otpme_config.py:2855
 msgid "Please repeat master password: "
 msgstr "Bitte Master-Passwort wiederholen:"
 
-#: otpme/lib/otpme_config.py:2846
+#: otpme/lib/otpme_config.py:2858
 msgid "Passwords do not match. Please try again."
 msgstr "Passwörter stimmen nicht überein. Bitte erneut versuchen."
 
-#: otpme/lib/otpme_config.py:2866
+#: otpme/lib/otpme_config.py:2878
 #, python-brace-format
 msgid "Error writing master key file: {e}"
 msgstr "Fehler beim Schreiben der Master-Schlüsseldatei: {e}"
 
-#: otpme/lib/otpme_config.py:2877
+#: otpme/lib/otpme_config.py:2889
 #, python-brace-format
 msgid "Error writing master key salt file: {e}"
 msgstr "Fehler beim Schreiben der Master-Schlüssel-Salt-Datei: {e}"
 
-#: otpme/lib/otpme_config.py:2901
+#: otpme/lib/otpme_config.py:2913
 #, python-brace-format
 msgid "Error running KEY_COMMAND: {script_stderr}"
 msgstr "Fehler beim Ausführen von KEY_COMMAND: {script_stderr}"
 
-#: otpme/lib/otpme_config.py:2915
+#: otpme/lib/otpme_config.py:2927
 msgid "Generating password salt..."
 msgstr "Generiere Passwort-Salt..."
 
-#: otpme/lib/otpme_config.py:2925
+#: otpme/lib/otpme_config.py:2937
 #, python-brace-format
 msgid "Error writing salt file: {e}"
 msgstr "Fehler beim Schreiben der Salt-Datei: {e}"
 
-#: otpme/lib/otpme_config.py:2962
+#: otpme/lib/otpme_config.py:2974
 #, python-brace-format
 msgid "Error writing auth-cache key file: {e}"
 msgstr "Fehler beim Schreiben der Auth-Cache-Schlüsseldatei: {e}"
 
-#: otpme/lib/otpme_config.py:2999
+#: otpme/lib/otpme_config.py:3011
 #, python-brace-format
 msgid "Error writing DB password file: {e}"
 msgstr "Fehler beim Schreiben der DB-Passwortdatei: {e}"
 
-#: otpme/lib/otpme_config.py:3013
+#: otpme/lib/otpme_config.py:3025
 #, python-brace-format
 msgid ""
 "DB password file missing: {f}. Re-run `otpme-tool index init` or create the "
@@ -31416,67 +31424,67 @@ msgstr ""
 "DB-Passwortdatei fehlt: {f}. Führen Sie `otpme-tool index init` erneut aus "
 "oder erstellen Sie die Datei manuell (Modus 0640, Besitzer {u}:{g})."
 
-#: otpme/lib/otpme_config.py:3083
+#: otpme/lib/otpme_config.py:3095
 #, python-brace-format
 msgid "Failed to load module 'colorlog': {e}"
 msgstr "Modul 'colorlog' konnte nicht geladen werden: {e}"
 
-#: otpme/lib/otpme_config.py:3108
+#: otpme/lib/otpme_config.py:3120
 #, python-brace-format
 msgid "Missing cache size for object type: {x}"
 msgstr "Fehlende Cache-Größe für Objekttyp: {x}"
 
-#: otpme/lib/otpme_config.py:3118
+#: otpme/lib/otpme_config.py:3130
 #, python-brace-format
 msgid "Missing config file: {config_file}"
 msgstr "Fehlende Konfigurationsdatei: {config_file}"
 
-#: otpme/lib/otpme_config.py:3132
+#: otpme/lib/otpme_config.py:3144
 #, python-brace-format
 msgid "Reloading config file '{config_file}'."
 msgstr "Lade Konfigurationsdatei '{config_file}' neu."
 
-#: otpme/lib/otpme_config.py:3136
+#: otpme/lib/otpme_config.py:3148
 #, python-brace-format
 msgid "Loading config file '{config_file}'."
 msgstr "Lade Konfigurationsdatei '{config_file}'."
 
-#: otpme/lib/otpme_config.py:3223 otpme/lib/otpme_config.py:3262
+#: otpme/lib/otpme_config.py:3235 otpme/lib/otpme_config.py:3274
 #, python-brace-format
 msgid "Unknown realm: {realm}"
 msgstr "Unbekanntes Realm: {realm}"
 
-#: otpme/lib/otpme_config.py:3405
+#: otpme/lib/otpme_config.py:3417
 #, python-brace-format
 msgid "Unable to read realm data file: {e}"
 msgstr "Realm-Datendatei kann nicht gelesen werden: {e}"
 
-#: otpme/lib/otpme_config.py:3411
+#: otpme/lib/otpme_config.py:3423
 #, python-brace-format
 msgid "Failed to decode realm data: {e}"
 msgstr "Realm-Daten konnten nicht dekodiert werden: {e}"
 
-#: otpme/lib/otpme_config.py:3438
+#: otpme/lib/otpme_config.py:3450
 #, python-brace-format
 msgid "Unable to save realm data: {e}"
 msgstr "Realm-Daten können nicht gespeichert werden: {e}"
 
-#: otpme/lib/otpme_config.py:3463
+#: otpme/lib/otpme_config.py:3475
 #, python-brace-format
 msgid "Invalid status: {status} [{valid_status_str}]"
 msgstr "Ungültiger Status: {status} [{valid_status_str}]"
 
-#: otpme/lib/otpme_config.py:3507
+#: otpme/lib/otpme_config.py:3519
 #, python-brace-format
 msgid "Unable to save sync status: {e}"
 msgstr "Sync-Status kann nicht gespeichert werden: {e}"
 
-#: otpme/lib/otpme_config.py:3524
+#: otpme/lib/otpme_config.py:3536
 #, python-brace-format
 msgid "Unable to load sync status: {e}"
 msgstr "Sync-Status kann nicht geladen werden: {e}"
 
-#: otpme/lib/otpme_config.py:3534
+#: otpme/lib/otpme_config.py:3546
 #, python-brace-format
 msgid "Unable to decode sync status: {e}"
 msgstr "Synchronisierungsstatus kann nicht dekodiert werden: {e}"
@@ -35942,7 +35950,7 @@ msgid "Authorized to access login session: {user}"
 msgstr "Autorisiert für Zugriff auf Login-Sitzung: {user}"
 
 #: otpme/lib/protocols/server/agent1.py:690
-#: otpme/lib/protocols/server/auth1.py:2777
+#: otpme/lib/protocols/server/auth1.py:2781
 #: otpme/lib/protocols/server/join1.py:667
 #: otpme/lib/protocols/server/join1.py:725
 msgid "Access denied."
@@ -36079,8 +36087,8 @@ msgid "FIDO2 decoy seed: site private key missing."
 msgstr "FIDO2-Decoy-Seed: privater Schlüssel der Site fehlt."
 
 #: otpme/lib/protocols/server/auth1.py:305
-#: otpme/lib/protocols/server/auth1.py:1817
-#: otpme/lib/protocols/server/auth1.py:1835
+#: otpme/lib/protocols/server/auth1.py:1821
+#: otpme/lib/protocols/server/auth1.py:1839
 #, python-brace-format
 msgid "Invalid accessgroup name: {access_group}"
 msgstr "Ungültiger Zugriffsgruppenname: {access_group}"
@@ -36113,7 +36121,7 @@ msgstr ""
 "access_group={access_group}, reason={reason}, expire={expire}"
 
 #: otpme/lib/protocols/server/auth1.py:422
-#: otpme/lib/protocols/server/auth1.py:2005
+#: otpme/lib/protocols/server/auth1.py:2009
 #, python-brace-format
 msgid "Unable to gen JWT: {e}"
 msgstr "JWT konnte nicht generiert werden: {e}"
@@ -36140,12 +36148,12 @@ msgid "Failed to redirect command: {command}"
 msgstr "Umleitung des Befehls fehlgeschlagen: {command}"
 
 #: otpme/lib/protocols/server/auth1.py:511
-#: otpme/lib/protocols/server/auth1.py:2214
+#: otpme/lib/protocols/server/auth1.py:2218
 msgid "Auth response misses JWT."
 msgstr "Auth-Antwort enthält kein JWT."
 
 #: otpme/lib/protocols/server/auth1.py:528
-#: otpme/lib/protocols/server/auth1.py:2243
+#: otpme/lib/protocols/server/auth1.py:2247
 msgid "JWT authentication failed."
 msgstr "JWT-Authentifizierung fehlgeschlagen."
 
@@ -36190,13 +36198,13 @@ msgstr ""
 
 #: otpme/lib/protocols/server/auth1.py:834
 #: otpme/lib/protocols/server/auth1.py:992
-#: otpme/lib/protocols/server/auth1.py:2673
+#: otpme/lib/protocols/server/auth1.py:2677
 msgid "Reauth: session_uuid missing."
 msgstr "Reauth: session_uuid fehlt."
 
 #: otpme/lib/protocols/server/auth1.py:854
 #: otpme/lib/protocols/server/auth1.py:1048
-#: otpme/lib/protocols/server/auth1.py:2756
+#: otpme/lib/protocols/server/auth1.py:2760
 #, python-brace-format
 msgid "Reauth: failed to persist reauth_time: {err}"
 msgstr "Reauth: reauth_time konnte nicht gespeichert werden: {err}"
@@ -36230,217 +36238,217 @@ msgid "FIDO2 authentication failed: {e}"
 msgstr "FIDO2-Authentifizierung fehlgeschlagen: {e}"
 
 #: otpme/lib/protocols/server/auth1.py:1099
-#: otpme/lib/protocols/server/auth1.py:1432
-#: otpme/lib/protocols/server/auth1.py:2043
-#: otpme/lib/protocols/server/auth1.py:2335
+#: otpme/lib/protocols/server/auth1.py:1436
+#: otpme/lib/protocols/server/auth1.py:2047
+#: otpme/lib/protocols/server/auth1.py:2339
 #, python-brace-format
 msgid "Unable to gen SSO JWT: {e}"
 msgstr "SSO-JWT konnte nicht generiert werden: {e}"
 
-#: otpme/lib/protocols/server/auth1.py:1249
-#: otpme/lib/protocols/server/sso1.py:561
-#: otpme/lib/protocols/server/sso1.py:1959
+#: otpme/lib/protocols/server/auth1.py:1253
+#: otpme/lib/protocols/server/sso1.py:568
+#: otpme/lib/protocols/server/sso1.py:1998
 #, python-brace-format
 msgid "tiqr: QR code generation failed: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1316
+#: otpme/lib/protocols/server/auth1.py:1320
 #, python-brace-format
 msgid "tiqr: no token matched the response: {user}"
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1333
+#: otpme/lib/protocols/server/auth1.py:1337
 #, python-brace-format
 msgid "tiqr: user '{user}' is blocked."
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1367
+#: otpme/lib/protocols/server/auth1.py:1371
 msgid "tiqr: duplicate response for one challenge."
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1370
+#: otpme/lib/protocols/server/auth1.py:1374
 #, python-brace-format
 msgid "tiqr: response accepted for token {token}"
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1388
+#: otpme/lib/protocols/server/auth1.py:1392
 #, python-brace-format
 msgid "tiqr: failed to drop auth result: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1411
+#: otpme/lib/protocols/server/auth1.py:1415
 #, python-brace-format
 msgid "tiqr authentication failed: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:1592
+#: otpme/lib/protocols/server/auth1.py:1596
 #, python-brace-format
 msgid "Reauth: redirected verify failed: {token}"
 msgstr "Reauth: umgeleitete Prüfung fehlgeschlagen: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:1623
+#: otpme/lib/protocols/server/auth1.py:1627
 #, python-brace-format
 msgid "Reauth: redirected password verify failed: {token}"
 msgstr "Reauth: umgeleitete Passwortprüfung fehlgeschlagen: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:1640
+#: otpme/lib/protocols/server/auth1.py:1644
 #, python-brace-format
 msgid "Redirected verify answered without data: {token}"
 msgstr "Umgeleitete Prüfung ohne Daten beantwortet: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:1647
+#: otpme/lib/protocols/server/auth1.py:1651
 #, python-brace-format
 msgid "Redirected verify answered without a JWT: {token}"
 msgstr "Umgeleitete Prüfung ohne JWT beantwortet: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:1655
+#: otpme/lib/protocols/server/auth1.py:1659
 #, python-brace-format
 msgid "Unknown site of destination token: {token}"
 msgstr "Unbekannte Site des Ziel-Tokens: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:1665
+#: otpme/lib/protocols/server/auth1.py:1669
 #, python-brace-format
 msgid "JWT of redirected verify failed verification: {e}"
 msgstr "JWT der umgeleiteten Verifizierung schlug die Überprüfung fehl: {e}"
 
-#: otpme/lib/protocols/server/auth1.py:1681
+#: otpme/lib/protocols/server/auth1.py:1685
 #, python-brace-format
 msgid "JWT of redirected verify has wrong {field}: {token}"
 msgstr "JWT der umgeleiteten Verifizierung hat falsches {field}: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:1748
+#: otpme/lib/protocols/server/auth1.py:1752
 msgid "Fido2 state ID missing."
 msgstr "Fido2-Status-ID fehlt."
 
-#: otpme/lib/protocols/server/auth1.py:1768
+#: otpme/lib/protocols/server/auth1.py:1772
 #, python-brace-format
 msgid "Unknown token: {token}."
 msgstr "Unbekanntes Token: {token}."
 
-#: otpme/lib/protocols/server/auth1.py:1786
+#: otpme/lib/protocols/server/auth1.py:1790
 #, python-brace-format
 msgid "Token '{token}' is not a token of user: {user}"
 msgstr "Token '{token}' ist kein Token von Benutzer: {user}"
 
-#: otpme/lib/protocols/server/auth1.py:1925
+#: otpme/lib/protocols/server/auth1.py:1929
 #, python-brace-format
 msgid "Verification (dot1x) of token '{token_name}' returned error: {error}"
 msgstr ""
 "Verifizierung (dot1x) des Tokens '{token_name}' gab Fehler zurück: {error}"
 
-#: otpme/lib/protocols/server/auth1.py:2056
+#: otpme/lib/protocols/server/auth1.py:2060
 #, python-brace-format
 msgid "Token verified successful: {token}"
 msgstr "Token erfolgreich verifiziert: {token}"
 
-#: otpme/lib/protocols/server/auth1.py:2068
+#: otpme/lib/protocols/server/auth1.py:2072
 #, python-brace-format
 msgid "Token verification failed: {user}: {tried_tokens}"
 msgstr "Token-Verifizierung fehlgeschlagen: {user}: {tried_tokens}"
 
-#: otpme/lib/protocols/server/auth1.py:2094
+#: otpme/lib/protocols/server/auth1.py:2098
 msgid "Failed to get redirect connection"
 msgstr "Weiterleitungsverbindung konnte nicht abgerufen werden"
 
-#: otpme/lib/protocols/server/auth1.py:2155
+#: otpme/lib/protocols/server/auth1.py:2159
 #, python-brace-format
 msgid "Unable to determine client: {client}: {client_ip}"
 msgstr "Client kann nicht ermittelt werden: {client}: {client_ip}"
 
-#: otpme/lib/protocols/server/auth1.py:2170
+#: otpme/lib/protocols/server/auth1.py:2174
 #, python-brace-format
 msgid "Unable to get accessgroup from client: {client}: {access_group}"
 msgstr ""
 "Zugriffsgruppe konnte nicht vom Client abgerufen werden: {client}: "
 "{access_group}"
 
-#: otpme/lib/protocols/server/auth1.py:2195
+#: otpme/lib/protocols/server/auth1.py:2199
 msgid "Failed to authenticate user"
 msgstr "Benutzerauthentifizierung fehlgeschlagen"
 
-#: otpme/lib/protocols/server/auth1.py:2204
+#: otpme/lib/protocols/server/auth1.py:2208
 #, python-brace-format
 msgid "Remote authentication failed: {user}: {e}"
 msgstr "Remote-Authentifizierung fehlgeschlagen: {user}: {e}"
 
-#: otpme/lib/protocols/server/auth1.py:2223
+#: otpme/lib/protocols/server/auth1.py:2227
 msgid "Auth response misses NT_KEY."
 msgstr "Auth-Antwort enthält keinen NT_KEY."
 
-#: otpme/lib/protocols/server/auth1.py:2312
+#: otpme/lib/protocols/server/auth1.py:2316
 msgid "Application in maintenance mode."
 msgstr "Anwendung im Wartungsmodus."
 
-#: otpme/lib/protocols/server/auth1.py:2316
+#: otpme/lib/protocols/server/auth1.py:2320
 #: otpme/lib/protocols/server/mgmt1.py:2864
 msgid "Authentication failed."
 msgstr "Authentifizierung fehlgeschlagen."
 
-#: otpme/lib/protocols/server/auth1.py:2400
+#: otpme/lib/protocols/server/auth1.py:2404
 msgid "Processing JWT request."
 msgstr "JWT-Anfrage wird verarbeitet."
 
-#: otpme/lib/protocols/server/auth1.py:2576
+#: otpme/lib/protocols/server/auth1.py:2580
 msgid "Processing command fido2_auth_begin."
 msgstr "Befehl fido2_auth_begin wird verarbeitet."
 
-#: otpme/lib/protocols/server/auth1.py:2581
+#: otpme/lib/protocols/server/auth1.py:2585
 msgid "Processing command fido2_auth_complete."
 msgstr "Befehl fido2_auth_complete wird verarbeitet."
 
-#: otpme/lib/protocols/server/auth1.py:2586
+#: otpme/lib/protocols/server/auth1.py:2590
 msgid "Processing command tiqr_auth_begin."
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:2593
+#: otpme/lib/protocols/server/auth1.py:2597
 msgid "Processing command tiqr_auth_response."
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:2598
+#: otpme/lib/protocols/server/auth1.py:2602
 msgid "Processing command tiqr_auth_status."
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:2603
+#: otpme/lib/protocols/server/auth1.py:2607
 msgid "Processing command tiqr_auth_otp."
 msgstr ""
 
-#: otpme/lib/protocols/server/auth1.py:2619
+#: otpme/lib/protocols/server/auth1.py:2623
 msgid "Incomplete command."
 msgstr "Unvollständiger Befehl."
 
-#: otpme/lib/protocols/server/auth1.py:2625
+#: otpme/lib/protocols/server/auth1.py:2629
 msgid "Received conflicting host/client parameters."
 msgstr "Widersprüchliche Host-/Client-Parameter erhalten."
 
-#: otpme/lib/protocols/server/auth1.py:2627
+#: otpme/lib/protocols/server/auth1.py:2631
 msgid "Received conflicting auth parameters password/MSCHAP."
 msgstr "Widersprüchliche Auth-Parameter Passwort/MSCHAP erhalten."
 
-#: otpme/lib/protocols/server/auth1.py:2651
+#: otpme/lib/protocols/server/auth1.py:2655
 msgid "Cross realm auth not supported yet."
 msgstr "Realm-übergreifende Authentifizierung wird noch nicht unterstützt."
 
-#: otpme/lib/protocols/server/auth1.py:2669
+#: otpme/lib/protocols/server/auth1.py:2673
 #, python-brace-format
 msgid "Reauth branch entered for user '{u}'."
 msgstr "Reauth-Zweig für Benutzer '{u}' betreten."
 
-#: otpme/lib/protocols/server/auth1.py:2698
+#: otpme/lib/protocols/server/auth1.py:2702
 msgid "Reauth: session token not found."
 msgstr "Reauth: Sitzungstoken nicht gefunden."
 
-#: otpme/lib/protocols/server/auth1.py:2707
+#: otpme/lib/protocols/server/auth1.py:2711
 #, python-brace-format
 msgid "Reauth: link token has no dst_token: {t}"
 msgstr "Reauth: Link-Token hat kein dst_token: {t}"
 
-#: otpme/lib/protocols/server/auth1.py:2726
+#: otpme/lib/protocols/server/auth1.py:2730
 #, python-brace-format
 msgid "Reauth: cross-site password verify failed: {err}"
 msgstr ""
 "Reauth: standortübergreifende Passwortüberprüfung fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/auth1.py:2739
+#: otpme/lib/protocols/server/auth1.py:2743
 #, python-brace-format
 msgid "Reauth: token verify failed: {err}"
 msgstr "Reauth: Token-Verifizierung fehlgeschlagen: {err}"
@@ -38865,11 +38873,11 @@ msgstr "Eigenes Token kann nicht imitiert werden."
 msgid "User impersonated token: {token}"
 msgstr "Benutzer hat Token imitiert: {token}"
 
-#: otpme/lib/protocols/server/sso1.py:216
+#: otpme/lib/protocols/server/sso1.py:223
 msgid "Unknown accessgroup"
 msgstr "Unbekannte Zugriffsgruppe"
 
-#: otpme/lib/protocols/server/sso1.py:231
+#: otpme/lib/protocols/server/sso1.py:238
 #, python-brace-format
 msgid ""
 "Redirect connection failed for command '{command}' (user '{user}' site "
@@ -38878,7 +38886,7 @@ msgstr ""
 "Umleitungsverbindung fehlgeschlagen für Befehl '{command}' (Benutzer "
 "'{user}' Site '{site}' mgmt={mgmt}): {e}"
 
-#: otpme/lib/protocols/server/sso1.py:252
+#: otpme/lib/protocols/server/sso1.py:259
 #, python-brace-format
 msgid ""
 "Failed to redirect command '{command}' (user '{user}' site '{site}' "
@@ -38887,7 +38895,7 @@ msgstr ""
 "Umleitung des Befehls '{command}' fehlgeschlagen (Benutzer '{user}' Site "
 "'{site}' mgmt={mgmt}): {e}"
 
-#: otpme/lib/protocols/server/sso1.py:263
+#: otpme/lib/protocols/server/sso1.py:270
 #, python-brace-format
 msgid ""
 "Redirect '{command}' to site '{site}' returned status={status} "
@@ -38896,63 +38904,63 @@ msgstr ""
 "Umleitung '{command}' an Site '{site}' ergab status={status} "
 "status_code={status_code}."
 
-#: otpme/lib/protocols/server/sso1.py:324
-#: otpme/lib/protocols/server/sso1.py:358
-#: otpme/lib/protocols/server/sso1.py:443
-#: otpme/lib/protocols/server/sso1.py:643
-#: otpme/lib/protocols/server/sso1.py:676
-#: otpme/lib/protocols/server/sso1.py:806
-#: otpme/lib/protocols/server/sso1.py:892
-#: otpme/lib/protocols/server/sso1.py:1130
-#: otpme/lib/protocols/server/sso1.py:1214
-#: otpme/lib/protocols/server/sso1.py:1321
-#: otpme/lib/protocols/server/sso1.py:1480
-#: otpme/lib/protocols/server/sso1.py:1549
-#: otpme/lib/protocols/server/sso1.py:1644
-#: otpme/lib/protocols/server/sso1.py:1755
-#: otpme/lib/protocols/server/sso1.py:1820
-#: otpme/lib/protocols/server/sso1.py:1899
-#: otpme/lib/protocols/server/sso1.py:2237
-#: otpme/lib/protocols/server/sso1.py:2318
-#: otpme/lib/protocols/server/sso1.py:2391
-#: otpme/lib/protocols/server/sso1.py:2535
-#: otpme/lib/protocols/server/sso1.py:2633
-#: otpme/lib/protocols/server/sso1.py:2705
-#: otpme/lib/protocols/server/sso1.py:2749
-#: otpme/lib/protocols/server/sso1.py:2834
-#: otpme/lib/protocols/server/sso1.py:2874
-#: otpme/lib/protocols/server/sso1.py:3714
-#: otpme/lib/protocols/server/sso1.py:3766
-#: otpme/lib/protocols/server/sso1.py:3842
-#: otpme/lib/protocols/server/sso1.py:4041
-#: otpme/lib/protocols/server/sso1.py:4127
-#: otpme/lib/protocols/server/sso1.py:4208
-#: otpme/lib/protocols/server/sso1.py:4255
-#: otpme/lib/protocols/server/sso1.py:4325
-#: otpme/lib/protocols/server/sso1.py:4352
-#: otpme/lib/protocols/server/sso1.py:4383
-#: otpme/lib/protocols/server/sso1.py:4533
-#: otpme/lib/protocols/server/sso1.py:4640
-#: otpme/lib/protocols/server/sso1.py:4712
-#: otpme/lib/protocols/server/sso1.py:4882
-#: otpme/lib/protocols/server/sso1.py:4973
-#: otpme/lib/protocols/server/sso1.py:5085
-#: otpme/lib/protocols/server/sso1.py:6732
+#: otpme/lib/protocols/server/sso1.py:331
+#: otpme/lib/protocols/server/sso1.py:365
+#: otpme/lib/protocols/server/sso1.py:450
+#: otpme/lib/protocols/server/sso1.py:650
+#: otpme/lib/protocols/server/sso1.py:683
+#: otpme/lib/protocols/server/sso1.py:813
+#: otpme/lib/protocols/server/sso1.py:899
+#: otpme/lib/protocols/server/sso1.py:1137
+#: otpme/lib/protocols/server/sso1.py:1221
+#: otpme/lib/protocols/server/sso1.py:1328
+#: otpme/lib/protocols/server/sso1.py:1501
+#: otpme/lib/protocols/server/sso1.py:1579
+#: otpme/lib/protocols/server/sso1.py:1674
+#: otpme/lib/protocols/server/sso1.py:1785
+#: otpme/lib/protocols/server/sso1.py:1850
+#: otpme/lib/protocols/server/sso1.py:1937
+#: otpme/lib/protocols/server/sso1.py:2297
+#: otpme/lib/protocols/server/sso1.py:2387
+#: otpme/lib/protocols/server/sso1.py:2460
+#: otpme/lib/protocols/server/sso1.py:2604
+#: otpme/lib/protocols/server/sso1.py:2702
+#: otpme/lib/protocols/server/sso1.py:2774
+#: otpme/lib/protocols/server/sso1.py:2818
+#: otpme/lib/protocols/server/sso1.py:2903
+#: otpme/lib/protocols/server/sso1.py:2943
+#: otpme/lib/protocols/server/sso1.py:3783
+#: otpme/lib/protocols/server/sso1.py:3835
+#: otpme/lib/protocols/server/sso1.py:3911
+#: otpme/lib/protocols/server/sso1.py:4110
+#: otpme/lib/protocols/server/sso1.py:4196
+#: otpme/lib/protocols/server/sso1.py:4277
+#: otpme/lib/protocols/server/sso1.py:4324
+#: otpme/lib/protocols/server/sso1.py:4394
+#: otpme/lib/protocols/server/sso1.py:4421
+#: otpme/lib/protocols/server/sso1.py:4452
+#: otpme/lib/protocols/server/sso1.py:4602
+#: otpme/lib/protocols/server/sso1.py:4709
+#: otpme/lib/protocols/server/sso1.py:4781
+#: otpme/lib/protocols/server/sso1.py:4951
+#: otpme/lib/protocols/server/sso1.py:5042
+#: otpme/lib/protocols/server/sso1.py:5154
+#: otpme/lib/protocols/server/sso1.py:6801
 #, python-brace-format
 msgid "SSO JWT verification failed: {e}"
 msgstr "SSO-JWT-Verifizierung fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:471
+#: otpme/lib/protocols/server/sso1.py:478
 #, python-brace-format
 msgid "Deploy of token type '{tt}' is not allowed."
 msgstr "Bereitstellung des Token-Typs '{tt}' ist nicht erlaubt."
 
-#: otpme/lib/protocols/server/sso1.py:485
+#: otpme/lib/protocols/server/sso1.py:492
 #, python-brace-format
 msgid "Please sign in with your '{name}' token to deploy."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:497
+#: otpme/lib/protocols/server/sso1.py:504
 #, python-brace-format
 msgid ""
 "SSO deploy started for user '{user_name}', token type 'password' (no staging "
@@ -38961,79 +38969,79 @@ msgstr ""
 "SSO-Bereitstellung für Benutzer '{user_name}' gestartet, Token-Typ "
 "'password' (kein Staging-Token)."
 
-#: otpme/lib/protocols/server/sso1.py:529
-#: otpme/lib/protocols/server/sso1.py:3342
+#: otpme/lib/protocols/server/sso1.py:536
+#: otpme/lib/protocols/server/sso1.py:3411
 msgid "Invalid device name."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:531
-#: otpme/lib/protocols/server/sso1.py:3344
+#: otpme/lib/protocols/server/sso1.py:538
+#: otpme/lib/protocols/server/sso1.py:3413
 msgid "Device name required."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:535
-#: otpme/lib/protocols/server/sso1.py:3348
+#: otpme/lib/protocols/server/sso1.py:542
+#: otpme/lib/protocols/server/sso1.py:3417
 msgid "A token with this name already exists."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:573
+#: otpme/lib/protocols/server/sso1.py:580
 #, python-brace-format
 msgid "SSO deploy started for user '{user_name}', token type 'tiqr'."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:590
+#: otpme/lib/protocols/server/sso1.py:597
 #, python-brace-format
 msgid "SSO deploy failed for user '{user_name}': {e}"
 msgstr "SSO-Bereitstellung für Benutzer '{user_name}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:622
+#: otpme/lib/protocols/server/sso1.py:629
 #, python-brace-format
 msgid "QR code generation failed: {e}"
 msgstr "QR-Code-Generierung fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:630
+#: otpme/lib/protocols/server/sso1.py:637
 #, python-brace-format
 msgid "SSO deploy started for user '{user_name}', token type '{token_type}'."
 msgstr ""
 "SSO-Bereitstellung für Benutzer '{user_name}', Token-Typ '{token_type}' "
 "gestartet."
 
-#: otpme/lib/protocols/server/sso1.py:728
+#: otpme/lib/protocols/server/sso1.py:735
 #, python-brace-format
 msgid "SSO deploy password set failed for user '{user_name}': {e}"
 msgstr ""
 "SSO-Bereitstellung des Passworts für Benutzer '{user_name}' fehlgeschlagen: "
 "{e}"
 
-#: otpme/lib/protocols/server/sso1.py:762
+#: otpme/lib/protocols/server/sso1.py:769
 #, python-brace-format
 msgid "SSO deploy OTP verification failed for user '{user_name}': {e}"
 msgstr ""
 "SSO-Bereitstellungs-OTP-Verifizierung für Benutzer '{user_name}' "
 "fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:781
+#: otpme/lib/protocols/server/sso1.py:788
 #, python-brace-format
 msgid "SSO deploy token move failed for user '{user_name}': {e}"
 msgstr ""
 "SSO-Bereitstellungs-Token-Verschiebung für Benutzer '{user_name}' "
 "fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:911
+#: otpme/lib/protocols/server/sso1.py:918
 msgid "Fido2 reg state missing."
 msgstr "Fido2-Registrierungsstatus fehlt."
 
-#: otpme/lib/protocols/server/sso1.py:922
+#: otpme/lib/protocols/server/sso1.py:929
 msgid "Fido2 reg state is not from a deploy registration."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:942
-#: otpme/lib/protocols/server/sso1.py:1689
+#: otpme/lib/protocols/server/sso1.py:949
+#: otpme/lib/protocols/server/sso1.py:1719
 #, python-brace-format
 msgid "FIDO2 registration failed: {e}"
 msgstr "FIDO2-Registrierung fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:955
+#: otpme/lib/protocols/server/sso1.py:962
 #, python-brace-format
 msgid ""
 "FIDO2 attestation cert verification failed for token '{token}' of user "
@@ -39042,173 +39050,173 @@ msgstr ""
 "FIDO2-Attestierungszertifikat-Verifizierung für Token '{token}' von Benutzer "
 "'{user_name}' fehlgeschlagen: {error}"
 
-#: otpme/lib/protocols/server/sso1.py:970
+#: otpme/lib/protocols/server/sso1.py:977
 #, python-brace-format
 msgid "FIDO2 token '{token}' registered for user '{user_name}'."
 msgstr "FIDO2-Token '{token}' für Benutzer '{user_name}' registriert."
 
-#: otpme/lib/protocols/server/sso1.py:1018
+#: otpme/lib/protocols/server/sso1.py:1025
 #, python-brace-format
 msgid "{flow}: failed to mirror {label} '{name}' onto '{token}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1169
-#: otpme/lib/protocols/server/sso1.py:1500
-#: otpme/lib/protocols/server/sso1.py:2257
-#: otpme/lib/protocols/server/sso1.py:4463
+#: otpme/lib/protocols/server/sso1.py:1176
+#: otpme/lib/protocols/server/sso1.py:1521
+#: otpme/lib/protocols/server/sso1.py:2317
+#: otpme/lib/protocols/server/sso1.py:4532
 #, python-brace-format
 msgid "Failed to read token object: {e}"
 msgstr "Token-Objekt konnte nicht gelesen werden: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:1284
+#: otpme/lib/protocols/server/sso1.py:1291
 #, python-brace-format
 msgid "Passkey register_begin failed: {e}"
 msgstr "Passkey register_begin fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:1361
+#: otpme/lib/protocols/server/sso1.py:1368
 msgid "Passkey reg state missing."
 msgstr "Passkey-Reg-Status fehlt."
 
-#: otpme/lib/protocols/server/sso1.py:1376
+#: otpme/lib/protocols/server/sso1.py:1383
 #, python-brace-format
 msgid "Passkey registration failed: {e}"
 msgstr "Passkey-Registrierung fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:1393
+#: otpme/lib/protocols/server/sso1.py:1400
 #, python-brace-format
 msgid "Failed to add passkey token: {e}"
 msgstr "Hinzufügen des Passkey-Tokens fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:1416
+#: otpme/lib/protocols/server/sso1.py:1423
 #, python-brace-format
 msgid "Passkey '{token}' registered for user '{user_name}'."
 msgstr "Passkey '{token}' für Benutzer '{user_name}' registriert."
 
-#: otpme/lib/protocols/server/sso1.py:1609
+#: otpme/lib/protocols/server/sso1.py:1639
 #, python-brace-format
 msgid "FIDO2 register_begin failed: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1663
+#: otpme/lib/protocols/server/sso1.py:1693
 msgid "FIDO2 reg state missing."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1671
+#: otpme/lib/protocols/server/sso1.py:1701
 msgid "FIDO2 reg state is not from a self-service registration."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1707
+#: otpme/lib/protocols/server/sso1.py:1737
 #, python-brace-format
 msgid "Failed to add fido2 token: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1733
+#: otpme/lib/protocols/server/sso1.py:1763
 #, python-brace-format
 msgid "Security key '{token}' registered for user '{user_name}'."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1796
+#: otpme/lib/protocols/server/sso1.py:1826
 #, python-brace-format
 msgid "Failed to delete security key '{token}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1804
+#: otpme/lib/protocols/server/sso1.py:1834
 #, python-brace-format
 msgid "Security key '{token}' deleted for user '{user_name}'."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1859
+#: otpme/lib/protocols/server/sso1.py:1889
 #, python-brace-format
 msgid "Failed to change security key '{token}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1964
+#: otpme/lib/protocols/server/sso1.py:2003
 #, python-brace-format
 msgid "tiqr enrollment started for user '{user_name}'."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:1991
+#: otpme/lib/protocols/server/sso1.py:2030
 #, python-brace-format
 msgid "tiqr: rejected enrollment key: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2056
+#: otpme/lib/protocols/server/sso1.py:2100
 #, python-brace-format
 msgid "tiqr: rejected enrollment secret: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2086
+#: otpme/lib/protocols/server/sso1.py:2130
 #, python-brace-format
 msgid "tiqr: token '{token}' already exists."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2099
+#: otpme/lib/protocols/server/sso1.py:2143
 msgid "tiqr: login token of the enrollment is gone."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2122
+#: otpme/lib/protocols/server/sso1.py:2166
 #, python-brace-format
 msgid "tiqr: failed to add token for user '{user_name}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2162
+#: otpme/lib/protocols/server/sso1.py:2206
 #, python-brace-format
 msgid "tiqr token '{token}' enrolled for user '{user_name}'."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2370
+#: otpme/lib/protocols/server/sso1.py:2439
 #, python-brace-format
 msgid "tiqr: failed to delete token '{token}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2433
+#: otpme/lib/protocols/server/sso1.py:2502
 #, python-brace-format
 msgid "tiqr: failed to change token '{token}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2461
+#: otpme/lib/protocols/server/sso1.py:2530
 #, python-brace-format
 msgid "Token '{name}' is your default token and renaming it is not allowed."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2593
+#: otpme/lib/protocols/server/sso1.py:2662
 #, python-brace-format
 msgid "Failed to rename the SSO token: {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2605
+#: otpme/lib/protocols/server/sso1.py:2674
 #, python-brace-format
 msgid "Failed to promote token '{token}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2615
+#: otpme/lib/protocols/server/sso1.py:2684
 #, python-brace-format
 msgid "Token '{token}' ({token_type}) is now the SSO token of '{user_name}'."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:2667
+#: otpme/lib/protocols/server/sso1.py:2736
 #, python-brace-format
 msgid "Failed to delete passkey '{token}' for user '{user_name}': {e}"
 msgstr ""
 "Löschen des Passkeys '{token}' für Benutzer '{user_name}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:2671
+#: otpme/lib/protocols/server/sso1.py:2740
 #, python-brace-format
 msgid "Passkey '{token}' deleted for user '{user_name}'."
 msgstr "Passkey '{token}' für Benutzer '{user_name}' gelöscht."
 
-#: otpme/lib/protocols/server/sso1.py:2790
+#: otpme/lib/protocols/server/sso1.py:2859
 #, python-brace-format
 msgid "Admin-access toggle failed for user '{u}': {e}"
 msgstr "Admin-Zugriff-Umschaltung für Benutzer '{u}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:2928
+#: otpme/lib/protocols/server/sso1.py:2997
 #, python-brace-format
 msgid "Recovery-mail change failed for user '{u}': {e}"
 msgstr ""
 "Änderung der Wiederherstellungs-E-Mail für Benutzer '{u}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3006
+#: otpme/lib/protocols/server/sso1.py:3075
 #, python-brace-format
 msgid ""
 "SSO-token recovery: link-host site lookup failed (peer={p}, local uuid={u})."
@@ -39216,7 +39224,7 @@ msgstr ""
 "SSO-Token-Wiederherstellung: Suche der Link-Host-Site fehlgeschlagen "
 "(peer={p}, local uuid={u})."
 
-#: otpme/lib/protocols/server/sso1.py:3012
+#: otpme/lib/protocols/server/sso1.py:3081
 #, python-brace-format
 msgid ""
 "SSO-token recovery: site '{s}' has no sso_fqdn set (fix with 'otpme-site "
@@ -39225,29 +39233,29 @@ msgstr ""
 "SSO-Token-Wiederherstellung: Site '{s}' hat keine sso_fqdn gesetzt (beheben "
 "mit 'otpme-site sso_fqdn {s} <fqdn>')."
 
-#: otpme/lib/protocols/server/sso1.py:3070
+#: otpme/lib/protocols/server/sso1.py:3139
 #, python-brace-format
 msgid "SSO-token recovery skipped: {reason}"
 msgstr "SSO-Token-Wiederherstellung übersprungen: {reason}"
 
-#: otpme/lib/protocols/server/sso1.py:3085
+#: otpme/lib/protocols/server/sso1.py:3154
 #, python-brace-format
 msgid "SSO-token recovery: forwarding to home site for user '{u}'."
 msgstr ""
 "SSO-Token-Wiederherstellung: Weiterleitung an Home-Site für Benutzer '{u}'."
 
-#: otpme/lib/protocols/server/sso1.py:3137
+#: otpme/lib/protocols/server/sso1.py:3206
 #, python-brace-format
 msgid "SSO-token recovery: failed to persist token for user '{u}': {e}"
 msgstr ""
 "SSO-Token-Wiederherstellung: Token für Benutzer '{u}' konnte nicht "
 "gespeichert werden: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3144
+#: otpme/lib/protocols/server/sso1.py:3213
 msgid "SSO token recovery"
 msgstr "SSO-Token-Wiederherstellung"
 
-#: otpme/lib/protocols/server/sso1.py:3145
+#: otpme/lib/protocols/server/sso1.py:3214
 #, python-brace-format
 msgid ""
 "Hello,\n"
@@ -39276,19 +39284,19 @@ msgstr ""
 "Wenn Sie dies nicht angefordert haben, können Sie diese Nachricht ignorieren "
 "-- Ihr bestehendes Token bleibt unangetastet.\n"
 
-#: otpme/lib/protocols/server/sso1.py:3161
+#: otpme/lib/protocols/server/sso1.py:3230
 #, python-brace-format
 msgid "SSO-token recovery: failed to send mail for user '{u}': {e}"
 msgstr ""
 "SSO-Token-Wiederherstellung: E-Mail-Versand für Benutzer '{u}' "
 "fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3168
+#: otpme/lib/protocols/server/sso1.py:3237
 #, python-brace-format
 msgid "SSO-token recovery: mail dispatched for user '{u}'."
 msgstr "SSO-Token-Wiederherstellung: E-Mail für Benutzer '{u}' versendet."
 
-#: otpme/lib/protocols/server/sso1.py:3291
+#: otpme/lib/protocols/server/sso1.py:3360
 #, python-brace-format
 msgid ""
 "Recovery deploy started for user '{u}' (type 'password', no staging token)."
@@ -39296,24 +39304,24 @@ msgstr ""
 "Wiederherstellungs-Deploy gestartet für Benutzer '{u}' (Typ 'password', kein "
 "Staging-Token)."
 
-#: otpme/lib/protocols/server/sso1.py:3310
+#: otpme/lib/protocols/server/sso1.py:3379
 #, python-brace-format
 msgid "Recovery deploy: failed to clear stale sso-deploy token for '{u}': {e}"
 msgstr ""
 "Wiederherstellungs-Deploy: Löschen des veralteten sso-deploy-Tokens für "
 "'{u}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3374
+#: otpme/lib/protocols/server/sso1.py:3443
 #, python-brace-format
 msgid "Recovery deploy: tiqr QR code generation failed for '{u}': {e}"
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:3386
+#: otpme/lib/protocols/server/sso1.py:3455
 #, python-brace-format
 msgid "Recovery deploy started for user '{u}' (type 'tiqr')."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:3403
+#: otpme/lib/protocols/server/sso1.py:3472
 #, python-brace-format
 msgid ""
 "Recovery deploy: add_token failed for '{u}' (type '{t}'): {e}\n"
@@ -39323,109 +39331,109 @@ msgstr ""
 "{e}\n"
 "{tb}"
 
-#: otpme/lib/protocols/server/sso1.py:3433
+#: otpme/lib/protocols/server/sso1.py:3502
 #, python-brace-format
 msgid "Recovery deploy: QR/secret gen failed for '{u}': {e}"
 msgstr ""
 "Wiederherstellungs-Deploy: QR/Secret-Generierung fehlgeschlagen für '{u}': "
 "{e}"
 
-#: otpme/lib/protocols/server/sso1.py:3440
+#: otpme/lib/protocols/server/sso1.py:3509
 #, python-brace-format
 msgid "Recovery deploy started for user '{u}' (type '{t}')."
 msgstr "Wiederherstellungs-Deploy gestartet für Benutzer '{u}' (Typ '{t}')."
 
-#: otpme/lib/protocols/server/sso1.py:3552
+#: otpme/lib/protocols/server/sso1.py:3621
 #, python-brace-format
 msgid "Recovery FIDO2 registration failed for '{u}': {e}"
 msgstr "Wiederherstellungs-FIDO2-Registrierung fehlgeschlagen für '{u}': {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3565
+#: otpme/lib/protocols/server/sso1.py:3634
 #, python-brace-format
 msgid "Recovery FIDO2 attestation verification failed for '{u}': {e}"
 msgstr ""
 "Wiederherstellungs-FIDO2-Attestierungsprüfung fehlgeschlagen für '{u}': {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3624
+#: otpme/lib/protocols/server/sso1.py:3693
 #, python-brace-format
 msgid "Recovery deploy: password set failed for '{u}': {e}"
 msgstr ""
 "Wiederherstellungs-Deploy: Passwort setzen fehlgeschlagen für '{u}': {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3651
+#: otpme/lib/protocols/server/sso1.py:3720
 msgid "Phone not enrolled yet."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:3662
+#: otpme/lib/protocols/server/sso1.py:3731
 #, python-brace-format
 msgid "Recovery deploy: OTP verify failed for '{u}': {e}"
 msgstr "Wiederherstellungs-Deploy: OTP-Prüfung fehlgeschlagen für '{u}': {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3677
+#: otpme/lib/protocols/server/sso1.py:3746
 #, python-brace-format
 msgid "Recovery deploy: token move failed for '{u}': {e}"
 msgstr ""
 "Wiederherstellungs-Deploy: Token-Verschiebung fehlgeschlagen für '{u}': {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3688
+#: otpme/lib/protocols/server/sso1.py:3757
 #, python-brace-format
 msgid "Recovery deploy: failed to clear recovery slot for '{u}': {e}"
 msgstr ""
 "Wiederherstellungs-Deploy: Löschen des Wiederherstellungs-Slots für '{u}' "
 "fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3693
+#: otpme/lib/protocols/server/sso1.py:3762
 #, python-brace-format
 msgid "Recovery deploy complete for user '{u}'."
 msgstr "Wiederherstellungs-Deploy abgeschlossen für Benutzer '{u}'."
 
-#: otpme/lib/protocols/server/sso1.py:3734
+#: otpme/lib/protocols/server/sso1.py:3803
 #, python-brace-format
 msgid "Language change failed for user '{user_name}': {e}"
 msgstr "Sprachänderung für Benutzer '{user_name}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3803
+#: otpme/lib/protocols/server/sso1.py:3872
 #, python-brace-format
 msgid "Password change failed for token: {token_path}: {e}"
 msgstr "Passwortänderung für Token: {token_path} fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3822
+#: otpme/lib/protocols/server/sso1.py:3891
 msgid "Token password changed successfully."
 msgstr "Token-Passwort erfolgreich geändert."
 
-#: otpme/lib/protocols/server/sso1.py:3893
+#: otpme/lib/protocols/server/sso1.py:3962
 #, python-brace-format
 msgid "PIN change failed for token: {token_path}: {e}"
 msgstr "PIN-Änderung für Token: {token_path} fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:3912
+#: otpme/lib/protocols/server/sso1.py:3981
 msgid "Token PIN changed successfully."
 msgstr "Token-PIN erfolgreich geändert."
 
-#: otpme/lib/protocols/server/sso1.py:3946
-#: otpme/lib/protocols/server/sso1.py:3963
+#: otpme/lib/protocols/server/sso1.py:4015
+#: otpme/lib/protocols/server/sso1.py:4032
 #, python-brace-format
 msgid "Failed to read device_token_roles: {e}"
 msgstr "device_token_roles konnte nicht gelesen werden: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4091
+#: otpme/lib/protocols/server/sso1.py:4160
 #, python-brace-format
 msgid "Home-site language fetch: connect failed: {e}"
 msgstr "Sprachabruf der Home-Site: Verbindung fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4106
+#: otpme/lib/protocols/server/sso1.py:4175
 #, python-brace-format
 msgid "Home-site language fetch failed: {e}"
 msgstr "Sprachabruf der Home-Site fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4280
+#: otpme/lib/protocols/server/sso1.py:4349
 #, python-brace-format
 msgid "Failed to persist OIDC consent revocation for user '{user}': {err}"
 msgstr ""
 "Persistieren des OIDC-Einwilligungswiderrufs für Benutzer '{user}' "
 "fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:4302
+#: otpme/lib/protocols/server/sso1.py:4371
 #, python-brace-format
 msgid ""
 "Failed to terminate OIDC session '{sid}' during consent revocation: {err}"
@@ -39433,8 +39441,8 @@ msgstr ""
 "Beenden der OIDC-Sitzung '{sid}' während des Einwilligungswiderrufs "
 "fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:4368
-#: otpme/lib/protocols/server/sso1.py:7057
+#: otpme/lib/protocols/server/sso1.py:4437
+#: otpme/lib/protocols/server/sso1.py:7126
 #, python-brace-format
 msgid ""
 "Failed to persist OIDC consent for user '{user}' / client '{cid}': {err}"
@@ -39442,82 +39450,82 @@ msgstr ""
 "OIDC-Zustimmung für Benutzer '{user}' / Client '{cid}' konnte nicht "
 "gespeichert werden: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:4589
+#: otpme/lib/protocols/server/sso1.py:4658
 #, python-brace-format
 msgid "Failed to create device token for user '{user_name}': {e}"
 msgstr ""
 "Erstellen des Geräte-Tokens für Benutzer '{user_name}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4607
-#: otpme/lib/protocols/server/sso1.py:4838
+#: otpme/lib/protocols/server/sso1.py:4676
+#: otpme/lib/protocols/server/sso1.py:4907
 #, python-brace-format
 msgid "Failed to add device token to role '{role}': {e}"
 msgstr "Hinzufügen des Geräte-Tokens zur Rolle '{role}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4658
-#: otpme/lib/protocols/server/sso1.py:4928
+#: otpme/lib/protocols/server/sso1.py:4727
+#: otpme/lib/protocols/server/sso1.py:4997
 #, python-brace-format
 msgid "Failed to delete device token '{token}' for user '{user_name}': {e}"
 msgstr ""
 "Löschen des Geräte-Tokens '{token}' für Benutzer '{user_name}' "
 "fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4679
+#: otpme/lib/protocols/server/sso1.py:4748
 #, python-brace-format
 msgid "Remote ssod connection failed: {e}"
 msgstr "Remote-ssod-Verbindung fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4689
+#: otpme/lib/protocols/server/sso1.py:4758
 #, python-brace-format
 msgid "Remote ssod command '{command}' failed: {e}"
 msgstr "Remote-ssod-Befehl '{command}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4771
+#: otpme/lib/protocols/server/sso1.py:4840
 #, python-brace-format
 msgid "Failed to mirror remote device token object: {e}"
 msgstr "Spiegeln des Remote-Geräte-Token-Objekts fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4822
+#: otpme/lib/protocols/server/sso1.py:4891
 #, python-brace-format
 msgid "Failed to add device token for user '{user_name}': {e}"
 msgstr ""
 "Hinzufügen des Geräte-Tokens für Benutzer '{user_name}' fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:4861
+#: otpme/lib/protocols/server/sso1.py:4930
 #, python-brace-format
 msgid "Device token '{token}' added for user '{user_name}'."
 msgstr "Geräte-Token '{token}' für Benutzer '{user_name}' hinzugefügt."
 
-#: otpme/lib/protocols/server/sso1.py:4933
+#: otpme/lib/protocols/server/sso1.py:5002
 #, python-brace-format
 msgid "Device token '{token}' deleted for user '{user_name}'."
 msgstr "Geräte-Token '{token}' für Benutzer '{user_name}' gelöscht."
 
-#: otpme/lib/protocols/server/sso1.py:5041
+#: otpme/lib/protocols/server/sso1.py:5110
 #, python-brace-format
 msgid "Failed to {action} device token '{token}' for user '{user_name}': {e}"
 msgstr ""
 "{action} des Geräte-Tokens '{token}' für Benutzer '{user_name}' "
 "fehlgeschlagen: {e}"
 
-#: otpme/lib/protocols/server/sso1.py:5048
+#: otpme/lib/protocols/server/sso1.py:5117
 #, python-brace-format
 msgid "Device token '{token}' {state} for user '{user_name}'."
 msgstr "Geräte-Token '{token}' {state} für Benutzer '{user_name}'."
 
-#: otpme/lib/protocols/server/sso1.py:5148
+#: otpme/lib/protocols/server/sso1.py:5217
 #, python-brace-format
 msgid "Failed to {action} passkey '{token}' for user '{user_name}': {e}"
 msgstr ""
 "{action} des Passkeys '{token}' für Benutzer '{user_name}' fehlgeschlagen: "
 "{e}"
 
-#: otpme/lib/protocols/server/sso1.py:5154
+#: otpme/lib/protocols/server/sso1.py:5223
 #, python-brace-format
 msgid "Passkey '{token}' {state} for user '{user_name}'."
 msgstr "Passkey '{token}' {state} für Benutzer '{user_name}'."
 
-#: otpme/lib/protocols/server/sso1.py:5392
+#: otpme/lib/protocols/server/sso1.py:5461
 #, python-brace-format
 msgid ""
 "Site '{site}' has no oidc_pairwise_secret. Run 'otpme-site "
@@ -39526,108 +39534,108 @@ msgstr ""
 "Site '{site}' hat kein oidc_pairwise_secret. Führen Sie 'otpme-site "
 "change_oidc_pairwise_secret' aus oder führen Sie enable_oidc erneut aus."
 
-#: otpme/lib/protocols/server/sso1.py:5684
+#: otpme/lib/protocols/server/sso1.py:5753
 #, python-brace-format
 msgid "OIDC code exchange from {ip} for client '{cid}'."
 msgstr "OIDC-Code-Austausch von {ip} für Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:5695
+#: otpme/lib/protocols/server/sso1.py:5764
 #, python-brace-format
 msgid "OIDC code exchange rejected ({reason})."
 msgstr "OIDC-Code-Austausch abgelehnt ({reason})."
 
-#: otpme/lib/protocols/server/sso1.py:5756
+#: otpme/lib/protocols/server/sso1.py:5825
 #, python-brace-format
 msgid "Failed to invalidate OIDC session '{sid}' on code replay: {err}"
 msgstr ""
 "Ungültigmachen der OIDC-Sitzung '{sid}' bei Code-Replay fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:5835
+#: otpme/lib/protocols/server/sso1.py:5904
 #, python-brace-format
 msgid "Failed to issue tokens / build ID Token: {err}"
 msgstr "Ausstellen von Tokens / Erstellen des ID-Tokens fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:5898
+#: otpme/lib/protocols/server/sso1.py:5967
 #, python-brace-format
 msgid "OIDC refresh from {ip} for client '{cid}'."
 msgstr "OIDC-Aktualisierung von {ip} für Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:5907
+#: otpme/lib/protocols/server/sso1.py:5976
 #, python-brace-format
 msgid "OIDC refresh rejected ({reason})."
 msgstr "OIDC-Aktualisierung abgelehnt ({reason})."
 
-#: otpme/lib/protocols/server/sso1.py:5968
+#: otpme/lib/protocols/server/sso1.py:6037
 #, python-brace-format
 msgid "Failed to invalidate replayed OIDC session '{sid}': {err}"
 msgstr ""
 "Ungültigmachen der wiederholten OIDC-Sitzung '{sid}' fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:6041
+#: otpme/lib/protocols/server/sso1.py:6110
 #, python-brace-format
 msgid "Failed to issue tokens / build ID Token (refresh): {err}"
 msgstr ""
 "Ausstellen von Tokens / Erstellen des ID-Tokens (Aktualisierung) "
 "fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:6095
+#: otpme/lib/protocols/server/sso1.py:6164
 #, python-brace-format
 msgid "OIDC userinfo from {ip}."
 msgstr "OIDC-Userinfo von {ip}."
 
-#: otpme/lib/protocols/server/sso1.py:6105
+#: otpme/lib/protocols/server/sso1.py:6174
 #, python-brace-format
 msgid "OIDC userinfo rejected ({reason})."
 msgstr "OIDC-Userinfo abgelehnt ({reason})."
 
-#: otpme/lib/protocols/server/sso1.py:6195
+#: otpme/lib/protocols/server/sso1.py:6264
 #, python-brace-format
 msgid "OIDC introspect from {ip} for client '{cid}'."
 msgstr "OIDC-Introspektion von {ip} für Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:6201
+#: otpme/lib/protocols/server/sso1.py:6270
 #, python-brace-format
 msgid "OIDC introspect rejected ({reason})."
 msgstr "OIDC-Introspektion abgelehnt ({reason})."
 
-#: otpme/lib/protocols/server/sso1.py:6345
+#: otpme/lib/protocols/server/sso1.py:6414
 #, python-brace-format
 msgid "OIDC revoke from {ip} for client '{cid}'."
 msgstr "OIDC-Widerruf von {ip} für Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:6351
+#: otpme/lib/protocols/server/sso1.py:6420
 #, python-brace-format
 msgid "OIDC revoke rejected ({reason})."
 msgstr "OIDC-Widerruf abgelehnt ({reason})."
 
-#: otpme/lib/protocols/server/sso1.py:6400
+#: otpme/lib/protocols/server/sso1.py:6469
 #, python-brace-format
 msgid "OIDC revoke ignored: token belongs to a different client (got '{cid}')."
 msgstr ""
 "OIDC-Widerruf ignoriert: Token gehört zu einem anderen Client (erhalten "
 "'{cid}')."
 
-#: otpme/lib/protocols/server/sso1.py:6416
+#: otpme/lib/protocols/server/sso1.py:6485
 #, python-brace-format
 msgid "OIDC revoke: delete failed for session '{sid}': {err}"
 msgstr "OIDC-Widerruf: Löschen für Sitzung '{sid}' fehlgeschlagen: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:6434
+#: otpme/lib/protocols/server/sso1.py:6503
 #, python-brace-format
 msgid "OIDC session '{sid}' revoked for client '{cid}'."
 msgstr "OIDC-Sitzung '{sid}' für Client '{cid}' widerrufen."
 
-#: otpme/lib/protocols/server/sso1.py:6484
+#: otpme/lib/protocols/server/sso1.py:6553
 #, python-brace-format
 msgid "OIDC end_session from {ip} for client '{cid}'."
 msgstr "OIDC-end_session von {ip} für Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:6515
+#: otpme/lib/protocols/server/sso1.py:6584
 #, python-brace-format
 msgid "OIDC end_session: id_token_hint invalid: {err}"
 msgstr "OIDC-end_session: id_token_hint ungültig: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:6530
+#: otpme/lib/protocols/server/sso1.py:6599
 #, python-brace-format
 msgid ""
 "OIDC end_session: client_id mismatch with id_token_hint aud (got '{cid}', "
@@ -39636,7 +39644,7 @@ msgstr ""
 "OIDC-end_session: client_id stimmt nicht mit id_token_hint aud überein "
 "(erhalten '{cid}', hint='{aud}')."
 
-#: otpme/lib/protocols/server/sso1.py:6584
+#: otpme/lib/protocols/server/sso1.py:6653
 #, python-brace-format
 msgid ""
 "OIDC end_session: post_logout_redirect_uri '{uri}' not in allowlist for "
@@ -39645,33 +39653,33 @@ msgstr ""
 "OIDC-end_session: post_logout_redirect_uri '{uri}' nicht in Allowlist für "
 "Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:6611
+#: otpme/lib/protocols/server/sso1.py:6680
 #, python-brace-format
 msgid "OIDC end_session: scope=sso, deferring to /logout (client='{cid}')."
 msgstr ""
 "OIDC-end_session: scope=sso, Weiterleitung an /logout (client='{cid}')."
 
-#: otpme/lib/protocols/server/sso1.py:6629
+#: otpme/lib/protocols/server/sso1.py:6698
 #, python-brace-format
 msgid "OIDC end_session: session '{sid}' already gone."
 msgstr "OIDC end_session: Sitzung '{sid}' bereits beendet."
 
-#: otpme/lib/protocols/server/sso1.py:6640
+#: otpme/lib/protocols/server/sso1.py:6709
 #, python-brace-format
 msgid "OIDC end_session: client/session mismatch (client='{cid}')."
 msgstr "OIDC end_session: Client/Sitzungs-Konflikt (client='{cid}')."
 
-#: otpme/lib/protocols/server/sso1.py:6664
+#: otpme/lib/protocols/server/sso1.py:6733
 #, python-brace-format
 msgid "OIDC end_session: delete failed for session '{sid}': {err}"
 msgstr "OIDC end_session: Löschen fehlgeschlagen für Sitzung '{sid}': {err}"
 
-#: otpme/lib/protocols/server/sso1.py:6676
+#: otpme/lib/protocols/server/sso1.py:6745
 #, python-brace-format
 msgid "OIDC session '{sid}' ended for client '{cid}' (rp scope)."
 msgstr "OIDC-Sitzung '{sid}' für Client '{cid}' beendet (rp-Scope)."
 
-#: otpme/lib/protocols/server/sso1.py:6789
+#: otpme/lib/protocols/server/sso1.py:6858
 #, python-brace-format
 msgid ""
 "max_age={ma}s exceeded for session '{sid}' (age={age}s); requesting reauth."
@@ -39679,25 +39687,25 @@ msgstr ""
 "max_age={ma}s überschritten für Sitzung '{sid}' (Alter={age}s); fordere "
 "erneute Authentifizierung an."
 
-#: otpme/lib/protocols/server/sso1.py:6809
+#: otpme/lib/protocols/server/sso1.py:6878
 #, python-brace-format
 msgid "OIDC authorize-validate from {ip} for user '{user}', client '{cid}'."
 msgstr ""
 "OIDC authorize-validate von {ip} für Benutzer '{user}', Client '{cid}'."
 
-#: otpme/lib/protocols/server/sso1.py:6816
+#: otpme/lib/protocols/server/sso1.py:6885
 #, python-brace-format
 msgid "OIDC authorize rejected ({reason})."
 msgstr "OIDC authorize abgelehnt ({reason})."
 
-#: otpme/lib/protocols/server/sso1.py:7012
+#: otpme/lib/protocols/server/sso1.py:7081
 #, python-brace-format
 msgid "Failed to compute claims preview for consent screen: {err}"
 msgstr ""
 "Berechnung der Claims-Vorschau für den Zustimmungsbildschirm fehlgeschlagen: "
 "{err}"
 
-#: otpme/lib/protocols/server/sso1.py:7048
+#: otpme/lib/protocols/server/sso1.py:7117
 #, python-brace-format
 msgid ""
 "Failed to persist OIDC consent on home site for user '{user}' / client "
@@ -39706,202 +39714,202 @@ msgstr ""
 "OIDC-Zustimmung auf Home-Site für Benutzer '{user}' / Client '{cid}' konnte "
 "nicht gespeichert werden: {err}"
 
-#: otpme/lib/protocols/server/sso1.py:7573
+#: otpme/lib/protocols/server/sso1.py:7642
 #, python-brace-format
 msgid "Processing tiqr device command {command}."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7582
+#: otpme/lib/protocols/server/sso1.py:7651
 #, python-brace-format
 msgid "Processing OIDC command {command}."
 msgstr "Verarbeite OIDC-Befehl {command}."
 
-#: otpme/lib/protocols/server/sso1.py:7626
+#: otpme/lib/protocols/server/sso1.py:7695
 #, python-brace-format
 msgid "Processing recovery command {command}."
 msgstr "Verarbeite Wiederherstellungsbefehl {command}."
 
-#: otpme/lib/protocols/server/sso1.py:7679
+#: otpme/lib/protocols/server/sso1.py:7748
 msgid "Processing command get_apps."
 msgstr "Verarbeite Befehl get_apps."
 
-#: otpme/lib/protocols/server/sso1.py:7684
+#: otpme/lib/protocols/server/sso1.py:7753
 msgid "Processing command get_sotp."
 msgstr "Verarbeite Befehl get_sotp."
 
-#: otpme/lib/protocols/server/sso1.py:7689
+#: otpme/lib/protocols/server/sso1.py:7758
 msgid "Processing command deploy_begin."
 msgstr "Verarbeite Befehl deploy_begin."
 
-#: otpme/lib/protocols/server/sso1.py:7694
+#: otpme/lib/protocols/server/sso1.py:7763
 msgid "Processing command get_allowed_deploy_token_types."
 msgstr "Verarbeite Befehl get_allowed_deploy_token_types."
 
-#: otpme/lib/protocols/server/sso1.py:7699
+#: otpme/lib/protocols/server/sso1.py:7768
 msgid "Processing command deploy_verify."
 msgstr "Verarbeite Befehl deploy_verify."
 
-#: otpme/lib/protocols/server/sso1.py:7704
+#: otpme/lib/protocols/server/sso1.py:7773
 msgid "Processing command fido2_register_begin."
 msgstr "Verarbeite Befehl fido2_register_begin."
 
-#: otpme/lib/protocols/server/sso1.py:7709
+#: otpme/lib/protocols/server/sso1.py:7778
 msgid "Processing command fido2_register_complete."
 msgstr "Verarbeite Befehl fido2_register_complete."
 
-#: otpme/lib/protocols/server/sso1.py:7714
+#: otpme/lib/protocols/server/sso1.py:7783
 msgid "Processing command change_password."
 msgstr "Verarbeite Befehl change_password."
 
-#: otpme/lib/protocols/server/sso1.py:7719
+#: otpme/lib/protocols/server/sso1.py:7788
 msgid "Processing command change_pin."
 msgstr "Verarbeite Befehl change_pin."
 
-#: otpme/lib/protocols/server/sso1.py:7724
+#: otpme/lib/protocols/server/sso1.py:7793
 msgid "Processing command change_language."
 msgstr "Verarbeite Befehl change_language."
 
-#: otpme/lib/protocols/server/sso1.py:7729
+#: otpme/lib/protocols/server/sso1.py:7798
 msgid "Processing command resolve_user_language."
 msgstr "Befehl resolve_user_language wird verarbeitet."
 
-#: otpme/lib/protocols/server/sso1.py:7734
+#: otpme/lib/protocols/server/sso1.py:7803
 msgid "Processing command list_device_tokens."
 msgstr "Verarbeite Befehl list_device_tokens."
 
-#: otpme/lib/protocols/server/sso1.py:7739
+#: otpme/lib/protocols/server/sso1.py:7808
 msgid "Processing command add_device_token."
 msgstr "Verarbeite Befehl add_device_token."
 
-#: otpme/lib/protocols/server/sso1.py:7744
+#: otpme/lib/protocols/server/sso1.py:7813
 msgid "Processing command del_device_token."
 msgstr "Verarbeite Befehl del_device_token."
 
-#: otpme/lib/protocols/server/sso1.py:7749
+#: otpme/lib/protocols/server/sso1.py:7818
 msgid "Processing command enable_device_token."
 msgstr "Verarbeite Befehl enable_device_token."
 
-#: otpme/lib/protocols/server/sso1.py:7754
+#: otpme/lib/protocols/server/sso1.py:7823
 msgid "Processing command disable_device_token."
 msgstr "Verarbeite Befehl disable_device_token."
 
-#: otpme/lib/protocols/server/sso1.py:7759
+#: otpme/lib/protocols/server/sso1.py:7828
 msgid "Processing command sso_create_device_token."
 msgstr "Verarbeite Befehl sso_create_device_token."
 
-#: otpme/lib/protocols/server/sso1.py:7764
+#: otpme/lib/protocols/server/sso1.py:7833
 msgid "Processing command sso_delete_device_token."
 msgstr "Verarbeite Befehl sso_delete_device_token."
 
-#: otpme/lib/protocols/server/sso1.py:7769
+#: otpme/lib/protocols/server/sso1.py:7838
 msgid "Processing command sso_get_device_token_role_uuids."
 msgstr "Verarbeite Befehl sso_get_device_token_role_uuids."
 
-#: otpme/lib/protocols/server/sso1.py:7774
+#: otpme/lib/protocols/server/sso1.py:7843
 msgid "Processing command get_admin_access_state."
 msgstr "Befehl get_admin_access_state wird verarbeitet."
 
-#: otpme/lib/protocols/server/sso1.py:7779
+#: otpme/lib/protocols/server/sso1.py:7848
 msgid "Processing command set_admin_access_state."
 msgstr "Befehl set_admin_access_state wird verarbeitet."
 
-#: otpme/lib/protocols/server/sso1.py:7784
+#: otpme/lib/protocols/server/sso1.py:7853
 msgid "Processing command get_recovery_mail."
 msgstr "Verarbeite Befehl get_recovery_mail."
 
-#: otpme/lib/protocols/server/sso1.py:7789
+#: otpme/lib/protocols/server/sso1.py:7858
 msgid "Processing command set_recovery_mail."
 msgstr "Verarbeite Befehl set_recovery_mail."
 
-#: otpme/lib/protocols/server/sso1.py:7794
+#: otpme/lib/protocols/server/sso1.py:7863
 msgid "Processing command list_passkeys."
 msgstr "Verarbeite Befehl list_passkeys."
 
-#: otpme/lib/protocols/server/sso1.py:7799
+#: otpme/lib/protocols/server/sso1.py:7868
 msgid "Processing command list_fido2_tokens."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7804
+#: otpme/lib/protocols/server/sso1.py:7873
 msgid "Processing command fido2_add_begin."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7809
+#: otpme/lib/protocols/server/sso1.py:7878
 msgid "Processing command fido2_add_complete."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7814
+#: otpme/lib/protocols/server/sso1.py:7883
 msgid "Processing command del_fido2_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7819
+#: otpme/lib/protocols/server/sso1.py:7888
 msgid "Processing command enable_fido2_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7824
+#: otpme/lib/protocols/server/sso1.py:7893
 msgid "Processing command disable_fido2_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7829
+#: otpme/lib/protocols/server/sso1.py:7898
 msgid "Processing command tiqr_enroll_begin."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7834
+#: otpme/lib/protocols/server/sso1.py:7903
 msgid "Processing command list_tiqr_tokens."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7839
+#: otpme/lib/protocols/server/sso1.py:7908
 msgid "Processing command del_tiqr_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7844
+#: otpme/lib/protocols/server/sso1.py:7913
 msgid "Processing command enable_tiqr_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7849
+#: otpme/lib/protocols/server/sso1.py:7918
 msgid "Processing command disable_tiqr_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7854
+#: otpme/lib/protocols/server/sso1.py:7923
 msgid "Processing command promote_token."
 msgstr ""
 
-#: otpme/lib/protocols/server/sso1.py:7859
+#: otpme/lib/protocols/server/sso1.py:7928
 msgid "Processing command passkey_register_begin."
 msgstr "Verarbeite Befehl passkey_register_begin."
 
-#: otpme/lib/protocols/server/sso1.py:7864
+#: otpme/lib/protocols/server/sso1.py:7933
 msgid "Processing command passkey_register_complete."
 msgstr "Verarbeite Befehl passkey_register_complete."
 
-#: otpme/lib/protocols/server/sso1.py:7869
+#: otpme/lib/protocols/server/sso1.py:7938
 msgid "Processing command del_passkey."
 msgstr "Verarbeite Befehl del_passkey."
 
-#: otpme/lib/protocols/server/sso1.py:7874
+#: otpme/lib/protocols/server/sso1.py:7943
 msgid "Processing command enable_passkey."
 msgstr "Verarbeite Befehl enable_passkey."
 
-#: otpme/lib/protocols/server/sso1.py:7879
+#: otpme/lib/protocols/server/sso1.py:7948
 msgid "Processing command disable_passkey."
 msgstr "Verarbeite Befehl disable_passkey."
 
-#: otpme/lib/protocols/server/sso1.py:7884
+#: otpme/lib/protocols/server/sso1.py:7953
 msgid "Processing command oidc_authorize_validate."
 msgstr "Verarbeite Befehl oidc_authorize_validate."
 
-#: otpme/lib/protocols/server/sso1.py:7889
+#: otpme/lib/protocols/server/sso1.py:7958
 msgid "Processing command list_oidc_consents."
 msgstr "Verarbeite Befehl list_oidc_consents."
 
-#: otpme/lib/protocols/server/sso1.py:7894
+#: otpme/lib/protocols/server/sso1.py:7963
 msgid "Processing command revoke_oidc_consent."
 msgstr "Verarbeite Befehl revoke_oidc_consent."
 
-#: otpme/lib/protocols/server/sso1.py:7899
+#: otpme/lib/protocols/server/sso1.py:7968
 msgid "Processing command oidc_get_consent_for_client."
 msgstr "Befehl oidc_get_consent_for_client wird verarbeitet."
 
-#: otpme/lib/protocols/server/sso1.py:7904
+#: otpme/lib/protocols/server/sso1.py:7973
 msgid "Processing command oidc_set_consent_for_client."
 msgstr "Befehl oidc_set_consent_for_client wird verarbeitet."
 
@@ -42944,22 +42952,22 @@ msgstr ""
 msgid "Site '{site}' has no tiqr secret. Run 'otpme-site tiqr_secret {site}'."
 msgstr ""
 
-#: otpme/lib/token/tiqr/tiqr.py:419
+#: otpme/lib/token/tiqr/tiqr.py:420
 #, python-brace-format
 msgid "Token not deployed: {token_path}"
 msgstr ""
 
-#: otpme/lib/token/tiqr/tiqr.py:430
+#: otpme/lib/token/tiqr/tiqr.py:431
 #, python-brace-format
 msgid "Token verification failed: {error}"
 msgstr ""
 
-#: otpme/lib/token/tiqr/tiqr.py:457
+#: otpme/lib/token/tiqr/tiqr.py:458
 #, python-brace-format
 msgid "Failed to remove expired tiqr result: {error}"
 msgstr ""
 
-#: otpme/lib/token/tiqr/tiqr.py:495
+#: otpme/lib/token/tiqr/tiqr.py:496
 msgid ""
 "NOTE: You have to enroll this tiqr token with your phone to make it usable."
 msgstr ""
@@ -43792,6 +43800,10 @@ msgstr "FIDO2-Authentifizierung konnte nicht abgeschlossen werden: {user_name}"
 #: otpme/web/app/views.py:2729
 msgid "Failed to complete fido2 authentication."
 msgstr "FIDO2-Authentifizierung konnte nicht abgeschlossen werden."
+
+#, python-brace-format
+#~ msgid "Verifying token from request: {token_path}"
+#~ msgstr "Verifiziere Token aus Anfrage: {token_path}"
 
 #~ msgid "Recover SSO token"
 #~ msgstr "SSO-Token wiederherstellen"

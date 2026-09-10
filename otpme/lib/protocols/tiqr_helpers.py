@@ -74,12 +74,6 @@ ENROLL_SCOPE_METADATA = "tiqr-enroll-metadata"
 ENROLL_SCOPE_SECRET = "tiqr-enroll-secret"
 ENROLL_ALGORITHM = "HS256"
 
-# Token names built from a device name. The prefix is not decoration: it
-# guarantees the name starts with a letter, and together with stripping
-# "-" off the end it makes every generated name match the token name
-# regex. Mirrors _sanitize_passkey_token_name() in sso1.py.
-TOKEN_NAME_PREFIX = "tiqr-"
-
 # Protocol version we speak in the URLs we hand out.
 DEFAULT_PROTOCOL_VERSION = 2
 
@@ -159,30 +153,22 @@ def derive_poll_id(site_secret, session_key):
     return mac.hexdigest()
 
 
-def sanitize_token_name(device_name, prefix=TOKEN_NAME_PREFIX):
-    """ Build a token name from what the user typed as a device name.
+def hash_poll_id(poll_id):
+    """ What an answered login is filed under, instead of the poll id.
 
-    Same rules as _sanitize_passkey_token_name() in sso1.py, kept
-    identical so both flows agree on what the user just typed.
-    Returns None when nothing usable is left.
+    The browser holds the poll id in its session and hands it back to
+    collect the result, so it is a bearer value. The key it is stored
+    under travels through the cluster journal and the logs, so the hash
+    goes there instead -- the same way OIDC stores authcode_hash rather
+    than the code.
 
-    The prefix is an argument because promote_token also has to
-    name the token it displaces, which may be of any type -- a security
-    key that ends up called 'tiqr-something' would be a lie. It passes
-    that token's own type. """
-    if not device_name:
-        return None
-    name = str(device_name).strip().lower()
-    out = []
-    for char in name:
-        if char.isalnum() and char.isascii():
-            out.append(char)
-        elif char in " _":
-            out.append("-")
-    sanitized = "".join(out).strip("-")
-    if not sanitized:
-        return None
-    return f"{prefix}{sanitized}"
+    Plain SHA-256 hex, identical to oidc_helpers.hash_token(). Written
+    out here rather than imported from there because this module pulls
+    in nothing but jwt and stuff, which is what keeps it testable on
+    its own. """
+    if isinstance(poll_id, str):
+        poll_id = poll_id.encode("utf-8")
+    return hashlib.sha256(poll_id).hexdigest()
 
 
 def build_enroll_key(site_secret, scope, expiry, user_uuid, token_name,
@@ -242,6 +228,63 @@ def parse_enroll_key(site_secret, enroll_key, scope):
     return claims
 
 
+# What may appear in a service display name. Not a style rule: the
+# identifier below is derived from it and ends up as the host of the
+# tiqrauth:// URL, so this is the reg-name character set of RFC 3986 --
+# unreserved plus sub-delims, without the percent that would start an
+# escape sequence. A space is the one people reach for first, and the
+# one that breaks it.
+#
+# Non-ASCII is out for a second reason: the app parses the URL by
+# swapping in "http://" and letting OkHttp canonicalise the authority,
+# which IDN-encodes it to punycode. The enrollment metadata is JSON and
+# keeps what it was given, so the two would no longer name the same
+# service, and every login would ask the user to enroll first.
+VALID_SERVICE_NAME_CHARS = frozenset(
+        "abcdefghijklmnopqrstuvwxyz"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "0123456789"
+        "-._~!$&'()*+,;=")
+
+
+def validate_service_display_name(display_name):
+    """ Can a display name survive being turned into an identifier?
+
+    Raises ValueError naming the offending characters if not. Called
+    when tiqr_service_display_name is set, because that is the only
+    moment where somebody is there to read the answer: a name that
+    fails here enrolls fine -- the metadata is JSON -- and then makes
+    every login QR code unparsable for the app. """
+    invalid = sorted(set(display_name) - VALID_SERVICE_NAME_CHARS)
+    if not invalid:
+        return
+    msg = _("Invalid characters in tiqr service display name: {chars}")
+    msg = msg.format(chars=" ".join(repr(x) for x in invalid))
+    raise ValueError(msg)
+
+
+def canonical_service_identifier(display_name, realm):
+    """ The identifier the app files an account under.
+
+    Lower case, and that is the whole point. The app parses the
+    authentication URL by replacing the scheme with "http://" and
+    handing the result to OkHttp, which canonicalises the authority --
+    so the identifier comes back lower case, whatever we sent. The
+    enrollment metadata is JSON and passes through no URL parser, so
+    what it declares is stored verbatim. Send "HBOSS" in both and the
+    app stores "HBOSS", looks up "hboss", finds nothing, and asks the
+    user to enroll -- while still displaying "HBOSS", because that is
+    the separate displayName field.
+
+    So: the identifier is folded here, once, for both the metadata and
+    the URL. The display name keeps whatever case it was given.
+
+    Computed in one place because it was duplicated in sso1 and auth1,
+    and a value these two disagree on is exactly the failure above. """
+    identifier = display_name or realm
+    return identifier.lower()
+
+
 def build_auth_url(auth_scheme, service_identifier, session_key, challenge,
     identity_id=None, sp_identifier=None,
     version=DEFAULT_PROTOCOL_VERSION, return_url=None):
@@ -269,6 +312,36 @@ def build_auth_url(auth_scheme, service_identifier, session_key, challenge,
         # (AuthenticationUrlParams.parseOldFormatUrl).
         url = f"{url}?{return_url}"
     return url
+
+
+def build_metadata_url_template(sso_fqdn):
+    """ The metadata URL with the enrollment key left open.
+
+    This is what travels to another site when the user enrolling a phone
+    is not one of ours: the QR code has to point at the portal the
+    browser is talking to, but the grant that goes into it is minted on
+    the user's home site. Handing over the finished URL shape instead of
+    the bare FQDN keeps the route, the scheme and the parameter name in
+    the one place that serves them -- the remote side only fills in the
+    key it just built.
+
+    Escaping happens in build_metadata_url(), so the template must not
+    be percent encoded by the caller. """
+    return f"https://{sso_fqdn}/tiqr/metadata?enrollment_key={{enroll_key}}"
+
+
+def build_metadata_url(url_template, enroll_key):
+    """ Put an enrollment key into such a template.
+
+    The key is a JWT and goes into a query parameter, so it is escaped
+    here. Raises ValueError if the template is not one of ours -- it may
+    have come in over the wire, and a URL we cannot recognise must not
+    end up in a QR code. """
+    if not str(url_template).startswith("https://"):
+        raise ValueError("metadata URL template is not https")
+    if "{enroll_key}" not in url_template:
+        raise ValueError("metadata URL template has no enrollment key")
+    return url_template.format(enroll_key=quote(enroll_key, safe=''))
 
 
 def build_enroll_url(enroll_scheme, metadata_url):

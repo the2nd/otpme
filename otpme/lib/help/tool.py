@@ -173,11 +173,12 @@ cmd_help = {
 
     'sync'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool sync --realm {realm} --site {site} [sites|objects|token_data|ssh_authorized_keys|nsscache]'),
-                    'cmd'   :   '--realm :realm: --site :site: [sync_type]',
+                    'cmd'   :   '--realm :realm: --site :site: --request-site-cert :request_site_cert=True: [sync_type]',
                     '_help' :   {
                                     'cmd'                   : _('tell OTPme daemon to start sync with master node.'),
                                     '--realm'               : _('Realm to start object sync with.'),
                                     '--site'                : _('Site to start object sync with.'),
+                                    '--request-site-cert'   : _('Request site cert from peer (e.g. after site cert renew).'),
                                 },
                 },
 

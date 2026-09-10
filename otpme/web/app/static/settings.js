@@ -21,6 +21,24 @@
                 (vars[k] !== undefined ? vars[k] : ''));
     }
 
+    // Tell the user the new token cannot sign in just yet, but only
+    // when that is true. A token exists the moment we say so; whether
+    // it may sign in is decided on the site the account belongs to,
+    // and for an account on another site the assignment has to travel
+    // there first. ssod sets sync_pending exactly on that path -- for
+    // a local account there is nothing to wait for and nothing to say.
+    //
+    // A dialog rather than a line in the status area: somebody who
+    // just registered a key goes off to try it, and a sentence next to
+    // the form is easy to walk past. Same native dialogs the rest of
+    // this page uses.
+    function notifySyncPending(result) {
+        if (!result || !result.sync_pending) return;
+        const hint = getPageI18n().labelTokenSyncHint;
+        if (!hint) return;
+        alert(hint);
+    }
+
     async function changePassword() {
         const urls = getUrls();
         const i18n = getPageI18n();
@@ -126,24 +144,18 @@
         return el ? el.dataset : {};
     }
 
-    // Restrict an <input> to ``[a-z0-9-]`` live: lowercase as the user
-    // types, drop everything else. Spaces/underscores become hyphens to
-    // preserve word boundaries (matches the server-side sanitiser).
-    // Used by both the device-token and the passkey add forms.
-    function attachNameSanitizer(input) {
-        if (!input || input._sanitizerAttached) return;
-        input._sanitizerAttached = true;
-        input.setAttribute('autocapitalize', 'off');
-        input.setAttribute('autocorrect', 'off');
-        input.setAttribute('spellcheck', 'false');
-        input.setAttribute('pattern', '[a-z0-9-]+');
-        input.addEventListener('input', () => {
-            const cleaned = input.value
-                .toLowerCase()
-                .replace(/[ _]+/g, '-')
-                .replace(/[^a-z0-9-]/g, '');
-            if (cleaned !== input.value) input.value = cleaned;
-        });
+    // What the user typed as the label of a thing they own -- "My
+    // Pixel", "work key". It is not the token name: the server derives
+    // that from this and keeps the spaces and the capitals in the
+    // label. So nothing is rewritten while they type (which is what
+    // used to leave "pixel-" and then "pixel " in the field); only the
+    // edges are tidied, where a separator is never what anybody meant.
+    function cleanNameValue(value) {
+        return String(value || '')
+            .trim()
+            .replace(/-{2,}/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .trim();
     }
 
     // One-shot reveal carried across the loadDeviceTokens() call that
@@ -205,7 +217,6 @@
         card.querySelector(`#${ids.result} span.hint`).textContent = i18n.labelShownOnce || '';
         card.querySelector('h4').textContent = i18n.labelExistingDeviceTokens || 'Existing Device Tokens';
 
-        attachNameSanitizer(card.querySelector(`#${ids.nameInput}`));
         card.querySelector(`#${ids.addBtn}`).addEventListener('click',
             () => addDeviceToken(role.role_uuid, ids));
         card.querySelector(`#${ids.copyBtn}`).addEventListener('click',
@@ -307,7 +318,7 @@
         errorEl.textContent = '';
         resultEl.classList.add('is-hidden');
 
-        const deviceName = document.getElementById(ids.nameInput).value.trim();
+        const deviceName = cleanNameValue(document.getElementById(ids.nameInput).value);
         if (!deviceName) {
             errorEl.textContent = i18n.labelDeviceNameRequired || 'Device name is required.';
             return;
@@ -525,7 +536,7 @@
             return;
         }
 
-        const deviceName = document.getElementById('passkeyName').value.trim();
+        const deviceName = cleanNameValue(document.getElementById('passkeyName').value);
         if (!deviceName) {
             errorEl.textContent = i18n.labelPasskeyNameRequired || 'Passkey name is required.';
             return;
@@ -536,7 +547,7 @@
         statusEl.textContent = i18n.labelPreparingPasskey || 'Preparing passkey registration...';
 
         try {
-            await registerWebAuthnCredential({
+            const result = await registerWebAuthnCredential({
                 beginUrl:        urls.urlPasskeyRegisterBegin,
                 completeUrl:     urls.urlPasskeyRegisterComplete,
                 deviceName:      deviceName,
@@ -551,6 +562,7 @@
             statusEl.textContent = i18n.labelPasskeyAdded || 'Passkey added.';
             document.getElementById('passkeyName').value = '';
             loadPasskeys();
+            notifySyncPending(result);
         } catch (e) {
             // NotAllowedError covers user cancel + timeout; surface the
             // raw message so users see "this passkey is already
@@ -578,7 +590,7 @@
             return;
         }
 
-        const deviceName = document.getElementById('fido2DeviceName').value.trim();
+        const deviceName = cleanNameValue(document.getElementById('fido2DeviceName').value);
         if (!deviceName) {
             errorEl.textContent = i18n.labelKeyNameRequired || 'Key name is required.';
             return;
@@ -589,7 +601,7 @@
         statusEl.textContent = i18n.labelAddingFido2 || 'Registering security key...';
 
         try {
-            await registerWebAuthnCredential({
+            const result = await registerWebAuthnCredential({
                 beginUrl:        urls.urlFido2AddBegin,
                 completeUrl:     urls.urlFido2AddComplete,
                 deviceName:      deviceName,
@@ -604,6 +616,7 @@
             statusEl.textContent = i18n.labelFido2Added || 'Security key registered.';
             document.getElementById('fido2DeviceName').value = '';
             loadFido2Tokens();
+            notifySyncPending(result);
         } catch (e) {
             errorEl.textContent = e.message || i18n.labelFailedAddFido2
                     || 'Failed to register security key.';
@@ -995,7 +1008,7 @@
         const statusEl = document.getElementById('tiqrStatus');
         const errorEl = document.getElementById('tiqrError');
         errorEl.textContent = '';
-        const deviceName = document.getElementById('tiqrDeviceName').value.trim();
+        const deviceName = cleanNameValue(document.getElementById('tiqrDeviceName').value);
         if (!deviceName) {
             errorEl.textContent = i18n.labelTiqrNameRequired || 'Device name is required.';
             return;
@@ -1055,6 +1068,7 @@
                     document.getElementById('tiqrDeviceName').value = '';
                     statusEl.textContent = i18n.labelTiqrAdded || 'Phone enrolled.';
                     preserveScrollAround(loadTiqrTokens);
+                    notifySyncPending(result);
                     return;
                 }
             } catch (e) {
@@ -1129,18 +1143,28 @@
         const statusEl = document.getElementById(statusId);
         const errorEl = document.getElementById(errorId);
         errorEl.textContent = '';
-        // Ask for the name the current SSO token continues under. Always,
-        // not only when the server could not work one out: it is the name
-        // the user will look for in their own list afterwards, so it is
-        // theirs to pick. The suggestion is the label it already carries.
+        // The name the current SSO token continues under. When it
+        // brought its own label there is nothing to ask -- it keeps
+        // being called what its owner calls it. We only ask when the
+        // server had to make one up, because then the user would
+        // otherwise go looking for a name they never saw.
         const body = {name: name};
-        if (ssoToken && ssoToken.name) {
+        if (ssoToken && ssoToken.name && ssoToken.ask_label === false
+        && ssoToken.suggested) {
+            body.old_name = ssoToken.suggested;
+        } else if (ssoToken && ssoToken.name) {
             const nameTpl = i18n.labelPromptOldTiqrName
                     || 'Name for your current default token ("{name}"), which keeps working:';
-            // The question names the token by its label; the input is
-            // prefilled with the server's suggestion, which is a free
-            // name of the right shape. Not the label -- that is often
-            // the SSO name itself, the one name the answer cannot be.
+            // What goes in here is a label, the same thing the add
+            // dialogs ask for -- the server puts the type prefix on it
+            // (fido2-, tiqr-) the way it does when a token is added.
+            // Showing the prefixed name instead would come back
+            // through the same sanitizer and end up as
+            // "fido2-fido2something" for anyone who just presses OK.
+            //
+            // The question names the token by its own label, which is
+            // often the SSO name it is losing -- so what is prefilled
+            // is the one the server made up, not that.
             const answer = prompt(
                     interpolate(nameTpl, {name: ssoToken.label || ssoToken.name}),
                     ssoToken.suggested || '');
@@ -1260,6 +1284,27 @@
     // again.
 
     let _recoveryMailCurrentValue = null;
+    // How long a step-up stays fresh, and when the last one happened.
+    // ssod hands the window down with the address (STEP_UP_MAX_AGE);
+    // the moment comes from landing back on this page after /reauth,
+    // which is the same moment ssod bumped session.reauth_time.
+    //
+    // Without these every Edit click walked through /reauth again,
+    // even one made a second after the last one -- ssod would have
+    // accepted the write, it was simply never asked.
+    let _stepUpMaxAge = 0;
+    let _stepUpAt = 0;
+    // Leave a little of the window unused rather than send a write
+    // that is about to go stale. Landing in the step_up_required
+    // fallback would work, but it costs the user a round trip and
+    // another scan.
+    const STEP_UP_MARGIN_MS = 5000;
+
+    function _stepUpStillFresh() {
+        if (!_stepUpMaxAge || !_stepUpAt) return false;
+        const age = Date.now() - _stepUpAt;
+        return age < (_stepUpMaxAge * 1000) - STEP_UP_MARGIN_MS;
+    }
 
     function _recoveryMailEls() {
         return {
@@ -1325,6 +1370,7 @@
                 i18n.labelRecoveryMailFailedLoad || 'Failed to load recovery mail.');
             if (error) throw new Error(error);
             _recoveryMailCurrentValue = body.recovery_mail || null;
+            _stepUpMaxAge = body.step_up_max_age || 0;
         } catch (e) {
             els.errorEl.textContent = e.message
                     || i18n.labelRecoveryMailFailedLoad
@@ -1334,11 +1380,25 @@
         _renderRecoveryMailDisplay(els);
         // Coming back from /reauth for this card -- flip to edit mode.
         if (window.location.hash === '#recoveryMailCard') {
+            _stepUpAt = Date.now();
+            // Drop the hash again. It has done its job, and leaving it
+            // would make a later reload look like another fresh
+            // step-up -- the write would then be refused instead.
+            history.replaceState(null, '', window.location.pathname
+                                            + window.location.search);
             _enterRecoveryMailEdit(els);
         }
     }
 
     function onEditRecoveryMail() {
+        // Still inside the window ssod will accept: no reason to send
+        // the user through /reauth a second time. If it runs out while
+        // they are typing, the save comes back with step_up_required
+        // and _submitRecoveryMail() drives the reauth then.
+        if (_stepUpStillFresh()) {
+            _enterRecoveryMailEdit(_recoveryMailEls());
+            return;
+        }
         _driveReauth();
     }
 
@@ -1587,10 +1647,29 @@
         } catch (e) { /* sessionStorage disabled — give up silently */ }
     });
 
+    // Take the loading overlay down and give scrolling back. Called
+    // once, after every loader has settled -- see the comment on the
+    // overlay in settings.html for why it is up in the first place.
+    function endPageLoading() {
+        document.body.classList.remove('is-loading');
+        const overlay = document.getElementById('settingsLoading');
+        if (overlay) overlay.classList.add('is-hidden');
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         if ('scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
         }
+        // The overlay is rendered by the template; this is what stops
+        // the page behind it from scrolling. Set here rather than in
+        // the template because it belongs on <body>, which base.html
+        // owns.
+        document.body.classList.add('is-loading');
+        // A fetch that never comes back would leave the page under the
+        // overlay for good. Give up waiting after a while and show
+        // what did arrive -- an incomplete page beats a locked one,
+        // and endPageLoading() runs fine twice.
+        setTimeout(endPageLoading, 15000);
 
         const pwBtn = document.getElementById('changePwBtn');
         if (pwBtn) pwBtn.addEventListener('click', changePassword);
@@ -1606,11 +1685,9 @@
         // and ids depend on the user's configured device_token_roles.
         const addPasskeyBtn = document.getElementById('addPasskeyBtn');
         if (addPasskeyBtn) addPasskeyBtn.addEventListener('click', addPasskey);
-        attachNameSanitizer(document.getElementById('passkeyName'));
 
         const addFido2Btn = document.getElementById('addFido2Btn');
         if (addFido2Btn) addFido2Btn.addEventListener('click', addFido2Token);
-        attachNameSanitizer(document.getElementById('fido2DeviceName'));
 
         const addTiqrBtn = document.getElementById('addTiqrBtn');
         if (addTiqrBtn) addTiqrBtn.addEventListener('click', addTiqrToken);
@@ -1645,14 +1722,22 @@
                 saved = sessionStorage.getItem(SCROLL_KEY);
                 sessionStorage.removeItem(SCROLL_KEY);
             } catch (e) { /* sessionStorage disabled */ }
-            if (saved === null) return;
-            const y = parseInt(saved, 10);
-            if (!Number.isFinite(y)) return;
+            const y = saved === null ? null : parseInt(saved, 10);
             // requestAnimationFrame to land after the post-load layout
-            // pass has happened.
+            // pass has happened. Uncovering and scrolling go in the
+            // same frame: uncovering first would show the page at the
+            // top for one frame before it jumps.
             requestAnimationFrame(function () {
-                window.scrollTo(0, y);
+                endPageLoading();
+                if (y !== null && Number.isFinite(y)) {
+                    window.scrollTo(0, y);
+                }
             });
+        }).catch(function () {
+            // Promise.all above catches each loader, so this only
+            // fires on something unforeseen. Whatever it was, leaving
+            // the page under a permanent overlay would be worse.
+            endPageLoading();
         });
     });
 })();

@@ -4381,7 +4381,9 @@ class OTPmeObject(OTPmeBaseObject):
             # FIXME: Maybe we should implement removal of signatues as a
             #        separate method later. Currently calling remove_token()
             #        works fine.
+            # We already asked the user above, so no need to ask again.
             self.remove_token(token_path,
+                            ask_confirmation=False,
                             callback=callback,
                             _caller=_caller,
                             force=force)
@@ -4555,12 +4557,19 @@ class OTPmeObject(OTPmeBaseObject):
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
+        ask_confirmation: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Removes a token from objects member tokens list. """
+        """ Removes a token from objects member tokens list.
+
+        With ask_confirmation=False the removal confirmation is skipped
+        (signature removal is still confirmed). It's for callers that
+        already asked the user, e.g. add_token() when modifying the
+        token options of an already assigned token.
+        """
         if self.tokens is None:
             msg = _("Object does not support tokens.")
             raise OTPmeException(msg)
@@ -4597,6 +4606,14 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Token is not assigned to {obj_type} '{obj_name}'.")
             msg = msg.format(obj_type=self.type, obj_name=self.name)
             return callback.error(msg)
+
+        if ask_confirmation:
+            msg = _("Remove token '{token_path}' from {object_type} '{object_name}'?: ")
+            msg = msg.format(token_path=token.rel_path,
+                            object_type=self.type,
+                            object_name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         if run_policies:
             try:
@@ -10514,9 +10531,40 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             para_data = config.get_config_parameter(parameter)
         except NotRegistered:
-            msg = _("Invalid parameter: {obj}: {param}")
-            msg = msg.format(obj=self, param=parameter)
-            return callback.error(msg)
+            # A parameter that was renamed or dropped since somebody set
+            # it is still sitting in the object config, and after the
+            # next daemon start nothing registered describes it any
+            # more. Removing it has to stay possible -- a rename would
+            # otherwise leave a value behind that nobody can get rid of.
+            #
+            # Only removing it, and only as a whole: without a
+            # registration there is no setter to resolve a single value
+            # with, no type to check it against, and no per-parameter
+            # ACL to ask. So this asks for an admin instead.
+            if not delete or value is not None:
+                msg = _("Invalid parameter: {obj}: {param}")
+                msg = msg.format(obj=self, param=parameter)
+                return callback.error(msg)
+            if verify_acls and config.auth_token:
+                if not config.auth_token.is_admin():
+                    msg = _("You need to be admin to remove an unknown config parameter.")
+                    return callback.error(msg, exception=PermissionDenied)
+            if run_policies:
+                try:
+                    self.run_policies("set_config_parameter",
+                                    callback=callback,
+                                    _caller=_caller)
+                except Exception as e:
+                    msg = str(e)
+                    return callback.error(msg)
+            try:
+                self.config_params.pop(parameter)
+            except KeyError:
+                msg = _("Config parameter not set.")
+                return callback.error(msg)
+            config_cache.invalidate()
+            self.set_changelog(f"removed unknown config parameter '{parameter}'")
+            return self._cache(callback=callback)
         if verify_acls and not self.verify_acl(f'set:config:{parameter}'):
             msg = _("Permission denied.")
             return callback.error(msg)
@@ -10764,6 +10812,16 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 para_data = config.get_config_parameter(para)
             except NotRegistered:
+                # Left over from a rename or a dropped feature. Listed
+                # so somebody can see there is something to clean up --
+                # set_config_param() takes the name for deletion -- and
+                # marked as unknown, because the value is whatever the
+                # old setter stored (UUIDs, mostly) and there is nothing
+                # registered left to make it readable. Only for admins,
+                # who are the only ones who may remove it.
+                if config.auth_token and not config.auth_token.is_admin():
+                    continue
+                config_params[f"{para} (unknown)"] = self.config_params[para]
                 continue
             try:
                 para_getter = para_data['getter']

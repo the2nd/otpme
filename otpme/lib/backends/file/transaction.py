@@ -31,7 +31,12 @@ from otpme.lib import nsscache
 from otpme.lib import filetools
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
-from otpme.lib.daemon.clusterd import cluster_sync_object
+# No clusterd import here: clusterd imports the backend, which imports
+# this module, so whichever of the two is loaded first would find the
+# other one half built. Importing clusterd first raised ImportError on
+# exactly this line. The three handle_cluster_* methods below import
+# cluster_sync_object at call time instead, when both sides are up --
+# the same way backends/file/file.py does it for last_used_write.
 
 from otpme.lib.exceptions import *
 
@@ -597,6 +602,7 @@ class BaseTransaction(object):
         self.cluster_journal_counter += 1
 
     def handle_cluster_write(self, journal_entry):
+        from otpme.lib.daemon.clusterd import cluster_sync_object
         object_id = journal_entry['object_id']
         object_uuid = journal_entry['object_uuid']
         object_type = journal_entry['object_type']
@@ -622,6 +628,7 @@ class BaseTransaction(object):
         return event_data
 
     def handle_cluster_delete(self, journal_entry):
+        from otpme.lib.daemon.clusterd import cluster_sync_object
         object_uuid = journal_entry['object_uuid']
         object_id = journal_entry['object_id']
         object_id = oid.get(object_id)
@@ -639,6 +646,7 @@ class BaseTransaction(object):
         return event_data
 
     def handle_cluster_rename(self, journal_entry):
+        from otpme.lib.daemon.clusterd import cluster_sync_object
         old_object_id = journal_entry['old_object_id']
         old_object_id = oid.get(old_object_id)
         object_uuid = journal_entry['object_uuid']

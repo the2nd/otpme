@@ -37,8 +37,9 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
 from otpme.lib.protocols import tiqr_helpers
 from otpme.lib.protocols.otpme_server import OTPmeServer1
-from otpme.lib.classes.data_objects import tiqr_auth_result
 from otpme.lib.token.tiqr import tiqr as tiqr_token
+from otpme.lib.daemon.clusterd import cluster_sync_state
+from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 
 from otpme.lib.exceptions import *
 
@@ -61,12 +62,52 @@ TIQR_AUTH_INVALID_CHALLENGE = "INVALID_CHALLENGE"
 TIQR_AUTH_INVALID_USERID = "INVALID_USERID"
 TIQR_AUTH_ACCOUNT_BLOCKED = "ACCOUNT_BLOCKED"
 
+# How much longer than the challenge an answered login is kept. Nothing
+# can be collected with it any more once the challenge has expired --
+# tiqr_auth_status() checks the expiry it carries -- but a browser that
+# polls a moment too late gets told the challenge expired instead of
+# being left waiting for something that is gone.
+TIQR_RESULT_TTL_GRACE = 60
+
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-auth-1.0"
 
 def register():
     config.register_otpme_protocol("authd", PROTOCOL_VERSION, server=True)
+
+def _sso_allowed_here(parameter):
+    """ Does the site running this portal allow <parameter> at all?
+
+    The three ``_sso_allow_*_for_user`` resolvers below walk the user's
+    parents, and those end at the user's *home* site -- so setting
+    sso_allow_fido2 to False on the site the portal runs on has no
+    effect on a user from somewhere else. It reads as "not for our
+    users", never as "not here", and an administrator who turns it off
+    on their portal's site means the second one.
+
+    So both have to agree: this answers for the portal, the per-user
+    resolver answers for the account, and a login needs neither to
+    object. The combination can only ever forbid more, never allow
+    more.
+
+    Site scope only, no user or unit walk -- those hang below one site
+    and would be the account's answer again, which is the other
+    resolver's job. Fail-open like the FIDO2 and tiqr resolvers: only
+    an explicit False blocks, so a parameter added underneath a running
+    installation does not switch anything off.
+    """
+    my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    if my_site is None:
+        return True
+    try:
+        value = my_site.get_config_parameter(parameter)
+    except Exception:
+        return True
+    if value is None:
+        return True
+    return bool(value)
+
 
 def _sso_allow_passkeys_for_user(user):
     """ Home-side resolution of the ``sso_allow_passkeys`` cascade
@@ -127,8 +168,14 @@ def _sso_allow_fido2_for_user(user):
 _DECOY_SEED_CACHE = None
 # P-256 (secp256r1) curve order. Standard NIST constant, immutable.
 _P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+# Fallbacks for the two decoy shape parameters, used when the site
+# object cannot be read. 64 bytes is what a YubiKey hands out, and two
+# is a plausible number of keys for somebody who has more than one.
+DEFAULT_DECOY_CRED_ID_LEN = 64
+DEFAULT_DECOY_MAX_CREDS = 2
 
 
+# This method was written by claude code.
 def _decoy_seed():
     """ Return per-site HMAC seed for /fido2/auth/begin decoy
     credentials. Derived from the site's private RSA key
@@ -159,6 +206,7 @@ def _decoy_seed():
     return _DECOY_SEED_CACHE
 
 
+# This method was written by claude code.
 def _derive_decoy_pubkey(seed, username, idx):
     """ Deterministic throwaway P-256 public key derived from
     ``(seed, username, idx)``. Same input → same key, so an attacker
@@ -180,7 +228,79 @@ def _derive_decoy_pubkey(seed, username, idx):
     return priv.public_key()
 
 
-def _decoy_fido2_credentials(username, count=1):
+# This method was written by claude code.
+def _decoy_bytes(seed, label, length):
+    """ ``length`` bytes derived from ``(seed, label)``.
+
+    HMAC-SHA256 in counter mode, because one digest is 32 bytes and a
+    credential id is usually longer than that -- a YubiKey hands out
+    64. The same construction HKDF-Expand uses, minus the parts that
+    only matter for key material; this output is a public identifier.
+
+    The length goes into the HMAC input, not just into the truncation.
+    Otherwise a shorter output would be a prefix of a longer one, and
+    somebody who probed the same name before and after the site
+    parameter changed could tell a decoy by that relationship alone.
+    """
+    out = b""
+    counter = 0
+    while len(out) < length:
+        out += hmac.new(seed,
+                        f"{label}:{length}:{counter}".encode('utf-8'),
+                        hashlib.sha256).digest()
+        counter += 1
+    return out[:length]
+
+
+# This method was written by claude code.
+def _decoy_cred_id_len():
+    """ How long a decoy credential id has to be.
+
+    Not a detail: the id and the number of ids are the only things a
+    credential descriptor puts on the wire (fido2.server.to_descriptor
+    builds it from the credential id alone -- no AAGUID, no public key,
+    no transports). A decoy of a length no authenticator in this realm
+    produces is recognisable from a single request, whatever else it
+    gets right. Which length that is only the operator knows, hence the
+    site parameter rather than whatever SHA-256 happens to produce. """
+    my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    if my_site is None:
+        return DEFAULT_DECOY_CRED_ID_LEN
+    cred_id_len = my_site.get_config_parameter("fido2_decoy_cred_id_len")
+    return cred_id_len or DEFAULT_DECOY_CRED_ID_LEN
+
+
+# This method was written by claude code.
+def _decoy_count(seed, username):
+    """ How many decoys this username gets.
+
+    Always one would say "this account has exactly one key, or does not
+    exist" -- and every user with a second key would stand out by list
+    length alone, which is the enumeration this whole mechanism is
+    against.
+
+    Derived from the seed, so asking twice gives the same answer: a
+    count that changed between two requests would be the giveaway by
+    itself. Bounded by a site parameter, because how many keys people
+    here actually carry is the operator's knowledge and not ours. """
+    max_creds = DEFAULT_DECOY_MAX_CREDS
+    my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+    if my_site is not None:
+        max_creds = (my_site.get_config_parameter("fido2_decoy_max_creds")
+                    or DEFAULT_DECOY_MAX_CREDS)
+    if max_creds <= 1:
+        return 1
+    digest = hmac.new(seed,
+                    f"fido2-decoy-count:{username}".encode('utf-8'),
+                    hashlib.sha256).digest()
+    # Modulo maps the digest into 1..max_creds. The bias that comes
+    # with it is 2^-256 against a single digit divisor, and the value
+    # is a count rather than key material.
+    return 1 + (int.from_bytes(digest, 'big') % max_creds)
+
+
+# This method was written by claude code.
+def _decoy_fido2_credentials(username, count=None):
     """ Build deterministic decoy FIDO2 credentials for /fido2/auth/begin
     so the response shape doesn't leak whether the user exists or has
     a FIDO2 token. credential_ids and the underlying public key are
@@ -190,15 +310,22 @@ def _decoy_fido2_credentials(username, count=1):
         variation would itself signal "user unknown"),
       * an attacker can't generate matching decoys without the secret.
 
+    Length and number come from the site config rather than from what
+    SHA-256 happens to produce -- see _decoy_cred_id_len() and
+    _decoy_count() for why exactly those two are what matters.
+
     The pubkey is a valid on-curve P-256 point but with the private
     half discarded; verify naturally fails at complete-time. """
     seed = _decoy_seed()
+    cred_id_len = _decoy_cred_id_len()
+    if count is None:
+        count = _decoy_count(seed, username)
     credentials = []
     credential_token_map = {}
     for idx in range(count):
-        cred_id = hmac.new(seed,
-                           f"fido2-decoy:{username}:{idx}:id".encode('utf-8'),
-                           hashlib.sha256).digest()
+        cred_id = _decoy_bytes(seed,
+                            f"fido2-decoy:{username}:{idx}:id",
+                            cred_id_len)
         pub_ec = _derive_decoy_pubkey(seed, username, idx)
         pub_key = ES256.from_cryptography_key(pub_ec)
         acd = AttestedCredentialData.create(b"\0" * 16, cred_id, pub_key)
@@ -220,6 +347,17 @@ def _pad_min_duration(start, target=0.15):
     elapsed = time.monotonic() - start
     if elapsed < target:
         time.sleep(target - elapsed)
+
+def _tiqr_result_state_id(poll_id):
+    """ The key an answered tiqr login is filed under.
+
+    Prefixed with the shared dict's name because that is how the state
+    sync finds the dict again on the other nodes, and the poll id goes
+    in hashed: the id itself is what the browser presents to collect
+    the result, while the key travels through the cluster journal and
+    the logs. """
+    return f"tiqr_auth_results:{tiqr_helpers.hash_poll_id(poll_id)}"
+
 
 class OTPmeAuthP1(OTPmeServer1):
     """ Class that implements OTPme-auth-1.0. """
@@ -466,7 +604,7 @@ class OTPmeAuthP1(OTPmeServer1):
         return status, response
 
     def redirect_fido2_complete(self, user, smartcard_data, sso_challenge,
-        client, client_ip, fido2_state_id, node):
+        client, client_ip, fido2_state_id):
         # Gen JWT to be signed by other site.
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
@@ -498,12 +636,17 @@ class OTPmeAuthP1(OTPmeServer1):
                         'jwt_access_group'  : sso_jwt_ag,
                         'jwt_challenge'     : redirect_challenge,
                         'fido2_state_id'    : fido2_state_id,
+                        # What this portal allows. token_verify runs on
+                        # the user's home site and would otherwise only
+                        # see the account's own cascade -- the same gap
+                        # fido2_auth_begin forwards these for.
+                        '_fido2_allowed_here'    : _sso_allowed_here("sso_allow_fido2"),
+                        '_passkeys_allowed_here' : _sso_allowed_here("sso_allow_passkeys"),
                     }
         status, \
         response = self.authd_redirect_command(command="token_verify_fido2",
                                         user=user,
-                                        command_args=verify_args,
-                                        node=node)
+                                        command_args=verify_args)
         try:
             redirect_response = response['jwt']
         except KeyError:
@@ -547,16 +690,21 @@ class OTPmeAuthP1(OTPmeServer1):
         (cookie, assertion) pair within the TTL window can't find a
         state to verify against.
 
+        Single-use across the cluster, not just here: the state was
+        synced to every node at begin time, and without telling them it
+        is spent, the same assertion sent to another node would find a
+        copy still sitting there and be accepted a second time.
+
         On miss, callers can simply ``return error_response``.
         """
         try:
-            state_data = multiprocessing.fido2_auth_states.delete(
-                                                    fido2_state_id)
+            state_data = multiprocessing.fido2_auth_states.delete(fido2_state_id)
         except KeyError:
             log_msg = _("Fido2 auth state missing.", log=True)[1]
             self.logger.warning(log_msg)
             auth_response = {'message': 'Login failed.', 'status': False}
             return None, self.build_response(False, auth_response)
+        cluster_sync_state_delete(fido2_state_id)
         return state_data, None
 
     def fido2_auth_begin(self, username, command_args):
@@ -584,33 +732,53 @@ class OTPmeAuthP1(OTPmeServer1):
                                 realm=config.realm,
                                 run_policies=True,
                                 _no_func_cache=True)
+        # What the portal's own site allows. The per-user resolvers
+        # further down answer for the account and their cascade ends at
+        # the account's home site -- so without this, a site that
+        # switched FIDO2 off could still be signed in to by anybody
+        # from elsewhere.
+        #
+        # Forwarded across the redirect the same way sso_ag_uuid is:
+        # the home site runs this function too, and asking its own
+        # config there would give the home site's answer a second time
+        # instead of the portal's. Absent means nobody forwarded one,
+        # so we are the portal.
+        # Only for an account of another site. For one of our own the
+        # cascade already ends at this very site, and asking it again
+        # on top would let the site value win over a user or unit
+        # override -- which is what those levels are registered for.
+        foreign_user = user is not None and user.site != config.site
+        peer_fido2_allowed = command_args.get('_fido2_allowed_here')
+        if peer_fido2_allowed is not None:
+            fido2_allowed_here = bool(peer_fido2_allowed)
+        elif foreign_user:
+            fido2_allowed_here = _sso_allowed_here("sso_allow_fido2")
+        else:
+            fido2_allowed_here = True
+        peer_passkeys_allowed = command_args.get('_passkeys_allowed_here')
+        if peer_passkeys_allowed is not None:
+            passkeys_allowed_here = bool(peer_passkeys_allowed)
+        elif foreign_user:
+            passkeys_allowed_here = _sso_allowed_here("sso_allow_passkeys")
+        else:
+            passkeys_allowed_here = True
         # Cross-site redirect: only possible when the user is known
         # locally. Pad on this path too so the cross-site latency
         # doesn't itself become a "user exists remotely" oracle (we
         # can't shorten the network roundtrip but we can guarantee a
         # floor that masks fast-path local responses).
         if user is not None and user.site != config.site:
+            command_args['_fido2_allowed_here'] = fido2_allowed_here
+            command_args['_passkeys_allowed_here'] = passkeys_allowed_here
             command_args['sso_ag_uuid'] = sso_ag_uuid
             try:
                 status, \
                 message = self.authd_redirect_command(command="fido2_auth_begin",
                                                 user=user,
                                                 command_args=command_args)
-                try:
-                    fido2_state_id = message['fido2_state_id']
-                except (TypeError, KeyError):
-                    pass
-                else:
-                    try:
-                        fido2_auth_node = message.pop('fido2_auth_node')
-                    except KeyError:
-                        pass
-                    else:
-                        multiprocessing.fido2_auth_states.add(key=fido2_state_id,
-                                                            value={'node':fido2_auth_node},
-                                                            expire=60)
-                        my_host = self._get_host()
-                        message['fido2_auth_node'] = my_host.fqdn
+                # Nothing kept here: the state belongs to the site
+                # that made it, and that is where the assertion is
+                # verified. We only pass the id along.
                 return self.build_response(status, message)
             finally:
                 _pad_min_duration(begin_start)
@@ -634,8 +802,12 @@ class OTPmeAuthP1(OTPmeServer1):
             # True. Browser then has nothing to sign with (for
             # passkey), so the whole login attempt fails at the
             # signature stage indistinguishable from an unknown user.
-            passkeys_allowed = _sso_allow_passkeys_for_user(user)
-            fido2_allowed = _sso_allow_fido2_for_user(user)
+            # Both sides have to agree: the account's own cascade, and
+            # the portal the user is standing in front of.
+            passkeys_allowed = (passkeys_allowed_here
+                                and _sso_allow_passkeys_for_user(user))
+            fido2_allowed = (fido2_allowed_here
+                            and _sso_allow_fido2_for_user(user))
             for token in user_tokens:
                 # The credential belongs to the destination of a link,
                 # the assignment to the link -- so everything the
@@ -703,24 +875,24 @@ class OTPmeAuthP1(OTPmeServer1):
             credentials,
             user_verification="preferred",
         )
-        my_host = self._get_host()
-        fido2_auth_node = my_host.fqdn
-        fido2_state_id = stuff.gen_secret(len=32)
+        fido2_state_id = f"fido2_auth_states:{stuff.gen_secret(len=32)}"
         # Keep the credential->token_name map server-side: the web
         # layer's flask_session is a signed-but-unencrypted cookie, so
         # putting the map there would leak the synthetic "decoy-N"
         # token names back to the client and undo the enumeration
         # resistance. The map is popped at fido2_auth_complete to
         # resolve matched_token_name.
+        expiry = 60
         multiprocessing.fido2_auth_states.add(key=fido2_state_id,
                                             value={'state':auth_state,
-                                                    'node':fido2_auth_node,
                                                     'credential_token_map':credential_token_map},
-                                            expire=60)
+                                            expire=expiry)
+        # Sync fido state.
+        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
+        # Build reply.
         fido2_auth_data = {
                     'request_options'           : dict(request_options),
                     'fido2_state_id'            : fido2_state_id,
-                    'fido2_auth_node'           : fido2_auth_node,
                 }
         _pad_min_duration(begin_start)
         return self.build_response(True, fido2_auth_data)
@@ -775,19 +947,18 @@ class OTPmeAuthP1(OTPmeServer1):
         # Whether the caller (another authd) is asking us to verify only
         # and hand back a proof-of-verify JWT, leaving session state on
         # them. Set by portal's cross-site reauth path (see below); we
-        # do NOT create a session or bump reauth_time here. Captured
-        # before the state pop so both branches (portal-side forward,
-        # home-side handler) see the same value.
+        # do NOT create a session or bump reauth_time here.
         reauth_forward = bool(command_args.get('reauth_forward'))
-        state_data, err = self._pop_fido2_state_or_error(fido2_state_id)
-        if err is not None:
-            return err
         # Cross-site reauth: portal forwards a lightweight "verify only,
         # return a signed JWT" request to home so home never sees the
         # SSO session (it lives on portal). Full-auth redirect stays as
         # the default for a plain login.
+        #
+        # No state is read here: for a user of another site there is
+        # none. fido2_auth_begin was answered by their home site and
+        # kept the state there, which is also where the assertion gets
+        # verified. We only carry the id across.
         if user.site != config.site:
-            fido2_auth_node = state_data['node']
             if reauth:
                 # Ask home to verify and JWT-sign the result -- portal
                 # validates the JWT below and bumps reauth_time on the
@@ -808,8 +979,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 status, response = self.authd_redirect_command(
                                                 command="fido2_auth_complete",
                                                 user=user,
-                                                command_args=forward_args,
-                                                node=fido2_auth_node)
+                                                command_args=forward_args)
                 if not status or not isinstance(response, dict):
                     log_msg = _("Cross-site fido2 reauth: redirected verify failed for user '{u}'.", log=True)[1]
                     log_msg = log_msg.format(u=user.name)
@@ -875,8 +1045,13 @@ class OTPmeAuthP1(OTPmeServer1):
                                         sso_challenge=sso_challenge,
                                         client=client,
                                         client_ip=client_ip,
-                                        fido2_state_id=fido2_state_id,
-                                        node=fido2_auth_node)
+                                        fido2_state_id=fido2_state_id)
+        # Our own user, so the state is ours: made by fido2_auth_begin
+        # on some node of this site and synced to the rest, which is
+        # why it can be read here and not only where it was made.
+        state_data, err = self._pop_fido2_state_or_error(fido2_state_id)
+        if err is not None:
+            return err
         # Load fido2 auth state and build the smartcard_data envelope
         # consumed by both the step-up reauth path (``token.verify()``)
         # and the regular login path (``user.authenticate()``).
@@ -922,11 +1097,21 @@ class OTPmeAuthP1(OTPmeServer1):
             # Asked again here, not only at begin: the allow-list has
             # already left the browser by then, and a cascade can be
             # turned off between the two requests.
+            # Both sides, as at begin. On a reauth forward we are the
+            # account's home site and the portal's verdict travels in
+            # the command. Nothing forwarded means we are the portal
+            # ourselves, and then the account's cascade already ends
+            # here -- asking our site again on top would let it win
+            # over a user or unit override that is meant to win.
+            peer_passkeys = command_args.get('_passkeys_allowed_here')
+            peer_fido2 = command_args.get('_fido2_allowed_here')
             if x_verify_token.token_type == "passkey" \
-            and not _sso_allow_passkeys_for_user(user):
+            and (peer_passkeys is False
+                or not _sso_allow_passkeys_for_user(user)):
                 continue
             if x_verify_token.token_type == "fido2" \
-            and not _sso_allow_fido2_for_user(user):
+            and (peer_fido2 is False
+                or not _sso_allow_fido2_for_user(user)):
                 continue
             token = t
             verify_token = x_verify_token
@@ -1137,7 +1322,21 @@ class OTPmeAuthP1(OTPmeServer1):
 
         The single choke point of the tiqr login: begin, response and
         the typed-OTP fallback all come through here, so the cascade is
-        asked once, here. """
+        asked once, here.
+
+        For an account of another site, two answers are needed. The
+        cascade belongs to the account and ends at its home site;
+        whether tiqr may be used at all is the portal's own to say, and
+        this runs on the portal -- unlike the FIDO2 begin, which
+        redirects and has to forward its verdict. Either one refusing
+        is enough.
+
+        For an account of our own site the cascade already ends here,
+        user and unit overrides included, so the site value is not
+        asked a second time. """
+        if user.site != config.site \
+        and not _sso_allowed_here("sso_allow_tiqr"):
+            return []
         if not _sso_allow_tiqr_for_user(user):
             return []
         tiqr_tokens = []
@@ -1154,7 +1353,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 continue
             if not verify_token.enabled:
                 continue
-            if not verify_token.is_deployed():
+            if not verify_token.deployed:
                 continue
             tiqr_tokens.append((token, verify_token))
         return tiqr_tokens
@@ -1183,22 +1382,18 @@ class OTPmeAuthP1(OTPmeServer1):
         says which accounts have tiqr. """
         begin_start = time.monotonic()
         try:
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
             user = backend.get_object(object_type="user",
                                     name=username,
                                     realm=config.realm,
                                     run_policies=True,
                                     _no_func_cache=True)
-            # Users of another site are answered by their own site, the
-            # way fido2_auth_begin redirects.
-            if user is not None and user.site != config.site:
-                status, \
-                message = self.authd_redirect_command(command="tiqr_auth_begin",
-                                                user=user,
-                                                command_args=command_args)
-                return self.build_response(status, message)
-
-            my_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
+            # The identifier, not the display name: it goes into the
+            # URL where the app reads it as a host and canonicalises it.
+            # Has to match what the enrollment metadata declared, which
+            # is why both come from the same helper.
+            display_name = my_site.get_config_parameter("tiqr_service_display_name")
             # Everything below has to come out the same shape whether
             # the user is unknown, known without tiqr, or known with
             # tiqr. The URL naming an identity only in the last case
@@ -1225,11 +1420,10 @@ class OTPmeAuthP1(OTPmeServer1):
                                                     challenge_len)
             poll_id = tiqr_helpers.derive_poll_id(tiqr_secret, session_key)
 
-            auth_scheme = my_site.get_config_parameter("tiqr_auth_scheme")
-            service_identifier = my_site.get_config_parameter("tiqr_service_display_name")
-            if not service_identifier:
-                service_identifier = config.realm
+            service_identifier = tiqr_helpers.canonical_service_identifier(
+                                                    display_name, config.realm)
             return_url = command_args.get('return_url')
+            auth_scheme = my_site.get_config_parameter("tiqr_auth_scheme")
             auth_url = tiqr_helpers.build_auth_url(auth_scheme,
                                                 service_identifier,
                                                 session_key,
@@ -1260,7 +1454,7 @@ class OTPmeAuthP1(OTPmeServer1):
         finally:
             _pad_min_duration(begin_start)
 
-    def tiqr_auth_response(self, command_args):
+    def tiqr_auth_response(self, command_args, client, client_ip):
         """ Take the phone's answer.
 
         Unauthenticated by nature -- what authenticates it is the OCRA
@@ -1290,28 +1484,31 @@ class OTPmeAuthP1(OTPmeServer1):
                                 _no_func_cache=True)
         if user is None:
             return self.build_response(False, TIQR_AUTH_INVALID_USERID)
-        if user.site != config.site:
-            status, \
-            message = self.authd_redirect_command(command="tiqr_auth_response",
-                                            user=user,
-                                            command_args=command_args)
-            return self.build_response(status, message)
-
         tiqr_secret = tiqr_token.get_site_secret()
         # Whichever of the user's phones answered. Trying them all is
         # what makes several enrolled devices work.
         matched_token = None
         matched_verify_token = None
-        for token, verify_token in self._get_tiqr_tokens(user):
+        tiqr_tokens = self._get_tiqr_tokens(user)
+        for token, verify_token in tiqr_tokens:
             challenge_len = self._tiqr_challenge_len(verify_token)
             challenge = tiqr_helpers.derive_challenge(tiqr_secret,
                                                     session_key,
                                                     user.uuid,
                                                     challenge_len)
-            if verify_token.verify_ocra(challenge, session_key, response):
-                matched_token = token
-                matched_verify_token = verify_token
-                break
+            token_auth_data = {
+                                'challenge'     : challenge,
+                                'response'      : response,
+                                'session_key'   : session_key,
+                            }
+            if not self._tiqr_verify_response(user, token, verify_token,
+                                            token_auth_data,
+                                            client, client_ip):
+                continue
+            matched_token = token
+            matched_verify_token = verify_token
+            break
+
         if matched_verify_token is None:
             log_msg = _("tiqr: no token matched the response: {user}", log=True)[1]
             log_msg = log_msg.format(user=user.name)
@@ -1340,33 +1537,33 @@ class OTPmeAuthP1(OTPmeServer1):
             return self.build_response(False, blocked)
 
         # Somebody holds a token secret, so writing is safe from here.
-        # Sweeping first keeps results whose browser never came back
-        # from piling up; OTPme has no reaper.
-        matched_verify_token.cleanup_auth_results(now)
-
         poll_id = tiqr_helpers.derive_poll_id(tiqr_secret, session_key)
         expiry = tiqr_helpers.get_session_key_time(session_key) + max_age
-        poll_hash = tiqr_auth_result.hash_poll_id(poll_id)
-        auth_result = tiqr_auth_result.TiqrAuthResult(
-                            realm=config.realm,
-                            site=config.site,
-                            user_uuid=user.uuid,
-                            token_uuid=matched_token.uuid,
-                            object_hash=poll_hash,
-                            session_key=session_key,
-                            response=response,
-                            expiry=expiry,
-                            no_transaction=True)
-        try:
-            # add() writes and waits for the cluster writes by default,
-            # which the browser polling another node depends on.
-            auth_result.add()
-        except AlreadyExists:
+        state_id = _tiqr_result_state_id(poll_id)
+        if state_id in multiprocessing.tiqr_auth_results:
             # Same challenge answered twice inside its window. The first
             # answer stands.
             log_msg = _("tiqr: duplicate response for one challenge.", log=True)[1]
             self.logger.warning(log_msg)
             return self.build_response(True, TIQR_AUTH_OK)
+        # The entry outlives the challenge by a minute so that a poll
+        # arriving just after the window still gets "expired" rather
+        # than "keep waiting" -- collecting it is refused on the stored
+        # expiry below, not on the entry still being there.
+        ttl = int(expiry - now) + TIQR_RESULT_TTL_GRACE
+        multiprocessing.tiqr_auth_results.add(key=state_id,
+                            value={
+                                'user_uuid'     : user.uuid,
+                                'token_uuid'    : matched_token.uuid,
+                                'session_key'   : session_key,
+                                'response'      : response,
+                                'expiry'        : expiry,
+                                },
+                            expire=ttl)
+        # Waits for the other nodes: the browser polls wherever the load
+        # balancer sends it, and it may get there before we answer the
+        # phone.
+        cluster_sync_state(state_id=state_id, expiry=ttl)
         log_msg = _("tiqr: response accepted for token {token}", log=True)[1]
         log_msg = log_msg.format(token=matched_verify_token.rel_path)
         self.logger.info(log_msg)
@@ -1378,16 +1575,23 @@ class OTPmeAuthP1(OTPmeServer1):
         Called on both collection paths so an answered challenge can be
         turned into a session exactly once. Without it the manual OTP
         entry and the still running poll could each produce a session
-        from the same answer. """
-        auth_result = tiqr_auth_result.get_by_poll_id(poll_id)
-        if auth_result is None:
-            return
+        from the same answer.
+
+        And cluster wide, for the same reason the WebAuthn states are
+        dropped that way: the answer was handed to every node, so one
+        that never hears it is spent would hand out a second session
+        for it. """
+        state_id = _tiqr_result_state_id(poll_id)
         try:
-            auth_result.delete()
+            multiprocessing.tiqr_auth_results.delete(state_id)
+        except KeyError:
+            return
         except Exception as e:
             log_msg = _("tiqr: failed to drop auth result: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
+            return
+        cluster_sync_state_delete(state_id)
 
     def _tiqr_login(self, user, token, token_auth_data, client, client_ip,
         sso_challenge):
@@ -1436,6 +1640,184 @@ class OTPmeAuthP1(OTPmeServer1):
             auth_status['app_data'] = self.get_apps(auth_token)
         return True, auth_status
 
+    def _tiqr_verify_response(self, user, token, verify_token,
+        token_auth_data, client, client_ip):
+        """ Does this OCRA response belong to this token?
+
+        The arithmetic only. Replay protection is the caller's job --
+        see tiqr.verify_ocra() for why a six digit response cannot be a
+        used-OTP key.
+
+        A token of another site is verified where it lives. Its secret
+        is not ours to hold, so asking the owning site is the only way
+        to find out, and it is also the site whose word counts. """
+        if token.site == config.site:
+            return verify_token.verify_ocra(token_auth_data['challenge'],
+                                            token_auth_data['session_key'],
+                                            token_auth_data['response'])
+        verify_args = {
+                        'username'          : user.name,
+                        # Nothing to prove to anybody: the answer is
+                        # consumed right here, by us.
+                        'gen_jwt'           : False,
+                        'token_uuid'        : token.uuid,
+                        'token_auth_data'   : token_auth_data,
+                        'client'            : client,
+                        'client_ip'         : client_ip,
+                    }
+        status, \
+        verify_response = self.authd_redirect_command(command="token_verify_tiqr",
+                                            user=user,
+                                            command_args=verify_args,
+                                            site=token.site)
+        return bool(status)
+
+    def _tiqr_login_remote(self, user, token, token_auth_data, client,
+        client_ip, sso_challenge):
+        """ The same login as _tiqr_login for a token of another site.
+
+        Split in two: the site owning the token verifies it and signs
+        that it did, and the session is created here, where the browser
+        is. The SSO JWT has to come from there as well -- the portal
+        verifies it against the token site's key, and only that site
+        holds the private half.
+
+        Returns the same (status, response) pair as _tiqr_login. """
+        failed = {'message':'Login failed.', 'status':False}
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        jwt_reason = "AUTH"
+        sso_jwt_ag = f"{config.site}/{config.sso_access_group}"
+        # What we hand the other site to sign back to us, so its answer
+        # can only be an answer to this request.
+        jwt_data = {
+                    'user'          : user.name,
+                    'realm'         : config.realm,
+                    'site'          : config.site,
+                    'reason'        : jwt_reason,
+                    'access_group'  : sso_jwt_ag,
+                    'challenge'     : stuff.gen_secret(len=32),
+                    'exp'           : time.time() + 60,
+                }
+        redirect_challenge = jwt.encode(payload=jwt_data,
+                                        key=my_site._key,
+                                        algorithm='RS256')
+        verify_args = {
+                        'username'          : user.name,
+                        'token_uuid'        : token.uuid,
+                        'client'            : client,
+                        'client_ip'         : client_ip,
+                        'sso_login'         : True,
+                        'sso_ag'            : sso_jwt_ag,
+                        'sso_challenge'     : sso_challenge,
+                        'token_auth_data'   : token_auth_data,
+                        'jwt_reason'        : jwt_reason,
+                        'jwt_access_group'  : sso_jwt_ag,
+                        'jwt_challenge'     : redirect_challenge,
+                    }
+        # Verify token on home site.
+        status, \
+        response = self.authd_redirect_command(command="token_verify_tiqr",
+                                            user=user,
+                                            command_args=verify_args,
+                                            site=token.site)
+        if not status or not isinstance(response, dict):
+            log_msg = _("tiqr: redirected verify failed for token '{token}'.", log=True)[1]
+            log_msg = log_msg.format(token=token.rel_path)
+            self.logger.warning(log_msg)
+            return False, failed
+        redirect_response = response.get('jwt')
+        sso_jwt = response.get('sso_jwt')
+        if not redirect_response or not sso_jwt:
+            log_msg = _("tiqr: redirected verify answered without a JWT: {token}", log=True)[1]
+            log_msg = log_msg.format(token=token.rel_path)
+            self.logger.warning(log_msg)
+            return False, failed
+        # Try local JWT auth.
+        try:
+            auth_response = user.authenticate(auth_type="jwt",
+                                        peer=self.peer,
+                                        client=client,
+                                        client_ip=client_ip,
+                                        realm_login=False,
+                                        realm_logout=False,
+                                        jwt_auth=True,
+                                        jwt_reason=jwt_reason,
+                                        verify_jwt_ag=False,
+                                        redirect_challenge=redirect_challenge,
+                                        redirect_response=redirect_response)
+        except Exception as e:
+            log_msg = _("tiqr JWT authentication failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.critical(log_msg)
+            return False, failed
+        if not auth_response['status']:
+            return False, failed
+        # Add missing data.
+        auth_token = auth_response.pop('token')
+        auth_response['sso_jwt'] = sso_jwt
+        auth_response['app_data'] = self.get_apps(auth_token)
+        return True, auth_response
+
+    def _tiqr_reauth(self, user, token, verify_token, token_auth_data,
+        reauth_session_uuid, client, client_ip):
+        """ Step-up re-authentication with a tiqr token.
+
+        The user is logged in already, so this is not a login: the
+        response is verified and reauth_time is bumped on the SSO
+        session that exists. No user.authenticate(), no second session,
+        no new cookie -- the same shape the FIDO2 step-up in
+        fido2_auth_complete() has.
+
+        Returns a finished response, both call sites hand it straight
+        back. """
+        failed = {'message':'Login failed.', 'status':False}
+        if not reauth_session_uuid:
+            log_msg = _("Reauth: session_uuid missing.", log=True)[1]
+            self.logger.warning(log_msg)
+            return self.build_response(False, failed)
+        try:
+            verify_ok = self._tiqr_verify_response(user, token, verify_token,
+                                                token_auth_data,
+                                                client, client_ip)
+        except Exception as e:
+            log_msg = _("Reauth: tiqr verify failed: {err}", log=True)[1]
+            log_msg = log_msg.format(err=e)
+            self.logger.warning(log_msg)
+            verify_ok = False
+        if not verify_ok:
+            emit_audit("Auth", "reauth_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token.name,
+                            reason='tiqr_verify_failed',
+                            ip=client_ip)
+            return self.build_response(False, failed)
+        sso_session = backend.get_object(object_type="session",
+                                        uuid=reauth_session_uuid)
+        if sso_session is None or sso_session.user_uuid != user.uuid:
+            emit_audit("Auth", "reauth_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token.name,
+                            session=reauth_session_uuid,
+                            reason='session_user_mismatch',
+                            ip=client_ip)
+            return self.build_response(False, failed)
+        try:
+            sso_session.update_reauth_time(wait_for_cluster_writes=True)
+        except Exception as e:
+            log_msg = _("Reauth: failed to persist reauth_time: {err}", log=True)[1]
+            log_msg = log_msg.format(err=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, failed)
+        emit_audit("Auth", "reauth_success",
+                        user=user.name,
+                        token=token.name,
+                        session=sso_session.session_id,
+                        ip=client_ip)
+        return self.build_response(True, {'status':True})
+
     def tiqr_auth_status(self, client, client_ip, sso_challenge, command_args):
         """ The browser collecting its result.
 
@@ -1447,25 +1829,37 @@ class OTPmeAuthP1(OTPmeServer1):
         open. A long poll would tie up a gunicorn worker per waiting
         browser. """
         poll_id = command_args.get('poll_id')
+        # Step-up reauth marker set by the portal's /reauth page. The
+        # session uuid comes from the SSO cookie and is cross-checked
+        # against the user below.
+        reauth = bool(command_args.get('reauth', False))
+        reauth_session_uuid = command_args.get('session_uuid')
         pending = {'status':False, 'tiqr_status':'pending'}
         expired = {'status':False, 'tiqr_status':'challenge-expired'}
         if not poll_id:
             return self.build_response(True, pending)
-        auth_result = tiqr_auth_result.get_by_poll_id(poll_id)
-        if auth_result is None:
+        try:
+            auth_result = multiprocessing.tiqr_auth_results.get(
+                                        _tiqr_result_state_id(poll_id))
+        except KeyError:
             return self.build_response(True, pending)
-        if auth_result.expiry and time.time() > auth_result.expiry:
+        if auth_result['expiry'] and time.time() > auth_result['expiry']:
             return self.build_response(True, expired)
 
-        token = backend.get_object(uuid=auth_result.token_uuid)
-        user = backend.get_object(uuid=auth_result.user_uuid,
+        token = backend.get_object(uuid=auth_result['token_uuid'])
+        user = backend.get_object(uuid=auth_result['user_uuid'],
                                 run_policies=True,
                                 _no_func_cache=True)
         if token is None or user is None:
             return self.build_response(True, expired)
         # Asked again here, not only where the answer was accepted: a
-        # result already waiting when the cascade is turned off must not
-        # still be collectable for the minutes it lives.
+        # result already waiting when either side is turned off must
+        # not still be collectable for the minutes it lives. Same two
+        # answers as _get_tiqr_tokens(), and the portal's only for an
+        # account of another site.
+        if user.site != config.site \
+        and not _sso_allowed_here("sso_allow_tiqr"):
+            return self.build_response(True, expired)
         if not _sso_allow_tiqr_for_user(user):
             return self.build_response(True, expired)
 
@@ -1477,28 +1871,42 @@ class OTPmeAuthP1(OTPmeServer1):
 
         challenge_len = self._tiqr_challenge_len(verify_token)
         challenge = tiqr_helpers.derive_challenge(tiqr_token.get_site_secret(),
-                                                auth_result.session_key,
+                                                auth_result['session_key'],
                                                 user.uuid,
                                                 challenge_len)
         token_auth_data = {
                         'challenge'     : challenge,
-                        'session_key'   : auth_result.session_key,
-                        'response'      : auth_result.response,
+                        'session_key'   : auth_result['session_key'],
+                        'response'      : auth_result['response'],
                     }
+
+        # One collection per answered challenge, success or not. A phone
+        # request replayed inside the window would otherwise be
+        # collectable a second time.
         try:
-            status, auth_status = self._tiqr_login(user, token,
-                                                token_auth_data,
-                                                client, client_ip,
-                                                sso_challenge)
+            # Step-up: no login, no session, just a fresh reauth_time on
+            # the session the user already has.
+            if reauth:
+                return self._tiqr_reauth(user, token, verify_token,
+                                        token_auth_data,
+                                        reauth_session_uuid,
+                                        client, client_ip)
+            if token.site == config.site:
+                auth_status, auth_response = self._tiqr_login(user, token,
+                                                            token_auth_data,
+                                                            client, client_ip,
+                                                            sso_challenge)
+            else:
+                auth_status, auth_response = self._tiqr_login_remote(user, token,
+                                                            token_auth_data,
+                                                            client, client_ip,
+                                                            sso_challenge)
         finally:
-            # One collection per answered challenge, success or not. A
-            # phone request replayed inside the window would otherwise
-            # be collectable a second time.
             self._burn_tiqr_result(poll_id)
-        if not status:
-            return self.build_response(False, auth_status)
-        auth_status['tiqr_status'] = "ok"
-        return self.build_response(True, auth_status)
+        if not auth_status:
+            return self.build_response(False, auth_response)
+        auth_response['tiqr_status'] = "ok"
+        return self.build_response(True, auth_response)
 
     def tiqr_auth_otp(self, client, client_ip, sso_challenge, command_args):
         """ The fallback where the user types the response.
@@ -1509,6 +1917,10 @@ class OTPmeAuthP1(OTPmeServer1):
         session_key = command_args.get('session_key')
         response = command_args.get('response')
         username = command_args.get('username')
+        # Same step-up marker the poll path takes, for the user who
+        # types the code instead of letting the phone answer.
+        reauth = bool(command_args.get('reauth', False))
+        reauth_session_uuid = command_args.get('session_uuid')
         failed = {'message':'Login failed.', 'status':False}
         if not session_key or not response or not username:
             return self.build_response(False, failed)
@@ -1520,13 +1932,12 @@ class OTPmeAuthP1(OTPmeServer1):
                                 _no_func_cache=True)
         if user is None:
             return self.build_response(False, failed)
-        if user.site != config.site:
-            status, \
-            message = self.authd_redirect_command(command="tiqr_auth_otp",
-                                            user=user,
-                                            command_args=command_args)
-            return self.build_response(status, message)
-
+        # The challenge is ours -- it was derived from this site's tiqr
+        # secret in tiqr_auth_begin -- so the session belongs here, and
+        # only the verification of the response travels to the site
+        # owning the token. Redirecting the whole command instead would
+        # create the session, the SSO JWT and the audit trail on the
+        # user's home site, where the browser never was.
         now = time.time()
         max_age = self._tiqr_max_age()
         try:
@@ -1543,22 +1954,35 @@ class OTPmeAuthP1(OTPmeServer1):
                                                     session_key,
                                                     user.uuid,
                                                     challenge_len)
-            if not verify_token.verify_ocra(challenge, session_key, response):
-                continue
             token_auth_data = {
                             'challenge'     : challenge,
                             'session_key'   : session_key,
                             'response'      : response,
                         }
+            if not self._tiqr_verify_response(user, token, verify_token,
+                                            token_auth_data,
+                                            client, client_ip):
+                continue
             # The phone may have got through after all, in which case a
             # result is waiting and the still running poll would make a
             # second session out of the same answer. Take it first.
             poll_id = tiqr_helpers.derive_poll_id(tiqr_secret, session_key)
             self._burn_tiqr_result(poll_id)
-            status, auth_status = self._tiqr_login(user, token,
-                                                token_auth_data,
-                                                client, client_ip,
-                                                sso_challenge)
+            if reauth:
+                return self._tiqr_reauth(user, token, verify_token,
+                                        token_auth_data,
+                                        reauth_session_uuid,
+                                        client, client_ip)
+            if token.site == config.site:
+                status, auth_status = self._tiqr_login(user, token,
+                                                    token_auth_data,
+                                                    client, client_ip,
+                                                    sso_challenge)
+            else:
+                status, auth_status = self._tiqr_login_remote(user, token,
+                                                    token_auth_data,
+                                                    client, client_ip,
+                                                    sso_challenge)
             if not status:
                 return self.build_response(False, auth_status)
             return self.build_response(True, auth_status)
@@ -1687,11 +2111,15 @@ class OTPmeAuthP1(OTPmeServer1):
 
     def token_verify(self, user, auth_type, command, command_args,
         password=None, mschap_challenge=None, mschap_response=None,
-        smartcard_data=None):
+        smartcard_data=None, token_auth_data=None):
         try:
             token_uuid = command_args['token_uuid']
         except Exception:
             token_uuid = None
+        try:
+            gen_jwt = command_args['gen_jwt']
+        except Exception:
+            gen_jwt = True
         try:
             jwt_reason = command_args['jwt_reason']
         except Exception:
@@ -1734,6 +2162,11 @@ class OTPmeAuthP1(OTPmeServer1):
                     'auth_type' : "mschap",
                     'challenge' : mschap_challenge,
                     'response'  : mschap_response,
+                    }
+        if command == "token_verify_tiqr":
+            token_verify_parms = {
+                    'auth_type'         : "tiqr",
+                    'token_auth_data'   : token_auth_data,
                     }
         if command == "token_verify_smartcard":
             token_verify_parms = {
@@ -1795,11 +2228,21 @@ class OTPmeAuthP1(OTPmeServer1):
         # path (originator redirected here) an assertion signed with a
         # passkey must not be accepted when the user's cascade doesn't
         # resolve to True. Resolve once, outside the loop.
+        #
+        # Both sides again. We are the account's home site here, so our
+        # own config would answer for the account a second time -- what
+        # the portal allows travels in the command, set by
+        # redirect_fido2_complete(). Absent means nobody forwarded one
+        # and there is nothing to add.
         fido2_passkeys_allowed = None
         fido2_keys_allowed = None
         if command == "token_verify_fido2":
-            fido2_passkeys_allowed = _sso_allow_passkeys_for_user(user)
-            fido2_keys_allowed = _sso_allow_fido2_for_user(user)
+            peer_fido2 = command_args.get('_fido2_allowed_here')
+            peer_passkeys = command_args.get('_passkeys_allowed_here')
+            fido2_passkeys_allowed = (peer_passkeys is not False
+                                    and _sso_allow_passkeys_for_user(user))
+            fido2_keys_allowed = (peer_fido2 is not False
+                                and _sso_allow_fido2_for_user(user))
         # Get accessgroup if given.
         if jwt_access_group:
             try:
@@ -1904,6 +2347,9 @@ class OTPmeAuthP1(OTPmeServer1):
             if command == "token_verify_mschap":
                 if not x_token.mschap_enabled:
                     continue
+            if command == "token_verify_tiqr":
+                if x_token.pass_type != "tiqr":
+                    continue
             if command == "token_verify_smartcard":
                 if x_token.pass_type != "smartcard":
                     continue
@@ -1993,18 +2439,20 @@ class OTPmeAuthP1(OTPmeServer1):
         auth_status = False
         if auth_token:
             auth_status = True
-            try:
-                _jwt = self.gen_jwt(username=auth_token.owner,
-                                    token=auth_token,
-                                    src_token=src_token,
-                                    reason=jwt_reason,
-                                    access_group=jwt_access_group,
-                                    challenge=jwt_challenge)
-            except AccessDenied as e:
-                status = False
-                message = _("Unable to gen JWT: {e}")
-                message = message.format(e=e)
-                return self.build_response(status, message)
+            _jwt = None
+            if gen_jwt:
+                try:
+                    _jwt = self.gen_jwt(username=auth_token.owner,
+                                        token=auth_token,
+                                        src_token=src_token,
+                                        reason=jwt_reason,
+                                        access_group=jwt_access_group,
+                                        challenge=jwt_challenge)
+                except AccessDenied as e:
+                    status = False
+                    message = _("Unable to gen JWT: {e}")
+                    message = message.format(e=e)
+                    return self.build_response(status, message)
             nt_key = None
             pass_hash = None
             if command == "token_verify_mschap" and redirect_response:
@@ -2369,6 +2817,7 @@ class OTPmeAuthP1(OTPmeServer1):
                             "get_jwt",
                             "token_verify",
                             "token_verify_mschap",
+                            "token_verify_tiqr",
                             "token_verify_smartcard",
                             "token_verify_fido2",
                             "verify_static",
@@ -2468,6 +2917,11 @@ class OTPmeAuthP1(OTPmeServer1):
             smartcard_data = None
 
         try:
+            token_auth_data = command_args['token_auth_data']
+        except Exception:
+            token_auth_data = None
+
+        try:
             access_group = command_args['access_group']
         except Exception:
             access_group = None
@@ -2547,6 +3001,8 @@ class OTPmeAuthP1(OTPmeServer1):
             auth_type = "mschap"
         if command == "token_verify_fido2":
             auth_type = "smartcard"
+        if command == "token_verify_tiqr":
+            auth_type = "tiqr"
         if command == "token_verify_smartcard":
             auth_type = "smartcard"
         if command == "fido2_auth_begin":
@@ -2592,7 +3048,9 @@ class OTPmeAuthP1(OTPmeServer1):
         if command == "tiqr_auth_response":
             log_msg = _("Processing command tiqr_auth_response.", log=True)[1]
             self.logger.info(log_msg)
-            return self.tiqr_auth_response(command_args)
+            return self.tiqr_auth_response(command_args,
+                                        client=client,
+                                        client_ip=client_ip)
 
         if command == "tiqr_auth_status":
             log_msg = _("Processing command tiqr_auth_status.", log=True)[1]
@@ -2611,9 +3069,10 @@ class OTPmeAuthP1(OTPmeServer1):
         if not client and not client_ip and not host:
             incomplete_command = True
         if password is None:
-            if smartcard_data is None:
-                if mschap_challenge is None or mschap_response is None:
-                    incomplete_command = True
+            if token_auth_data is None:
+                if smartcard_data is None:
+                    if mschap_challenge is None or mschap_response is None:
+                        incomplete_command = True
         if incomplete_command:
             status = False
             message = _("Incomplete command.")
@@ -2771,6 +3230,7 @@ class OTPmeAuthP1(OTPmeServer1):
         if command == "token_verify" \
         or command == "token_verify_mschap" \
         or command == "token_verify_smartcard" \
+        or command == "token_verify_tiqr" \
         or command == "token_verify_fido2":
             if self.peer.type != "node":
                 status = status_codes.PERMISSION_DENIED
@@ -2783,7 +3243,8 @@ class OTPmeAuthP1(OTPmeServer1):
                                     password=password,
                                     mschap_challenge=mschap_challenge,
                                     mschap_response=mschap_response,
-                                    smartcard_data=smartcard_data)
+                                    smartcard_data=smartcard_data,
+                                    token_auth_data=token_auth_data)
 
         redirect_connection = False
         if user.site != config.site:

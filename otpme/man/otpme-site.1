@@ -113,6 +113,19 @@ Change the site's SSO FQDN (see the OIDC OP section below).
 .TP
 .B sso_cert \fR[\fB\-\-key\fR \fIsso_key\fR] \fIsite\fR \fR[\fIcert_file\fR]
 Change the SSO certificate. Use \fB\-\-key\fR to set the matching private key in the same call.
+.br
+Pass the \fBfull chain\fR, not the leaf certificate alone: the file may hold the
+certificate followed by every CA certificate needed to establish it, and that is
+what gets served. With Let's Encrypt that means \fIfullchain.pem\fR, not
+\fIcert.pem\fR.
+.br
+A leaf on its own usually still works in a browser, which caches intermediates
+or fetches them over the certificate's AIA extension. Mobile apps do neither:
+they abort the handshake, and the server logs it as the peer's alert
+\fBSSLV3_ALERT_CERTIFICATE_UNKNOWN\fR \- which reads like a server fault but is
+the client refusing the chain. To see what is actually served:
+.IP
+openssl s_client \-connect \fIsso_fqdn\fR:443 \-servername \fIsso_fqdn\fR \-showcerts </dev/null | grep \-c 'BEGIN CERTIFICATE'
 .TP
 .B sso_key \fIsite\fR \fIkey_file\fR
 Change SSO certificate key.

@@ -39,6 +39,8 @@ from otpme.lib.daemon.clusterd import calc_node_vote
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.freeradius.utils import reload as freeradius_reload
 
+from otpme.lib.daemon.clusterd import SUPPORTED_STATE_DICTS
+
 from otpme.lib.exceptions import *
 
 logger = config.logger
@@ -180,6 +182,8 @@ class OTPmeClusterP1(OTPmeServer1):
                             "get_node_vote",
                             "get_last_used",
                             "set_node_sync",
+                            "set_state",
+                            "del_state",
                             "last_used_write",
                             "unset_node_sync",
                             "set_node_online",
@@ -986,7 +990,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 except Exception as e:
                     log_msg = _("Failed to get last used data from backend: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
-                    self.logger.warning(log_msg)
+                    logger.warning(log_msg)
                     message = _("Failed to get last used data from backend.")
                     status = False
 
@@ -1013,6 +1017,101 @@ class OTPmeClusterP1(OTPmeServer1):
                 except Exception as e:
                     message = _("Failed to set last used times: {error}")
                     message = message.format(error=e)
+                    status = False
+
+        elif command == "set_state":
+            status = True
+            message = None
+            try:
+                shared_dict_name = command_args['shared_dict_name']
+            except Exception:
+                message = _("Missing shared dict name.")
+                status = False
+            try:
+                state_id = command_args['state_id']
+            except Exception:
+                message = _("Missing state ID.")
+                status = False
+            try:
+                state_data = command_args['state_data']
+            except Exception:
+                message = _("Missing state data.")
+                status = False
+            try:
+                expiry = command_args['expiry']
+            except Exception:
+                message = _("Missing expiry.")
+                status = False
+            if config.daemon_shutdown:
+                message = _("Daemon shutdown.")
+                status = False
+            if status:
+                if shared_dict_name not in SUPPORTED_STATE_DICTS:
+                    message, log_msg = _("Unsupported states dict: {shared_dict_name}", log=True)
+                    message = message.format(shared_dict_name=shared_dict_name)
+                    log_msg = log_msg.format(shared_dict_name=shared_dict_name)
+                    logger.warning(log_msg)
+                    status = False
+            if status:
+                shared_dict = getattr(multiprocessing, shared_dict_name, None)
+                if shared_dict is None:
+                    message, log_msg = _("Unable to get shared dict: {shared_dict_name}", log=True)
+                    message = message.format(shared_dict_name=shared_dict_name)
+                    log_msg = log_msg.format(shared_dict_name=shared_dict_name)
+                    logger.warning(log_msg)
+                    status = False
+            if status:
+                message = "done"
+                try:
+                    shared_dict.add(key=state_id, value=state_data, expire=expiry)
+                except Exception as e:
+                    message = _("Failed to set state data: {state_id}: {error}")
+                    message = message.format(state_id=state_id, error=e)
+                    status = False
+
+        elif command == "del_state":
+            status = True
+            message = None
+            try:
+                shared_dict_name = command_args['shared_dict_name']
+            except Exception:
+                message = _("Missing shared dict name.")
+                status = False
+            try:
+                state_id = command_args['state_id']
+            except Exception:
+                message = _("Missing state ID.")
+                status = False
+            if config.daemon_shutdown:
+                message = _("Daemon shutdown.")
+                status = False
+            if status:
+                if shared_dict_name not in SUPPORTED_STATE_DICTS:
+                    message, log_msg = _("Unsupported states dict: {shared_dict_name}", log=True)
+                    message = message.format(shared_dict_name=shared_dict_name)
+                    log_msg = log_msg.format(shared_dict_name=shared_dict_name)
+                    logger.warning(log_msg)
+                    status = False
+            if status:
+                shared_dict = getattr(multiprocessing, shared_dict_name, None)
+                if shared_dict is None:
+                    message, log_msg = _("Unable to get shared dict: {shared_dict_name}", log=True)
+                    message = message.format(shared_dict_name=shared_dict_name)
+                    log_msg = log_msg.format(shared_dict_name=shared_dict_name)
+                    logger.warning(log_msg)
+                    status = False
+            if status:
+                message = "done"
+                try:
+                    shared_dict.delete(state_id)
+                except KeyError:
+                    # Already gone: expired, or a delete that reached us
+                    # twice. Either way the state is not collectable
+                    # here any more, which is all the sender wanted.
+                    pass
+                except Exception as e:
+                    message = _("Failed to delete state: {state_id}: {error}")
+                    message = message.format(state_id=state_id, error=e)
                     status = False
 
         #elif command == "acquire_lock":

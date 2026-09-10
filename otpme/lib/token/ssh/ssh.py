@@ -359,6 +359,10 @@ class SshToken(Token):
         self.pass_type = "ssh_key"
         # A public key signature.
         self.count_fails = False
+        # The signature is over a server-issued challenge and is
+        # checked against the stored public key -- nothing in it names
+        # an owner.
+        self.support_links = True
         # Set SSH key type. The challenge signature is verified via the key
         # class the key blob itself names (see lib/ssh.py verify_sign()), so
         # all key types the ssh-agent can sign with work. Note that a token

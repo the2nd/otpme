@@ -353,6 +353,9 @@ class YubikeypivToken(Token):
         self.key_type = "rsa"
         self.dot1x_secret = None
         self.support_dot1x = True
+        # Challenge-response against the slot's key, with nothing in it
+        # that names an owner.
+        self.support_links = True
         # Key types a PIV sign slot (the SSH key derives from it) can hold.
         self.valid_key_types = [ "rsa", "ed25519", "ecdsa" ]
         self.auth_script_enabled = False

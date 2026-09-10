@@ -29,7 +29,10 @@
      data-label-password-mismatch="{{ gettext('Passwords do not match.') }}"
      data-label-saving-password="{{ gettext('Setting new password...') }}"
      data-label-need-device-name="{{ gettext('Please enter a name for your phone.') }}"
+     data-label-need-key-name="{{ gettext('Please enter a name for your security key.') }}"
      data-label-bad-device-name="{{ gettext('Please use letters or digits in the name.') }}"
+     data-placeholder-device-name="{{ gettext('e.g. my phone') }}"
+     data-placeholder-key-name="{{ gettext('e.g. my security key') }}"
      data-label-checking-phone="{{ gettext('Checking your phone...') }}"
      class="is-hidden"></div>
 <div class="login-wrapper">
@@ -79,14 +82,16 @@
       {% endif %}
     </div>
 
-    <!-- Step 1b: tiqr needs a name for the phone before it can start.
-         It is what this token is renamed to if the SSO role is later
-         handed to another phone, so the server checks it is usable
-         and still free. -->
-    <div id="step-tiqr-name" class="is-hidden">
-      <label for="tiqrDeployName">{{ gettext("Device Name") }}</label>
-      <input type="text" id="tiqrDeployName" placeholder="{{ gettext('e.g. my phone') }}" autocomplete="off">
-      <button type="button" id="tiqrDeployStartBtn" class="btn btn-primary w-full">{{ gettext("Continue") }}</button>
+    <!-- Step 1b: a name for the thing being enrolled, asked before
+         anything is created. It is what this token is renamed to if
+         the SSO role is later handed to another one, so the server
+         checks it is usable and still free. The placeholder comes
+         from JS: a phone and a security key want different examples.
+         -->
+    <div id="step-device-name" class="is-hidden">
+      <label for="deployDeviceName">{{ gettext("Device Name") }}</label>
+      <input type="text" id="deployDeviceName" autocomplete="off">
+      <button type="button" id="deployDeviceNameBtn" class="btn btn-primary w-full">{{ gettext("Continue") }}</button>
     </div>
 
     <!-- Step 2c: tiqr enrollment. Unlike /deploy this page does not

@@ -109,12 +109,6 @@ class OTPmeHostP1(OTPmeClient1):
         """ Get site certificate. """
         if not config.uuid:
             return
-        if realm == config.realm and site == config.site:
-            try:
-                site_cert = config.host_data['site_cert']
-                return site_cert
-            except Exception:
-                pass
         if (config.daemon_mode or config.use_api) and config.use_backend:
             # Load certificate of site we want to connect to.
             result = backend.search(object_type="site",

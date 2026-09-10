@@ -155,6 +155,9 @@ class ScriptToken(Token):
         # by us. Either way it is something somebody could arrive at by
         # trying.
         self.count_fails = True
+        # Also true for both: what the script checks is what the user
+        # typed, and it never learns whose token was assigned.
+        self.support_links = True
         # Token type "script" is itself a script so no need to en- or disable
         # the auth script.
         self.auth_script_enabled = None

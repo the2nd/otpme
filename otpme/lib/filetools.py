@@ -597,7 +597,7 @@ def set_fs_ownership(path, user, group=None, recursive=False):
             return
         # If the current user is not member of the destination group we cannot
         # change ownership.
-        if not gid in os.getgroups():
+        if gid not in os.getgroups():
             return
         change_owner = False
 

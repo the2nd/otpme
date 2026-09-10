@@ -25,6 +25,15 @@ TimeoutStopSec=180
 # if something hangs past TimeoutStopSec the whole cgroup gets SIGKILL.
 # This is the modern replacement for the now-deprecated KillMode=none.
 KillMode=mixed
+# A service started by systemd never passes through pam_limits, so
+# /etc/security/limits.conf does not apply to it and the kernel default
+# of 1024 stands. With a socket per connection across the daemons under
+# controld, plus cluster, redis and the index DB, that runs out.
+#
+# OTPme raises the limit itself as well (rlimit_nofile, see
+# otpme/lib/__init__.py); this is here so the number is visible where an
+# administrator looks for it, and applies before the process starts.
+LimitNOFILE=65536
 # cannot set user via systemd because otpme-controld
 # is designed to restart child deamons on demand and
 # running it as non-root leads to problems when binding

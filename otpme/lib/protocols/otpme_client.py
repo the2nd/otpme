@@ -2229,7 +2229,7 @@ class OTPmeClient1(OTPmeClientBase):
         authorize_host=True, need_ssh_key_pass=False, aes_pass=None, client=None,
         username=None, jwt_method=None, rsp=None, srp=None, slp=None, login=False,
         unlock=False, login_interface="tty", logout=False, reneg=False, session_uuid=None,
-        add_agent_acl=False, agent_acls=None, add_agent_session=None,
+        add_agent_acl=False, agent_acls=None, add_agent_session=None, req_site_cert=False,
         save_offline_token=None, add_login_session=None, mount_shares=False,
         offline_token=None, login_session_id=None, cache_login_tokens=False,
         sc_pass=None, send_password="auto", password_method=None,
@@ -2342,6 +2342,8 @@ class OTPmeClient1(OTPmeClientBase):
         # Indicates if we should add a empty session to OTPme agent using
         # login_session_id as session ID.
         self.add_agent_session = add_agent_session
+        # Get site cert from peer.
+        self.req_site_cert = req_site_cert
 
         # Client JWT stuff.
         # Indicates if we should do cross-site authentication via JWT.
@@ -2847,11 +2849,14 @@ class OTPmeClient1(OTPmeClientBase):
             site = self.site
             if self.connection.peer_site:
                 site = self.connection.peer_site
-            cert = stuff.get_site_cert(realm=realm, site=site)
-            if not cert:
-                msg = "Unable to get site certificate."
-                raise OTPmeException(msg)
-            self.site_cert = SSLCert(cert=cert)
+            if self.req_site_cert:
+                self.site_cert = self.connection.request_site_cert()
+            else:
+                cert = stuff.get_site_cert(realm=realm, site=site)
+                if not cert:
+                    msg = "Unable to get site certificate."
+                    raise OTPmeException(msg)
+                self.site_cert = SSLCert(cert=cert)
 
         # Get JWT key from site certificate.
         if need_jwt_key:

@@ -310,6 +310,8 @@ class TotpToken(OathToken):
         # Six digits from a shared secret. RFC 6238 inherits RFC 4226's
         # call for throttling.
         self.count_fails = True
+        # An OTP from a shared secret verifies for whoever types it.
+        self.support_links = True
         self.otp_type = "time"
         self.secret_len = None
 
@@ -563,7 +565,13 @@ class TotpToken(OathToken):
                                 quiet=False)
                 if otp_includes_pin:
                     self.add_used_otp(otp=_otp, session_uuid=session_uuid)
-            return otp
+            # True, like every other token type. This used to hand the
+            # OTP back, and no caller ever read it as anything but a
+            # yes -- it only carried the PIN and the OTP in clear text
+            # further up the stack than they need to go. The MSCHAP
+            # path below is the one that does need the value, and
+            # returns it in its tuple.
+            return True
 
         # Default should be None (which means no valid OTP found but not
         # definitively failed because we havent found an already used OTP)

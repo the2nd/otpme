@@ -1677,11 +1677,16 @@ class Realm(OTPmeObject):
         first_node = result[0]
 
         # Update host key files.
+        site_certs = [{
+                        'name'  : master_site.name,
+                        'realm' : master_site.realm,
+                        'cert'  : master_site.cert,
+                    }]
         host.update_data(host_cert=first_node.cert,
                         host_key=host_key,
                         host_auth_key=host_private_key,
                         ca_data=self.ca_data,
-                        site_cert=master_site.cert)
+                        site_certs=site_certs)
 
         # Add default policies to master node.
         default_policies = config.get_default_policies(first_node.type)

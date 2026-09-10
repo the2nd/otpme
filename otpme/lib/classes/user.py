@@ -1403,11 +1403,40 @@ def register_config_parameters():
                                     setter=default_token_setter,
                                     object_types=object_types)
     # Name of default SSO token to add.
+    #
+    # Site scope only, unlike <default_token_name>. It names the token
+    # of the portal the user is standing in front of, and that portal
+    # is not necessarily on the user's own site: a user of site A
+    # signing in at site B's portal gets B's answer. Read through
+    # OTPmeSsoP1._sso_token_name(), never off the user -- resolving it
+    # there would walk the user's parents and always land on the user's
+    # home site.
+    #
+    # That is also why there is no user or unit level: those hang below
+    # one site, and the value belongs to whichever site is asking. Two
+    # portals with two names is what lets the same hardware key be
+    # registered on both -- one WebAuthn credential per RP ID, one
+    # OTPme token per site.
+    def sso_token_name_genner(config_object=None, **kwargs):
+        # The site is the object we are setting this on, so its name is
+        # right here. Not looked up through the backend on purpose: at
+        # site creation this runs inside Site.add(), where whether the
+        # object is already findable depends on when _write() ran. A
+        # site object also carries no site_uuid -- otpme_object.py
+        # blanks it for its own type, because a site is not in a site.
+        realm = backend.get_object(object_type="realm",
+                                    uuid=config_object.realm_uuid)
+        if not realm:
+            msg = _("Cannot load own realm.")
+            raise OTPmeException(msg)
+        token_name = f"sso-{realm.name}-{config_object.name}"
+        return token_name
     config.register_config_parameter(name="default_sso_token_name",
                                     ctype=str,
-                                    default_value="sso",
+                                    default_genner=sso_token_name_genner,
+                                    gen_default_on_create=True,
                                     setter=default_sso_token_name_setter,
-                                    object_types=object_types)
+                                    object_types=['site'])
     # Top-level on/off gate for the SSO-token recovery flow. When
     # False (default) the recovery UI is hidden on the login page and
     # every ssod-side recovery command silently no-ops (generic OK).
@@ -1869,6 +1898,13 @@ class User(OTPmeObject):
                             "givenName",
                             "sn",
                             "CONFIG_PARAMS:allow_temp_passwords",
+                            # Which device token roles this user may
+                            # carry. Roles of any site may be named, so
+                            # the sites those roles live on need the
+                            # answer as well -- their portal is where
+                            # the user gets them. Stored as role UUIDs,
+                            # which mean the same thing everywhere.
+                            "CONFIG_PARAMS:device_token_roles",
                             ]
                         },
                     }
@@ -5023,8 +5059,15 @@ class User(OTPmeObject):
                     msg = _("Destination token does not exist.")
                     return callback.error(msg)
 
-                if dst_token.token_type == "link":
-                    msg = _("Cannot link already linked token.")
+                # Not every token can answer for somebody else. A
+                # linked type would only chain, and a credential bound
+                # to its owner at registration time cannot verify for
+                # another user at all -- see Token.support_links. Said
+                # here rather than at the first login, which is where
+                # it would surface otherwise.
+                if not dst_token.support_links:
+                    msg = _("Token type cannot be used as link destination: {token_type}")
+                    msg = msg.format(token_type=dst_token.token_type)
                     return callback.error(msg)
 
         # Check if given token exists.
@@ -7045,6 +7088,14 @@ class User(OTPmeObject):
                 log_msg = _("Error removing used SOTP '{used_object}' from backend: {e}", log=True)[1]
                 log_msg = log_msg.format(used_object=used_oid, e=e)
                 logger.critical(log_msg)
+
+        # Remove failed pass hashes.
+        failed_pass_list = backend.search(object_type="failed_pass",
+                                            attribute="user_uuid",
+                                            value=self.uuid,
+                                            return_type="instance")
+        for failed_pass in failed_pass_list:
+            failed_pass.delete()
 
         # Make sure to remove user from signers cache.
         sign_key_cache.del_cache(self.oid)

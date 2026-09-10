@@ -806,6 +806,10 @@ class Unit(OTPmeObject):
                             "OBJECT_CLASSES",
                             "ou",
                             "CONFIG_PARAMS:allow_temp_passwords",
+                            # Part of the device_token_roles cascade
+                            # (user overrides unit overrides site), so
+                            # it travels with the other two.
+                            "CONFIG_PARAMS:device_token_roles",
                             ]
                         },
                     }

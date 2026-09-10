@@ -424,6 +424,7 @@ class JoinHandler(object):
 
         # Add base objects.
         my_uuid = None
+        site_certs = []
         #site_oid = oid.get(object_type="site", realm=self.realm, name=self.site)
         for object_type in add_order:
             for x in sorted(add_list[object_type]):
@@ -474,6 +475,11 @@ class JoinHandler(object):
                             log_msg = _("Error enabling auth of site: {site}: {error}", log=True)[1]
                             log_msg = log_msg.format(site=x_site, error=e)
                             logger.warning(log_msg)
+                    site_certs.append({
+                                    'name'  : x_site.name,
+                                    'realm' : x_site.realm,
+                                    'cert'  : x_site.cert,
+                                })
 
                 if object_type == self.host_type:
                     object_name = object_id.name
@@ -502,6 +508,9 @@ class JoinHandler(object):
             msg = _("Error writing UUID file: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg) from e
+        # Return site certs to write to ssl dir.
+        return site_certs
+
 
     def send_join_request(self, jotp, force, conn_kwargs):
         """ Send initial join request. """
@@ -681,7 +690,7 @@ class JoinHandler(object):
         # Set password hashing salt.
         self.set_password_salt(join_response)
         # Add base objects etc..
-        self.process_objects(join_response)
+        site_certs = self.process_objects(join_response)
 
         # Init host and load required objects.
         self.init_host()
@@ -760,11 +769,19 @@ class JoinHandler(object):
         # Enable nsscache symlinks.
         nsscache.enable()
 
+        ## Set site certs.
+        #site_certs.append({
+        #                'name'  : master_site.name,
+        #                'realm' : master_site.realm,
+        #                'cert'  : master_site.cert,
+        #            })
+
         # Update host cert/key files. This must be done after nsscache update
         # because we need the users group available via nsswitch.
         host.update_data(host_cert=host_cert,
                         host_key=host_key,
-                        host_auth_key=host_auth_key)
+                        host_auth_key=host_auth_key,
+                        site_certs=site_certs)
         host.set_ssl_file_perms()
 
         # Close all connections.
@@ -784,7 +801,7 @@ class JoinHandler(object):
                 message(msg)
                 _index.command("create_db_indices")
 
-        # FIXME: wait for  sync of authorized_key (the last sync????) to finish????
+        # FIXME: wait for sync of authorized_key (the last sync????) to finish????
         #       - make this an option???
 
         return join_message
@@ -918,7 +935,8 @@ class JoinHandler(object):
 
         # Remove realm data.
         remove_files = [
-                    config.ssl_site_cert_file,
+                    # FIXME: remove site cert files.
+                    #config.ssl_site_cert_file,
                     config.ssl_ca_file,
                     ]
 

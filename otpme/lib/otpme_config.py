@@ -197,6 +197,18 @@ class OTPmeConfig(object):
         # Max posix message queue size.
         self.register_config_var("rlimit_msgqueue", int, 2621440000,
                             config_file_parameter="RLIMIT_MSGQUEUE")
+        # Max open files. Raised here rather than left to the init
+        # system: /etc/security/limits.conf is read by pam_limits, which
+        # only runs for a PAM session (login, ssh, su) -- a daemon
+        # started at boot never passes through it, and keeps the 1024
+        # the kernel hands out. Setting it in the process itself works
+        # whatever started us.
+        #
+        # controld runs as root, so the hard limit can go up too. Where
+        # it cannot, the soft limit is still raised as far as the hard
+        # one allows; see otpme/lib/__init__.py.
+        self.register_config_var("rlimit_nofile", int, 65536,
+                            config_file_parameter="RLIMIT_NOFILE")
         # Max posix message queue message size.
         self.register_config_var("_posix_msgsize_max", None, 8192,
                             config_file_parameter="POSIX_MSGSIZE_MAX")
@@ -709,7 +721,7 @@ class OTPmeConfig(object):
         ssl_ca_file = os.path.join(self.ssl_dir, "ca.pem")
         self.register_config_var("ssl_ca_file", str, ssl_ca_file,
                                 config_file_parameter="SSL_CA_FILE")
-        ssl_site_cert_file = os.path.join(self.ssl_dir, "site_cert.pem")
+        ssl_site_cert_file = os.path.join(self.ssl_dir, "{realm}-{site}.pem")
         self.register_config_var("ssl_site_cert_file", str, ssl_site_cert_file,
                                 config_file_parameter="SSL_SITE_CERT_FILE")
         host_key_file = os.path.join(self.ssl_dir, "hostkey.pem")
@@ -1655,7 +1667,8 @@ class OTPmeConfig(object):
     def register_config_parameter(self, name, ctype,
         default_value=None, valid_values=None, object_types=None,
         getter=None, setter=None, deller=None, warn_if_exists=False,
-        default_genner=None, sensitive=False, admin_only=False):
+        default_genner=None, gen_default_on_create=False,
+        sensitive=False, admin_only=False):
         """ Register config parameter.
 
         sensitive: the parameter value is a secret (e.g. a password) and must
@@ -1668,6 +1681,14 @@ class OTPmeConfig(object):
         nothing about whether the value is acceptable. Enforced centrally in
         set_config_param(), so it also covers deletion and parameters that
         have no setter to put the check in.
+
+        gen_default_on_create: run <default_genner> while the object is being
+        created, so the parameter starts out with a value the way one with a
+        fixed <default_value> does. Off by default, because a genner is not
+        automatically something to run unasked: private_key_backup_key asks
+        the client for an RSA key pair through the callback, and it is the
+        escrow key for every PIV token below that object. Read by
+        Site.set_default_config_params().
         """
         if object_types is None:
             object_types = []
@@ -1684,6 +1705,7 @@ class OTPmeConfig(object):
                                             'setter'            : setter,
                                             'deller'            : deller,
                                             'default_genner'    : default_genner,
+                                            'gen_default_on_create' : gen_default_on_create,
                                             'warn_if_exists'    : warn_if_exists,
                                             'sensitive'         : sensitive,
                                             'admin_only'        : admin_only,

@@ -549,9 +549,17 @@ def list_passkeys():
     if error:
         return error
     passkeys = []
+    # ``allowed`` is what ssod answers when sso_allow_passkeys is off
+    # for this user -- an empty list on its own does not say whether
+    # the feature is disabled or the user simply has no passkey yet,
+    # and the JS hides the whole card on the first but not the second.
+    # Dropping it here left the card visible with an add button behind
+    # a command that refuses.
+    allowed = False
     if isinstance(response, dict):
         passkeys = response.get('passkeys', []) or []
-    return jsonify({"passkeys": passkeys})
+        allowed = bool(response.get('allowed', False))
+    return jsonify({"passkeys": passkeys, "allowed": allowed})
 
 @app.route('/settings/passkeys/register/begin', methods=['POST'])
 @login_required
@@ -611,6 +619,11 @@ def passkey_register_complete():
                 "status"        : "ok",
                 "name"          : response.get('name'),
                 "device_name"   : response.get('device_name'),
+                # ssod sets this only when the account lives on another
+                # site and it had to push the assignment there. The UI
+                # then says the login may take a moment; without it,
+                # nothing to say.
+                "sync_pending"  : bool(response.get('sync_pending')),
             })
 
 @app.route('/settings/passkeys/delete', methods=['POST'])
@@ -683,7 +696,8 @@ def list_fido2_tokens():
                     'name'      : response.get('sso_token_name'),
                     'type'      : response.get('sso_token_type'),
                     'label'     : response.get('sso_token_label'),
-                    'suggested' : response.get('sso_token_suggested_name'),
+                    'suggested' : response.get('sso_token_suggested_label'),
+                    'ask_label' : bool(response.get('sso_token_ask_label', True)),
                 }
     return jsonify({"fido2_tokens": fido2_tokens,
                     "allowed": allowed,
@@ -742,6 +756,8 @@ def fido2_add_complete():
                 "status"        : "ok",
                 "name"          : response.get('name'),
                 "device_name"   : response.get('device_name'),
+                # See passkey_register_complete.
+                "sync_pending"  : bool(response.get('sync_pending')),
             })
 
 @app.route('/settings/fido2/delete', methods=['POST'])
@@ -812,11 +828,14 @@ def list_tiqr_tokens():
         allowed = bool(response.get('allowed', False))
         # Passed on so the promote dialog can name the token it is
         # about to rename, which need not be one of the phones above.
+        # ask_label says whether the suggestion is the token's own
+        # label or one we made up; only the latter is worth a dialog.
         sso_token = {
                     'name'      : response.get('sso_token_name'),
                     'type'      : response.get('sso_token_type'),
                     'label'     : response.get('sso_token_label'),
-                    'suggested' : response.get('sso_token_suggested_name'),
+                    'suggested' : response.get('sso_token_suggested_label'),
+                    'ask_label' : bool(response.get('sso_token_ask_label', True)),
                 }
     return jsonify({"tiqr_tokens": tiqr_tokens,
                     "allowed": allowed,
@@ -846,6 +865,11 @@ def tiqr_enroll_begin():
     if not isinstance(response, dict):
         return jsonify({"error": gettext("Failed to start tiqr enrollment.")}), 500
     flask_session['tiqr_enroll_token_name'] = response.get('token_name')
+    # Carried from begin to the poll below: the enrollment itself is
+    # answered to the phone, so this is the only place the browser
+    # learns whether there will be anything to wait for, and the poll
+    # is where it gets to say so.
+    flask_session['tiqr_enroll_sync_pending'] = bool(response.get('sync_pending'))
     return jsonify({
                 "status"        : "ok",
                 "enroll_url"    : response.get('enroll_url'),
@@ -878,7 +902,10 @@ def tiqr_enroll_status():
         if token.get('name') != token_name:
             continue
         flask_session.pop('tiqr_enroll_token_name', None)
-        return jsonify({"status": "ok", "token": token})
+        sync_pending = flask_session.pop('tiqr_enroll_sync_pending', False)
+        return jsonify({"status": "ok",
+                        "token": token,
+                        "sync_pending": bool(sync_pending)})
     return jsonify({"status": "pending"})
 
 
@@ -1298,9 +1325,10 @@ def deploy_begin():
                     'client_ip'         : client_ip,
                     'token_type'        : token_type,
                 }
-    if token_type == "tiqr":
-        # Becomes the token name, and the name this phone keeps if the
-        # SSO role is ever handed to another one.
+    if token_type in ("tiqr", "fido2"):
+        # For tiqr it also becomes the enrollment's token name; for
+        # both it is the name the token keeps when the SSO role is
+        # handed to another one. ssod refuses without it.
         verify_args['device_name'] = (data.get('device_name') or '').strip()
     ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
@@ -2073,7 +2101,7 @@ def recover_complete_begin():
     extra_args = {'username':       username,
                 'recovery_token': raw_token,
                 'token_type':     token_type}
-    # Only tiqr uses it; the server rejects the request without one.
+    # tiqr and fido2 use it; the server rejects those without one.
     device_name = (data.get('device_name') or '').strip()
     if device_name:
         extra_args['device_name'] = device_name
@@ -2437,6 +2465,7 @@ def tiqr_auth_begin():
     flask_session['tiqr_poll_id'] = auth_response.get('poll_id')
     flask_session['tiqr_session_key'] = auth_response.get('session_key')
     flask_session['tiqr_username'] = username
+    _tiqr_begin_reauth()
     return jsonify({
                 "status"        : "ok",
                 "auth_url"      : auth_response.get('auth_url'),
@@ -2457,12 +2486,14 @@ def tiqr_auth_status():
     if not poll_id or not username:
         return jsonify({"status": "none"})
     client_ip = check_forwarded_for()[0]
+    reauth_mode, reauth_args = _tiqr_reauth_args()
     status_args = {
                     'username'      : username,
                     'poll_id'       : poll_id,
                     'client'        : config.sso_client_name,
                     'client_ip'     : client_ip,
                 }
+    status_args.update(reauth_args)
     authd_conn = get_authd_conn(username)
     try:
         status, \
@@ -2492,6 +2523,8 @@ def tiqr_auth_status():
         _clear_tiqr_session()
         return jsonify({"status": "challenge-expired"})
     _clear_tiqr_session()
+    if reauth_mode:
+        return _finish_tiqr_reauth()
     return _finish_sso_login(username, auth_response)
 
 
@@ -2514,6 +2547,7 @@ def tiqr_auth_otp():
     if not session_key or not username:
         return jsonify({"error": gettext("No authentication in progress")}), 400
     client_ip = check_forwarded_for()[0]
+    reauth_mode, reauth_args = _tiqr_reauth_args()
     otp_args = {
                     'username'      : username,
                     'session_key'   : session_key,
@@ -2521,6 +2555,7 @@ def tiqr_auth_otp():
                     'client'        : config.sso_client_name,
                     'client_ip'     : client_ip,
                 }
+    otp_args.update(reauth_args)
     authd_conn = get_authd_conn(username)
     try:
         status, \
@@ -2541,6 +2576,8 @@ def tiqr_auth_otp():
                                     "Failed to complete tiqr authentication.")
         return jsonify({"error": error_msg}), 400
     _clear_tiqr_session()
+    if reauth_mode:
+        return _finish_tiqr_reauth()
     return _finish_sso_login(username, auth_response)
 
 
@@ -2549,6 +2586,72 @@ def _clear_tiqr_session():
     flask_session.pop('tiqr_poll_id', None)
     flask_session.pop('tiqr_session_key', None)
     flask_session.pop('tiqr_username', None)
+    flask_session.pop('tiqr_reauth', None)
+
+
+def _tiqr_begin_reauth():
+    """ Decide once, where the tiqr flow starts, whether it is a step-up.
+
+    Not on every poll. The poll runs every two seconds, and a marker
+    judged again on each of them can be dropped halfway through -- the
+    flow then finishes as an ordinary login, which creates a second
+    session and lands the user on the portal instead of wherever the
+    step-up came from. Deciding here also means the answer cannot
+    change between the QR code being shown and the phone answering it.
+
+    The /reauth marker is honoured only while a session actually
+    exists. One left over from an abandoned /reauth would otherwise
+    turn this login into a step-up against a session that is gone, and
+    the user could not log in at all. Dropping it is safe at this
+    point, and only at this point: nothing is in flight yet.
+    """
+    reauth_mode = bool(flask_session.get('reauth_mode'))
+    if reauth_mode and not (g.user and g.user.is_authenticated):
+        flask_session.pop('reauth_mode', None)
+        flask_session.pop('reauth_next', None)
+        reauth_mode = False
+    if reauth_mode:
+        flask_session['tiqr_reauth'] = True
+    log_msg = _("/login/tiqr/begin: reauth={r} next_stashed={n}", log=True)[1]
+    log_msg = log_msg.format(r=reauth_mode,
+                            n=bool(flask_session.get('reauth_next')))
+    logger.info(log_msg)
+
+
+def _tiqr_reauth_args():
+    """ Is this tiqr login a step-up, and what does authd need for it?
+
+    Returns ``(reauth_mode, extra_args)``. Reads only what
+    _tiqr_begin_reauth() decided, so every poll of one flow answers
+    the same.
+    """
+    if not flask_session.get('tiqr_reauth'):
+        return False, {}
+    return True, {
+                'reauth'        : True,
+                'session_uuid'  : request.cookies.get('otpme_sso_session'),
+            }
+
+
+def _finish_tiqr_reauth():
+    """ A step-up that worked out.
+
+    No session was created and no cookie changed -- authd only bumped
+    reauth_time. Send the user back to whatever asked for the step-up:
+    the settings card that needed a fresh reauth, or the RP's
+    /authorize URL with prompt=login stripped.
+    """
+    flask_session.pop('reauth_mode', None)
+    reauth_next = _safe_next_url(flask_session.pop('reauth_next', None))
+    redirect_target = (reauth_next
+                       or url_for('index', _external=True, _scheme='https'))
+    # The fallback means the target was never stashed or no longer
+    # passes the same-origin check, and the user silently ends up
+    # somewhere other than where they started. Worth a line.
+    if not reauth_next:
+        log_msg = _("tiqr reauth: no next URL stashed, falling back to index.", log=True)[1]
+        logger.warning(log_msg)
+    return jsonify({"status": "ok", "redirect": redirect_target})
 
 
 def _finish_sso_login(username, auth_response):
@@ -2672,15 +2775,13 @@ def fido2_auth_begin():
     # but unencrypted) Flask session cookie.
     flask_session['fido2_auth_username'] = str(username)
     flask_session['fido2_state_id'] = auth_response['fido2_state_id']
-    flask_session['fido2_auth_node'] = auth_response['fido2_auth_node']
     return json.dumps(dict(request_options)), 200, {'Content-Type': 'application/json'}
 
 @app.route('/fido2/auth/complete', methods=['POST'])
 def fido2_auth_complete():
     fido2_state_id = flask_session.pop('fido2_state_id', None)
-    fido2_auth_node = flask_session.pop('fido2_auth_node', None)
     username = flask_session.pop('fido2_auth_username', None)
-    if not fido2_state_id or not fido2_auth_node or not username:
+    if not fido2_state_id or not username:
         return jsonify({"error": gettext("No authentication in progress")}), 400
     auth_response = request.json
     if not auth_response:
@@ -2714,7 +2815,10 @@ def fido2_auth_complete():
     log_msg = _("/fido2/auth/complete: reauth_mode={r} session_uuid_set={s}", log=True)[1]
     log_msg = log_msg.format(r=reauth_mode, s=bool(request.cookies.get('otpme_sso_session')))
     logger.info(log_msg)
-    authd_conn = get_authd_conn(username, node=fido2_auth_node)
+    # Any node will do: the auth state is synced across the cluster,
+    # so the browser no longer has to come back to the one that
+    # started the assertion.
+    authd_conn = get_authd_conn(username)
     try:
         status, \
         status_code, \

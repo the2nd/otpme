@@ -586,6 +586,21 @@ Max POSIX message queue message size. Set to "auto" to read from
 Max POSIX message queue size (see getrlimit(2)). Increase for large
 installations.
 
+**RLIMIT_NOFILE (default: 65536)**  
+Max open files (see getrlimit(2)), applied when a daemon starts.  
+Set here rather than left to the system, because
+*/etc/security/limits.conf* does not reach a daemon: that file is read
+by **pam_limits**(8), which only runs for a PAM session - a login, an
+ssh connection, su. A service started at boot never passes through it
+and keeps the kernel default of 1024. With a socket per connection
+across the daemons under **otpme-controld**, plus cluster, redis and the
+index database, that runs out and shows up as "too many open files".  
+Only ever raised, never lowered, so a higher limit set through your init
+system (**LimitNOFILE** for systemd, **rc_ulimit** in
+*/etc/conf.d/otpme* for OpenRC) is left alone. Raising the hard limit
+needs privileges; without them the soft limit is taken as high as the
+hard limit allows.
+
 **FLOATING_IP_IFACE**  
 Name of the network interface the floating cluster IP is assigned to
 (e.g. "eth0").

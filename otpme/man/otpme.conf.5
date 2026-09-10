@@ -543,6 +543,25 @@ Max POSIX message queue message size. Set to "auto" to read from /proc/sys/fs/mq
 .B RLIMIT_MSGQUEUE
 Max POSIX message queue size (see getrlimit(2)). Increase for large installations.
 .TP
+.B RLIMIT_NOFILE \fR(default: 65536)
+Max open files (see getrlimit(2)), applied when a daemon starts.
+.br
+Set here rather than left to the system, because
+.I /etc/security/limits.conf
+does not reach a daemon: that file is read by
+.BR pam_limits (8),
+which only runs for a PAM session \- a login, an ssh connection, su. A service
+started at boot never passes through it and keeps the kernel default of 1024.
+With a socket per connection across the daemons under
+.BR otpme-controld ,
+plus cluster, redis and the index database, that runs out and shows up as "too
+many open files".
+.br
+Only ever raised, never lowered, so a higher limit set through your init system
+(\fBLimitNOFILE\fR for systemd, \fBrc_ulimit\fR in \fI/etc/conf.d/otpme\fR for
+OpenRC) is left alone. Raising the hard limit needs privileges; without them the
+soft limit is taken as high as the hard limit allows.
+.TP
 .B FLOATING_IP_IFACE
 Name of the network interface the floating cluster IP is assigned to (e.g. "eth0").
 .SH STORAGE

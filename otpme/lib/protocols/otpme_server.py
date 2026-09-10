@@ -322,6 +322,26 @@ class OTPmeServer1(object):
         self._peer = peer
 
     @property
+    def from_peer_node(self):
+        """ Did another node's daemon send this request?
+
+        Not the local unix socket -- that is our own web layer or a
+        command line tool, and whoever runs those is the caller, not a
+        node. Not a host or a client either. What is left is a daemon
+        on a node, its own or another site's, connecting over the
+        network with a node certificate.
+
+        Which is what the internal markers a command may carry hinge
+        on: a request that says "the other side already checked this"
+        is only worth anything when the other side is a node. """
+        peer = self.peer
+        if self.client.startswith("socket://"):
+            return False
+        if peer is None:
+            return False
+        return peer.type == "node"
+
+    @property
     def site_key(self):
         """ Load JWT signing key. """
         if self._sign_key is not None:

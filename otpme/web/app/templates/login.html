@@ -23,6 +23,37 @@
      data-label-tiqr-failed="{{ gettext('Failed to start tiqr authentication.') }}"
      data-label-tiqr-otp-required="{{ gettext('Please enter the code from your app.') }}"
      class="is-hidden"></div>
+{# Which controls the mask offers.
+
+   Signing in: the password form always, the two credential buttons as
+   the site configured them (sso_show_fido2_button /
+   sso_show_tiqr_button). Whether a method may actually be used is
+   sso_allow_fido2 / sso_allow_tiqr, decided ssod-side once the user is
+   known -- these only decide what is drawn.
+
+   Re-authenticating: the user is known, and so is the token they
+   signed in with. Only the one control that token can answer is drawn.
+   Offering a password field to somebody whose token is a phone or a
+   security key gives them something that cannot succeed, and offering
+   the buttons to somebody who typed a password sends them looking for
+   a device they never enrolled.
+
+   A pass type we do not recognise -- or a session from before the
+   field existed -- falls back to offering everything, so nobody ends
+   up on a page with no way forward. #}
+{% if reauth and reauth_token_pass_type %}
+  {% set show_password_form = reauth_token_pass_type not in ('smartcard', 'tiqr') %}
+  {% set show_fido2 = reauth_token_pass_type == 'smartcard' %}
+  {% set show_tiqr = reauth_token_pass_type == 'tiqr' %}
+{% elif reauth %}
+  {% set show_password_form = true %}
+  {% set show_fido2 = true %}
+  {% set show_tiqr = true %}
+{% else %}
+  {% set show_password_form = true %}
+  {% set show_fido2 = show_fido2_button %}
+  {% set show_tiqr = show_tiqr_button %}
+{% endif %}
 <div class="login-wrapper">
   <div class="login-card">
     <h1>{% if reauth %}{{ gettext("Re-authenticate") }}{% else %}{{ gettext("Sign In") }}{% endif %}</h1>
@@ -41,11 +72,10 @@
           <span class="error-msg">[{{ error }}]</span>
         {% endfor %}
 
-        {# In reauth mode the label + button set follow the SSO token
-           the user actually logged in with -- OTP tokens get an OTP
-           label, smartcard/FIDO2 hides the password field entirely
-           because a static password wouldn't verify against them. #}
-        {% if not reauth or reauth_token_pass_type != 'smartcard' %}
+        {# The label follows the token too: an OTP token gets an OTP
+           label rather than being asked for a password it does not
+           have. #}
+        {% if show_password_form %}
           <label for="password">
             {% if reauth and reauth_token_pass_type == 'otp' %}
               {{ gettext("One-Time Password") }}
@@ -60,22 +90,13 @@
         {% endif %}
 
         <div class="login-buttons">
-          {% if not reauth or reauth_token_pass_type != 'smartcard' %}
+          {% if show_password_form %}
             <input type="submit" value="{% if reauth %}{{ gettext('Re-authenticate') }}{% else %}{{ gettext('Sign In') }}{% endif %}" class="btn btn-primary">
           {% endif %}
-          {# sso_show_fido2_button / sso_show_tiqr_button, site scope.
-             Only what the mask offers -- whether the method may be used
-             is sso_allow_fido2 / sso_allow_tiqr, decided ssod-side once
-             the user is known.
-
-             Never hidden on the reauth page. There the button is the
-             only control a user with a smartcard-type token has: the
-             password field is not rendered for them, so hiding it would
-             leave them with nothing to press. #}
-          {% if show_fido2_button or reauth %}
+          {% if show_fido2 %}
           <button type="button" id="fido2LoginBtn" class="btn btn-secondary">{{ gettext("Security Key") }}</button>
           {% endif %}
-          {% if show_tiqr_button or reauth %}
+          {% if show_tiqr %}
           <button type="button" id="tiqrLoginBtn" class="btn btn-secondary">{{ gettext("Smartphone Authentication App (tiqr)") }}</button>
           {% endif %}
         </div>

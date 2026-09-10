@@ -27,6 +27,11 @@ def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("authd")
     multiprocessing.register_shared_dict("fido2_auth_states")
+    # An answered tiqr login waiting for the browser to collect it.
+    # The phone posts to whichever node the load balancer picks and the
+    # browser polls from somewhere else entirely, so the answer is
+    # handed to the other nodes the same way the WebAuthn states are.
+    multiprocessing.register_shared_dict("tiqr_auth_results")
 
 class AuthDaemon(OTPmeDaemon):
     """ AuthDaemon """

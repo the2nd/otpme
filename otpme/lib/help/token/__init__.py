@@ -332,6 +332,14 @@ cmd_help = {
                                 },
                 },
 
+    'device_name'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token device_name {token} [device_name]'),
+                    'cmd'   :   '<|object|> [device_name]',
+                    '_help' :   {
+                                    'cmd'                   : _('Set the label of the device this token lives on.'),
+                                },
+                },
+
     'info'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token info {token} [info]'),
                     'cmd'   :   '--language :language: <|object|> [info]',

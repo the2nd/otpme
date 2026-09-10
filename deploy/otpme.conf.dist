@@ -252,6 +252,14 @@ POSIX_MSGSIZE_MAX="8192"
 # for interprocess communication. If you have a lot of users you may increase it
 # to a proper value. It will be set on daemon start.
 RLIMIT_MSGQUEUE="2621440000"
+# Max open files (see getrlimit(2)). Set on daemon start, because
+# /etc/security/limits.conf does not reach a daemon: that file is read by
+# pam_limits, which only runs for a PAM session (a login, ssh, su). A service
+# started at boot keeps the kernel default of 1024, and with a socket per
+# connection across the daemons, plus cluster, redis and the index DB, that runs
+# out. Only ever raised, never lowered, so a higher limit set by your init
+# system is left alone.
+RLIMIT_NOFILE="65536"
 
 # The socket receive buffer. This should be a high value like 100MiB to speedup OTPme fuse module.
 SOCKET_SEND_BUFFER="104857600"
@@ -321,7 +329,7 @@ LOGIN_USE_DNS="True"
 USE_DNS="False"
 
 # Files to store SSL cert/key to.
-SSL_SITE_CERT_FILE="/etc/otpme/ssl/site_cert.pem"
+SSL_SITE_CERT_FILE="/etc/otpme/ssl/{realm}-{site}.pem"
 SSL_CERT_FILE="/etc/otpme/ssl/cert.pem"
 SSL_KEY_FILE="/etc/otpme/ssl/key.pem"
 SSL_CA_FILE="/etc/otpme/ssl/ca.pem"

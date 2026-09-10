@@ -3325,6 +3325,10 @@ class CommandHandler(object):
         except Exception:
             realm = None
         try:
+            request_site_cert = command_args['request_site_cert']
+        except Exception:
+            request_site_cert = False
+        try:
             site = command_args['site']
         except Exception:
             site = None
@@ -3337,7 +3341,8 @@ class CommandHandler(object):
         result = self.start_sync(sync_type,
                             resync=resync,
                             realm=realm,
-                            site=site)
+                            site=site,
+                            request_site_cert=request_site_cert)
         return result
 
     def handle_sign_command(self, command, subcommand, command_line):
@@ -4943,7 +4948,8 @@ class CommandHandler(object):
             raise OTPmeException(msg) from e
         return login_pass_type
 
-    def start_sync(self, sync_type, resync=False, realm=None, site=None):
+    def start_sync(self, sync_type, resync=False, realm=None,
+        site=None, request_site_cert=False):
         """ Tell daemon to start sync. """
         if resync:
             if sync_type == "nsscache":
@@ -4976,8 +4982,10 @@ class CommandHandler(object):
         else:
             if sync_type == "sites":
                 cmd = "sync_sites"
+                command_args = {'request_site_cert':request_site_cert}
                 sync_message = self.send_command(daemon="hostd",
                                                 command=cmd,
+                                                command_args=command_args,
                                                 interactive=False)
             elif sync_type == "objects":
                 cmd = "sync_objects"

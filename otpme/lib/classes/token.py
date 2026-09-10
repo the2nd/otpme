@@ -73,6 +73,7 @@ read_acls = []
 read_value_acls = {
                 "view"  : [
                         "token_type",
+                        "device_name",
                         "accessgroups",
                         "groups",
                         "roles",
@@ -101,6 +102,7 @@ write_value_acls = {
                     "edit"  : [
                                 "pin",
                                 "password",
+                                "device_name",
                                 "auto_disable",
                                 "token_data",
                             ],
@@ -575,6 +577,15 @@ commands = {
                     },
                 },
             },
+    'device_name'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'change_device_name',
+                    'oargs'             : ['device_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'info'   : {
             'default'    : {
                 'exists'    : {
@@ -770,15 +781,6 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.data_objects.used_otp",
                 "otpme.lib.classes.data_objects.failed_pass",
                 "otpme.lib.classes.data_objects.token_counter",
-                # Here rather than only in the tiqr token module, which
-                # is where it is actually used: the index builds its
-                # per-object-type classes once, in backend.init(), from
-                # whatever config.object_types holds at that moment.
-                # Token types register after that, so a data object that
-                # arrives with one is missing from the index for the
-                # rest of the process -- and any search that walks all
-                # object types then dies on it.
-                "otpme.lib.classes.data_objects.tiqr_auth_result",
                 ]
 
 def register():
@@ -1075,6 +1077,7 @@ def register_backend():
     config.register_index_attribute('owner_uuid')
     config.register_index_attribute('pass_type')
     config.register_index_attribute('support_dot1x')
+    config.register_index_attribute('support_links')
     # Register object to backend.
     class_getter = token.get_class
     class_getter_args = {'TOKEN_TYPE' : 'token_type'}
@@ -1229,6 +1232,18 @@ class Token(OTPmeObject):
         # class.
         self.token_type = None
         self.pass_type = None
+        # What its owner calls the thing this token lives on: "My
+        # Pixel", "work key". Free text, and deliberately not the token
+        # name -- the name has to survive LDAP, file systems and URL
+        # paths, so the portal derives it from this and keeps the
+        # spaces and the capitals here.
+        #
+        # On every token type, not just the ones the SSO portal hands
+        # out today: the portal shows this in its lists, the promote
+        # dialog offers it as the name for the token it displaces, and
+        # a type that has nowhere to put it drops back to whatever the
+        # description happens to say.
+        self.device_name = None
         # Whether a failed attempt against this token is worth counting
         # towards the accessgroup's max_fail. True for a token whose
         # secret somebody could arrive at by trying: a password, or an
@@ -1278,6 +1293,17 @@ class Token(OTPmeObject):
         self.offline_pinnable = False
         self.support_dot1x = False
         self.dot1x_secret = None
+        # May a link token point at this one?
+        #
+        # Off unless a type says otherwise. What makes a token linkable
+        # is that its credential is a secret the server checks on its
+        # own: whoever presents it verifies, no matter which token the
+        # accessgroup was assigned to. A credential bound to its owner
+        # at registration time -- a WebAuthn user handle, a tiqr
+        # identity enrolled in somebody's phone -- can never answer for
+        # another user, so linking it would build something that cannot
+        # work and only fails at the first login.
+        self.support_links = False
 
         self.track_last_used = True
         self.acl_inheritance_enabled = True
@@ -1361,6 +1387,12 @@ class Token(OTPmeObject):
                                                         'var_name'  : 'pass_type',
                                                         'type'      : str,
                                                         'required'  : True,
+                                                    },
+
+                        'DEVICE_NAME'               : {
+                                                        'var_name'  : 'device_name',
+                                                        'type'      : str,
+                                                        'required'  : False,
                                                     },
 
                         'OWNER'                     : {
@@ -2814,6 +2846,45 @@ class Token(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['edit:device_name'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    @object_changelog("change device name to {device_name}")
+    def change_device_name(
+        self,
+        device_name: str=None,
+        force: bool=False,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Set the label of the thing this token lives on. """
+        msg = _("Change device name of token '{token_path}'?: ")
+        msg = msg.format(token_path=self.rel_path)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_device_name",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        if device_name is None:
+            device_name = callback.ask(input_prefill=self.device_name,
+                                        message="New device name: ")
+        self.device_name = str(device_name)
+
+        return self._cache(callback=callback)
+
     @check_acls(['edit:offline_expiry'])
     @object_lock()
     @backend.transaction
@@ -4053,6 +4124,7 @@ class Token(OTPmeObject):
         self.add_index('pass_type', self.pass_type)
         self.add_index('owner_uuid', self.owner_uuid)
         self.add_index('support_dot1x', self.support_dot1x)
+        self.add_index('support_links', self.support_links)
         ## Tokens should not inherit ACLs by default.
         #self.acl_inheritance_enabled = False
 
@@ -4633,6 +4705,11 @@ class Token(OTPmeObject):
             lines.append('TOKEN_TYPE=""')
 
         lines.append(f'OWNER="{self.owner}"')
+
+        if self.verify_acl("view:device_name"):
+            lines.append(f'DEVICE_NAME="{self.device_name}"')
+        else:
+            lines.append('DEVICE_NAME=""')
 
         if self.verify_acl("view:pass_type"):
             lines.append(f'PASS_TYPE="{self.pass_type}"')

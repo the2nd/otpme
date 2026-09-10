@@ -313,6 +313,40 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return response
 
+    def set_state(self, shared_dict_name, state_id, state_data, expiry):
+        """ Send state to peer. """
+        command = "set_state"
+        command_args = {}
+        command_args['shared_dict_name'] = shared_dict_name
+        command_args['state_id'] = state_id
+        command_args['state_data'] = state_data
+        command_args['expiry'] = expiry
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args)
+        if not status:
+            msg = _("Failed to set state: {response}")
+            msg = msg.format(response=response)
+            raise OTPmeException(msg)
+        return response
+
+    def del_state(self, shared_dict_name, state_id):
+        """ Tell peer a state is spent. """
+        command = "del_state"
+        command_args = {}
+        command_args['shared_dict_name'] = shared_dict_name
+        command_args['state_id'] = state_id
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args)
+        if not status:
+            msg = _("Failed to delete state: {response}")
+            msg = msg.format(response=response)
+            raise OTPmeException(msg)
+        return response
+
     def sync(self, skip_deletions=True):
         """ Sync data objects with peer. """
         object_types = config.get_cluster_object_types()

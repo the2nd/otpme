@@ -323,6 +323,8 @@ class MotpToken(Token):
         self.pass_type = "otp"
         # A short OTP the user types, same reasoning as HOTP.
         self.count_fails = True
+        # An OTP from a shared secret verifies for whoever types it.
+        self.support_links = True
         self.otp_type = "time"
 
         # Set default values.

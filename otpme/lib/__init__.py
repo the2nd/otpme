@@ -271,6 +271,32 @@ def init_otpme(use_backend=None, load_host_data=True):
     except ValueError:
         pass
 
+    # Raise the open file limit. A daemon started by an init system gets
+    # the kernel default of 1024, and limits.conf does not apply to it --
+    # that file is read by pam_limits, which only runs for a PAM session.
+    # With a socket per connection across ten daemons, plus the cluster,
+    # redis and the index DB, 1024 runs out.
+    #
+    # Only ever raise, never lower: a deployment that already set a
+    # higher limit through its init system keeps it.
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        wanted = config.rlimit_nofile
+        if soft < wanted or hard < wanted:
+            new_hard = max(hard, wanted)
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE,
+                                (max(soft, wanted), new_hard))
+            except (ValueError, PermissionError):
+                # Not privileged to lift the hard limit. Take the soft
+                # one as high as the hard one allows, which is what an
+                # unprivileged process can do, and carry on -- running
+                # with fewer file descriptors beats not starting.
+                if soft < hard:
+                    resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+    except (ValueError, OSError):
+        pass
+
     # Always need to use the backed in API mode but not on realm init.
     if config.use_api and not config.realm_init:
         if not backend.is_available():

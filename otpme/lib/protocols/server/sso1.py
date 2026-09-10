@@ -36,12 +36,25 @@ from otpme.lib.encoding.base import decode
 
 from otpme.lib import qrcode
 from otpme.lib.protocols import status_codes
+from otpme.lib.protocols import sso_helpers
 from otpme.lib.protocols import tiqr_helpers
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.daemon.clusterd import cluster_sync_state
+from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 from otpme.lib.token.tiqr import tiqr as tiqr_token
 
 from otpme.lib.exceptions import *
 
+# Base of the staging token name a deploy parks its new credential
+# under until the verify step moves it onto the SSO token. Realm and
+# site get appended by OTPmeSsoP1._deploy_token_name(): with one portal
+# per site the same user can have a deploy running at each, and a
+# single shared slot would let one silently delete the other's.
+#
+# The base on its own is what a name is *tested* against -- see
+# tiqr_enroll_finish(), which is reached by the phone directly and can
+# be handed a grant another site issued, so the site in it is not ours
+# to derive.
 DEPLOY_NAME = "sso-deploy"
 
 # Max age (in seconds) of an SSO session's reauth_time for a sensitive
@@ -75,6 +88,21 @@ SSO_RECOVERY_DEPLOY_TYPES = ("totp", "fido2", "tiqr", "password")
 # Passkeys are deliberately out -- they are meant as peers of the login
 # token, not as the token the recovery flow looks for.
 PROMOTABLE_TOKEN_TYPES = ("tiqr", "fido2")
+
+# Name prefixes are built by OTPmeSsoP1._token_name_prefix(), which is
+# the one place both ends go through: the add flows name tokens with it
+# and the listings show only what carries it. A list filtered on a
+# prefix nobody generates would simply be empty, with nothing to say
+# why -- so the two must not be able to drift apart.
+
+# Deploy types that are a thing the user owns and can tell apart from
+# another of the same kind, so the deploy asks what to call it. The
+# label is what the rename dialog offers when the SSO role later moves
+# to another token -- exactly the types that can hold that role.
+#
+# TOTP is out: it lives in an app the user already named, and it cannot
+# be promoted to or from, so nothing would ever show the label back.
+DEVICE_NAME_TOKEN_TYPES = PROMOTABLE_TOKEN_TYPES
 
 # Token types the portal can provision, and the parameter that says
 # whether a user may be handed one. Order is what the deploy page shows.
@@ -178,7 +206,7 @@ class OTPmeSsoP1(OTPmeServer1):
         self.encrypt_session = False
         # Instructs parent class to require a client certificate.
         self.require_client_cert = True
-        # Auth request are allowed to any node.
+        # ssod request are allowed on any node.
         self.require_master_node = False
         # We need a clean cluster status.
         self.require_cluster_status = True
@@ -209,6 +237,93 @@ class OTPmeSsoP1(OTPmeServer1):
         callback = config.get_callback()
         callback.job.client = self.client
         return callback
+
+    def _portal_site(self, command_args):
+        """ The site of the portal the user is standing in front of.
+
+        ``portal_site`` is set by ssod_redirect_command() and
+        _remote_ssod_call() on every cross-site forward. Its absence
+        means we are the portal ourselves. """
+        return command_args.get('portal_site') or config.site
+
+    def _token_name_prefix(self, token_type, command_args):
+        """ The prefix every token this portal creates for a user wears.
+
+        Realm and site are in it because one user can hold a token of
+        the same type for several portals -- the whole point of a
+        per-site default_sso_token_name. Without the site in the name
+        the second portal would either collide with the first one's
+        token or list it as its own, and a security key registered for
+        one portal's RP ID cannot answer for the other.
+
+        The one place both ends go through: the add flows build names
+        with it, the listings and the per-token commands accept only
+        what carries it. A name generated with one prefix and filtered
+        with another simply disappears from its card. """
+        portal_site = self._portal_site(command_args)
+        return f"{token_type}-{config.realm}-{portal_site}-"
+
+    def _deploy_token_name(self, command_args):
+        """ The staging token name of the portal running this deploy.
+
+        Per portal, so two deploys for the same user cannot land in one
+        slot -- deploy_begin() clears a stale staging token, and with a
+        shared name that would silently throw away the other portal's
+        half-finished enrollment.
+
+        Only for creating and looking one up. Whether a *given* name is
+        a staging name is asked with _is_deploy_token_name(), because
+        that question also comes up for grants issued elsewhere. """
+        portal_site = self._portal_site(command_args)
+        return f"{DEPLOY_NAME}-{config.realm}-{portal_site}"
+
+    def _is_deploy_token_name(self, token_name):
+        """ Is this the staging name of a deploy, whoever started it?
+
+        The site in the name is the one that issued the grant, and the
+        phone finishing a tiqr enrollment may well reach a different
+        one -- so this asks about the shape, not about us. A user
+        chosen device name cannot look like this: those all carry a
+        type prefix from _token_name_prefix(). """
+        if not token_name:
+            return False
+        return token_name.startswith(f"{DEPLOY_NAME}-")
+
+    def _sso_token_name(self, command_args):
+        """ The name of the SSO token of the portal being used.
+
+        Site scoped, and read off the site rather than off the user:
+        user.get_config_parameter() walks the user's parents and would
+        always end at the user's home site, while what a portal deploys,
+        recovers and promotes is its own token. A user of site A signing
+        in at site B's portal has to get B's answer -- that is what lets
+        the same hardware key hold one credential per site, each in its
+        own OTPme token, each with its own RP ID.
+
+        ``portal_site`` is set by ssod_redirect_command() and
+        _remote_ssod_call() on every cross-site forward. Its absence
+        means we are the portal ourselves.
+
+        The name is only ever a name, never a permission -- every one of
+        the callers below still checks that the token belongs to this
+        user -- so a peer that named a site it has no business naming
+        could at worst make us look for a token under a different name
+        of the same user. An unknown site falls back to our own, which
+        is the answer we would have given before this parameter existed.
+        """
+        portal_site = self._portal_site(command_args)
+        site = backend.get_object(object_type="site",
+                                realm=config.realm,
+                                name=portal_site)
+        if site is None:
+            log_msg = _("Unknown portal site '{site}', using own.", log=True)[1]
+            log_msg = log_msg.format(site=portal_site)
+            self.logger.warning(log_msg)
+            site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
+        if site is None:
+            return None
+        return site.get_config_parameter("default_sso_token_name")
 
     def gen_sotp(self, user, ag_uuid, session_hash):
         user_ags = user.get_access_groups(return_type="uuid")
@@ -242,6 +357,12 @@ class OTPmeSsoP1(OTPmeServer1):
         # in its local backend -- strip it before forwarding.
         forward_args = dict(command_args)
         forward_args.pop('session_uuid', None)
+        # Which portal the user is standing in front of. The home site
+        # is about to run the command with its own config.site, and
+        # what several of these commands need is the portal's answer --
+        # see _sso_token_name(). Set here rather than at each call
+        # site, because every one of them comes through here.
+        forward_args['portal_site'] = config.site
         try:
             status, \
             status_code, \
@@ -480,7 +601,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # overwrite that phone instead of their SSO token -- harmless
         # while the SSO token was the only way in, but no longer true
         # now that additional tokens can log in as well.
-        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        sso_token_name = self._sso_token_name(command_args)
         if sso_token_name and login_token_name != sso_token_name:
             msg = _("Please sign in with your '{name}' token to deploy.")
             msg = msg.format(name=sso_token_name)
@@ -498,16 +619,24 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(user_name=user.name)
             self.logger.info(log_msg)
             return self.build_response(True, response)
-        # Remove old sso-deploy token if it exists (e.g. from a previous attempt).
-        old_deploy = user.token(DEPLOY_NAME)
+        # Remove old sso-deploy token if it exists (e.g. from a previous
+        # attempt). Our own staging slot only -- another portal's
+        # half-finished deploy is none of our business.
+        deploy_name = self._deploy_token_name(command_args)
+        old_deploy = user.token(deploy_name)
         callback = self.get_callback()
         if old_deploy:
-            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
-            user.del_token(token_name=DEPLOY_NAME,
+            # Not into the trash. A staging token from an abandoned
+            # attempt was never in service -- it holds a credential
+            # nobody ever authenticated with, and keeping it would only
+            # collect debris. add_device_token_to_trash, which this
+            # used to ask, is about the WLAN/IMAP device tokens and has
+            # nothing to say here.
+            user.del_token(token_name=deploy_name,
                             force=True,
                             verify_acls=False,
                             run_policies=True,
-                            add_to_trash=add_to_trash,
+                            add_to_trash=False,
                             callback=callback)
             user._write(callback=callback)
         # tiqr: no staging token either, for the same reason as the
@@ -516,25 +645,19 @@ class OTPmeSsoP1(OTPmeServer1):
         # DEPLOY_NAME as the token to create, so the whole regular
         # enrollment path applies unchanged and deploy_verify finds an
         # ordinary tiqr token waiting to be moved into place.
+        # Both types that end up as somebody's phone or key carry a
+        # label the user gave them, and both need it before anything is
+        # created: tiqr because it goes into the enrollment grant, and
+        # FIDO2 so the token has one at all -- without it the rename
+        # dialog on a later promotion has nothing to offer but a random
+        # string.
+        device_name = None
+        if token_type in DEVICE_NAME_TOKEN_TYPES:
+            device_name, error = self._deploy_device_name(user, token_type,
+                                                        command_args)
+            if error is not None:
+                return error
         if token_type == "tiqr":
-            device_name = command_args.get('device_name')
-            device_name = str(device_name).strip() if device_name else ""
-            # The device name is not just a label: it is the name this
-            # token is renamed to when the SSO role is later handed to
-            # another phone. Check here that it survives sanitizing and
-            # that the resulting name is free, so the user hears about
-            # it now instead of at promotion time.
-            promote_name = tiqr_helpers.sanitize_token_name(device_name)
-            if not promote_name:
-                msg = _("Invalid device name.")
-                if not device_name:
-                    msg = _("Device name required.")
-                return self.build_response(False,
-                                {'message': msg, 'status': False})
-            if user.token(promote_name):
-                msg = _("A token with this name already exists.")
-                return self.build_response(False,
-                                {'message': msg, 'status': False})
             my_site = backend.get_object(object_type="site",
                                         uuid=config.site_uuid)
             expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
@@ -543,11 +666,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                     tiqr_helpers.ENROLL_SCOPE_METADATA,
                                     expiry,
                                     user_uuid=user.uuid,
-                                    token_name=DEPLOY_NAME,
+                                    token_name=deploy_name,
                                     device_name=device_name,
                                     login_token_uuid=login_token.uuid)
-            metadata_url = (f"https://{my_site.sso_fqdn}/tiqr/metadata"
-                            f"?enrollment_key={quote(enroll_key, safe='')}")
+            url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
+            metadata_url = tiqr_helpers.build_metadata_url(url_template,
+                                                        enroll_key)
             enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
             enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme,
                                                     metadata_url)
@@ -565,7 +689,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                 {'message':'DEPLOY_FAILED', 'status':False})
             response = {
                         'token_type'                : token_type,
-                        'deploy_token_name'         : DEPLOY_NAME,
+                        'deploy_token_name'         : deploy_name,
                         'deploy_login_token_name'   : login_token_name,
                         'enroll_url'                : enroll_url,
                         'qrcode_img'                : qrcode_img,
@@ -576,7 +700,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(True, response)
         # Create sso-deploy token (OATH or FIDO2) under the user.
         try:
-            user.add_token(token_name=DEPLOY_NAME,
+            user.add_token(token_name=deploy_name,
                             token_type=token_type,
                             no_token_infos=True,
                             mode="mode1",
@@ -593,18 +717,28 @@ class OTPmeSsoP1(OTPmeServer1):
             response = {'message':'DEPLOY_FAILED', 'status':False}
             return self.build_response(status, response)
         # Get deploy token.
-        deploy_token = user.token(DEPLOY_NAME)
+        deploy_token = user.token(deploy_name)
         if not deploy_token:
             response = {'message':'DEPLOY_FAILED', 'status':False}
             return self.build_response(status, response)
         # Build response.
         response = {
                     'token_type'                : token_type,
-                    'deploy_token_name'         : DEPLOY_NAME,
+                    'deploy_token_name'         : deploy_name,
                     'deploy_login_token_name'   : login_token_name,
                 }
         # FIDO2: setup via WebAuthn dance, no secret/QR here.
         if token_type == "fido2":
+            # Where the self-service flow puts the label as well, so
+            # both kinds of security key are named the same way. It
+            # survives deploy_verify: the move renames the token, it
+            # does not build a new one.
+            deploy_token.change_device_name(device_name,
+                                        force=True,
+                                        verify_acls=False,
+                                        run_policies=False,
+                                        callback=callback)
+            deploy_token._write(callback=callback)
             return self.build_response(True, response)
         deploy_token._write(callback=callback)
         # Get token secret.
@@ -732,9 +866,11 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.build_response(False, response)
             response = {'message':'Token deployment successful.', 'status':True}
             return self.build_response(True, response)
-        # OATH / FIDO2: verify the DEPLOY_NAME staging token, then
-        # move it into the login-token slot.
-        deploy_token = user.token(DEPLOY_NAME)
+        # OATH / FIDO2: verify the staging token this portal parked,
+        # then move it into the login-token slot. Same portal that ran
+        # deploy_begin, so the same name comes out.
+        deploy_name = self._deploy_token_name(command_args)
+        deploy_token = user.token(deploy_name)
         if not deploy_token:
             response = {'message':'UNKNOWN_TOKEN', 'status':False}
             return self.build_response(False, response)
@@ -745,9 +881,9 @@ class OTPmeSsoP1(OTPmeServer1):
         elif deploy_token.token_type == "tiqr":
             # The token existing at all already means the phone
             # answered -- the enrollment creates it only on success.
-            # is_deployed() is the same check the fido2 branch above
+            # has_auth_data() is the same check the fido2 branch above
             # makes on credential_data.
-            if not deploy_token.is_deployed():
+            if not deploy_token.has_auth_data():
                 response = {'message':'Phone not enrolled yet.', 'status':False}
                 return self.build_response(False, response)
         else:
@@ -848,18 +984,25 @@ class OTPmeSsoP1(OTPmeServer1):
             authenticator_attachment="cross-platform",
         )
         # Stash the (serialized) reg state + token slot under an opaque
-        # state-id in the per-host shared dict. The browser only ever
-        # sees the state-id, so an attacker with access to the Flask
-        # session cookie can't replay the WebAuthn challenge.
-        # Registration always lands on the master node (mgmt=True from
-        # the web layer; no multi-master in OTPme), so begin and
-        # complete share the same per-host shared dict by construction.
-        fido2_state_id = stuff.gen_secret(len=32)
+        # state-id in the shared dict. The browser only ever sees the
+        # state-id, so an attacker with access to the Flask session
+        # cookie can't replay the WebAuthn challenge.
+        #
+        # Registration lands on the master node (mgmt=True from the web
+        # layer; no multi-master in OTPme), so begin and complete meet
+        # on the same node anyway -- but only until the master moves,
+        # which would strand a registration in progress. Synced across
+        # the cluster so it survives that. The state-id names the dict
+        # it belongs to; that is how clusterd finds the target on the
+        # other side.
+        expiry = 300
+        fido2_state_id = f"fido2_reg_states:{stuff.gen_secret(len=32)}"
         multiprocessing.fido2_reg_states.add(
                 key=fido2_state_id,
                 value={'state':      reg_state,
                        'token_uuid': fido2_token.uuid},
-                expire=300)
+                expire=expiry)
+        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
         fido2_reg_data = {
                     'create_options'        : dict(create_options),
                     'fido2_state_id'        : fido2_state_id,
@@ -903,7 +1046,9 @@ class OTPmeSsoP1(OTPmeServer1):
                                             mgmt=True)
         # Pop the reg state under fido2_state_id. delete() is single-use:
         # a second complete-call with the same state-id within the TTL
-        # window will miss, foiling replay.
+        # window will miss, foiling replay. The delete goes to the other
+        # nodes too, or the copies the sync left there would still be
+        # collectable.
         try:
             state_data = multiprocessing.fido2_reg_states.delete(
                                                     fido2_state_id)
@@ -912,6 +1057,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False, {
                     'message': 'REGISTRATION_FAILED', 'status': False})
+        cluster_sync_state_delete(fido2_state_id)
         reg_state = state_data['state']
         # fido2_add_begin stores its own shape in the same dict (it has
         # a token_name, not a uuid -- there is no token yet). Its state
@@ -987,10 +1133,20 @@ class OTPmeSsoP1(OTPmeServer1):
         Only the direct memberships: what comes via a role follows by
         itself once the role is mirrored.
 
-        Cross-site memberships are deliberately skipped: writing them
-        would require an ssod->ssod fan-out to each remote site, which
-        is not built yet. The user can re-run the add on the other site
-        if they need cross-site coverage.
+        This writes the memberships of the local site only -- a site
+        owns its own roles, groups and access groups, and no multi
+        master means we cannot write another site's. So for a user of
+        another site it runs twice, once at each end: the home site
+        creates the token and mirrors its own reach, then hands the
+        object config and this login token's uuid back, and the portal
+        runs the same pass for its side (_token_sync_config() ->
+        _mirror_remote_token()).
+
+        What still has no coverage is a third site the user never
+        registered the token at. There is no fan-out to every site in
+        the realm, and inventing reach somewhere the user has not been
+        would be the wrong default anyway -- they add the token at that
+        portal when they need it there.
         """
         if login_token is None:
             return
@@ -1022,23 +1178,14 @@ class OTPmeSsoP1(OTPmeServer1):
                                             token=token.rel_path, e=e)
                     self.logger.warning(log_msg)
 
-    def _sanitize_passkey_token_name(self, device_name):
+    def _sanitize_passkey_token_name(self, device_name, command_args):
         """ Build a valid passkey token name from a user-supplied label.
 
         Restricted to ``[a-z0-9-]`` for the same reasons as
-        ``_sanitize_device_token_name`` — kept identical so both flows
-        agree on what the user just typed. """
-        name = device_name.strip().lower()
-        out = []
-        for ch in name:
-            if ch.isalnum() and ch.isascii():
-                out.append(ch)
-            elif ch in " _":
-                out.append("-")
-        sanitized = "".join(out).strip("-")
-        if not sanitized:
-            return None
-        return f"passkey-{sanitized}"
+        ``_sanitize_device_token_name`` — the same function, so the two
+        cannot drift apart. """
+        prefix = self._token_name_prefix("passkey", command_args)
+        return sso_helpers.sanitize_token_name(device_name, prefix=prefix)
 
     def _site_trusts_user_home_for_passkeys(self, user):
         """ Originator side: does the local site list the user's home
@@ -1075,14 +1222,42 @@ class OTPmeSsoP1(OTPmeServer1):
             return False
         return site in trusts
 
+    def _log_passkey_denied(self, command, reason, user):
+        """ Say which of the passkey gates refused, and on what.
+
+        All of them answer the caller with the same sentence, which is
+        right -- there is nothing useful to tell a browser here -- but
+        it left the log with nothing either. Four branches per command,
+        one message, and the two sides of a cross-site request run
+        different ones: what the portal decides is not what the home
+        site checks. Working out which fired meant reading the source
+        with the config in the other hand.
+        """
+        log_msg = _("Passkeys denied: {command}: {reason}: user={user} user_site={user_site} own_site={own_site} peer={peer} peer_site={peer_site}", log=True)[1]
+        log_msg = log_msg.format(command=command,
+                                reason=reason,
+                                user=getattr(user, 'name', None),
+                                user_site=getattr(user, 'site', None),
+                                own_site=config.site,
+                                peer=getattr(self.peer, 'name', None),
+                                peer_site=getattr(self.peer, 'site', None))
+        self.logger.warning(log_msg)
+
     def _resolve_passkeys_allowed(self, user):
         """ Resolve ``sso_allow_passkeys`` to a bool, honouring the
         local site's ``sso_allow_passkeys_trusts``:
-          - trusted user (own site or home in the trust list) →
-            ``user.get_config_parameter`` (user → unit → site cascade
-            anchored at the user's home site).
-          - untrusted foreign user → the *local* site's
-            ``sso_allow_passkeys`` (site-only, no user/unit walk).
+          - user of our own site → ``user.get_config_parameter``
+            (user → unit → site cascade).
+          - foreign user whose home site we trust → the same cascade,
+            anchored at their home site.
+          - foreign user we do not trust → False.
+
+        That last case used to fall back to the local site's own
+        ``sso_allow_passkeys``, which is how a portal without
+        ``sso_allow_passkeys_trusts`` came to show the passkey card to
+        a foreign user and then refuse the add: the listing asked less
+        than the write did. Adding one is the operator's decision, and
+        until they make it there is nothing here for that user.
 
         ``get_config_parameter`` returns the value from the first
         cascade level that has the parameter explicitly set, else
@@ -1091,25 +1266,17 @@ class OTPmeSsoP1(OTPmeServer1):
         ourselves so foreign users (whose home cascade often has no
         explicit value) don't fall through to a False-looking None
         and see "Passkeys are not enabled." """
+        if not self._site_trusts_user_home_for_passkeys(user):
+            return False
         try:
             registered_default = bool(
                     config.get_config_parameter("sso_allow_passkeys")['default'])
         except Exception:
             registered_default = True
-        if self._site_trusts_user_home_for_passkeys(user):
-            try:
-                value = user.get_config_parameter("sso_allow_passkeys")
-            except Exception:
-                value = None
-        else:
-            local_site = backend.get_object(object_type="site",
-                                            uuid=config.site_uuid)
-            if local_site is None:
-                return False
-            try:
-                value = local_site.get_config_parameter("sso_allow_passkeys")
-            except Exception:
-                value = None
+        try:
+            value = user.get_config_parameter("sso_allow_passkeys")
+        except Exception:
+            value = None
         if value is None:
             return registered_default
         return bool(value)
@@ -1131,17 +1298,19 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
         peer_allowed = command_args.get('_passkeys_allowed')
-        if is_cluster_peer and peer_allowed is not None:
+        if self.from_peer_node and peer_allowed is not None:
             # Home, peer-forwarded. Accept the originator's decision
             # only when the peer's site is reciprocally trusted.
             if not self._site_trusts_site_for_passkeys(self.peer.site):
+                self._log_passkey_denied("list_passkeys",
+                                    "peer site not in sso_allow_passkeys_trusts",
+                                    user)
                 return self.build_response(True, {
                         'passkeys': [], 'allowed': False, 'status': True})
             if not bool(peer_allowed):
+                self._log_passkey_denied("list_passkeys",
+                                    "originator said not allowed", user)
                 return self.build_response(True, {
                         'passkeys': [], 'allowed': False, 'status': True})
         elif user.site != config.site:
@@ -1149,6 +1318,10 @@ class OTPmeSsoP1(OTPmeServer1):
             # before redirecting so an untrusted home doesn't even get
             # asked.
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("list_passkeys",
+                                    "originator: user home not in "
+                                    "sso_allow_passkeys_trusts, or "
+                                    "sso_allow_passkeys off", user)
                 return self.build_response(True, {
                         'passkeys': [], 'allowed': False, 'status': True})
             forward_args = dict(command_args)
@@ -1159,9 +1332,12 @@ class OTPmeSsoP1(OTPmeServer1):
         else:
             # Local user.
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("list_passkeys",
+                                    "local: sso_allow_passkeys off", user)
                 return self.build_response(True, {
                         'passkeys': [], 'allowed': False, 'status': True})
         passkeys = []
+        passkey_prefix = self._token_name_prefix("passkey", command_args)
         for token_uuid in user.tokens:
             try:
                 token = backend.get_object(object_type="token", uuid=token_uuid)
@@ -1177,9 +1353,17 @@ class OTPmeSsoP1(OTPmeServer1):
             # path (it now creates the slot only on successful complete).
             if not token.credential_data:
                 continue
+            # And only the ones registered here, which is what this
+            # portal's prefix says. A passkey is bound to the RP ID of
+            # the portal that created it, so one from another portal
+            # cannot sign in here at all -- listing it would offer
+            # buttons for something this page cannot do anything with,
+            # and it is in that portal's list already.
+            if not token.name.startswith(passkey_prefix):
+                continue
             passkeys.append({
                         'name'          : token.name,
-                        'device_name'   : token.description or token.name,
+                        'device_name'   : self._token_label(token) or token.name,
                         'enabled'       : bool(token.enabled),
                         # The one this session is signed in with. Both
                         # deleting and disabling it are refused (see
@@ -1189,6 +1373,27 @@ class OTPmeSsoP1(OTPmeServer1):
                         'is_current'    : _is_current_token(token),
                     })
         return self.build_response(True, {'passkeys': passkeys, 'allowed': True, 'status': True})
+
+    def _get_user_passkey(self, user, token_name, command_args):
+        """ One of the user's own passkeys, by name.
+
+        Only the ones this portal created, which is what its prefix
+        says. A passkey carries the RP ID of the portal it was
+        registered at and cannot answer anywhere else, so one from
+        another portal is not this page's to delete or switch off -- it
+        belongs in that portal's list, where it works.
+
+        No exception for the SSO token, unlike the fido2 side: a
+        passkey is never one (see PROMOTABLE_TOKEN_TYPES). """
+        token = user.token(token_name)
+        if token is None:
+            return None
+        if token.token_type != "passkey":
+            return None
+        prefix = self._token_name_prefix("passkey", command_args)
+        if not token.name.startswith(prefix):
+            return None
+        return token
 
     def passkey_register_begin(self, username, sso_jwt, command_args):
         """ Build WebAuthn create-options for a new passkey.
@@ -1205,9 +1410,9 @@ class OTPmeSsoP1(OTPmeServer1):
             device_name = command_args['device_name']
         except Exception:
             return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
-        if not device_name or not str(device_name).strip():
+        device_name = sso_helpers.sanitize_device_label(device_name)
+        if not device_name:
             return self.build_response(False, {'message':'Device name required.', 'status':False})
-        device_name = str(device_name).strip()
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1217,19 +1422,25 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         # Resolve sso_allow_passkeys under sso_allow_passkeys_trusts.
         # See list_passkeys for the full pattern.
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
         peer_allowed = command_args.get('_passkeys_allowed')
-        if is_cluster_peer and peer_allowed is not None:
+        if self.from_peer_node and peer_allowed is not None:
             if not self._site_trusts_site_for_passkeys(self.peer.site):
+                self._log_passkey_denied("passkey_register_begin",
+                                    "peer site not in sso_allow_passkeys_trusts",
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
             if not bool(peer_allowed):
+                self._log_passkey_denied("passkey_register_begin",
+                                    "originator said not allowed", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
         elif user.site != config.site:
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("passkey_register_begin",
+                                    "originator: user home not in "
+                                    "sso_allow_passkeys_trusts, or "
+                                    "sso_allow_passkeys off", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
             forward_args = dict(command_args)
@@ -1240,9 +1451,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                             mgmt=True)
         else:
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("passkey_register_begin",
+                                    "local: sso_allow_passkeys off", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
-        token_name = self._sanitize_passkey_token_name(device_name)
+        token_name = self._sanitize_passkey_token_name(device_name,
+                                                    command_args)
         if not token_name:
             return self.build_response(False, {'message':'Invalid device name.', 'status':False})
         if user.token(token_name):
@@ -1286,20 +1500,27 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':f'Failed to start passkey registration: {e}', 'status':False})
         # Stash the (serialized) reg state + name fields under an opaque
-        # state-id in the per-host shared dict. The browser only sees
-        # the state-id, so an attacker with access to the Flask session
+        # state-id in the shared dict. The browser only sees the
+        # state-id, so an attacker with access to the Flask session
         # cookie can't replay the WebAuthn challenge or learn the
-        # in-flight device name. Registration always lands on the
-        # master node (mgmt=True from the web layer; no multi-master in
-        # OTPme), so begin and complete share the same per-host shared
-        # dict by construction.
-        passkey_state_id = stuff.gen_secret(len=32)
+        # in-flight device name.
+        #
+        # Registration lands on the master node (mgmt=True from the web
+        # layer; no multi-master in OTPme), so begin and complete meet
+        # on the same node anyway -- but only until the master moves,
+        # which would strand a registration in progress. Synced across
+        # the cluster so it survives that. The state-id names the dict
+        # it belongs to; that is how clusterd finds the target on the
+        # other side.
+        expiry = 300
+        passkey_state_id = f"passkey_reg_states:{stuff.gen_secret(len=32)}"
         multiprocessing.passkey_reg_states.add(
                 key=passkey_state_id,
                 value={'state':       reg_state,
                        'device_name': device_name,
                        'token_name':  token_name},
-                expire=300)
+                expire=expiry)
+        cluster_sync_state(state_id=passkey_state_id, expiry=expiry)
         return self.build_response(True, {
                     'create_options'        : dict(create_options),
                     'passkey_state_id'      : passkey_state_id,
@@ -1327,33 +1548,65 @@ class OTPmeSsoP1(OTPmeServer1):
         # gate again here on complete because the redirect carries a
         # fresh command_args and we don't want a peer to skip the
         # check by calling complete directly.
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
         peer_allowed = command_args.get('_passkeys_allowed')
-        if is_cluster_peer and peer_allowed is not None:
+        if self.from_peer_node and peer_allowed is not None:
             if not self._site_trusts_site_for_passkeys(self.peer.site):
+                self._log_passkey_denied("passkey_register_complete",
+                                    "peer site not in sso_allow_passkeys_trusts",
+                                    user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
             if not bool(peer_allowed):
+                self._log_passkey_denied("passkey_register_complete",
+                                    "originator said not allowed", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
         elif user.site != config.site:
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("passkey_register_complete",
+                                    "originator: user home not in "
+                                    "sso_allow_passkeys_trusts, or "
+                                    "sso_allow_passkeys off", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
             forward_args = dict(command_args)
             forward_args['_passkeys_allowed'] = True
-            return self.ssod_redirect_command(command="passkey_register_complete",
-                                            user=user,
-                                            command_args=forward_args,
+            # _remote_ssod_call rather than ssod_redirect_command,
+            # because we need the payload and not just something to
+            # hand back: the home site creates the token -- no multi
+            # master -- but only this site can put it into this site's
+            # SSO accessgroup, and without that the passkey is offered
+            # by no login here. See _mirror_remote_token().
+            status, remote_resp = self._remote_ssod_call(user=user,
+                                            command="passkey_register_complete",
+                                            extra_args=forward_args,
                                             mgmt=True)
+            if not status or not isinstance(remote_resp, dict):
+                return self.build_response(False, remote_resp)
+            self._mirror_remote_token(user, remote_resp, flow="Passkey")
+            return self.build_response(True, {
+                        'status'        : True,
+                        'name'          : remote_resp.get('name'),
+                        'device_name'   : remote_resp.get('device_name'),
+                        # Only on this path. The memberships we just
+                        # wrote have to reach the user's home site
+                        # before a login with this passkey works --
+                        # that is where it is decided. We nudged the
+                        # sync, but cannot promise when. On the local
+                        # path there is nothing to wait for and the UI
+                        # says nothing.
+                        'sync_pending'  : True,
+                    })
         else:
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("passkey_register_complete",
+                                    "local: sso_allow_passkeys off", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
         # Pop the reg state under passkey_state_id. delete() is
         # single-use; a second complete with the same state-id misses.
+        # Told to the other nodes as well, or their copies would still
+        # answer.
         try:
             state_data = multiprocessing.passkey_reg_states.delete(
                                                     passkey_state_id)
@@ -1362,6 +1615,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False, {
                     'message': 'REGISTRATION_FAILED', 'status': False})
+        cluster_sync_state_delete(passkey_state_id)
         reg_state = state_data['state']
         device_name = state_data['device_name']
         token_name = state_data['token_name']
@@ -1399,8 +1653,13 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'Failed to create passkey token.', 'status':False})
         token.rp = rp_id
         token.credential_data = encode(auth_data.credential_data, "hex")
-        token.description = device_name
-        token.update_index('description', token.description)
+        # The setter, not a plain assignment: it is what keeps the
+        # changelog and the audit trail in step with the object.
+        token.change_device_name(device_name,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
         token._write(callback=callback)
         # A passkey is meant to be a peer of the login token: same
         # authorization, just a different factor on a different device.
@@ -1416,11 +1675,18 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = _("Passkey '{token}' registered for user '{user_name}'.", log=True)[1]
         log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
         self.logger.info(log_msg)
-        return self.build_response(True, {
+        response = {
                     'status'        : True,
                     'name'          : token.name,
-                    'device_name'   : token.description,
-                })
+                    'device_name'   : token.device_name,
+                }
+        # Peer-forwarded: the portal mirrors the token and, more to the
+        # point, writes the memberships of its own site. We just wrote
+        # ours, and a passkey that is only in this site's SSO
+        # accessgroup is offered by no other portal's login.
+        response = self._token_sync_config(token, response,
+                                        config.auth_token)
+        return self.build_response(True, response)
 
     # ---- FIDO2 security keys (self-service) ----------------------------
     #
@@ -1450,16 +1716,32 @@ class OTPmeSsoP1(OTPmeServer1):
             return True
         return bool(value)
 
-    def _sanitize_fido2_token_name(self, device_name):
+    def _sanitize_fido2_token_name(self, device_name, command_args):
         """ Build a fido2 token name from a user-supplied label. """
-        return tiqr_helpers.sanitize_token_name(device_name, prefix="fido2-")
+        prefix = self._token_name_prefix("fido2", command_args)
+        return sso_helpers.sanitize_token_name(device_name, prefix=prefix)
 
-    def _get_user_fido2_token(self, user, token_name):
-        """ One of the user's own fido2 tokens, by name. """
+    def _get_user_fido2_token(self, user, token_name, sso_token_name,
+        command_args):
+        """ One of the user's own fido2 tokens, by name.
+
+        Only the ones the portal lists: the SSO token, and keys carrying
+        this portal's prefix because this page created them. A key an
+        administrator provisioned under some other name, or one another
+        portal created, is not the user's to delete or switch off from
+        here, and leaving it out of the listing would be cosmetic if
+        the commands still took it.
+
+        ``sso_token_name`` comes from the caller because it belongs to
+        the portal, not to the user -- see _sso_token_name(). """
         token = user.token(token_name)
         if token is None:
             return None
         if token.token_type != "fido2":
+            return None
+        prefix = self._token_name_prefix("fido2", command_args)
+        if token.name != sso_token_name \
+        and not token.name.startswith(prefix):
             return None
         return token
 
@@ -1470,10 +1752,13 @@ class OTPmeSsoP1(OTPmeServer1):
         fido2 one, flagged, so somebody with two keys sees both -- and
         the one that matters most is not the hidden one.
 
-        Keys without credential_data are left out: an empty fido2 slot
-        is what an administrator creates for the older
-        fido2_register_begin path, and it is not something the user can
-        do anything with here. """
+        Two kinds are left out. Keys without credential_data, which is
+        the empty slot an administrator creates for the older
+        fido2_register_begin path and nothing the user can act on. And
+        keys under a name this page did not choose: an administrator can
+        provision a fido2 token for a purpose of their own, and offering
+        a delete button for it would be wrong. What remains is the SSO
+        token plus everything carrying this portal's prefix. """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1491,7 +1776,8 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(True, {'fido2_tokens': [],
                                             'allowed': False,
                                             'status': True})
-        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        fido2_prefix = self._token_name_prefix("fido2", command_args)
+        sso_token_name = self._sso_token_name(command_args)
         fido2_tokens = []
         for token_uuid in user.tokens:
             try:
@@ -1505,22 +1791,35 @@ class OTPmeSsoP1(OTPmeServer1):
                 continue
             if not token.credential_data:
                 continue
+            # The SSO token and the keys registered here, nothing else.
+            # An administrator can give a user a fido2 token under any
+            # name, for a purpose the user is not meant to undo from the
+            # portal -- listing those would offer a delete button for
+            # something that is not theirs to remove. What this page
+            # created carries this portal's prefix and is fair game --
+            # a key registered at another portal does not, and belongs
+            # in that portal's list rather than this one.
+            if token.name != sso_token_name \
+            and not token.name.startswith(fido2_prefix):
+                continue
             fido2_tokens.append({
                         'name'          : token.name,
-                        'device_name'   : token.description or token.name,
+                        'device_name'   : self._token_label(token) or token.name,
                         'enabled'       : bool(token.enabled),
                         'is_sso_token'  : token.name == sso_token_name,
                         'is_current'    : _is_current_token(token),
                     })
         sso_token = user.token(sso_token_name)
         sso_token_label = None
-        sso_token_suggested_name = None
+        sso_token_suggested_label = None
+        sso_token_ask_label = True
         if sso_token is not None:
-            sso_token_label = (getattr(sso_token, 'device_name', None)
-                            or getattr(sso_token, 'description', None)
+            sso_token_label = (self._token_label(sso_token)
                             or sso_token.name)
-            sso_token_suggested_name = self._suggest_displaced_token_name(
-                                                        user, sso_token)
+            sso_token_suggested_label, sso_token_ask_label = \
+                            self._suggest_displaced_token_label(user,
+                                                        sso_token,
+                                                        command_args)
         return self.build_response(True, {
                             'fido2_tokens': fido2_tokens,
                             'allowed': True,
@@ -1528,7 +1827,8 @@ class OTPmeSsoP1(OTPmeServer1):
                             'sso_token_type': (sso_token.token_type
                                             if sso_token else None),
                             'sso_token_label': sso_token_label,
-                            'sso_token_suggested_name': sso_token_suggested_name,
+                            'sso_token_suggested_label': sso_token_suggested_label,
+                            'sso_token_ask_label': sso_token_ask_label,
                             'status': True})
 
     def fido2_add_begin(self, username, sso_jwt, command_args):
@@ -1542,7 +1842,7 @@ class OTPmeSsoP1(OTPmeServer1):
             device_name = command_args['device_name']
         except Exception:
             return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
-        device_name = str(device_name).strip() if device_name else ""
+        device_name = sso_helpers.sanitize_device_label(device_name)
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1560,7 +1860,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'Security keys are not enabled.',
                     'status':False})
-        token_name = self._sanitize_fido2_token_name(device_name)
+        token_name = self._sanitize_fido2_token_name(device_name, command_args)
         if not token_name:
             msg = 'Invalid device name.'
             if not device_name:
@@ -1615,13 +1915,15 @@ class OTPmeSsoP1(OTPmeServer1):
         # Same shared dict the deploy flow uses, with a shape of its own
         # -- token_name because there is no token yet. Both completes
         # check which shape they got.
-        fido2_state_id = stuff.gen_secret(len=32)
+        expiry = 300
+        fido2_state_id = f"fido2_reg_states:{stuff.gen_secret(len=32)}"
         multiprocessing.fido2_reg_states.add(
                 key=fido2_state_id,
                 value={'state':       reg_state,
                        'device_name': device_name,
                        'token_name':  token_name},
-                expire=300)
+                expire=expiry)
+        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
         return self.build_response(True, {
                     'create_options'    : dict(create_options),
                     'fido2_state_id'    : fido2_state_id,
@@ -1647,16 +1949,32 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
         if user.site != config.site:
-            return self.ssod_redirect_command(command="fido2_add_complete",
-                                            user=user,
-                                            command_args=command_args,
+            # _remote_ssod_call, not ssod_redirect_command: the home
+            # site creates the token, but only we can put it into our
+            # own SSO accessgroup, and a key that is in nobody's is
+            # offered by no login. See _mirror_remote_token().
+            status, remote_resp = self._remote_ssod_call(user=user,
+                                            command="fido2_add_complete",
+                                            extra_args=command_args,
                                             mgmt=True)
+            if not status or not isinstance(remote_resp, dict):
+                return self.build_response(False, remote_resp)
+            self._mirror_remote_token(user, remote_resp, flow="FIDO2")
+            return self.build_response(True, {
+                        'status'        : True,
+                        'name'          : remote_resp.get('name'),
+                        'device_name'   : remote_resp.get('device_name'),
+                        # See passkey_register_complete: only the
+                        # cross-site path has anything to wait for.
+                        'sync_pending'  : True,
+                    })
         if not self._resolve_fido2_allowed(user):
             return self.build_response(False,
                     {'message':'Security keys are not enabled.',
                     'status':False})
         # Single use: a second complete with the same state id inside
-        # the TTL misses, which is what stops a replay.
+        # the TTL misses, which is what stops a replay. On every node,
+        # not only this one.
         try:
             state_data = multiprocessing.fido2_reg_states.delete(fido2_state_id)
         except KeyError:
@@ -1664,6 +1982,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                     {'message':'REGISTRATION_FAILED', 'status':False})
+        cluster_sync_state_delete(fido2_state_id)
         token_name = state_data.get('token_name')
         if not token_name:
             # A state id from the deploy flow, which registers into an
@@ -1715,8 +2034,13 @@ class OTPmeSsoP1(OTPmeServer1):
                     {'message':'Failed to create token.', 'status':False})
         token.rp = rp_id
         token.credential_data = encode(auth_data.credential_data, "hex")
-        token.description = device_name
-        token.update_index('description', token.description)
+        # The setter, not a plain assignment: it is what keeps the
+        # changelog and the audit trail in step with the object.
+        token.change_device_name(device_name,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
         token._write(callback=callback)
         # Same reach as the token the user signed in with -- otherwise
         # the new key is not valid for the SSO accessgroup and the next
@@ -1733,11 +2057,17 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = _("Security key '{token}' registered for user '{user_name}'.", log=True)[1]
         log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
         self.logger.info(log_msg)
-        return self.build_response(True, {
+        response = {
                     'status'        : True,
                     'name'          : token.name,
-                    'device_name'   : token.description,
-                })
+                    'device_name'   : token.device_name,
+                }
+        # Same handshake as the passkey flow: the portal mirrors the
+        # token and writes the memberships of its own site, which is
+        # the half we cannot do from here.
+        response = self._token_sync_config(token, response,
+                                        config.auth_token)
+        return self.build_response(True, response)
 
     def del_fido2_token(self, username, sso_jwt, command_args):
         """ Delete one of the user's own security keys.
@@ -1766,11 +2096,13 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'Security keys are not enabled.',
                     'status':False})
-        token = self._get_user_fido2_token(user, token_name)
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_fido2_token(user, token_name, sso_token_name,
+                                        command_args)
         if token is None:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
-        if token_name == user.get_config_parameter("default_sso_token_name"):
+        if token_name == sso_token_name:
             return self.build_response(False,
                     {'message':'Cannot delete the default token. Make another '
                             'token the default token first.',
@@ -1784,7 +2116,7 @@ class OTPmeSsoP1(OTPmeServer1):
         callback = self.get_callback()
         callback.raise_exception = True
         try:
-            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+            add_to_trash = self._add_to_trash(user, "add_fido2_token_to_trash")
             user.del_token(token_name=token_name,
                             force=True,
                             verify_acls=False,
@@ -1831,12 +2163,14 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'Security keys are not enabled.',
                     'status':False})
-        token = self._get_user_fido2_token(user, token_name)
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_fido2_token(user, token_name, sso_token_name,
+                                        command_args)
         if token is None:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
         if not enable:
-            if token_name == user.get_config_parameter("default_sso_token_name"):
+            if token_name == sso_token_name:
                 return self.build_response(False,
                         {'message':'Cannot disable the default token.',
                         'status':False})
@@ -1872,12 +2206,20 @@ class OTPmeSsoP1(OTPmeServer1):
         return self._set_fido2_token_enabled(username, sso_jwt,
                                             command_args, False)
 
-    def _tiqr_service_identifier(self, my_site):
-        """ What the app shows as the name of the service. """
-        service_identifier = my_site.get_config_parameter("tiqr_service_display_name")
-        if not service_identifier:
-            service_identifier = config.realm
-        return service_identifier
+    def _tiqr_service_name(self, my_site):
+        """ What the app shows as the name of the service, and what it
+        files the account under.
+
+        Two values, because they are not the same thing: the display
+        name keeps its case, the identifier is folded -- see
+        tiqr_helpers.canonical_service_identifier() for why. Returned
+        together so no caller uses one where it means the other. """
+        display_name = my_site.get_config_parameter("tiqr_service_display_name")
+        if not display_name:
+            display_name = config.realm
+        identifier = tiqr_helpers.canonical_service_identifier(display_name,
+                                                            config.realm)
+        return display_name, identifier
 
     def tiqr_enroll_begin(self, username, sso_jwt, command_args):
         """ Start enrolling a phone. Creates no token.
@@ -1889,10 +2231,14 @@ class OTPmeSsoP1(OTPmeServer1):
             device_name = command_args['device_name']
         except Exception:
             return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
-        device_name = str(device_name).strip() if device_name else ""
+        device_name = sso_helpers.sanitize_device_label(device_name)
         if not device_name:
             return self.build_response(False,
                             {'message':'Device name required.', 'status':False})
+        try:
+            url_template = command_args['metadata_url_template']
+        except Exception:
+            url_template = None
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -1901,19 +2247,44 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if user.site != config.site:
+            # The QR code has to point at us, not at the user's home
+            # site, but the grant inside it is minted there. So the home
+            # site gets the URL with only the key left open.
+            url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
+            command_args['metadata_url_template'] = url_template
             # No mgmt: this writes nothing. Unlike the passkey flow it
             # keeps no state on the master either -- what the phone
             # needs travels in the signed grant -- so any node can
             # answer.
-            return self.ssod_redirect_command(command="tiqr_enroll_begin",
+            # _remote_ssod_call, not ssod_redirect_command: the latter
+            # returns a finished response, and we still have something
+            # to add to the payload.
+            status, message = self._remote_ssod_call(
+                                            command="tiqr_enroll_begin",
                                             user=user,
-                                            command_args=command_args)
+                                            extra_args=command_args)
+            # Decided here, shown later. The enrollment itself is
+            # answered to the phone, so the browser can only be told
+            # something at begin time or when its poll finds the token
+            # -- and the poll is the moment the user is looking. The
+            # web layer carries the flag from here to there.
+            #
+            # Set on this path only: the token gets created on the
+            # user's home site, we mirror it and write our own
+            # memberships, and those have to travel back before a login
+            # with the phone works.
+            if status and isinstance(message, dict):
+                message['sync_pending'] = True
+            return self.build_response(status, message)
         if not self._resolve_tiqr_allowed(user):
             return self.build_response(False,
                     {'message':'tiqr is not enabled.', 'status':False})
 
-        token_name = tiqr_helpers.sanitize_token_name(device_name)
+        tiqr_prefix = self._token_name_prefix("tiqr", command_args)
+        token_name = sso_helpers.sanitize_token_name(device_name,
+                                                    prefix=tiqr_prefix)
         if not token_name:
             return self.build_response(False,
                             {'message':'Invalid device name.', 'status':False})
@@ -1929,8 +2300,6 @@ class OTPmeSsoP1(OTPmeServer1):
         if login_token is None:
             return self.build_response(False,
                             {'message':'No login token.', 'status':False})
-
-        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
         expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
         enroll_key = tiqr_helpers.build_enroll_key(
                                 tiqr_token.get_site_secret(),
@@ -1940,8 +2309,17 @@ class OTPmeSsoP1(OTPmeServer1):
                                 token_name=token_name,
                                 device_name=device_name,
                                 login_token_uuid=login_token.uuid)
-        metadata_url = (f"https://{my_site.sso_fqdn}/tiqr/metadata"
-                        f"?enrollment_key={quote(enroll_key, safe='')}")
+        if not url_template:
+            url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
+        try:
+            metadata_url = tiqr_helpers.build_metadata_url(url_template,
+                                                        enroll_key)
+        except ValueError as e:
+            log_msg = _("tiqr: rejected metadata URL template: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'ENROLL_FAILED', 'status':False})
         enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
         enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme, metadata_url)
         # The same URL twice: as a QR for a second device, and as a link
@@ -1983,6 +2361,38 @@ class OTPmeSsoP1(OTPmeServer1):
         if not enroll_key:
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
+        # Decode JWT.
+        payload = jwt.decode(jwt=enroll_key,
+                            secret="",
+                            algorithm="HS256",
+                            options={"verify_signature": False})
+        # Get user UUID.
+        user_uuid = payload['user_uuid']
+        user = backend.get_object(uuid=user_uuid)
+        if user is None:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if user.site != config.site:
+            command_args['sso_fqdn'] = my_site.sso_fqdn
+            service_display_name, service_identifier = self._tiqr_service_name(my_site)
+            command_args['service_display_name'] = service_display_name
+            command_args['service_identifier'] = service_identifier
+            return self.ssod_redirect_command(command="tiqr_enroll_metadata",
+                                            user=user,
+                                            command_args=command_args)
+        try:
+            sso_fqdn = command_args['sso_fqdn']
+        except KeyError:
+            sso_fqdn = None
+        try:
+            service_display_name = command_args['service_display_name']
+        except KeyError:
+            service_display_name = None
+        try:
+            service_identifier = command_args['service_identifier']
+        except KeyError:
+            service_identifier = None
         site_secret = tiqr_token.get_site_secret()
         try:
             claims = tiqr_helpers.parse_enroll_key(site_secret, enroll_key,
@@ -1993,17 +2403,8 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
-
-        user = backend.get_object(uuid=claims['user_uuid'])
-        if user is None:
-            return self.build_response(False,
-                            {'message':'INVALID_REQUEST', 'status':False})
-        if user.site != config.site:
-            return self.ssod_redirect_command(command="tiqr_enroll_metadata",
-                                            user=user,
-                                            command_args=command_args)
-
-        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if not sso_fqdn:
+            sso_fqdn = my_site.sso_fqdn
         # A second grant, same claims, different scope. Its window
         # starts here rather than at begin, so a phone that scans late
         # still gets the full time to send its secret.
@@ -2016,11 +2417,20 @@ class OTPmeSsoP1(OTPmeServer1):
                                 token_name=claims['token_name'],
                                 device_name=claims.get('device_name'),
                                 login_token_uuid=claims['login_token_uuid'])
-        base_url = f"https://{my_site.sso_fqdn}"
-        service_identifier = self._tiqr_service_identifier(my_site)
+        base_url = f"https://{sso_fqdn}"
+        sdn, si = self._tiqr_service_name(my_site)
+        if not service_display_name:
+            service_display_name = sdn
+        if not service_identifier:
+            service_identifier = si
         metadata = {
                 'service'   : {
-                    'displayName'       : service_identifier,
+                    # displayName is what the user reads, identifier is
+                    # what the app looks the account up by when an
+                    # authentication URL arrives. The two differ in case
+                    # on purpose -- see
+                    # tiqr_helpers.canonical_service_identifier().
+                    'displayName'       : service_display_name,
                     'identifier'        : service_identifier,
                     'logoUrl'           : f"{base_url}/static/otpme.png",
                     'infoUrl'           : base_url,
@@ -2036,6 +2446,160 @@ class OTPmeSsoP1(OTPmeServer1):
             }
         return self.build_response(True, {'status':True, 'metadata':metadata})
 
+    def _mirror_remote_token(self, user, remote_resp, flow):
+        """ Write a token the user's home site just created into our own
+        backend and hang it on our copy of the user.
+
+        Same handshake add_device_token uses across sites: the home site
+        is where the token is created -- no multi master -- and it sends
+        the object config back so the site the browser or phone actually
+        talked to can serve a login right away instead of waiting for
+        the cluster sync.
+
+        And it is not only about being early. The memberships that make
+        a token usable are per site, and the home site can only write
+        its own -- see _mirror_login_token_memberships(). Without the
+        second pass below, a credential registered from here would work
+        nowhere: fido2_auth_begin() looks for tokens of *this* site's
+        SSO accessgroup, and the new one is in the home site's.
+
+        Never fatal. By the time we get here the registration has
+        already succeeded on the home site and the user holds a working
+        credential; failing the response now would tell them otherwise,
+        and the sync would hand us the token a moment later anyway. So a
+        problem here is logged and swallowed.
+
+        Returns the mirrored token, or None. """
+        token_full_oid = remote_resp.get('token_full_oid')
+        token_oc = remote_resp.get('token_oc')
+        if not token_full_oid or not token_oc:
+            # An older home site, or one that did not consider us
+            # entitled to the config. The sync brings the token later.
+            log_msg = _("{flow}: home site sent no token config to mirror.", log=True)[1]
+            log_msg = log_msg.format(flow=flow)
+            self.logger.debug(log_msg)
+            return None
+        try:
+            token_oid = oid.get(object_id=token_full_oid, resolve=True)
+            backend.write_config(object_id=token_oid,
+                                object_config=token_oc,
+                                full_index_update=True,
+                                full_data_update=True,
+                                cluster=True)
+        except Exception as e:
+            log_msg = _("{flow}: failed to mirror remote token object: {e}", log=True)[1]
+            log_msg = log_msg.format(flow=flow, e=e)
+            self.logger.warning(log_msg)
+            return None
+        token = backend.get_object(token_oid)
+        if token is None:
+            log_msg = _("{flow}: mirrored token object not readable back.", log=True)[1]
+            log_msg = log_msg.format(flow=flow)
+            self.logger.warning(log_msg)
+            return None
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.add_token(new_token=token,
+                            no_token_infos=True,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("{flow}: failed to attach mirrored token to user '{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(flow=flow, user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            return None
+        # The memberships do not come with the object: the token is a
+        # member of nothing on the home site either -- reach is per
+        # site, and this is the site the user is logging in to. So the
+        # same mirroring the home site does for its own groups has to
+        # run here for ours, off the same login token.
+        #
+        # Absent for a deploy flow: there the token inherits the SSO
+        # token's UUID and with it every membership.
+        login_token_uuid = remote_resp.get('login_token_uuid')
+        if login_token_uuid:
+            try:
+                login_token = backend.get_object(uuid=login_token_uuid)
+                self._mirror_login_token_memberships(user, token,
+                                                    login_token,
+                                                    callback, flow=flow)
+            except Exception as e:
+                log_msg = _("{flow}: failed to mirror memberships onto '{token}': {e}", log=True)[1]
+                log_msg = log_msg.format(flow=flow, token=token.rel_path, e=e)
+                self.logger.warning(log_msg)
+        log_msg = _("{flow}: mirrored token '{token}' from site '{site}'.", log=True)[1]
+        log_msg = log_msg.format(flow=flow, token=token.rel_path, site=user.site)
+        self.logger.info(log_msg)
+        self._notify_sync_peers(flow)
+        return token
+
+    def _notify_sync_peers(self, flow):
+        """ Ask hostd to tell the other sites there is something new.
+
+        The memberships we just wrote live on our own access groups and
+        roles, and the user's home site decides a login against those
+        objects (user.get_tokens() -> accessgroup.is_assigned_token()).
+        Until they have reached it, the token is real but answers
+        nowhere -- so the sooner the home site pulls, the shorter that
+        window.
+
+        Only a nudge. hostd throttles notifications (notify_limit,
+        30s) and the regular sync interval runs regardless, so this
+        shortens the wait rather than removing it. That is also why the
+        portal tells the user it can take a moment: nothing here can
+        promise the other side has caught up.
+
+        Never fatal: a failed notification costs time, not
+        correctness. """
+        try:
+            self._send_daemon_msg("hostd", "sync_notify")
+        except Exception as e:
+            log_msg = _("{flow}: failed to send sync notification: {e}", log=True)[1]
+            log_msg = log_msg.format(flow=flow, e=e)
+            self.logger.warning(log_msg)
+
+    def _token_sync_config(self, token, response, login_token):
+        """ Put a token's object config into a peer-forwarded response.
+
+        The peer mirrors it locally so a login there works before the
+        cluster sync catches up -- see _mirror_remote_token(). Only for
+        a cluster peer: the browser and the phone reach these commands
+        directly too, and an object config is not theirs to have.
+
+        get_sync_config, not read_config: it hands out what this peer
+        is allowed to see, which is the sync relationship's business
+        and not ours to decide here.
+
+        ``login_token`` is the token whose reach the new one inherits,
+        and the peer needs it to mirror its own memberships -- ours are
+        already written, and the token is a member of nothing over
+        there. Passed in rather than read off config.auth_token,
+        because not every caller has a session: the tiqr enrollment is
+        answered to the phone, and its login token comes out of the
+        signed grant. None means there is nothing for the peer to
+        mirror -- a deploy flow, where the token inherits the SSO
+        token's UUID and with it every membership. """
+        if not self.from_peer_node:
+            return response
+        try:
+            oc_obj = token.get_sync_config(self.peer)
+        except Exception as e:
+            log_msg = _("Failed to read token object config for peer: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return response
+        if not oc_obj:
+            return response
+        response['token_full_oid'] = token.oid.full_oid
+        response['token_oc'] = oc_obj.copy()
+        if login_token is not None:
+            response['login_token_uuid'] = login_token.uuid
+        return response
+
     def tiqr_enroll_finish(self, command_args):
         """ The phone delivering the secret it generated.
 
@@ -2048,6 +2612,37 @@ class OTPmeSsoP1(OTPmeServer1):
         if not enroll_secret or not secret:
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
+        # Decode JWT.
+        payload = jwt.decode(jwt=enroll_secret,
+                            secret="",
+                            algorithm="HS256",
+                            options={"verify_signature": False})
+        # Get user UUID.
+        user_uuid = payload['user_uuid']
+        user = backend.get_object(uuid=user_uuid)
+        if user is None:
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
+        if user.site != config.site:
+            # To the master: this creates a token and writes the role,
+            # access group and group memberships onto it. No multi
+            # master in OTPme, so tree object writes have to land there.
+            #
+            # _remote_ssod_call rather than ssod_redirect_command,
+            # because we need the payload and not just a response to
+            # hand back: the home site sends the new token's object
+            # config along, and mirroring it here is what lets a login
+            # on this site find the token before the cluster sync has
+            # caught up.
+            status, remote_resp = self._remote_ssod_call(user=user,
+                                            command="tiqr_enroll_finish",
+                                            extra_args=command_args,
+                                            mgmt=True)
+            if not status or not isinstance(remote_resp, dict):
+                return self.build_response(False, remote_resp)
+            self._mirror_remote_token(user, remote_resp, flow="tiqr")
+            return self.build_response(True, {'status':True})
+        # Decode enroll secret.
         site_secret = tiqr_token.get_site_secret()
         try:
             claims = tiqr_helpers.parse_enroll_key(site_secret, enroll_secret,
@@ -2065,19 +2660,6 @@ class OTPmeSsoP1(OTPmeServer1):
         except (ValueError, TypeError):
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
-
-        user = backend.get_object(uuid=claims['user_uuid'])
-        if user is None:
-            return self.build_response(False,
-                            {'message':'INVALID_REQUEST', 'status':False})
-        if user.site != config.site:
-            # To the master: this creates a token and writes the role,
-            # access group and group memberships onto it. No multi
-            # master in OTPme, so tree object writes have to land there.
-            return self.ssod_redirect_command(command="tiqr_enroll_finish",
-                                            user=user,
-                                            command_args=command_args,
-                                            mgmt=True)
 
         token_name = claims['token_name']
         if user.token(token_name):
@@ -2132,11 +2714,18 @@ class OTPmeSsoP1(OTPmeServer1):
         token.secret = secret
         token.ocra_suite = user.get_config_parameter("tiqr_ocra_suite")
         token.identity_id = user.name
-        token.device_name = claims.get('device_name')
+        # The setter, like every other flow: the changelog and the
+        # audit trail are what say where this label came from.
+        token.change_device_name(claims.get('device_name'),
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
         # Stored for a push implementation that does not exist yet;
         # pushing to the stock apps would need SURF's credentials.
         token.notification_type = command_args.get('notification_type')
         token.notification_address = command_args.get('notification_address')
+        token.deployed = True
         token._write(callback=callback)
 
         # Only the settings flow mirrors. The deploy flows name their
@@ -2148,10 +2737,11 @@ class OTPmeSsoP1(OTPmeServer1):
         # temporary UUID into those objects and leave it behind as a
         # dangling member the moment the UUID is swapped.
         #
-        # A user-chosen device name can never collide with DEPLOY_NAME:
-        # sanitize_token_name() prefixes every one of them with
-        # TOKEN_NAME_PREFIX.
-        if token_name != DEPLOY_NAME:
+        # Asked by shape, not by name: the grant may have been issued
+        # by another site, and its staging name carries that site. A
+        # user-chosen device name can never look like one -- those all
+        # come out of _token_name_prefix() with a type in front.
+        if not self._is_deploy_token_name(token_name):
             self._mirror_login_token_memberships(user, token, login_token,
                                                 callback, flow="tiqr")
 
@@ -2162,7 +2752,23 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = _("tiqr token '{token}' enrolled for user '{user_name}'.", log=True)[1]
         log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
         self.logger.info(log_msg)
-        return self.build_response(True, {'status':True})
+
+        response = {'status':True}
+        # Peer-forwarded: the site the phone actually talked to wants to
+        # mirror the token, so that a login there finds it without
+        # waiting for the cluster sync -- and so that it gets the
+        # memberships of its own site, which we cannot write.
+        #
+        # The login token goes along only outside a deploy flow, the
+        # same condition as the membership mirroring above and for the
+        # same reason: there the token takes over the replaced token's
+        # UUID and with it every membership, on either site.
+        mirror_login_token = login_token
+        if self._is_deploy_token_name(token_name):
+            mirror_login_token = None
+        response = self._token_sync_config(token, response,
+                                        mirror_login_token)
+        return self.build_response(True, response)
 
     def _deploy_type_allowed(self, user, token_type):
         """ May this token type be deployed for this user?
@@ -2204,12 +2810,23 @@ class OTPmeSsoP1(OTPmeServer1):
             return True
         return bool(value)
 
-    def _get_user_tiqr_token(self, user, token_name):
-        """ One of the user's own tiqr tokens, by name. """
+    def _get_user_tiqr_token(self, user, token_name, sso_token_name,
+        command_args):
+        """ One of the user's own tiqr tokens, by name.
+
+        Only the ones the portal lists: the SSO token, and phones
+        carrying this portal's prefix because an enrollment here named
+        them. Same rule as _get_user_fido2_token, and for the same
+        reason -- leaving a token out of the listing is cosmetic while
+        the commands still take its name from the request. """
         token = user.token(token_name)
         if token is None:
             return None
         if token.token_type != "tiqr":
+            return None
+        prefix = self._token_name_prefix("tiqr", command_args)
+        if token.name != sso_token_name \
+        and not token.name.startswith(prefix):
             return None
         return token
 
@@ -2230,7 +2847,13 @@ class OTPmeSsoP1(OTPmeServer1):
         The SSO token is in here too when it is a tiqr one, flagged so
         the UI can mark it and leave out the delete button. Hiding it
         would be worse: somebody with two phones would see one, and the
-        one they cannot see is the one that matters most. """
+        one they cannot see is the one that matters most.
+
+        Everything else has to carry this portal's prefix, which is
+        what an enrollment here gives it. A token under another name
+        did not come from this page -- or came from another portal --
+        and offering a delete button for it would be wrong; the
+        security key card draws the same line. """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -2248,7 +2871,8 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(True, {'tiqr_tokens': [],
                                             'allowed': False,
                                             'status': True})
-        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        sso_token_name = self._sso_token_name(command_args)
+        tiqr_prefix = self._token_name_prefix("tiqr", command_args)
         tiqr_tokens = []
         for token_uuid in user.tokens:
             try:
@@ -2262,11 +2886,20 @@ class OTPmeSsoP1(OTPmeServer1):
                 continue
             # Enrollment creates the token only on success, so anything
             # without a secret is residue from an older path.
-            if not token.is_deployed():
+            if not token.has_auth_data():
+                continue
+            # The SSO token and the phones enrolled here, nothing else.
+            # An enrollment names its token itself, so today this only
+            # catches one an administrator renamed or filled through
+            # set_token_data -- but it is the same rule the security key
+            # card follows, and one rule for both is easier to hold in
+            # mind than an exception nobody remembers the reason for.
+            if token.name != sso_token_name \
+            and not token.name.startswith(tiqr_prefix):
                 continue
             tiqr_tokens.append({
                         'name'          : token.name,
-                        'device_name'   : token.device_name or token.name,
+                        'device_name'   : self._token_label(token) or token.name,
                         'enabled'       : bool(token.enabled),
                         'is_sso_token'  : token.name == sso_token_name,
                         # Not the same thing as is_sso_token: since a
@@ -2282,24 +2915,28 @@ class OTPmeSsoP1(OTPmeServer1):
         sso_token = user.token(sso_token_name)
         sso_token_type = sso_token.token_type if sso_token else None
         sso_token_label = None
-        sso_token_suggested_name = None
+        sso_token_suggested_label = None
+        sso_token_ask_label = True
         if sso_token is not None:
-            # The label names the thing in the question we ask; the
-            # suggestion is what goes into the input next to it. They
-            # differ on purpose -- the label may well be the SSO name
-            # itself, which is the one name the answer must not be.
-            sso_token_label = (getattr(sso_token, 'device_name', None)
-                            or getattr(sso_token, 'description', None)
+            # Both are labels, and they still differ: this one names
+            # the thing in the question we ask and falls back to the
+            # SSO name when there is nothing better, while the
+            # suggestion goes into the input and must never be that
+            # name -- it is the one the token is losing.
+            sso_token_label = (self._token_label(sso_token)
                             or sso_token.name)
-            sso_token_suggested_name = self._suggest_displaced_token_name(
-                                                        user, sso_token)
+            sso_token_suggested_label, sso_token_ask_label = \
+                            self._suggest_displaced_token_label(user,
+                                                        sso_token,
+                                                        command_args)
         return self.build_response(True, {
                             'tiqr_tokens': tiqr_tokens,
                             'allowed': True,
                             'sso_token_name': sso_token_name,
                             'sso_token_type': sso_token_type,
                             'sso_token_label': sso_token_label,
-                            'sso_token_suggested_name': sso_token_suggested_name,
+                            'sso_token_suggested_label': sso_token_suggested_label,
+                            'sso_token_ask_label': sso_token_ask_label,
                             'status': True})
 
     def del_tiqr_token(self, username, sso_jwt, command_args):
@@ -2328,11 +2965,13 @@ class OTPmeSsoP1(OTPmeServer1):
         if not self._resolve_tiqr_allowed(user):
             return self.build_response(False,
                     {'message':'tiqr is not enabled.', 'status':False})
-        token = self._get_user_tiqr_token(user, token_name)
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_tiqr_token(user, token_name, sso_token_name,
+                                        command_args)
         if token is None:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
-        if token_name == user.get_config_parameter("default_sso_token_name"):
+        if token_name == sso_token_name:
             return self.build_response(False,
                     {'message':'Cannot delete the default token. Make another '
                             'phone the default token first.',
@@ -2358,7 +2997,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # be reported as deleted and still be there.
         callback.raise_exception = True
         try:
-            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+            add_to_trash = self._add_to_trash(user, "add_tiqr_token_to_trash")
             user.del_token(token_name=token_name,
                             force=True,
                             verify_acls=False,
@@ -2401,14 +3040,16 @@ class OTPmeSsoP1(OTPmeServer1):
         if not self._resolve_tiqr_allowed(user):
             return self.build_response(False,
                     {'message':'tiqr is not enabled.', 'status':False})
-        token = self._get_user_tiqr_token(user, token_name)
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_tiqr_token(user, token_name, sso_token_name,
+                                        command_args)
         if token is None:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
         # Disabling the SSO token would leave the portal without one
         # that works, and the user without a way back in.
         if not enable:
-            if token_name == user.get_config_parameter("default_sso_token_name"):
+            if token_name == sso_token_name:
                 return self.build_response(False,
                         {'message':'Cannot disable the default token.',
                         'status':False})
@@ -2448,6 +3089,64 @@ class OTPmeSsoP1(OTPmeServer1):
         return self._set_tiqr_token_enabled(username, sso_jwt,
                                             command_args, False)
 
+    def _deploy_device_name(self, user, token_type, command_args):
+        """ The label a token gets at deploy time, checked up front.
+
+        Not decoration: it is what the rename dialog offers when the
+        SSO role is later handed to another token, and the name that
+        one gets. So a label that does not survive sanitizing, or whose
+        name is already taken, has to be said now -- at promotion time
+        the user is somewhere else entirely and would have no idea what
+        the dialog is complaining about.
+
+        Returns ``(device_name, error_response)``; exactly one of the
+        two is set. """
+        device_name = command_args.get('device_name')
+        device_name = sso_helpers.sanitize_device_label(device_name)
+        # The same prefix _displaced_token_name() will use, so what is
+        # checked here is the name that will actually be taken.
+        promote_name = sso_helpers.sanitize_token_name(device_name,
+                        prefix=self._token_name_prefix(token_type, command_args))
+        if not promote_name:
+            msg = _("Invalid device name.")
+            if not device_name:
+                msg = _("Device name required.")
+            return None, self.build_response(False,
+                            {'message': msg, 'status': False})
+        if user.token(promote_name):
+            msg = _("A token with this name already exists.")
+            return None, self.build_response(False,
+                            {'message': msg, 'status': False})
+        return device_name, None
+
+    def _token_label(self, token):
+        """ What its owner calls this token, or None.
+
+        device_name is where every flow the portal offers puts the
+        label now. The description is read after it because that is
+        where the ones created before device_name existed have theirs,
+        and nobody is going to migrate a user's security keys.
+
+        Not the token name: that is derived from the label, carries the
+        type and site prefix, and is the one thing the promote dialog
+        must not offer back. Callers that need something to display
+        fall back to it themselves. """
+        return token.device_name or token.description or None
+
+    def _add_to_trash(self, user, parameter):
+        """ Does a token the user deletes here go to the trash?
+
+        The default of a config parameter lives in its registration,
+        and that default is written into a site object only when the
+        site is created -- a site older than the parameter has nothing
+        to say and the cascade comes back None. None is falsy, and
+        "nobody ever configured this" must not read as "delete it
+        permanently", so it means the registered default: yes. """
+        add_to_trash = user.get_config_parameter(parameter)
+        if add_to_trash is None:
+            return True
+        return bool(add_to_trash)
+
     def _token_rename_blocked(self, token):
         """ Why this token cannot be renamed, or None.
 
@@ -2461,7 +3160,7 @@ class OTPmeSsoP1(OTPmeServer1):
         msg = _("Token '{name}' is your default token and renaming it is not allowed.")
         return msg.format(name=token.name)
 
-    def _displaced_token_name(self, token, wanted_name):
+    def _displaced_token_name(self, token, wanted_name, command_args):
         """ The name the token losing the SSO role should carry.
 
         ``wanted_name`` is what the user typed, and it is what we use
@@ -2470,41 +3169,56 @@ class OTPmeSsoP1(OTPmeServer1):
         name for a phone, the description for a passkey, which is where
         each flow puts the label the user gave the thing.
 
-        The prefix is the token's own type, so the name says what the
-        entry is. A displaced security key must not end up called
-        'tiqr-something'. """
+        The prefix carries the token's own type, so the name says what
+        the entry is -- a displaced security key must not end up called
+        'tiqr-something' -- and this portal's realm and site, so it
+        lands in the card it came from. """
         label = wanted_name
         if not label:
-            label = getattr(token, 'device_name', None)
-        if not label:
-            label = getattr(token, 'description', None)
+            label = self._token_label(token)
         if not label:
             return None
-        prefix = f"{token.token_type}-"
-        return tiqr_helpers.sanitize_token_name(label, prefix=prefix)
+        prefix = self._token_name_prefix(token.token_type, command_args)
+        return sso_helpers.sanitize_token_name(label, prefix=prefix)
 
-    def _suggest_displaced_token_name(self, user, token):
-        """ A name to offer for the token that is about to lose the SSO
-        role.
+    def _suggest_displaced_token_label(self, user, token, command_args):
+        """ The label the token losing the SSO role should keep.
 
-        It arrives prefilled in a dialog, so somebody will just press
-        OK -- it has to be free, and it has to be a name they would not
-        regret. The label the token carries if it has one, because that
-        is what its owner calls the thing. Its current name is no help:
-        that is the SSO name it is losing. Failing a label, and whenever
-        the derived name is taken, a random suffix. """
-        prefix = f"{token.token_type}-"
-        label = (getattr(token, 'device_name', None)
-                or getattr(token, 'description', None))
-        suggestion = tiqr_helpers.sanitize_token_name(label, prefix=prefix)
-        if suggestion and not user.token(suggestion):
-            return suggestion
+        A label, not a name. The input asks what the add dialogs ask --
+        what do you call this thing -- and _displaced_token_name() puts
+        the type prefix on the answer. Offering the finished name here
+        would send the prefix back through sanitize_token_name(), and
+        somebody who simply presses OK ends up with
+        'fido2-fido2a3f9'.
+
+        The label the token already carries, because that is what its
+        owner calls it. Its current name is no help: that is the SSO
+        name it is losing. Failing a label, and whenever the name it
+        would turn into is taken, a random one -- still free, still of
+        the right shape, and short enough that replacing it is no
+        effort.
+
+        Returns ``(label, ask)``. ``ask`` is True when the label is one
+        we made up, and then the user has to see it before the rename
+        happens -- it is the name they will look for in their own list
+        afterwards. When the token brought its own label there is
+        nothing to ask about, so the promotion runs without a dialog. """
+        label = self._token_label(token)
+        if label and self._displaced_name_free(user, token, label,
+                                            command_args):
+            return label, False
         for _attempt in range(8):
-            suffix = stuff.gen_secret(len=2, encoding="hex")
-            suggestion = f"{prefix}{suffix}"
-            if not user.token(suggestion):
-                return suggestion
-        return None
+            label = stuff.gen_secret(len=2, encoding="hex")
+            if self._displaced_name_free(user, token, label, command_args):
+                return label, True
+        return None, True
+
+    def _displaced_name_free(self, user, token, label, command_args):
+        """ Would this label give the displaced token a usable name? """
+        token_name = self._displaced_token_name(token, label, command_args)
+        if not token_name:
+            return False
+        return user.token(token_name) is None
 
     def promote_token(self, username, sso_jwt, command_args):
         """ Make another of the user's tokens the SSO token.
@@ -2543,7 +3257,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                             command_args=command_args,
                                             mgmt=True)
 
-        sso_token_name = user.get_config_parameter("default_sso_token_name")
+        sso_token_name = self._sso_token_name(command_args)
         if token_name == sso_token_name:
             return self.build_response(False,
                     {'message':'This is already the default token.',
@@ -2569,7 +3283,8 @@ class OTPmeSsoP1(OTPmeServer1):
                     {'message': blocked, 'status':False})
         if old_token is not None:
             old_token_name = self._displaced_token_name(old_token,
-                                                        old_token_name)
+                                                        old_token_name,
+                                                        command_args)
             if not old_token_name:
                 return self.build_response(False,
                         {'message':'A name for the current default token is required.',
@@ -2639,11 +3354,9 @@ class OTPmeSsoP1(OTPmeServer1):
                                             user=user,
                                             command_args=command_args,
                                             mgmt=True)
-        token = user.token(token_name)
+        token = self._get_user_passkey(user, token_name, command_args)
         if not token or token.owner_uuid != user.uuid:
             return self.build_response(False, {'message':'UNKNOWN_TOKEN', 'status':False})
-        if token.token_type != "passkey":
-            return self.build_response(False, {'message':'Not a passkey token.', 'status':False})
         # Refuse to delete the token of the current session. The JWT
         # would still carry its UUID and the next request's
         # verify_sso_jwt would fail to load config.auth_token -- the
@@ -2657,10 +3370,12 @@ class OTPmeSsoP1(OTPmeServer1):
         callback = self.get_callback()
         callback.raise_exception = True
         try:
+            add_to_trash = self._add_to_trash(user, "add_passkey_to_trash")
             user.del_token(token_name=token_name,
                             force=True,
                             verify_acls=False,
                             run_policies=True,
+                            add_to_trash=add_to_trash,
                             callback=callback)
             user._write(callback=callback)
         except Exception as e:
@@ -2707,10 +3422,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
-        if is_cluster_peer:
+        if self.from_peer_node:
             if not self._site_trusts_site_for_admin_access(self.peer.site):
                 return self.build_response(False, {
                     'message': 'Admin access not available: peer site is not '
@@ -2756,10 +3468,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # here on the home side we require reciprocal trust so a peer
         # can't drive admin-access changes on our users without an
         # explicit admin_access_trusts entry.
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
-        if is_cluster_peer:
+        if self.from_peer_node:
             if not self._site_trusts_site_for_admin_access(self.peer.site):
                 return self.build_response(False, {
                     'message': 'Admin access not available: peer site is not '
@@ -2876,11 +3585,8 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
         peer_verified = command_args.get('_step_up_verified')
-        skip_step_up_check = bool(is_cluster_peer and peer_verified)
+        skip_step_up_check = bool(self.from_peer_node and peer_verified)
         if not skip_step_up_check:
             # Originator (or direct socket): the SSO session lives here,
             # so the reauth freshness is checked here. On failure the
@@ -3015,10 +3721,13 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         return site.sso_fqdn
 
-    def _recovery_lookup_target_token(self, user):
-        """ Return the user's configured SSO token instance (from
-        default_sso_token_name), or None if not present. """
-        sso_token_name = user.get_config_parameter("default_sso_token_name")
+    def _recovery_lookup_target_token(self, user, command_args):
+        """ Return the user's configured SSO token instance (named by
+        the portal's default_sso_token_name), or None if not present.
+
+        The portal's name, not the user's site's: a recovery started at
+        site B has to restore B's token. """
+        sso_token_name = self._sso_token_name(command_args)
         if not sso_token_name:
             return None
         return user.token(sso_token_name)
@@ -3113,9 +3822,9 @@ class OTPmeSsoP1(OTPmeServer1):
         if not link_host:
             return _skip(f"could not derive sso_fqdn for link host (user '{user.name}')")
         # ---- User-config prerequisites ---------------------------------
-        sso_token = self._recovery_lookup_target_token(user)
+        sso_token = self._recovery_lookup_target_token(user, command_args)
         if sso_token is None:
-            sso_token_name = user.get_config_parameter("default_sso_token_name")
+            sso_token_name = self._sso_token_name(command_args)
             return _skip(f"user '{user.name}' has no token named '{sso_token_name}' (default_sso_token_name)")
         if not self._recovery_type_allowed(user, sso_token):
             allowed = user.get_config_parameter("allow_sso_token_recovery") or []
@@ -3194,7 +3903,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self._recovery_invalid()
         if not self._recovery_verify_stored(user, raw_token):
             return self._recovery_invalid()
-        sso_token = self._recovery_lookup_target_token(user)
+        sso_token = self._recovery_lookup_target_token(user, command_args)
         if not self._recovery_type_allowed(user, sso_token):
             return self._recovery_invalid()
         # Deploy-time type choices: same site/unit/user gate map as
@@ -3241,7 +3950,7 @@ class OTPmeSsoP1(OTPmeServer1):
         raw_token = command_args.get('recovery_token')
         if not self._recovery_verify_stored(user, raw_token):
             return None, self._recovery_invalid()
-        sso_token = self._recovery_lookup_target_token(user)
+        sso_token = self._recovery_lookup_target_token(user, command_args)
         if not self._recovery_type_allowed(user, sso_token):
             return None, self._recovery_invalid()
         return sso_token, None
@@ -3294,16 +4003,18 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(True, response)
         callback = self.get_callback()
         callback.raise_exception = True
-        # Remove leftover sso-deploy token from a previous attempt.
-        old_deploy = user.token(DEPLOY_NAME)
+        # Remove leftover sso-deploy token from a previous attempt. Our
+        # own staging slot only, and not into the trash -- see
+        # deploy_begin() for both reasons.
+        deploy_name = self._deploy_token_name(command_args)
+        old_deploy = user.token(deploy_name)
         if old_deploy:
-            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
             try:
-                user.del_token(token_name=DEPLOY_NAME,
+                user.del_token(token_name=deploy_name,
                                 force=True,
                                 verify_acls=False,
                                 run_policies=True,
-                                add_to_trash=add_to_trash,
+                                add_to_trash=False,
                                 callback=callback)
                 user._write(callback=callback)
             except Exception as e:
@@ -3323,31 +4034,24 @@ class OTPmeSsoP1(OTPmeServer1):
         # membership -- but naming it makes the enrollment refuse if it
         # disappeared in the meantime, which would leave the move with
         # nothing to replace and the new token without any reach.
+        # Same as in deploy_begin: the types the SSO role can move
+        # between are named by their owner, and the name has to be
+        # usable before anything is created.
+        #
+        # These are the only spots in the recovery flow that answer
+        # with a real message instead of the uniform 'invalid'. It is
+        # something the user typed and can fix, and by the time we are
+        # here the recovery token has already been verified -- so
+        # nobody learns anything from it who could not already see the
+        # deploy form. Telling them the link expired would just send
+        # them back for another mail.
+        device_name = None
+        if token_type in DEVICE_NAME_TOKEN_TYPES:
+            device_name, error = self._deploy_device_name(user, token_type,
+                                                        command_args)
+            if error is not None:
+                return error
         if token_type == "tiqr":
-            device_name = command_args.get('device_name')
-            device_name = str(device_name).strip() if device_name else ""
-            # Same reasoning as in deploy_begin: the device name is the
-            # name this token gets on a later promotion, so it has to
-            # survive sanitizing and be free now.
-            #
-            # This is the one spot in the recovery flow that answers
-            # with a real message instead of the uniform 'invalid'.
-            # It is something the user typed and can fix, and by the
-            # time we are here the recovery token has already been
-            # verified -- so nobody learns anything from it who could
-            # not already see the deploy form. Telling them the link
-            # expired would just send them back for another mail.
-            promote_name = tiqr_helpers.sanitize_token_name(device_name)
-            if not promote_name:
-                msg = _("Invalid device name.")
-                if not device_name:
-                    msg = _("Device name required.")
-                return self.build_response(False,
-                                {'message': msg, 'status': False})
-            if user.token(promote_name):
-                msg = _("A token with this name already exists.")
-                return self.build_response(False,
-                                {'message': msg, 'status': False})
             my_site = backend.get_object(object_type="site",
                                         uuid=config.site_uuid)
             expiry = time.time() + my_site.get_config_parameter("tiqr_enrollment_expiry")
@@ -3356,11 +4060,12 @@ class OTPmeSsoP1(OTPmeServer1):
                                     tiqr_helpers.ENROLL_SCOPE_METADATA,
                                     expiry,
                                     user_uuid=user.uuid,
-                                    token_name=DEPLOY_NAME,
+                                    token_name=deploy_name,
                                     device_name=device_name,
                                     login_token_uuid=sso_token.uuid)
-            metadata_url = (f"https://{my_site.sso_fqdn}/tiqr/metadata"
-                            f"?enrollment_key={quote(enroll_key, safe='')}")
+            url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
+            metadata_url = tiqr_helpers.build_metadata_url(url_template,
+                                                        enroll_key)
             enroll_scheme = my_site.get_config_parameter("tiqr_enroll_scheme")
             enroll_url = tiqr_helpers.build_enroll_url(enroll_scheme,
                                                     metadata_url)
@@ -3377,7 +4082,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self._recovery_invalid()
             response = {
                         'token_type'                : token_type,
-                        'deploy_token_name'         : DEPLOY_NAME,
+                        'deploy_token_name'         : deploy_name,
                         'deploy_login_token_name'   : sso_token.name,
                         'enroll_url'                : enroll_url,
                         'qrcode_img'                : qrcode_img,
@@ -3388,7 +4093,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.info(log_msg)
             return self.build_response(True, response)
         try:
-            user.add_token(token_name=DEPLOY_NAME,
+            user.add_token(token_name=deploy_name,
                             token_type=token_type,
                             no_token_infos=True,
                             mode="mode1",
@@ -3404,17 +4109,24 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(u=user.name, t=token_type, e=e, tb=tb)
             self.logger.warning(log_msg)
             return self._recovery_invalid()
-        deploy_token = user.token(DEPLOY_NAME)
+        deploy_token = user.token(deploy_name)
         if not deploy_token:
             return self._recovery_invalid()
         response = {
                     'token_type'                : token_type,
-                    'deploy_token_name'         : DEPLOY_NAME,
+                    'deploy_token_name'         : deploy_name,
                     'deploy_login_token_name'   : sso_token.name,
                     'status'                    : True,
                 }
         # FIDO2: WebAuthn dance provides the credential, no secret/QR.
         if token_type == "fido2":
+            # Same place deploy_begin and the self-service flow put it.
+            deploy_token.change_device_name(device_name,
+                                        force=True,
+                                        verify_acls=False,
+                                        run_policies=False,
+                                        callback=callback)
+            deploy_token._write(callback=callback)
             return self.build_response(True, response)
         # TOTP: return the shared secret + PIN + QR image.
         deploy_token._write(callback=callback)
@@ -3448,9 +4160,11 @@ class OTPmeSsoP1(OTPmeServer1):
         finds the sso-deploy FIDO2 token created by
         ``recovery_deploy_begin`` (credential_data still empty),
         starts a WebAuthn registration, stashes the reg state under
-        an opaque id in the per-host fido2_reg_states shared dict.
-        begin and complete land on the same node because both are
-        forwarded with mgmt=True (master node)."""
+        an opaque id in the fido2_reg_states shared dict and syncs it
+        across the cluster. begin and complete land on the same node
+        anyway, because both are forwarded with mgmt=True (master
+        node) -- the sync is what carries a registration in progress
+        over a master switch."""
         rp_id = command_args.get('rp_id')
         if not isinstance(rp_id, str) or not rp_id:
             return self._recovery_invalid()
@@ -3493,12 +4207,14 @@ class OTPmeSsoP1(OTPmeServer1):
             user_verification=fido2_token.uv or "preferred",
             authenticator_attachment="cross-platform",
         )
-        fido2_state_id = stuff.gen_secret(len=32)
+        expiry = 300
+        fido2_state_id = f"fido2_reg_states:{stuff.gen_secret(len=32)}"
         multiprocessing.fido2_reg_states.add(
                 key=fido2_state_id,
                 value={'state':      reg_state,
                        'token_uuid': fido2_token.uuid},
-                expire=300)
+                expire=expiry)
+        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
         return self.build_response(True, {
                     'create_options': dict(create_options),
                     'fido2_state_id': fido2_state_id,
@@ -3536,6 +4252,7 @@ class OTPmeSsoP1(OTPmeServer1):
             state_data = multiprocessing.fido2_reg_states.delete(fido2_state_id)
         except KeyError:
             return self._recovery_invalid()
+        cluster_sync_state_delete(fido2_state_id)
         reg_state = state_data['state']
         token_uuid = state_data['token_uuid']
         fido2_token = backend.get_object(uuid=token_uuid)
@@ -3626,10 +4343,12 @@ class OTPmeSsoP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 return self._recovery_invalid()
         else:
-            # OATH / FIDO2: verify the DEPLOY_NAME staging token,
-            # then move it into the SSO-token slot (server-derived
-            # name -- client-supplied token name never taken).
-            deploy_token = user.token(DEPLOY_NAME)
+            # OATH / FIDO2: verify the staging token this portal
+            # parked, then move it into the SSO-token slot
+            # (server-derived name -- client-supplied token name never
+            # taken).
+            deploy_name = self._deploy_token_name(command_args)
+            deploy_token = user.token(deploy_name)
             if not deploy_token:
                 return self._recovery_invalid()
             if deploy_token.token_type == "fido2":
@@ -3647,7 +4366,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 # verified at this point, and this is the one failure
                 # the user can act on -- they simply have not finished
                 # in the app yet.
-                if not deploy_token.is_deployed():
+                if not deploy_token.has_auth_data():
                     msg = _("Phone not enrolled yet.")
                     return self.build_response(False,
                                     {'message': msg, 'status': False})
@@ -3949,74 +4668,92 @@ class OTPmeSsoP1(OTPmeServer1):
             return []
         return self._device_token_role_paths_to_instances(role_paths)
 
-    def _get_local_site_device_token_roles(self):
-        """ Resolve device_token_roles from the *local* site's config only
-        (no user/unit walk). Used as the fallback when the user's home
-        site is not trusted via ``device_token_roles_trusts``. """
-        local_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-        if local_site is None:
+    def _device_token_roles_trusts(self, command_args):
+        """ The trust list of the site whose portal is asking.
+
+        Off the portal's site object, not off ours: for a foreign user
+        the command runs on their home site, and it is still the portal
+        that decides which of its roles it hands out to whom. An
+        unknown site leaves the list empty, which grants nothing. """
+        portal_site = self._portal_site(command_args)
+        site = backend.get_object(object_type="site",
+                                realm=config.realm,
+                                name=portal_site)
+        if site is None:
+            log_msg = _("Unknown portal site '{site}'.", log=True)[1]
+            log_msg = log_msg.format(site=portal_site)
+            self.logger.warning(log_msg)
             return []
         try:
-            role_paths = local_site.get_config_parameter("device_token_roles")
+            trusts = site.get_config_parameter("device_token_roles_trusts")
         except Exception as e:
-            log_msg = _("Failed to read device_token_roles: {e}", log=True)[1]
+            log_msg = _("Failed to read device_token_roles_trusts: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return []
-        return self._device_token_role_paths_to_instances(role_paths)
+        return trusts or []
 
-    def _site_trusts_user_home(self, user):
-        """ The local site decides whether it trusts a user's home-site
-        ``device_token_roles`` cascade. Own-site users are implicitly
-        trusted; foreign users only when the local site lists their
-        home site under ``device_token_roles_trusts``. """
-        if user.site == config.site:
+    def _site_trusts_user_home(self, user, command_args):
+        """ May users of this user's home site carry device token roles
+        at this portal at all?
+
+        The bare site entry in the portal's ``device_token_roles_trusts``
+        is that permission, and it is only the first half: which of the
+        portal's roles they actually get is decided per role in
+        _portal_device_token_roles(). Own-site users need no entry. """
+        portal_site = self._portal_site(command_args)
+        if user.site == portal_site:
             return True
-        local_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-        if local_site is None:
-            return False
-        try:
-            trusts = local_site.get_config_parameter("device_token_roles_trusts")
-        except Exception:
-            trusts = None
-        if not trusts:
-            return False
-        return user.site in trusts
+        return user.site in self._device_token_roles_trusts(command_args)
 
-    def _site_trusts_site_for_device_token_roles(self, site):
-        """ Does this site (config.site) list ``site`` under
-        ``device_token_roles_trusts``? Used on the user's home site to
-        decide whether to accept a device-token creation forwarded by a
-        peer ssod (originator's SSO portal site). Reciprocal counterpart
-        of ``_site_trusts_user_home``. """
-        local_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-        if local_site is None:
-            return False
-        try:
-            trusts = local_site.get_config_parameter("device_token_roles_trusts")
-        except Exception:
-            trusts = None
-        if not trusts:
-            return False
-        return site in trusts
+    def _portal_device_token_roles(self, user, roles, command_args):
+        """ The roles of ``roles`` this portal shows this user.
+
+        Two filters. A portal offers the roles of its own site and no
+        others -- the user's device_token_roles may name roles anywhere
+        in the realm, and each portal shows its own slice, so the same
+        user config serves every site they use. And a foreign user gets
+        one of our roles only where the portal says so by name:
+        "<their site>:<our role>" in device_token_roles_trusts, on top
+        of the bare site entry that lets them in at all. """
+        portal_site = self._portal_site(command_args)
+        foreign_user = user.site != portal_site
+        trusts = self._device_token_roles_trusts(command_args)
+        if foreign_user and user.site not in trusts:
+            return []
+        allowed = []
+        for role in roles:
+            if role.site != portal_site:
+                continue
+            if foreign_user and f"{user.site}:{role.name}" not in trusts:
+                log_msg = _("Device token role '{role}' not listed for site "
+                            "'{site}' in device_token_roles_trusts of "
+                            "'{portal}'.", log=True)[1]
+                log_msg = log_msg.format(role=role.name,
+                                        site=user.site,
+                                        portal=portal_site)
+                self.logger.debug(log_msg)
+                continue
+            allowed.append(role)
+        return allowed
 
     def _resolve_device_token_roles(self, user, command_args):
-        """ Resolve device_token_roles to a list of role instances.
+        """ The device token roles this portal offers this user.
 
-        Honours ``device_token_roles_trusts`` on the local site: if the
-        user's home site is trusted (or the user lives here), use the
-        user-scoped value via ``user.get_config_parameter`` -- cross-site
-        users go through their home ssod for that resolution. If the
-        user's home site is *not* trusted, fall back to the local site's
-        ``device_token_roles`` setting (site-only, no user/unit walk).
-        """
-        if not self._site_trusts_user_home(user):
-            return self._get_local_site_device_token_roles()
+        The user's own cascade decides which roles they may carry at
+        all -- read on their home site, because user.get_config_parameter
+        walks the user's parents and only that site has them. What of it
+        this portal shows is then _portal_device_token_roles().
+
+        Both ends therefore have to agree, and each states its half in
+        its own objects: the home site by naming the role in the user's
+        device_token_roles, the portal by listing the user's site and
+        that role in device_token_roles_trusts. """
+        if not self._site_trusts_user_home(user, command_args):
+            return []
         if user.site == config.site:
-            return self._get_device_token_roles(user)
+            roles = self._get_device_token_roles(user)
+            return self._portal_device_token_roles(user, roles, command_args)
         status, resp = self._remote_ssod_call(user=user,
                                             command="sso_get_device_token_role_uuids",
                                             extra_args=command_args)
@@ -4029,12 +4766,18 @@ class OTPmeSsoP1(OTPmeServer1):
             if role is None:
                 continue
             roles.append(role)
-        return roles
+        return self._portal_device_token_roles(user, roles, command_args)
 
     def sso_get_device_token_role_uuids(self, username, sso_jwt, command_args):
         """ Internal cross-site command: resolve device_token_roles on the
         user's home site and return the list of role UUIDs. The caller
-        loads the role objects locally (cluster-synced). """
+        loads the role objects locally (cluster-synced).
+
+        The user's whole cascade, roles of every site included -- what
+        the asking portal shows of it is its own decision, and it makes
+        it in _portal_device_token_roles() with the list it gets back.
+        Nothing here is a permission: every role still has to survive
+        that filter. """
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -4179,24 +4922,21 @@ class OTPmeSsoP1(OTPmeServer1):
             return hint
         return "en"
 
-    def _sanitize_device_token_name(self, device_name):
+    def _sanitize_device_token_name(self, device_name, command_args):
         """ Build a valid token name from a user-supplied device name.
 
         Restricted to ``[a-z0-9-]`` so the resulting OTPme token name
         survives every code path (LDAP, file system, URL paths, ...)
         without surprises. The web layer enforces the same alphabet
-        on input; this is the defensive copy. """
-        name = device_name.strip().lower()
-        out = []
-        for ch in name:
-            if ch.isalnum() and ch.isascii():
-                out.append(ch)
-            elif ch in " _":
-                out.append("-")
-        sanitized = "".join(out).strip("-")
-        if not sanitized:
-            return None
-        return f"device-{sanitized}"
+        on input; this is the defensive copy.
+
+        The caller appends the role's device_token_suffix, which is
+        already site-specific in practice -- but only in practice, and
+        only while no two sites pick the same suffix. Realm and site go
+        in front for the same reason they do everywhere else here: one
+        user, one device name, two portals. """
+        prefix = self._token_name_prefix("device", command_args)
+        return sso_helpers.sanitize_token_name(device_name, prefix=prefix)
 
     def list_oidc_consents(self, username, sso_jwt, command_args):
         """ Return the user's stored OIDC consents enriched with the
@@ -4385,49 +5125,16 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        # Cross-site read pattern:
-        #
-        #   * Originator, foreign user, trusted home
-        #     (``_site_trusts_user_home`` → True) — no local resolve
-        #     needed; forward to home and let home resolve authoritatively
-        #     via the user's config cascade.
-        #   * Originator, foreign user, untrusted home — resolve the
-        #     local-site fallback here (we would otherwise refuse to
-        #     accept the user's home cascade) and forward those role
-        #     UUIDs with the ``_device_token_role_uuids`` marker. Home
-        #     accepts them under reciprocal ``device_token_roles_trusts``.
-        #   * Home, peer-forwarded with marker — accept the peer-supplied
-        #     role list only when the peer's site is reciprocally trusted;
-        #     refuse otherwise.
-        #   * Local user — resolve locally.
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
-        peer_role_uuids = command_args.get('_device_token_role_uuids')
-        peer_forwarded = is_cluster_peer and peer_role_uuids is not None
-        if peer_forwarded:
-            if not self._site_trusts_site_for_device_token_roles(self.peer.site):
-                return self.build_response(True, {
-                            'roles'             : [],
-                            'roles_configured'  : False,
-                            'status'            : True,
-                        })
-            roles = []
-            for role_uuid in peer_role_uuids:
-                role = backend.get_object(object_type="role", uuid=role_uuid)
-                if role is None:
-                    continue
-                roles.append(role)
-        elif user.site != config.site:
-            forward_args = dict(command_args)
-            if not self._site_trusts_user_home(user):
-                local_roles = self._get_local_site_device_token_roles()
-                forward_args['_device_token_role_uuids'] = [r.uuid for r in local_roles]
+        # A foreign user is answered by their home site: only there does
+        # user.get_config_parameter see the user's own cascade. What of
+        # it this portal shows is decided in the same call, against the
+        # portal's site -- which travels as portal_site -- so the answer
+        # is the same wherever it is computed.
+        if user.site != config.site:
             return self.ssod_redirect_command(command="list_device_tokens",
                                             user=user,
-                                            command_args=forward_args)
-        else:
-            roles = self._resolve_device_token_roles(user, command_args)
+                                            command_args=command_args)
+        roles = self._resolve_device_token_roles(user, command_args)
         # Roles without a device_token_suffix have no way to render a
         # usable token name and are therefore hidden from the portal.
         roles = [r for r in roles if r.get_config_parameter("device_token_suffix")]
@@ -4474,7 +5181,7 @@ class OTPmeSsoP1(OTPmeServer1):
             # session holds.
             entry = {
                         'name'          : token.name,
-                        'device_name'   : token.description or token.name,
+                        'device_name'   : self._token_label(token) or token.name,
                         'enabled'       : bool(token.enabled),
                     }
             for role_uuid in token.get_roles(return_type="uuid"):
@@ -4506,8 +5213,13 @@ class OTPmeSsoP1(OTPmeServer1):
         token = user.token(token_name)
         if not token:
             raise OTPmeException("Failed to create device token.")
-        token.description = device_name
-        token.update_index('description', token.description)
+        # The setter, not a plain assignment: it is what keeps the
+        # changelog and the audit trail in step with the object.
+        token.change_device_name(device_name,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
         token._write(callback=callback)
         return token, new_password
 
@@ -4537,42 +5249,23 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
         # sso_create_device_token is only ever reached from another
-        # site's ssod via the mgmt port (cluster peer). The originator
-        # has already validated role_uuid against its own policy --
-        # which may be either user.get_config_parameter (trusted) or
-        # the originator's site.get_config_parameter (untrusted via
-        # device_token_roles_trusts) -- so we can't redo the same
-        # membership check here without rejecting the legitimate
-        # untrusted-foreign case. Instead apply a reciprocal trust check:
-        # only accept a peer-forwarded role_uuid when our own
-        # device_token_roles_trusts lists the peer's site (mirrors
-        # set_admin_access_state / passkey_register_complete). Non-peer
-        # callers still go through the device_token_roles allow-list.
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
+        # site's ssod via the mgmt port (cluster peer), and the peer has
+        # checked the role against its own trust list already. We check
+        # it again, and against both halves: the user's own cascade,
+        # which is ours to read, and the portal's trust list, which we
+        # can read as well -- so a peer naming a role nobody granted
+        # gets nowhere, whatever it checked on its side.
         role = None
-        if is_cluster_peer:
-            role = backend.get_object(object_type="role", uuid=role_uuid)
-            if not role:
-                return self.build_response(False, {'message':'Invalid role.', 'status':False})
-            if role.site == config.site:
-                if not self._site_trusts_site_for_device_token_roles(self.peer.site):
-                    return self.build_response(False, {
-                        'message': 'Device token creation not available: peer site '
-                                   'is not listed in device_token_roles_trusts.',
-                        'status': False})
-        else:
-            for candidate in self._get_device_token_roles(user):
-                if candidate.uuid == role_uuid:
-                    role = candidate
-                    break
+        for candidate in self._resolve_device_token_roles(user, command_args):
+            if candidate.uuid == role_uuid:
+                role = candidate
+                break
         if not role:
             return self.build_response(False, {'message':'Invalid role.', 'status':False})
         suffix = role.get_config_parameter("device_token_suffix")
         if not suffix:
             return self.build_response(False, {'message':'Role has no device_token_suffix configured.', 'status':False})
-        sanitized = self._sanitize_device_token_name(device_name)
+        sanitized = self._sanitize_device_token_name(device_name, command_args)
         if not sanitized:
             return self.build_response(False, {'message':'Invalid device name.', 'status':False})
         token_name = f"{sanitized}-{suffix}"
@@ -4591,7 +5284,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':f'Failed to create device token: {e}', 'status':False})
         # Read the object config so the calling site can mirror it locally.
-        oc_obj = backend.read_config(token.oid)
+        oc_obj = token.get_sync_config(self.peer)
         if not oc_obj:
             return self.build_response(False, {'message':'Failed to read token object config.', 'status':False})
         # Add token to local role to get it on list_device_tokens even if sync of remote
@@ -4608,7 +5301,7 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(role=role.name, e=e)
             self.logger.warning(log_msg)
             try:
-                add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+                add_to_trash = self._add_to_trash(user, "add_device_token_to_trash")
                 user.del_token(token_name=token.name,
                                 force=True,
                                 verify_acls=False,
@@ -4645,7 +5338,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'WRONG_SITE', 'status':False})
         callback = self.get_callback()
         callback.raise_exception = True
-        add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+        add_to_trash = self._add_to_trash(user, "add_device_token_to_trash")
         try:
             user.del_token(token_name=token_name,
                             force=True,
@@ -4668,6 +5361,9 @@ class OTPmeSsoP1(OTPmeServer1):
         # in its local backend -- strip it before forwarding.
         forward_args = dict(extra_args)
         forward_args.pop('session_uuid', None)
+        # Same as in ssod_redirect_command(): the home site has to know
+        # which portal is asking, not just which site it is itself.
+        forward_args['portal_site'] = config.site
         try:
             ssod_conn = connections.get("ssod",
                                         mgmt=mgmt,
@@ -4701,10 +5397,10 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(False, message)
-        if not device_name or not str(device_name).strip():
+        device_name = sso_helpers.sanitize_device_label(device_name)
+        if not device_name:
             response = {'message':'Device name required.', 'status':False}
             return self.build_response(False, response)
-        device_name = str(device_name).strip()
         # Verify SSO jwt.
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
@@ -4714,7 +5410,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
-        sanitized = self._sanitize_device_token_name(device_name)
+        sanitized = self._sanitize_device_token_name(device_name, command_args)
         if not sanitized:
             response = {'message':'Invalid device name.', 'status':False}
             return self.build_response(False, response)
@@ -4726,11 +5422,10 @@ class OTPmeSsoP1(OTPmeServer1):
         if user.site != config.site:
             # Token creation must happen on the user's home site (authoritative
             # write). We are the originator: validate role_uuid against the
-            # roles this site resolves for the user (honouring
-            # device_token_roles_trusts) BEFORE forwarding, so a user cannot
-            # pick an arbitrary role_uuid. The home site then applies a
-            # reciprocal site-trust check and derives the token name from the
-            # role's device_token_suffix.
+            # roles this portal offers the user BEFORE forwarding, so a
+            # user cannot pick an arbitrary role_uuid. The home site
+            # resolves the same list again and derives the token name
+            # from the role's device_token_suffix.
             role = None
             for candidate in self._resolve_device_token_roles(user, command_args):
                 if candidate.uuid == role_uuid:
@@ -4791,8 +5486,10 @@ class OTPmeSsoP1(OTPmeServer1):
             if not role:
                 return self.build_response(False, {'message':'device_token_roles role not found locally.', 'status':False})
         else:
-            # Validate the requested role_uuid against the configured list.
-            for candidate in self._get_device_token_roles(user):
+            # Validate the requested role_uuid against what this portal
+            # offers the user -- their own cascade, narrowed to the
+            # roles of this site.
+            for candidate in self._resolve_device_token_roles(user, command_args):
                 if candidate.uuid == role_uuid:
                     role = candidate
                     break
@@ -4846,7 +5543,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                             extra_args={**command_args, 'token_name': token_name},
                                             mgmt=True)
                 else:
-                    add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+                    add_to_trash = self._add_to_trash(user, "add_device_token_to_trash")
                     user.del_token(token_name=token_name,
                                     force=True,
                                     verify_acls=False,
@@ -4914,7 +5611,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.build_response(False, remote_resp)
             add_to_trash = False
         else:
-            add_to_trash = user.get_config_parameter("add_device_token_to_trash")
+            add_to_trash = self._add_to_trash(user, "add_device_token_to_trash")
         # We need to delete device token even if user is from other site.
         try:
             user.del_token(token_name=token_name,
@@ -4949,16 +5646,14 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Mirrors the sso_create_device_token cross-site pattern:
 
-          * Originator (foreign user): resolve device_token_roles locally
-            via ``_resolve_device_token_roles`` (honours
-            ``device_token_roles_trusts``), validate role membership,
-            then forward to the user's home site with the
-            ``_device_token_roles_verified`` marker.
-          * Home (peer-forwarded): accept the originator's role decision
-            only when the peer's site is listed in the local
-            ``device_token_roles_trusts`` (reciprocal). Skip re-checking
-            role membership here — the originator may have used its own
-            site fallback config, not the home site's config.
+          * Originator (foreign user): validate that the token belongs
+            to a role this portal offers the user, then forward to the
+            user's home site for the write.
+          * Home (peer-forwarded): validate the same thing again. It
+            resolves to the same answer on both ends -- the user's
+            cascade is read here either way, and the portal's trust
+            list travels as portal_site -- so there is nothing to take
+            on the peer's word.
           * Local user: resolve + validate on this site.
 
         Enable/disable propagates via the normal cluster sync, so no
@@ -4976,24 +5671,6 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
 
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
-        peer_verified = command_args.get('_device_token_roles_verified')
-        skip_role_check = False
-
-        if is_cluster_peer and peer_verified is not None:
-            # Home, peer-forwarded. Accept the originator's role membership
-            # decision only when reciprocally trusted. Membership was
-            # already validated on the originator (possibly against its
-            # own site fallback config), so we do not re-check it here.
-            if not self._site_trusts_site_for_device_token_roles(self.peer.site):
-                return self.build_response(False, {
-                    'message': 'Device token modification not available: peer '
-                               'site is not listed in device_token_roles_trusts.',
-                    'status': False})
-            skip_role_check = True
-
         token = user.token(token_name)
         if not token or token.owner_uuid != user.uuid:
             return self.build_response(False,
@@ -5002,11 +5679,10 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                             {'message':'Not a device token.', 'status':False})
 
-        if not skip_role_check:
-            roles = self._resolve_device_token_roles(user, command_args)
-            if not any(token.uuid in role.tokens for role in roles):
-                return self.build_response(False,
-                                {'message':'Not a device token.', 'status':False})
+        roles = self._resolve_device_token_roles(user, command_args)
+        if not any(token.uuid in role.tokens for role in roles):
+            return self.build_response(False,
+                            {'message':'Not a device token.', 'status':False})
 
         # Refuse to disable the token the caller is currently signed in with.
         # See del_passkey for the rationale — the JWT would still carry the
@@ -5020,12 +5696,10 @@ class OTPmeSsoP1(OTPmeServer1):
         # Originator with foreign user: forward to home for the actual
         # mutation now that role membership has been validated locally.
         if user.site != config.site:
-            forward_args = dict(command_args)
-            forward_args['_device_token_roles_verified'] = True
             remote_command = "enable_device_token" if enable else "disable_device_token"
             return self.ssod_redirect_command(command=remote_command,
                                             user=user,
-                                            command_args=forward_args,
+                                            command_args=command_args,
                                             mgmt=True)
 
         callback = self.get_callback()
@@ -5088,35 +5762,36 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
 
-        is_cluster_peer = (not self.client.startswith("socket://")
-                           and self.peer is not None
-                           and self.peer.type == "node")
         peer_allowed = command_args.get('_passkeys_allowed')
 
-        if is_cluster_peer and peer_allowed is not None:
+        if self.from_peer_node and peer_allowed is not None:
             # Home, peer-forwarded. Accept the originator's decision only
             # when reciprocally trusted.
             if not self._site_trusts_site_for_passkeys(self.peer.site):
+                self._log_passkey_denied("set_passkey_enabled",
+                                    "peer site not in sso_allow_passkeys_trusts",
+                                    user)
                 return self.build_response(False, {
                     'message': 'Passkey modification not available: peer site '
                                'is not listed in sso_allow_passkeys_trusts.',
                     'status': False})
             if not bool(peer_allowed):
+                self._log_passkey_denied("set_passkey_enabled",
+                                    "originator said not allowed", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
         else:
             # Originator (foreign user) or local user: check local policy.
             if not self._resolve_passkeys_allowed(user):
+                self._log_passkey_denied("set_passkey_enabled",
+                                    "sso_allow_passkeys", user)
                 return self.build_response(False,
                         {'message':'Passkeys are not enabled.', 'status':False})
 
-        token = user.token(token_name)
+        token = self._get_user_passkey(user, token_name, command_args)
         if not token or token.owner_uuid != user.uuid:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
-        if token.token_type != "passkey":
-            return self.build_response(False,
-                            {'message':'Not a passkey token.', 'status':False})
 
         # Refuse to disable the passkey the caller is currently signed in with.
         if not enable and _is_current_token(token):

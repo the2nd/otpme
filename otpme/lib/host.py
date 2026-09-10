@@ -45,6 +45,12 @@ def register():
     multiprocessing.register_shared_dict("host_data")
     config.register_property(name="host_data", getx=host_data_getter)
 
+def get_cert_file(realm, site):
+    site_cert_dir = os.path.dirname(config.ssl_site_cert_file)
+    site_cert_filename = config.ssl_site_cert_file.format(realm=realm, site=site)
+    site_cert_file = os.path.join(site_cert_dir, site_cert_filename)
+    return site_cert_file
+
 def get_ssl_file_perms():
     # Realm users group may not exist (e.g. on realm init)
     try:
@@ -69,10 +75,11 @@ def get_ssl_file_perms():
                                         'file_group'    : realm_users_group,
                                         'file_mode'     : 0o640,
                                     },
+            # We need this as user/group "otpme" with 0o644 because its updated from hostd.
             config.ssl_site_cert_file    : {
                                         'file_owner'    : config.user,
-                                        'file_group'    : realm_users_group,
-                                        'file_mode'     : 0o640,
+                                        'file_group'    : config.group,
+                                        'file_mode'     : 0o644,
                                     },
             config.host_key_file    : {
                                         'file_owner'    : config.user,
@@ -113,12 +120,14 @@ def get_file_owner_group(file):
 def set_ssl_file_perms():
     files = get_ssl_file_perms()
     for file in files:
+        if not os.path.exists(file):
+            continue
         file_owner, file_group, file_mode = get_file_owner_group(file)
         filetools.set_fs_ownership(path=file, user=file_owner, group=file_group)
         filetools.set_fs_permissions(path=file, mode=file_mode)
 
 def update_ssl_files(host_cert=None, host_key=None,
-    ca_data=None, site_cert=None, host_auth_key=None):
+    ca_data=None, site_certs=None, host_auth_key=None):
     """ Update SSL cert/key files. """
     # Create cert file if it does not exist.
     if host_cert:
@@ -201,8 +210,8 @@ def update_ssl_files(host_cert=None, host_key=None,
             if e.errno != e.errno.EACCES:
                 raise
 
-    # Create site cert file if it does not exist.
-    if site_cert:
+    # Create site certs files.
+    if site_certs:
         file_owner, file_group, file_mode = get_file_owner_group(config.ssl_site_cert_file)
         site_cert_dir = os.path.dirname(config.ssl_site_cert_file)
         if not os.path.exists(site_cert_dir):
@@ -218,15 +227,20 @@ def update_ssl_files(host_cert=None, host_key=None,
             except IOError as e:
                 if e.errno != e.errno.EACCES:
                     raise
-        try:
-            filetools.create_file(path=config.ssl_site_cert_file,
-                                        content=site_cert,
+        for x in  site_certs:
+            site = x['name']
+            realm = x['realm']
+            cert = x['cert']
+            site_cert_file = get_cert_file(realm=realm, site=site)
+            try:
+                filetools.create_file(path=site_cert_file,
+                                        content=cert,
                                         user=file_owner,
                                         group=file_group,
                                         mode=file_mode)
-        except IOError as e:
-            if e.errno != e.errno.EACCES:
-                raise
+            except IOError as e:
+                if e.errno != e.errno.EACCES:
+                    raise
 
     # Create host key file if it does not exist.
     if host_auth_key:
@@ -268,7 +282,6 @@ def load_data(ignore_missing=False):
     f_host_cert = None
     f_host_key = None
     f_ca_data = None
-    f_site_cert = None
     f_host_auth_key = None
 
     if not config.realm_init:
@@ -300,16 +313,6 @@ def load_data(ignore_missing=False):
         try:
             fd = open(config.ssl_ca_file, "r")
             f_ca_data = fd.read()
-            fd.close()
-        except IOError as e:
-            if e.errno != e.errno.EACCES:
-                raise
-
-    # Try to read site cert from file,
-    if os.access(config.ssl_site_cert_file, os.R_OK):
-        try:
-            fd = open(config.ssl_site_cert_file, "r")
-            f_site_cert = fd.read()
             fd.close()
         except IOError as e:
             if e.errno != e.errno.EACCES:
@@ -350,10 +353,6 @@ def load_data(ignore_missing=False):
             msg = _("Unable to get host CA data from file: {ssl_ca_file}")
             msg = msg.format(ssl_ca_file=config.ssl_ca_file)
             raise OTPmeException(msg)
-        if not f_site_cert:
-            msg = _("Unable to get site certificate from file: {ssl_site_cert_file}")
-            msg = msg.format(ssl_site_cert_file=config.ssl_site_cert_file)
-            raise OTPmeException(msg)
 
     try:
         multiprocessing.host_data['type']
@@ -369,7 +368,6 @@ def load_data(ignore_missing=False):
         multiprocessing.host_data['site'] = None
     multiprocessing.host_data['name'] = host_name
     multiprocessing.host_data['fqdn'] = host_fqdn
-    multiprocessing.host_data['site_cert'] = f_site_cert
     multiprocessing.host_data['cert'] = f_host_cert
     multiprocessing.host_data['key'] = f_host_key
     multiprocessing.host_data['ca_data'] = f_ca_data
@@ -377,11 +375,14 @@ def load_data(ignore_missing=False):
     return
 
 def update_data(host_cert=None, host_key=None, ca_data=None,
-    site_cert=None, host_auth_key=None, ignore_missing=None):
+    site_certs=None, host_auth_key=None, ignore_missing=None):
     """
     Update data of our host "host_data" dictionary as well
     as SSL cert/key files.
     """
+    if site_certs is None:
+        site_certs = {}
+
     if not config.realm_init:
         if not os.path.exists(config.uuid_file):
             raise Exception(_("Host is not a realm member."))
@@ -400,7 +401,6 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
     f_host_key = multiprocessing.host_data['key']
     f_host_auth_key = multiprocessing.host_data['auth_key']
     f_ca_data = multiprocessing.host_data['ca_data']
-    f_site_cert = multiprocessing.host_data['site_cert']
 
     # Update SSL cert file if needed.
     if host_cert is None:
@@ -433,11 +433,14 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
     else:
         ca_data = f_ca_data
 
-    if site_cert:
-        if site_cert != f_site_cert:
-            update_files = True
-    else:
-        site_cert = f_site_cert
+    #if site_cert:
+    #    if site_cert != f_site_cert:
+    #        update_files = True
+    #else:
+    #    site_cert = f_site_cert
+
+    if site_certs:
+        update_files = True
 
     if host_auth_key:
         if host_auth_key != f_host_auth_key:
@@ -450,7 +453,7 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
         update_ssl_files(host_cert=host_cert,
                         host_key=host_key,
                         ca_data=ca_data,
-                        site_cert=site_cert,
+                        site_certs=site_certs,
                         host_auth_key=host_auth_key)
 
     if config.realm_init:
@@ -496,17 +499,6 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
             ca_data = myrealm.ca_data
             update_ssl_files(ca_data=ca_data)
 
-    # Update site SSL cert file if needed.
-    mysite = backend.get_object(object_type="site", uuid=myhost.site_uuid)
-    if not mysite:
-        msg = _("Unknown site: {site_uuid}")
-        msg = msg.format(site_uuid=myhost.site_uuid)
-        raise Exception(msg)
-    if mysite.cert:
-        if mysite.cert != site_cert:
-            site_cert = mysite.cert
-            update_ssl_files(site_cert=site_cert)
-
     # NOTE: this is now done on realm init and host/node join.
     ## Make sure files have sane permissions.
     #set_ssl_file_perms()
@@ -525,7 +517,6 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
     multiprocessing.host_data['type'] = host_type
     multiprocessing.host_data['realm'] = host_realm
     multiprocessing.host_data['site'] = host_site
-    multiprocessing.host_data['site_cert'] = site_cert
     multiprocessing.host_data['cert'] = host_cert
     multiprocessing.host_data['key'] = host_key
     multiprocessing.host_data['ca_data'] = ca_data

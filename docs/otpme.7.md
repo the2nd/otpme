@@ -604,6 +604,20 @@ Object types: site, unit
 Token type of the default token created for new users.  
 Object types: site, unit
 
+**default_sso_token_name (str, default: sso-\<realm\>-\<site\>)**  
+Name of the token the SSO portal deploys, recovers and hands the
+default-token role to. Must differ from **default_token_name**.  
+Site scope on purpose, and read off the site of the portal the user is
+using - not off the user. A user of one site signing in at another
+site's portal gets that portal's answer. Giving two sites two different
+names is what lets one hardware security key serve both: each site holds
+its own OTPme token, each token its own WebAuthn credential for that
+portal's RP ID. The generated default already differs per site, so the
+two never collide by accident. The token itself is not created by this
+setting; an administrator adds it and puts it into the roles of that
+site.  
+Object types: site
+
 **user_key_len (int, default: 2048)**  
 RSA key length for user keys. Valid values: 2048, 4096.  
 Object types: realm, site, unit, user
@@ -789,17 +803,30 @@ portal settings to inform users about the purpose and scope of the role.
 Each value can be a plain role name (resolved within the current site)
 or a *site/role* path to reference a role on another site. The parameter
 is resolved per user; the most specific match wins (user overrides unit
-overrides site). Foreign-site users only resolve via this cascade if the
-local site lists the home site under **device_token_roles_trusts**;
-otherwise the local site's setting is used as a fallback.  
+overrides site).  
+Roles of any site may be listed, and one list serves every portal the
+user signs in at: a portal offers the roles of its own site and no
+others, so each of them shows its own slice of the list. A role of
+another site is therefore not a mistake — it is what the user gets when
+they sign in at that site's portal, provided that portal agrees via
+**device_token_roles_trusts**.  
 Object types: site, unit, user
 
 **device_token_roles_trusts (list)**  
-Comma-separated list of remote sites whose user-scoped
-**device_token_roles** cascade this site trusts when a foreign user
-registers a device token through the SSO portal here. Sites not in the
-list fall back to the local site's **device_token_roles**. Own-site
-users are always trusted.  
+Comma-separated list of what this site's SSO portal offers to users of
+other sites. Naming a role in a user's **device_token_roles** is the
+home site's half of the decision; this parameter is the portal's half,
+and it is the only place where it is made. Own-site users need no
+entry.  
+An entry is *site* or *site***:***role*, where *site* is the user's home
+site and *role* is a role of *this* site — no other role is ever shown
+here. Both are needed, e.g. on site **koblenz**:  
+**koeln** — users of koeln may carry device token roles here at all.  
+**koeln:wlan-users** — and they get this site's role **wlan-users**, if
+their own **device_token_roles** name it.  
+Without the bare site entry a user of that site is offered nothing here,
+and a role without its own entry is left out of the portal even when the
+user's cascade names it.  
 Object types: site
 
 **device_token_suffix (str)**  
@@ -840,6 +867,25 @@ FQDN, CLI defaults to the realm name). Applies to FIDO2 tokens only -
 passkeys are unaffected. Valid values: *realm* (use the realm name) or
 *sso_fqdn* (use the site's SSO FQDN).  
 Object types: site, unit, user
+
+**fido2_decoy_cred_id_len (int, default: 64)**  
+Length in bytes of the decoy credential IDs handed out by the FIDO2
+login when the user is unknown or has no security key. Decoys exist so
+the response looks the same either way; the credential ID and how many
+of them there are is all a browser gets to see, so a length no
+authenticator in your realm actually produces gives the decoy away in a
+single request. 64 is what a YubiKey hands out. Accepted range is 16 to
+1023.  
+Object types: site
+
+**fido2_decoy_max_creds (int, default: 2)**  
+Upper bound on how many decoy credentials are handed out. The number is
+derived from the username, so it is the same on every attempt, and
+spread over 1 to this value. A fixed count of one would let every user
+who has a second security key be recognised by the length of the list
+alone. Set it to the largest number of security keys your users
+realistically carry; 1 disables the variation.  
+Object types: site
 
 **sso_allow_totp_deploy (bool, default: true)**  
 Whether TOTP may be chosen as the token type of a first-login deployment
@@ -931,6 +977,12 @@ Object types: site, unit, user
 **tiqr_service_display_name (str)**  
 Name the tiqr app shows for this service in its account list. Empty
 means the realm name is used.  
+The identifier the app files the account under is derived from this
+name, and that identifier becomes the host part of the authentication
+URL. Only characters that may appear there are accepted: letters, digits
+and **-.\_\~!$&'()\*+,;=**. A space is rejected – it would leave the
+login URL unparsable and the app would reject the QR code, while
+enrollment still succeeded.  
 Object types: site
 
 **tiqr_auth_scheme (str, default: tiqrauth)**  
@@ -1009,6 +1061,26 @@ removed permanently. They can be restored from the trash with
 **otpme-trash**(1). Set to false to delete such tokens immediately. The
 parameter is resolved per user; the most specific match wins (user
 overrides unit overrides site).  
+Object types: site, unit, user
+
+**add_fido2_token_to_trash (bool, default: true)**  
+The same for security keys the user deletes on the SSO portal settings
+page. Restoring one puts the token back, not the credential on the key:
+the key still holds it, and the restored token is usable again. One
+parameter per type because what they hold differs — a device token is a
+password somebody typed into a mail client, a security key a credential
+that exists only on that device.  
+Object types: site, unit, user
+
+**add_passkey_to_trash (bool, default: true)**  
+The same for passkeys, see **add_fido2_token_to_trash**.  
+Object types: site, unit, user
+
+**add_tiqr_token_to_trash (bool, default: true)**  
+The same for phones the user removes on the SSO portal settings page.
+Restoring one puts the token back with its secret, so the phone that was
+enrolled against it can authenticate again without being enrolled
+anew.  
 Object types: site, unit, user
 
 **reverse_proxy_ips (list)**  

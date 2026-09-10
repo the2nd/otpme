@@ -12,6 +12,27 @@
 
     const {base64urlToBuffer, bufferToBase64url} = window.WebAuthnUtils;
 
+    // Types the user gives a name to before anything is created. It is
+    // what the token is called once the SSO role moves to another one,
+    // so it has to exist by then -- and asking afterwards is not an
+    // option, the user is somewhere else entirely at that point.
+    // Mirrors DEVICE_NAME_TOKEN_TYPES in sso1.py.
+    const DEVICE_NAME_TYPES = ['tiqr', 'fido2'];
+    // Which type the name step is collecting for.
+    let pendingTokenType = null;
+
+    function showDeviceNameStep(tokenType) {
+        const i18n = getI18n();
+        pendingTokenType = tokenType;
+        const input = document.getElementById('deployDeviceName');
+        input.placeholder = (tokenType === 'fido2'
+                ? (i18n.placeholderKeyName || 'e.g. my security key')
+                : (i18n.placeholderDeviceName || 'e.g. my phone'));
+        document.getElementById('step-start').classList.add('is-hidden');
+        document.getElementById('step-device-name').classList.remove('is-hidden');
+        input.focus();
+    }
+
     async function startDeploy(tokenType, deviceName) {
         const urls = getUrls();
         const i18n = getI18n();
@@ -20,12 +41,10 @@
         statusEl.textContent = '';
         errorEl.textContent = '';
 
-        // tiqr needs a name for the phone before anything can start.
-        // Ask for it first, then come back here with it.
-        if (tokenType === 'tiqr' && !deviceName) {
-            document.getElementById('step-start').classList.add('is-hidden');
-            document.getElementById('step-tiqr-name').classList.remove('is-hidden');
-            document.getElementById('tiqrDeployName').focus();
+        // A phone or a security key needs its name before anything can
+        // start. Ask for it first, then come back here with it.
+        if (DEVICE_NAME_TYPES.includes(tokenType) && !deviceName) {
+            showDeviceNameStep(tokenType);
             return;
         }
 
@@ -45,10 +64,11 @@
             }
 
             if (result.token_type === 'fido2') {
+                document.getElementById('step-device-name').classList.add('is-hidden');
                 await deployFido2();
             } else if (result.token_type === 'tiqr') {
                 document.getElementById('step-start').classList.add('is-hidden');
-                document.getElementById('step-tiqr-name').classList.add('is-hidden');
+                document.getElementById('step-device-name').classList.add('is-hidden');
                 document.getElementById('step-tiqr').classList.remove('is-hidden');
                 document.getElementById('tiqrDeployQrcodeImg').src = result.qrcode_img;
                 // The code only. enroll_url is deliberately not put
@@ -67,6 +87,14 @@
             errorEl.textContent = e.message || i18n.labelDeploymentFailed || 'Deployment failed.';
             statusEl.textContent = '';
             document.querySelectorAll('#step-start button').forEach(b => b.disabled = false);
+            // The name step hid step-start on the way in, and the
+            // FIDO2 branch hides itself before the WebAuthn prompt --
+            // a cancelled prompt would otherwise leave the page with
+            // an error and nothing to press. Put the step back, with
+            // what the user typed still in it.
+            if (pendingTokenType) {
+                document.getElementById('step-device-name').classList.remove('is-hidden');
+            }
         }
     }
 
@@ -233,20 +261,22 @@
         if (singleBtn) {
             singleBtn.addEventListener('click', () => startDeploy(singleBtn.dataset.tokenType));
         }
-        // tiqr asks for the device name first, then comes back into
-        // startDeploy with it.
-        const tiqrStartBtn = document.getElementById('tiqrDeployStartBtn');
-        if (tiqrStartBtn) {
-            tiqrStartBtn.addEventListener('click', function () {
+        // tiqr and FIDO2 ask for the name first, then come back into
+        // startDeploy with it and the type they were started for.
+        const nameStartBtn = document.getElementById('deployDeviceNameBtn');
+        if (nameStartBtn) {
+            nameStartBtn.addEventListener('click', function () {
                 const i18n = getI18n();
-                const nameEl = document.getElementById('tiqrDeployName');
+                const nameEl = document.getElementById('deployDeviceName');
                 const deviceName = nameEl.value.trim();
                 if (!deviceName) {
                     document.getElementById('deployError').textContent =
-                        i18n.labelNeedDeviceName || 'Please enter a name for your phone.';
+                        (pendingTokenType === 'fido2'
+                            ? (i18n.labelNeedKeyName || 'Please enter a name for your security key.')
+                            : (i18n.labelNeedDeviceName || 'Please enter a name for your phone.'));
                     return;
                 }
-                startDeploy('tiqr', deviceName);
+                startDeploy(pendingTokenType, deviceName);
             });
         }
         const verifyBtn = document.getElementById('verifyBtn');

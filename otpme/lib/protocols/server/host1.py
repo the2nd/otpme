@@ -698,8 +698,16 @@ class OTPmeHostP1(OTPmeServer1):
             status = True
 
         elif command == "sync_sites":
+            # Build sync command.
             try:
-                self._send_daemon_msg(self.name, "sync_sites")
+                request_site_cert = command_args['request_site_cert']
+            except Exception:
+                request_site_cert = False
+            sync_attrs = {
+                            'request_site_cert' : request_site_cert,
+                            }
+            try:
+                self._send_daemon_msg(self.name, "sync_sites", data=sync_attrs)
                 message = _("Command queued: {command}")
                 message = message.format(command=command)
                 status = True

@@ -129,7 +129,20 @@ Change the site's SSO FQDN (see the OIDC OP section below).
 
 **sso_cert \[**--key** *sso_key*\] *site* \[*cert_file*\]**  
 Change the SSO certificate. Use **--key** to set the matching private
-key in the same call.
+key in the same call.  
+Pass the **full chain**, not the leaf certificate alone: the file may
+hold the certificate followed by every CA certificate needed to
+establish it, and that is what gets served. With Let's Encrypt that
+means *fullchain.pem*, not *cert.pem*.  
+A leaf on its own usually still works in a browser, which caches
+intermediates or fetches them over the certificate's AIA extension.
+Mobile apps do neither: they abort the handshake, and the server logs it
+as the peer's alert **SSLV3_ALERT_CERTIFICATE_UNKNOWN** - which reads
+like a server fault but is the client refusing the chain. To see what is
+actually served:
+
+openssl s_client -connect *sso_fqdn*:443 -servername *sso_fqdn*
+-showcerts \</dev/null \| grep -c 'BEGIN CERTIFICATE'
 
 **sso_key *site* *key_file***  
 Change SSO certificate key.

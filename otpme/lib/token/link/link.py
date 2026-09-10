@@ -233,6 +233,21 @@ class LinkToken(Token):
         **kwargs,
         ):
         """ Add a token. """
+        # The invariant, checked where the destination is actually
+        # written. User.add_token() says the same thing earlier and
+        # with the nicer message, before anything is created -- this
+        # one is what a caller reaching add() directly with a uuid runs
+        # into. A link whose destination cannot answer for another user
+        # is a token that only fails at the first login.
+        dst_token = backend.get_object(object_type="token",
+                                    uuid=destination_token_uuid)
+        if not dst_token:
+            msg = _("Destination token does not exist.")
+            return callback.error(msg)
+        if not dst_token.support_links:
+            msg = _("Token type cannot be used as link destination: {token_type}")
+            msg = msg.format(token_type=dst_token.token_type)
+            return callback.error(msg)
         # Set link destination.
         self.destination_token = destination_token_uuid
         self.update_index('destination_token', self.destination_token)

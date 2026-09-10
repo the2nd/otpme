@@ -1,0 +1,19 @@
+# Configuration for the OTPme OpenRC service.
+#
+# Install as /etc/conf.d/otpme, next to /etc/init.d/otpme. OpenRC reads
+# the file whose name matches the service and applies rc_ulimit before
+# starting it.
+
+# Open file limit for otpme-controld and every daemon it starts.
+#
+# /etc/security/limits.conf does NOT cover this: that file is read by
+# pam_limits, which only runs for a PAM session -- a login, an ssh
+# connection, su. A service started at boot never passes through it and
+# keeps the kernel default of 1024. With a socket per connection across
+# the daemons under controld, plus cluster, redis and the index DB, that
+# runs out and shows up as "too many open files".
+#
+# OTPme raises the limit itself as well (rlimit_nofile in otpme.conf),
+# so this line is belt and braces -- and the place an administrator
+# looks first.
+rc_ulimit="-n 65536"

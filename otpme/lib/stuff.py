@@ -2254,9 +2254,6 @@ def get_site_fqdn(realm, site, mgmt=False):
         site_address = response
     return site_address
 
-_site_cert_cache = {}
-
-
 def get_site_cert(realm, site):
     """ Get site address/FQDN.
 
@@ -2267,35 +2264,67 @@ def get_site_cert(realm, site):
     a significant share of client-side CPU. The cache is keyed by
     (realm, site) and tied to the process PID so it resets after fork.
     """
-    from otpme.lib import config
-    from otpme.lib import backend
-    from otpme.lib import connections
-    cache_key = (os.getpid(), realm, site)
+    from otpme.lib import host
+    site_cert_file = host.get_cert_file(realm, site)
+    if not os.path.exists(site_cert_file):
+        msg = _("No such file or directory: {site_cert_file}")
+        msg = msg.format(site_cert_file=site_cert_file)
+        raise OTPmeException(msg)
     try:
-        return _site_cert_cache[cache_key]
-    except KeyError:
-        pass
-    if config.use_backend:
-        _site = backend.get_object(object_type="site",
-                                    name=site,
-                                    realm=realm)
-        if not _site:
-            msg = _("Unknown site: {site}")
-            msg = msg.format(site=site)
-            raise OTPmeException(msg)
-        site_cert = _site.cert
-        _site_cert_cache[cache_key] = site_cert
-        return site_cert
-    # Get site cert from hostd.
-    try:
-        hostd_conn = connections.get("hostd")
+        fd = open(site_cert_file, "r")
     except Exception as e:
-        msg = _("Error connecting to hostd: {e}")
-        msg = msg.format(e=e)
-        raise OTPmeException(msg) from e
-    site_cert = hostd_conn.get_site_cert(realm=realm, site=site)
-    _site_cert_cache[cache_key] = site_cert
+        msg = _("Unable to open site cert file: {site_cert_file}: {e}")
+        msg = msg.format(site_cert_file=site_cert_file, e=e)
+        raise OTPmeException(msg)
+    try:
+        site_cert = fd.read()
+    except Exception as e:
+        msg = _("Unable to read site cert file: {site_cert_file}: {e}")
+        msg = msg.format(site_cert_file=site_cert_file, e=e)
+        raise OTPmeException(msg)
+    finally:
+        fd.close()
     return site_cert
+
+#def get_site_cert(realm, site):
+#    """ Get site address/FQDN.
+#
+#    Cached per-process: site certificates don't change during a process
+#    lifetime under normal operation, and fetching the cert from the local
+#    hostd involves a full connection setup + protocol round-trip per call.
+#    In hot loops (e.g. a client that does many logins in a row) this was
+#    a significant share of client-side CPU. The cache is keyed by
+#    (realm, site) and tied to the process PID so it resets after fork.
+#    """
+#    from otpme.lib import config
+#    from otpme.lib import backend
+#    from otpme.lib import connections
+#    cache_key = (os.getpid(), realm, site)
+#    try:
+#        return _site_cert_cache[cache_key]
+#    except KeyError:
+#        pass
+#    if config.use_backend:
+#        _site = backend.get_object(object_type="site",
+#                                    name=site,
+#                                    realm=realm)
+#        if not _site:
+#            msg = _("Unknown site: {site}")
+#            msg = msg.format(site=site)
+#            raise OTPmeException(msg)
+#        site_cert = _site.cert
+#        _site_cert_cache[cache_key] = site_cert
+#        return site_cert
+#    # Get site cert from hostd.
+#    try:
+#        hostd_conn = connections.get("hostd")
+#    except Exception as e:
+#        msg = _("Error connecting to hostd: {e}")
+#        msg = msg.format(e=e)
+#        raise OTPmeException(msg) from e
+#    site_cert = hostd_conn.get_site_cert(realm=realm, site=site)
+#    _site_cert_cache[cache_key] = site_cert
+#    return site_cert
 
 def get_site_trust_status(realm, site):
     """ Get site trust status. """

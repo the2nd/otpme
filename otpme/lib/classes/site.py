@@ -1986,12 +1986,27 @@ def register_config():
                                     setter=device_token_roles_setter,
                                     getter=device_token_roles_getter,
                                     object_types=object_types)
-    # Sites to trust device token roles config parameter.
-    def trust_device_tokens_roles_setter(sites, callback=JobCallback, **kwargs):
+    # Whose users may carry our device token roles, and which of them.
+    #
+    # Two levels, both needed. A bare site name says that users of that
+    # site may carry device token roles here at all; "<site>:<role>"
+    # says which of our own roles they actually get. The roles are ours
+    # because a portal only ever offers the roles of its own site --
+    # a user's device_token_roles may name roles anywhere in the realm,
+    # and each portal shows its own slice of them. So a user of site
+    # koeln whose config names koblenz/wlan-users gets that role at
+    # koblenz's portal only if koblenz lists "koeln" and
+    # "koeln:wlan-users".
+    def trust_device_tokens_roles_setter(sites, config_object=None,
+        callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
-        sites_uuids = []
-        for site_name in sites:
+        trusts = []
+        for entry in sites:
+            site_name = entry
+            role_name = None
+            if ":" in entry:
+                site_name, role_name = entry.split(":", 1)
             result = backend.search(object_type='site',
                                     attribute="name",
                                     value=site_name,
@@ -2002,13 +2017,36 @@ def register_config():
                 msg = msg.format(site=site_name)
                 raise ValueError(msg)
             site_uuid = result[0]
-            sites_uuids.append(site_uuid)
-        return sites_uuids
+            if not role_name:
+                trusts.append(site_uuid)
+                continue
+            # Our own role. Which site that is comes from the object
+            # the parameter is being set on, not from config.site: an
+            # admin may well be sitting on another site while doing it.
+            role_site = config.site
+            if config_object is not None:
+                role_site = config_object.name
+            result = backend.search(object_type='role',
+                                    attribute="name",
+                                    value=role_name,
+                                    realm=config.realm,
+                                    site=role_site,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown role: {site}/{role}")
+                msg = msg.format(site=role_site, role=role_name)
+                raise ValueError(msg)
+            trusts.append(f"{site_uuid}:{result[0]}")
+        return trusts
     def trust_device_tokens_roles_getter(sites, callback=JobCallback, **kwargs):
         if isinstance(sites, str):
             sites = sites.split(",")
         _sites = []
-        for site_uuid in sites:
+        for entry in sites:
+            site_uuid = entry
+            role_uuid = None
+            if ":" in entry:
+                site_uuid, role_uuid = entry.split(":", 1)
             result = backend.search(object_type='site',
                                     attribute="uuid",
                                     value=site_uuid,
@@ -2018,7 +2056,18 @@ def register_config():
                 msg = msg.format(uuid=site_uuid)
                 raise ValueError(msg)
             site_name = result[0]
-            _sites.append(site_name)
+            if not role_uuid:
+                _sites.append(site_name)
+                continue
+            result = backend.search(object_type='role',
+                                    attribute="uuid",
+                                    value=role_uuid,
+                                    return_type="name")
+            if not result:
+                msg = _("Unknown role: {uuid}")
+                msg = msg.format(uuid=role_uuid)
+                raise ValueError(msg)
+            _sites.append(f"{site_name}:{result[0]}")
         return _sites
     config.register_config_parameter(name="device_token_roles_trusts",
                                     ctype=list,
@@ -2134,6 +2183,24 @@ def register_config():
                                     object_types=object_types)
     # Put SSO device tokens to trash
     config.register_config_parameter(name="add_device_token_to_trash",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    # And the same question for every other type the portal lets a user
+    # delete themselves. One parameter each rather than one for all of
+    # them: what a device token holds is a password somebody typed into
+    # a mail client, while a security key, a passkey or a phone holds a
+    # credential that only exists on that device -- so an install may
+    # well want to keep the one and not the others.
+    config.register_config_parameter(name="add_fido2_token_to_trash",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="add_passkey_to_trash",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="add_tiqr_token_to_trash",
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
@@ -2641,6 +2708,36 @@ def register_config():
                                     setter=force_fido2_rp_setter,
                                     default_value="realm",
                                     object_types=['site', 'unit', 'user'])
+    # What the decoy credentials handed to an unknown user have to look
+    # like. The only two things a credential descriptor puts on the
+    # wire are the id and how many of them there are, so those two are
+    # what a decoy has to get right -- everything else about it
+    # (AAGUID, public key) stays server side.
+    #
+    # Site scope only: it describes the hardware this realm hands out,
+    # which is an operator's answer and not a per-user one.
+    def fido2_decoy_cred_id_len_setter(cred_id_len, **kwargs):
+        # 16 is the shortest a credential id may be, 1023 the longest
+        # a descriptor is allowed to carry (WebAuthn L2, 6.3.2).
+        if cred_id_len < 16 or cred_id_len > 1023:
+            msg = _("Credential ID length must be between 16 and 1023.")
+            raise ValueError(msg)
+        return cred_id_len
+    config.register_config_parameter(name="fido2_decoy_cred_id_len",
+                                    ctype=int,
+                                    setter=fido2_decoy_cred_id_len_setter,
+                                    default_value=64,
+                                    object_types=['site'])
+    def fido2_decoy_max_creds_setter(max_creds, **kwargs):
+        if max_creds < 1:
+            msg = _("At least one decoy credential is required.")
+            raise ValueError(msg)
+        return max_creds
+    config.register_config_parameter(name="fido2_decoy_max_creds",
+                                    ctype=int,
+                                    setter=fido2_decoy_max_creds_setter,
+                                    default_value=2,
+                                    object_types=['site'])
     # Allow trash empty for non-admins?
     object_types = [
                     'site',
@@ -2918,6 +3015,17 @@ class Site(OTPmeObject):
                             "FIDO2_CA_CERTS",
                             "ou",
                             "CONFIG_PARAMS:allow_temp_passwords",
+                            "CONFIG_PARAMS:default_sso_token_name",
+                            # The bottom of the device_token_roles
+                            # cascade, and the portal's half of the
+                            # decision that goes with it. Both are read
+                            # off another site's copy of this object:
+                            # a foreign user is answered by their home
+                            # site, and it is still the portal's trust
+                            # list that says which of the portal's
+                            # roles that user gets.
+                            "CONFIG_PARAMS:device_token_roles",
+                            "CONFIG_PARAMS:device_token_roles_trusts",
                             ],
                         },
                     }
@@ -4870,6 +4978,40 @@ class Site(OTPmeObject):
 
         return self._write(callback=callback)
 
+    def set_default_config_params(self, **kwargs):
+        """ Write every config parameter that has a default to this site.
+
+        Runs twice while a site comes up -- once in add() and once in
+        add_base_objects(), because some defaults can only be produced
+        after the objects they refer to exist (scripts, for one).
+
+        Two kinds of default. A fixed value is passed straight through.
+        A computed one has a genner instead and no ``default``, and
+        set_config_param() runs it when no value is given -- that is how
+        default_sso_token_name gets a name of its own per site.
+
+        A genner only runs here when it says so, via
+        gen_default_on_create. Having one is not reason enough:
+        private_key_backup_key generates its key by asking the client
+        for an RSA key pair through the callback, and it is the escrow
+        key for every PIV token deployed below this site. Nothing
+        should set that except an administrator who meant to.
+
+        ``kwargs`` go to set_config_param() unchanged; the two callers
+        need different ones.
+        """
+        for parameter in config.valid_config_params:
+            para_data = config.valid_config_params[parameter]
+            default_value = para_data['default']
+            if default_value is not None:
+                self.set_config_param(parameter, default_value, **kwargs)
+                continue
+            if not para_data['default_genner']:
+                continue
+            if not para_data['gen_default_on_create']:
+                continue
+            self.set_config_param(parameter, **kwargs)
+
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
     @backend.transaction
@@ -4920,11 +5062,7 @@ class Site(OTPmeObject):
             return add_result
 
         # Add default config parameters.
-        for parameter in config.valid_config_params:
-            default_value = config.valid_config_params[parameter]['default']
-            if default_value is None:
-                continue
-            self.set_config_param(parameter, default_value)
+        self.set_default_config_params()
 
         config.site_init = False
 
@@ -5725,15 +5863,9 @@ class Site(OTPmeObject):
 
         # Add default config parameters. This need to be run two times
         # (e.g. after scripts are created). Once here and again in add().
-        for parameter in config.valid_config_params:
-            default_value = config.valid_config_params[parameter]['default']
-            if default_value is None:
-                continue
-            self.set_config_param(parameter,
-                                default_value,
-                                verify_acls=False,
-                                force=True,
-                                callback=callback)
+        self.set_default_config_params(verify_acls=False,
+                                    force=True,
+                                    callback=callback)
 
         # Add template objects.
         self.add_object_templates(callback=callback)

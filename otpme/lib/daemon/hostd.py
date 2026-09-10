@@ -20,6 +20,7 @@ except Exception:
 from otpme.lib import log
 from otpme.lib import oid
 from otpme.lib import ssh
+from otpme.lib import host
 from otpme.lib import json
 from otpme.lib import cache
 from otpme.lib import stuff
@@ -148,7 +149,7 @@ class HostDaemon(OTPmeDaemon):
         return result[0]
 
     def get_sync_connection(self, realm=None, site=None,
-        node=None, force_site_address=False):
+        request_site_cert=False, node=None, force_site_address=False):
         """ Get connection to syncd. """
         # Default connect realm/site is our own.
         connect_realm = config.realm
@@ -190,6 +191,7 @@ class HostDaemon(OTPmeDaemon):
                                 socket_uri=socket_uri,
                                 realm=connect_realm,
                                 site=connect_site,
+                                req_site_cert=request_site_cert,
                                 timeout=0,
                                 interactive=False)
         return sync_conn
@@ -421,7 +423,7 @@ class HostDaemon(OTPmeDaemon):
         # Acquire sync lock.
         sync_lock = self.acquire_sync_lock("objects")
         try:
-            self._sync_sites()
+            self._sync_sites(**kwargs)
         except Exception as e:
             log_msg = _("Failed to sync sites: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -429,7 +431,7 @@ class HostDaemon(OTPmeDaemon):
         finally:
             sync_lock.release_lock()
 
-    def _sync_sites(self, **kwargs):
+    def _sync_sites(self, request_site_cert=False, **kwargs):
         """ Make sure our sites list is in sync with the master site. """
         sync_status = True
         # Handle multiprocessing stuff.
@@ -497,16 +499,19 @@ class HostDaemon(OTPmeDaemon):
         self.logger.debug(log_msg)
 
         sync_sites = []
+        site_certs = []
         failed_sites = []
         added_objects = 0
         updated_objects = 0
         removed_objects = 0
+        update_site_certs = False
         update_realm_ca_data = False
         for site in connect_sites:
             # Connect to site master node.
             try:
                 sync_conn = self.get_sync_connection(realm=site.realm,
-                                                    site=site.name)
+                                                    site=site.name,
+                                                    request_site_cert=request_site_cert)
             except Exception as e:
                 log_msg = _("Error getting sync connection: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
@@ -603,8 +608,9 @@ class HostDaemon(OTPmeDaemon):
                         object_type = new_object.type
                         # No need to update object if checksum matches.
                         sync_checksum = backend.get_sync_checksum(x_oid)
-                        if sync_checksum == object_checksum:
-                            continue
+                        if not request_site_cert:
+                            if sync_checksum == object_checksum:
+                                continue
                         # We to stop if cluster is not ready, because we need a
                         # sane master node status.
                         if self.host_type == "node":
@@ -660,6 +666,12 @@ class HostDaemon(OTPmeDaemon):
                         log_msg = _("Updating object: {oid}", log=True)[1]
                         log_msg = log_msg.format(oid=x_oid)
                         self.logger.info(log_msg)
+                        if self.host_type == "node":
+                            if config.master_node:
+                                if request_site_cert:
+                                    update_site_certs = True
+                            else:
+                                update_site_certs = True
                     else:
                         # Do not (re)-add own sub site from master site (e.g. delete on this site).
                         if not config.realm_master_node:
@@ -669,6 +681,7 @@ class HostDaemon(OTPmeDaemon):
                         log_msg = log_msg.format(oid=x_oid)
                         self.logger.info(log_msg)
                         added_objects += 1
+                        update_site_certs = True
 
                     # Write object to backend. We cannot use new_object._write() because this
                     # triggers other things we do not want/need on sync.
@@ -687,6 +700,15 @@ class HostDaemon(OTPmeDaemon):
                     # For CAs we have to update CA data and reload daemons.
                     if object_type == "ca":
                         update_realm_ca_data = True
+                    if object_type == "site":
+                        if request_site_cert:
+                            update_site_certs = True
+                        if update_site_certs:
+                            site_certs.append({
+                                            'name'  : new_object.name,
+                                            'realm' : new_object.realm,
+                                            'cert'  : new_object.cert,
+                                        })
 
         # Update realm CA data which reloads daemons.
         if update_realm_ca_data:
@@ -698,6 +720,10 @@ class HostDaemon(OTPmeDaemon):
             self.logger.info(log_msg)
             realm = backend.get_object(uuid=config.realm_uuid)
             realm.update_ca_data(force=True, verify_acls=False)
+
+        # Update site certs.
+        if update_site_certs:
+            host.update_data(site_certs=site_certs)
 
         # If we got no sync sites (e.g. realm master node with no other sites)
         # we have nothing to do.
@@ -853,7 +879,8 @@ class HostDaemon(OTPmeDaemon):
                         realm=realm, site=site)
 
     def start_sync(self, sync_type="objects", queue=True, resync=False,
-        nsscache_resync=False, offline=False, realm=None, site=None, **kwargs):
+        request_site_cert=False, nsscache_resync=False, offline=False,
+        realm=None, site=None, **kwargs):
         """ Start sync job as child process. """
         if self.host_type == "node":
             if not config.cluster_status:
@@ -881,6 +908,7 @@ class HostDaemon(OTPmeDaemon):
             # Create child process that will do the sync.
             sync_child = multiprocessing.start_process(name=self.name,
                                                 target=self.sync_sites,
+                                                target_kwargs={'request_site_cert':request_site_cert},
                                                 hard_exit=True,
                                                 join=True)
             # Add info.
@@ -2052,6 +2080,7 @@ class HostDaemon(OTPmeDaemon):
                     if daemon_command == "sync_sites":
                         if "notify" not in self.sync_by_command:
                             self.sync_by_command.append('sites')
+                            self.sync_by_command_opts['sync_sites'] = data
                     if daemon_command == "sync_token_data":
                         if "used_otps" not in self.sync_by_command:
                             self.sync_by_command.append('used_otps')
@@ -2140,6 +2169,7 @@ class HostDaemon(OTPmeDaemon):
                     sync_realm = None
                     start_sync = False
                     nsscache_resync = False
+                    request_site_cert = False
                     # Check if we got sync commands via socket.
                     sync_from_command = False
                     if self.sync_by_command:
@@ -2148,6 +2178,13 @@ class HostDaemon(OTPmeDaemon):
                         if sync_type in self.sync_by_command:
                             start_sync = True
                             self.sync_by_command.remove(sync_type)
+                        # For sites sync we need to handle special commands.
+                        if sync_type == "sites":
+                            start_sync = True
+                            try:
+                                request_site_cert = self.sync_by_command_opts['sync_sites']['request_site_cert']
+                            except KeyError:
+                                pass
                         # For object sync we need to handle special commands.
                         if sync_type == "objects":
                             if "resync_objects" in self.sync_by_command:
@@ -2225,6 +2262,7 @@ class HostDaemon(OTPmeDaemon):
                         else:
                             # Start sync job.
                             self.start_sync(sync_type=sync_type,
+                                            request_site_cert=request_site_cert,
                                             resync=resync,
                                             nsscache_resync=nsscache_resync,
                                             sync_from_command=sync_from_command,

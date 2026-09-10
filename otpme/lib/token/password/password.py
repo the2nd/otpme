@@ -339,6 +339,8 @@ class PasswordToken(Token):
         self.mschap_enabled = False
         self.offline_pinnable = True
         self.support_dot1x = True
+        # A password verifies for whoever presents it.
+        self.support_links = True
         self.sso_deploy = False
         # Hardware tokens that we can handle (e.g. on otpme-token deploy)
         # FIXME: implement deployment of yubikey in static mode (e.g. password via usb keyboard presses)

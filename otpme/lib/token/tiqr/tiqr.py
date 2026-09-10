@@ -49,6 +49,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
+from otpme.lib.protocols import tiqr_helpers
 
 from otpme.lib.classes.token \
             import get_acls \
@@ -96,7 +97,6 @@ read_value_acls = {
                             "secret",
                             "ocra_suite",
                             "identity_id",
-                            "device_name",
                             "notification_type",
                             "notification_address",
                             "auth_script",
@@ -109,7 +109,6 @@ read_value_acls = {
 
 write_value_acls = {
                 "edit"      : [
-                            "device_name",
                             "auth_script",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -176,9 +175,7 @@ def get_recursive_default_acls():
     return _acls
 
 REGISTER_BEFORE = []
-REGISTER_AFTER = [
-                "otpme.lib.classes.data_objects.tiqr_auth_result",
-                ]
+REGISTER_AFTER = []
 
 def register():
     """ Register object. """
@@ -188,12 +185,6 @@ def register():
                     sub_type="tiqr",
                     sub_type_attribute="token_type")
     register_config_parameters()
-    # No register_module() for tiqr_auth_result here. Registering it
-    # from a token type is what broke it: token types are registered
-    # after backend.init(), and the index takes its object types from
-    # config.object_types at exactly that moment. classes/token.py names
-    # it in REGISTER_AFTER instead, which is early enough. The entry in
-    # REGISTER_AFTER above still says that this module needs it.
 
 def register_token_type():
     """ Register token type. """
@@ -237,9 +228,18 @@ def register_config_parameters():
                                     object_types=['site', 'unit', 'user'])
     # Shown by the app as the name of the service. Empty means the realm
     # name is used.
+    #
+    # Checked on the way in rather than worked around later: the mistake
+    # it catches would otherwise surface at the first login, as an
+    # unrelated-looking error, with nothing pointing back at this
+    # parameter. See tiqr_helpers.validate_service_display_name().
+    def service_display_name_setter(display_name, **kwargs):
+        tiqr_helpers.validate_service_display_name(display_name)
+        return display_name
     config.register_config_parameter(name="tiqr_service_display_name",
                                     ctype=str,
                                     default_value=None,
+                                    setter=service_display_name_setter,
                                     object_types=['site'])
     # Have to match the app that is handed out; the stock apps use these.
     config.register_config_parameter(name="tiqr_auth_scheme",
@@ -326,14 +326,17 @@ class TiqrToken(Token):
         self.ocra_suite = None
         # What the app sends back as "userId".
         self.identity_id = None
-        # Free text the user gives the phone, to tell several apart.
-        self.device_name = None
+        # device_name -- what the user calls this phone -- comes from
+        # the base class: every token type the portal hands out carries
+        # one, not just this one.
         # Push details the app offers at enrollment. Stored so a later
         # push implementation finds them; nothing sends anything yet,
         # and it could not: pushing to the stock app would need SURF's
         # APNS/FCM credentials.
         self.notification_type = None
         self.notification_address = None
+        # Token deploy finished?
+        self.deployed = False
         # Verifying needs the server side secret and a server issued
         # challenge, so there is nothing to do offline.
         self.allow_offline = False
@@ -342,6 +345,22 @@ class TiqrToken(Token):
         self.keep_session = False
         self.offline_pinnable = False
         self.supported_hardware_tokens = ['tiqr']
+        self._sub_sync_fields = {
+                    'host'  : {
+                        'trusted'  : [
+                            "DEPLOYED",
+                            "OCRA_SUITE",
+                            ]
+                        },
+
+                    'node'  : {
+                        'untrusted'  : [
+                            "DEPLOYED",
+                            "OCRA_SUITE",
+                            ]
+                        },
+                    }
+
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -360,12 +379,6 @@ class TiqrToken(Token):
                                             'required'      : False,
                                         },
 
-            'DEVICE_NAME'               : {
-                                            'var_name'      : 'device_name',
-                                            'type'          : str,
-                                            'required'      : False,
-                                        },
-
             'NOTIFICATION_TYPE'         : {
                                             'var_name'      : 'notification_type',
                                             'type'          : str,
@@ -378,6 +391,13 @@ class TiqrToken(Token):
                                             'required'      : False,
                                             'encryption'    : config.disk_encryption,
                                         },
+
+            'DEPLOYED'                  : {
+                                            'var_name'      : 'deployed',
+                                            'type'          : bool,
+                                            'required'      : False,
+                                        },
+
             }
         return Token._get_object_config(self, token_config=token_config)
 
@@ -399,7 +419,7 @@ class TiqrToken(Token):
     def need_password(self, *args, **kwargs):
         return
 
-    def is_deployed(self):
+    def has_auth_data(self):
         """ Has a phone been through enrollment for this token? """
         if not self.secret:
             return False
@@ -416,7 +436,7 @@ class TiqrToken(Token):
         store, because collisions across challenges would lock people
         out. It is the caller that has to make a challenge answerable
         only once. """
-        if not self.is_deployed():
+        if not self.has_auth_data():
             log_msg = _("Token not deployed: {token_path}", log=True)[1]
             log_msg = log_msg.format(token_path=self.rel_path)
             logger.warning(log_msg)
@@ -434,41 +454,10 @@ class TiqrToken(Token):
             return False
         return verify_status
 
-    def get_auth_results(self):
-        """ Answered logins of this token that nobody has collected. """
-        return backend.search(object_type="tiqr_auth_result",
-                            attribute="token_uuid",
-                            value=self.uuid,
-                            return_type="instance")
-
-    def cleanup_auth_results(self, now):
-        """ Drop expired results of this token.
-
-        OTPme has no reaper, so this runs on the next answered login for
-        the same token -- the same lazy sweep is_used_otp() does for used
-        OTPs. A result whose browser never came back would otherwise sit
-        there until the token is deleted. """
-        removed = 0
-        for auth_result in self.get_auth_results():
-            if auth_result.expiry and now <= auth_result.expiry:
-                continue
-            try:
-                auth_result.delete()
-            except Exception as e:
-                log_msg = _("Failed to remove expired tiqr result: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                logger.warning(log_msg)
-                continue
-            removed += 1
-        return removed
-
-    def delete_used_data_objects(self):
-        """ Drop our results when the token or its user is deleted.
-
-        The parent method returns early for anything that is not an OTP
-        token, so tiqr has to bring its own. """
-        for auth_result in self.get_auth_results():
-            auth_result.delete()
+    # No cleanup of answered logins here any more, and nothing to drop
+    # when the token goes: an answered login lives in the
+    # tiqr_auth_results shared dict with a TTL of its challenge window,
+    # not in an object of ours. See _tiqr_verify_response() in auth1.
 
     def verify(
         self,
@@ -514,10 +503,6 @@ class TiqrToken(Token):
             lines.append(f'IDENTITY_ID="{self.identity_id}"')
         else:
             lines.append('IDENTITY_ID=""')
-        if self.verify_acl("view:device_name"):
-            lines.append(f'DEVICE_NAME="{self.device_name}"')
-        else:
-            lines.append('DEVICE_NAME=""')
         if self.verify_acl("view:notification_type"):
             lines.append(f'NOTIFICATION_TYPE="{self.notification_type}"')
         else:
@@ -526,6 +511,7 @@ class TiqrToken(Token):
             lines.append(f'NOTIFICATION_ADDRESS="{self.notification_address}"')
         else:
             lines.append('NOTIFICATION_ADDRESS=""')
+        lines.append(f'DEPLOYED="{self.deployed}"')
         return Token.show_config(self,
                                 config_lines=lines,
                                 callback=callback,

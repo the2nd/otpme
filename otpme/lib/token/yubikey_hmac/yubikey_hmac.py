@@ -307,6 +307,8 @@ class YubikeyhmacToken(Token):
         self.pass_type = "smartcard"
         # Challenge-response against the key's HMAC secret.
         self.count_fails = False
+        # Same secret, same answer, whoever holds the key.
+        self.support_links = True
         self.otp_type = "time"
         self.validity_time = 0
         self.timedrift_tolerance = 0

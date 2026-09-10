@@ -52,6 +52,13 @@ default_callback = config.get_callback()
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
 REGISTER_AFTER = []
 
+SUPPORTED_STATE_DICTS = [
+                        'fido2_reg_states',
+                        'passkey_reg_states',
+                        'fido2_auth_states',
+                        'tiqr_auth_results',
+                        ]
+
 CLUSTER_IN_JOURNAL_NAME = "cluster_in_journal"
 CLUSTER_IN_JOURNAL_DIR = os.path.join(config.spool_dir, CLUSTER_IN_JOURNAL_NAME)
 CLUSTER_OUT_JOURNAL_NAME = "cluster_out_journal"
@@ -81,6 +88,8 @@ def register():
     multiprocessing.register_shared_dict("peer_nodes_set_online")
     multiprocessing.register_shared_dict("last_used_sync_queue")
     multiprocessing.register_shared_dict("last_used_synced_nodes")
+    multiprocessing.register_shared_dict("states_sync_queue")
+    multiprocessing.register_shared_dict("states_sync_synced_nodes")
     register_cluster_journal()
 
 def register_cluster_journal():
@@ -167,8 +176,8 @@ def cluster_daemon_reload():
 
 def cluster_sync_object(action, object_id=None, object_uuid=None,
     object_type=None, object_data=None, old_object_id=None,
-    new_object_id=None, index_journal=None, acl_journal=None,
-    full_acl_update=False, full_index_update=False,
+    new_object_id=None, state_id=None, expiry=None, index_journal=None,
+    acl_journal=None, full_acl_update=False, full_index_update=False,
     trash_id=None, deleted_by=None, wait_for_write=True):
     if config.host_type != "node":
         return (None, None)
@@ -191,13 +200,28 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
         # Value is a flat string "object_type|timestamp".
         _object_type = object_id.object_type if object_id else ""
         multiprocessing.last_used_sync_queue[object_uuid] = f"{_object_type}|{object_data}"
-        # Clear synced_nodes tracking on new write.
-        try:
-            multiprocessing.last_used_synced_nodes.pop(object_uuid)
-        except (KeyError, ValueError):
-            pass
         multiprocessing.cluster_out_event.set()
         return (None, None)
+    if action == "state_sync":
+        # Value is a flat string "action|expiry|timestamp".
+        multiprocessing.states_sync_queue[state_id] = f"set|{expiry}|{timestamp}"
+        object_event_name = f"/cluster_journal_{timestamp}"
+        object_event = multiprocessing.Event(object_event_name)
+        multiprocessing.cluster_out_event.set()
+        return (object_event, timestamp)
+    if action == "state_delete":
+        # One queue for both directions, keyed by the state id: a
+        # delete queued after a set replaces it, which is the order we
+        # want anyway -- a node that never got the set has nothing to
+        # delete, and one that did gets rid of it.
+        #
+        # No event. Nobody waits for a delete: the local copy is gone
+        # before this returns, which is what stops the node the caller
+        # is on, and the peers only have to catch up. Blocking a login
+        # for that would be latency spent on nothing.
+        multiprocessing.states_sync_queue[state_id] = f"delete||{timestamp}"
+        multiprocessing.cluster_out_event.set()
+        return (None, timestamp)
     if action == "write":
         journal_id = object_uuid
         if object_type in config.tree_object_types:
@@ -302,6 +326,58 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
 
     multiprocessing.cluster_out_event.set()
     return (object_event, timestamp)
+
+def cluster_sync_state(state_id, expiry, timeout=30):
+    """ Hand a short lived state to the other nodes and wait.
+
+    Waiting is the point: the browser may come back to any node for the
+    second half of a WebAuthn flow, so the state has to be there before
+    we answer the first half.
+
+    No event means there is nobody to wait for -- a single node setup,
+    or a two node setup with the peer down. Every caller of
+    cluster_sync_object() checks the same way.
+
+    A timeout is not fatal on purpose. The state is written locally
+    either way, and refusing the login because one node was slow would
+    be worse than the flow it protects: the browser most likely comes
+    back here anyway.
+    """
+    cluster_event, \
+    timestamp = cluster_sync_object(action="state_sync",
+                                    state_id=state_id,
+                                    expiry=expiry)
+    if not cluster_event:
+        return
+    log_msg = _("Waiting for cluster state event: {state_id} ({timestamp})", log=True)[1]
+    log_msg = log_msg.format(state_id=state_id, timestamp=timestamp)
+    config.logger.debug(log_msg)
+    try:
+        cluster_event.wait(timeout=timeout)
+    except TimeoutReached:
+        log_msg = _("Timeout waiting for cluster state sync: {state_id} ({timestamp})", log=True)[1]
+        log_msg = log_msg.format(state_id=state_id, timestamp=timestamp)
+        config.logger.warning(log_msg)
+    else:
+        log_msg = _("Got cluster state event: {state_id} ({timestamp})", log=True)[1]
+        log_msg = log_msg.format(state_id=state_id, timestamp=timestamp)
+        config.logger.debug(log_msg)
+    finally:
+        cluster_event.unlink()
+
+def cluster_sync_state_delete(state_id):
+    """ Tell the other nodes a state is spent.
+
+    The counterpart of cluster_sync_state(), and the reason a state can
+    be consumed exactly once: the copies the sync put on the other
+    nodes would otherwise sit there until they expire, and the same
+    answer replayed against one of them would be accepted a second
+    time.
+
+    Does not wait. See the state_delete branch in cluster_sync_object()
+    for why.
+    """
+    cluster_sync_object(action="state_delete", state_id=state_id)
 
 def calc_node_vote():
     node_name = config.host_data['name']
@@ -1048,13 +1124,13 @@ class ClusterDaemon(OTPmeDaemon):
         self.node_write_connections = {}
         self.node_sessions_connections = {}
         self.node_last_used_connections = {}
+        self.node_states_sync_connections = {}
         self.lock_proc_event = None
         self.cluster_comm_child = None
         self.two_node_handler_child = None
         self.interprocess_comm_child = None
         self.cluster_in_journal_child = None
         self.node_disabled_child = None
-        self.all_nodes = []
         self.member_nodes = []
         self.online_nodes = []
         self.min_written_nodes = 3
@@ -1975,6 +2051,8 @@ class ClusterDaemon(OTPmeDaemon):
                 self.close_node_sessions_connections()
             if self.node_last_used_connections:
                 self.close_node_last_used_connections()
+            if self.node_states_sync_connections:
+                self.close_node_states_sync_connections()
             return
 
         # Make sure we have a connection to all nodes.
@@ -2027,6 +2105,16 @@ class ClusterDaemon(OTPmeDaemon):
                     multiprocessing.node_connections.pop(node_name)
                 except KeyError:
                     pass
+            try:
+                proc = self.node_states_sync_connections[node_name]
+            except Exception:
+                continue
+            if not proc.is_alive():
+                self.close_node_states_sync_connection(node_name)
+                try:
+                    multiprocessing.node_connections.pop(node_name)
+                except KeyError:
+                    pass
 
         for node_name in enabled_nodes:
             try:
@@ -2060,6 +2148,12 @@ class ClusterDaemon(OTPmeDaemon):
                                             hard_exit=True,
                                             target_args=(node.name,))
                 self.node_last_used_connections[node.name] = proc
+            if node.name not in self.node_states_sync_connections:
+                proc = multiprocessing.start_process(name=self.name,
+                                            target=self.start_node_states_sync_connection,
+                                            hard_exit=True,
+                                            target_args=(node.name,))
+                self.node_states_sync_connections[node.name] = proc
             multiprocessing.node_connections[node.name] = True
         # Remove connection to e.g. disabled nodes.
         for node_name in dict(self.node_check_connections):
@@ -2109,6 +2203,19 @@ class ClusterDaemon(OTPmeDaemon):
             if node and node.enabled:
                 continue
             self.close_node_last_used_connection(node_name)
+            self.node_leave(node_name)
+            try:
+                multiprocessing.node_connections.pop(node_name)
+            except KeyError:
+                pass
+        for node_name in dict(self.node_states_sync_connections):
+            try:
+                node = all_nodes[node_name]
+            except KeyError:
+                node = None
+            if node and node.enabled:
+                continue
+            self.close_node_states_sync_connection(node_name)
             self.node_leave(node_name)
             try:
                 multiprocessing.node_connections.pop(node_name)
@@ -2394,6 +2501,7 @@ class ClusterDaemon(OTPmeDaemon):
             self.close_node_write_connections()
             self.close_node_sessions_connections()
             self.close_node_last_used_connections()
+            self.close_node_states_sync_connections()
             # Cleanup IPC stuff.
             multiprocessing.cleanup()
             # Finally exit.
@@ -3457,6 +3565,86 @@ class ClusterDaemon(OTPmeDaemon):
 
         os._exit(0)
 
+    def start_node_states_sync_connection(self, node_name):
+        # Do not use connections/locks of parent process.
+        multiprocessing.atfork(quiet=True)
+        self.node_conn = None
+        try:
+            self._start_node_states_sync_connection(node_name)
+        except Exception as e:
+            log_msg = _("Error in node states sync connection: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            #config.raise_exception()
+
+    def _start_node_states_sync_connection(self, node_name):
+        """ Start cluster states sync communication with node. """
+        # Set proctitle.
+        new_proctitle = f"{self.full_name} Cluster states sync ({node_name})"
+        setproctitle.setproctitle(new_proctitle)
+
+        conn_even_name = self.get_conn_event_name(node_name, event_type="states_sync")
+        self.conn_event = multiprocessing.Event(conn_even_name)
+
+        def signal_handler(_signal, frame):
+            if _signal != 15:
+                if _signal != 2:
+                    return
+            # Cleanup IPC stuff.
+            if self.node_conn:
+                self.node_conn.close()
+            self.conn_event.unlink()
+            multiprocessing.cleanup()
+            os._exit(0)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        self.node_name = node_name
+        # Update logger with new PID and daemon name.
+        self.pid = os.getpid()
+        log_banner = f"{self.full_name}:"
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
+        start_over= True
+        while True:
+            # Wait for cluster event.
+            event_timeout = 0.3
+            if start_over:
+                event_timeout = 0.01
+            try:
+                self.conn_event.wait(timeout=event_timeout)
+            except TimeoutReached:
+                pass
+            #finally:
+            #    self.conn_event.close()
+
+            if config.daemon_shutdown:
+                os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
+
+            start_over= False
+            if self.node_conn is None:
+                node_conn = self.get_node_connection(node_name)
+                if not node_conn:
+                    continue
+
+            if node_name not in multiprocessing.ready_nodes:
+                start_over = True
+                continue
+            if node_name not in multiprocessing.online_nodes:
+                start_over = True
+                continue
+
+            try:
+                self.process_states(node_name)
+            except Exception as e:
+                start_over = True
+                log_msg = _("Failed to handle cluster states sync journal: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                #config.raise_exception()
+
     def start_node_last_used_connection(self, node_name):
         # Do not use connections/locks of parent process.
         multiprocessing.atfork(quiet=True)
@@ -3464,7 +3652,7 @@ class ClusterDaemon(OTPmeDaemon):
         try:
             self._start_node_last_used_connection(node_name)
         except Exception as e:
-            log_msg = _("Error in node write connection: {error}", log=True)[1]
+            log_msg = _("Error in node last used write connection: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
             #config.raise_exception()
@@ -4050,6 +4238,10 @@ class ClusterDaemon(OTPmeDaemon):
         # Mark this node as synced. Remove entry once all online
         # nodes have received it.
         online_nodes = list(multiprocessing.online_nodes)
+        # Read once, not per entry: the node list does not change while
+        # we walk the batch, and this runs on every last used write --
+        # one login, one query, for a list that is the same every time.
+        all_nodes = self.get_all_node_names()
         for object_uuid, value in pending.items():
             entry_ts = value.split("|", 1)[1]
             # Check if value was updated since our snapshot.
@@ -4080,12 +4272,190 @@ class ClusterDaemon(OTPmeDaemon):
                     multiprocessing.last_used_sync_queue.pop(object_uuid)
                 except (KeyError, ValueError):
                     pass
-                # Clean up synced_nodes entries.
-                for n in online_nodes:
+                # Clean up synced_nodes entries. Over all nodes, not
+                # just the online ones: a node that was marked and then
+                # went offline drops out of online_nodes, and its mark
+                # would stay behind forever.
+                for n in all_nodes:
                     try:
                         multiprocessing.last_used_synced_nodes.pop(f"{object_uuid}:{n}")
                     except (KeyError, ValueError):
                         pass
+
+    def get_all_node_names(self):
+        """ Every node of our site, online or not. """
+        return backend.search(object_type="node",
+                            attribute="uuid",
+                            value="*",
+                            realm=config.realm,
+                            site=config.site,
+                            return_type="name")
+
+    def drop_state_entry(self, state_id, entry_ts, all_nodes, notify=True):
+        """ Take a state out of the sync queue and let its writer go.
+
+        Whoever queued a state is blocked on the cluster event until
+        every node has confirmed it (see cluster_sync_state()), so the
+        event has to be set on every way out of the queue -- not only
+        the successful one. A state that is gone would otherwise hold
+        that caller for its full timeout, on the login path.
+
+        ``notify`` is off for a delete: nobody waits for one, and
+        opening a POSIX semaphore only to unlink it again would be
+        syscalls spent on an audience that does not exist.
+        """
+        if notify:
+            object_event = multiprocessing.Event(f"/cluster_journal_{entry_ts}")
+            object_event.set()
+            object_event.unlink()
+        try:
+            multiprocessing.states_sync_queue.pop(state_id)
+        except (KeyError, ValueError):
+            pass
+        for n in all_nodes:
+            try:
+                multiprocessing.states_sync_synced_nodes.pop(f"{state_id}:{n}")
+            except (KeyError, ValueError):
+                pass
+
+    def process_states(self, node_name):
+        """ Process states from shared dict. """
+        node_conn = self.node_conn
+        if node_conn is None:
+            msg = _("No node connection.")
+            raise ProcessingFailed(msg)
+        # Take a snapshot of entries this node hasn't synced yet.
+        # synced_nodes dict tracks which nodes got which entry.
+        # Key: "uuid:node_name", value: timestamp that was synced.
+        pending = {}
+        for state_id, value in multiprocessing.states_sync_queue.items():
+            # Check if this node already synced the current value.
+            synced_key = f"{state_id}:{node_name}"
+            try:
+                synced_ts = multiprocessing.states_sync_synced_nodes[synced_key]
+            except (KeyError, ValueError):
+                synced_ts = None
+            # Parse flat value "action|expiry|timestamp".
+            parts = value.split("|", 2)
+            if len(parts) != 3:
+                continue
+            entry_ts = parts[2]
+            if synced_ts == entry_ts:
+                continue
+            pending[state_id] = value
+        if not pending:
+            return
+        all_nodes = self.get_all_node_names()
+        # Send pending states. Only what a node confirmed is marked as
+        # synced below -- everything else stays queued and is retried.
+        sent = {}
+        for state_id in pending:
+            value = pending[state_id]
+            action, expiry, entry_ts = value.split("|", 2)
+            notify = action != "delete"
+            shared_dict_name = state_id.split(":")[0]
+            shared_dict = None
+            if shared_dict_name in SUPPORTED_STATE_DICTS:
+                shared_dict = getattr(multiprocessing, shared_dict_name, None)
+            if shared_dict is None:
+                # Nothing a retry can fix, so drop it rather than let
+                # it wedge this node's states sync forever: raising
+                # here would abort the batch, leave the entry queued,
+                # and hit the very same entry on the next round.
+                msg = _("Unusable state ID, dropping: {node}: {state_id}", log=True)[1]
+                msg = msg.format(node=node_name, state_id=state_id)
+                self.logger.warning(msg)
+                self.drop_state_entry(state_id, entry_ts, all_nodes, notify=notify)
+                continue
+            state_data = None
+            if action != "delete":
+                # An int on the wire: it ends up as the expire argument
+                # of the peer's shared dict, and a string only survives
+                # that by accident.
+                expiry = int(float(expiry))
+                try:
+                    state_data = shared_dict[state_id]
+                except Exception:
+                    # Not an error: states are short lived. This one
+                    # was consumed or expired between being queued and
+                    # us getting to it, so there is nothing left to
+                    # send and nothing left to wait for either.
+                    log_msg = _("State gone before it was synced: {node}: {state_id}", log=True)[1]
+                    log_msg = log_msg.format(node=node_name, state_id=state_id)
+                    self.logger.debug(log_msg)
+                    self.drop_state_entry(state_id, entry_ts, all_nodes)
+                    continue
+            try:
+                if action == "delete":
+                    state_status = node_conn.del_state(shared_dict_name, state_id)
+                else:
+                    state_status = node_conn.set_state(shared_dict_name,
+                                                    state_id, state_data,
+                                                    expiry)
+            except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                self.node_disconnect(node_name)
+                msg, log_msg = _("Failed to send state: {node}: {state_id}: {error}", log=True)
+                msg = msg.format(node=node_name, state_id=state_id, error=e)
+                log_msg = log_msg.format(node=node_name, state_id=state_id, error=e)
+                self.logger.warning(log_msg)
+                raise ProcessingFailed(msg) from e
+            except Exception as e:
+                self.node_disconnect(node_name)
+                msg, log_msg = _("Error sending state: {node}: {state_id}: {error}", log=True)
+                msg = msg.format(node=node_name, state_id=state_id, error=e)
+                log_msg = log_msg.format(node=node_name, state_id=state_id, error=e)
+                self.logger.warning(log_msg)
+                raise ProcessingFailed(msg) from e
+            if state_status != "done":
+                # The peer refused it. Leaving it out of <sent> is the
+                # whole point: marking it synced would release the
+                # writer and let a login complete on a node that does
+                # not have the state -- or, for a delete, let the state
+                # stay collectable there.
+                log_msg = _("Node refused state: {node}: {action}: {state_id}: {status}", log=True)[1]
+                log_msg = log_msg.format(node=node_name, action=action,
+                                        state_id=state_id, status=state_status)
+                self.logger.warning(log_msg)
+                continue
+            sent[state_id] = value
+            log_msg = _("Sent state to node: {node}: {action}: {state_id}", log=True)[1]
+            log_msg = log_msg.format(node=node_name, action=action,
+                                    state_id=state_id)
+            self.logger.debug(log_msg)
+        # Mark this node as synced. Remove entry once all online
+        # nodes have received it.
+        online_nodes = list(multiprocessing.online_nodes)
+        for state_id, value in sent.items():
+            action, _expiry, entry_ts = value.split("|", 2)
+            # Check if value was updated since our snapshot.
+            try:
+                current = multiprocessing.states_sync_queue[state_id]
+            except (KeyError, ValueError):
+                continue
+            current_ts = current.split("|", 2)[2]
+            if current_ts != entry_ts:
+                continue
+            # Mark this node as synced for this timestamp.
+            synced_key = f"{state_id}:{node_name}"
+            multiprocessing.states_sync_synced_nodes[synced_key] = entry_ts
+            # Check if all online nodes have synced this entry.
+            all_synced = True
+            for n in online_nodes:
+                check_key = f"{state_id}:{n}"
+                try:
+                    n_ts = multiprocessing.states_sync_synced_nodes[check_key]
+                except (KeyError, ValueError):
+                    all_synced = False
+                    break
+                if n_ts != entry_ts:
+                    all_synced = False
+                    break
+            if all_synced:
+                # Everyone has it: release the writer and clear the
+                # entry. Same way out as a state that turned out to be
+                # gone, so both go through one place.
+                self.drop_state_entry(state_id, entry_ts, all_nodes,
+                                    notify=action != "delete")
 
     def set_node_sync(self, node_name, sync_time):
         try:
@@ -4515,6 +4885,21 @@ class ClusterDaemon(OTPmeDaemon):
         """ Close all node last used connections. """
         for node_name in list(self.node_last_used_connections):
             self.close_node_last_used_connection(node_name)
+
+    def close_node_states_sync_connection(self, node_name):
+        """ Close node states sync connection. """
+        proc = self.node_states_sync_connections[node_name]
+        proc.terminate()
+        proc.join()
+        try:
+            self.node_states_sync_connections.pop(node_name)
+        except KeyError:
+            pass
+
+    def close_node_states_sync_connections(self):
+        """ Close all node states sync connections. """
+        for node_name in list(self.node_states_sync_connections):
+            self.close_node_states_sync_connection(node_name)
 
     def _run(self, reload=False, master_node=False, **kwargs):
         """ Start daemon loop. """

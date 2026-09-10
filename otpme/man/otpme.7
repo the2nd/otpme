@@ -385,6 +385,14 @@ Token type of the default token created for new users.
 .br
 Object types: site, unit
 .TP
+.B default_sso_token_name \fR(str, default: sso\-<realm>\-<site>)
+Name of the token the SSO portal deploys, recovers and hands the default\-token role to. Must differ from
+.BR default_token_name .
+.br
+Site scope on purpose, and read off the site of the portal the user is using \- not off the user. A user of one site signing in at another site's portal gets that portal's answer. Giving two sites two different names is what lets one hardware security key serve both: each site holds its own OTPme token, each token its own WebAuthn credential for that portal's RP ID. The generated default already differs per site, so the two never collide by accident. The token itself is not created by this setting; an administrator adds it and puts it into the roles of that site.
+.br
+Object types: site
+.TP
 .B user_key_len \fR(int, default: 2048)
 RSA key length for user keys. Valid values: 2048, 4096.
 .br
@@ -539,18 +547,27 @@ Object types: site
 .B device_token_roles \fR(list)
 Comma separated list of roles to which device tokens registered via the SSO portal are added. The role's info text is displayed in the SSO portal settings to inform users about the purpose and scope of the role. Each value can be a plain role name (resolved within the current site) or a
 .IR site/role
-path to reference a role on another site. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site). Foreign\-site users only resolve via this cascade if the local site lists the home site under
-.BR device_token_roles_trusts ;
-otherwise the local site's setting is used as a fallback.
+path to reference a role on another site. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
+.br
+Roles of any site may be listed, and one list serves every portal the user signs in at: a portal offers the roles of its own site and no others, so each of them shows its own slice of the list. A role of another site is therefore not a mistake \(em it is what the user gets when they sign in at that site's portal, provided that portal agrees via
+.BR device_token_roles_trusts .
 .br
 Object types: site, unit, user
 .TP
 .B device_token_roles_trusts \fR(list)
-Comma\-separated list of remote sites whose user\-scoped
+Comma\-separated list of what this site's SSO portal offers to users of other sites. Naming a role in a user's
 .B device_token_roles
-cascade this site trusts when a foreign user registers a device token through the SSO portal here. Sites not in the list fall back to the local site's
-.BR device_token_roles .
-Own\-site users are always trusted.
+is the home site's half of the decision; this parameter is the portal's half, and it is the only place where it is made. Own\-site users need no entry.
+.br
+An entry is \fIsite\fR or \fIsite\fB:\fIrole\fR, where \fIsite\fR is the user's home site and \fIrole\fR is a role of \fIthis\fR site \(em no other role is ever shown here. Both are needed, e.g. on site \fBkoblenz\fR:
+.br
+\fBkoeln\fR \(em users of koeln may carry device token roles here at all.
+.br
+\fBkoeln:wlan\-users\fR \(em and they get this site's role \fBwlan\-users\fR, if their own
+.B device_token_roles
+name it.
+.br
+Without the bare site entry a user of that site is offered nothing here, and a role without its own entry is left out of the portal even when the user's cascade names it.
 .br
 Object types: site
 .TP
@@ -591,6 +608,16 @@ Force the Relying Party ID used when registering FIDO2 tokens, overriding the pe
 (use the site's SSO FQDN).
 .br
 Object types: site, unit, user
+.TP
+.B fido2_decoy_cred_id_len \fR(int, default: 64)
+Length in bytes of the decoy credential IDs handed out by the FIDO2 login when the user is unknown or has no security key. Decoys exist so the response looks the same either way; the credential ID and how many of them there are is all a browser gets to see, so a length no authenticator in your realm actually produces gives the decoy away in a single request. 64 is what a YubiKey hands out. Accepted range is 16 to 1023.
+.br
+Object types: site
+.TP
+.B fido2_decoy_max_creds \fR(int, default: 2)
+Upper bound on how many decoy credentials are handed out. The number is derived from the username, so it is the same on every attempt, and spread over 1 to this value. A fixed count of one would let every user who has a second security key be recognised by the length of the list alone. Set it to the largest number of security keys your users realistically carry; 1 disables the variation.
+.br
+Object types: site
 .TP
 .B sso_allow_totp_deploy \fR(bool, default: true)
 Whether TOTP may be chosen as the token type of a first\-login deployment or an SSO\-token recovery. Set to false to restrict those to administrator workflows. TOTP has no Settings card of its own.
@@ -672,6 +699,10 @@ Object types: site, unit, user
 .B tiqr_service_display_name \fR(str)
 Name the tiqr app shows for this service in its account list. Empty means the realm name is used.
 .br
+The identifier the app files the account under is derived from this name, and that identifier becomes the host part of the authentication URL. Only characters that may appear there are accepted: letters, digits and
+.BR "-._~!$&'()*+,;=" .
+A space is rejected \(en it would leave the login URL unparsable and the app would reject the QR code, while enrollment still succeeded.
+.br
 Object types: site
 .TP
 .B tiqr_auth_scheme \fR(str, default: tiqrauth)
@@ -730,6 +761,22 @@ Object types: site
 If true, device tokens that were registered through the SSO portal and are later deleted via the portal are moved to the trash instead of being removed permanently. They can be restored from the trash with
 .BR otpme\-trash (1).
 Set to false to delete such tokens immediately. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
+.br
+Object types: site, unit, user
+.TP
+.B add_fido2_token_to_trash \fR(bool, default: true)
+The same for security keys the user deletes on the SSO portal settings page. Restoring one puts the token back, not the credential on the key: the key still holds it, and the restored token is usable again. One parameter per type because what they hold differs \(em a device token is a password somebody typed into a mail client, a security key a credential that exists only on that device.
+.br
+Object types: site, unit, user
+.TP
+.B add_passkey_to_trash \fR(bool, default: true)
+The same for passkeys, see
+.BR add_fido2_token_to_trash .
+.br
+Object types: site, unit, user
+.TP
+.B add_tiqr_token_to_trash \fR(bool, default: true)
+The same for phones the user removes on the SSO portal settings page. Restoring one puts the token back with its secret, so the phone that was enrolled against it can authenticate again without being enrolled anew.
 .br
 Object types: site, unit, user
 .TP

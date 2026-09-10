@@ -301,6 +301,14 @@ class Fido2Token(Token):
         # A signature over a server-issued challenge. Nothing to guess,
         # and counting would let anybody lock the account.
         self.count_fails = False
+        # The credential is not discoverable: the assertion is asked
+        # for by credential id from an allow-list we build, and the
+        # authenticator answers without a user handle. So the key of
+        # one account can answer for another, which is what a link
+        # needs. fido2_auth_begin() reads the allow-list from the
+        # destination for exactly this reason. A passkey cannot do it
+        # -- it carries the handle it was registered with.
+        self.support_links = True
         # Set default values.
         self.credential_data = None
         self.attestation_cert = None
