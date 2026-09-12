@@ -60,12 +60,13 @@ cmd_help = {
                 },
 
     'add_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool add_signer [--private] [--no-pin] [--tag <tag1> --tag <tag2> ...] --signer-type {signer_type} {object_id}'),
-                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --tag :+tags+: --signer-type ::signer_type:: <object_oid>',
+                    '_cmd_usage_help' : _('Usage: otpme-tool add_signer [--private] [--no-pin] [--no-verify-token-opts] [--tag <tag1> --tag <tag2> ...] --signer-type {signer_type} {object_id}'),
+                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --no-verify-token-opts :verify_token_opts=false: --tag :+tags+: --signer-type ::signer_type:: <object_oid>',
                     '_help' :   {
                                     'cmd'                   : _('Add signer.'),
                                     '--signer-type <type>'  : _('Add signer of type <type>.'),
                                     '--no-pin'              : _('Do not pin signature keys.'),
+                                    '--no-verify-token-opts': _('Do not require the signature to include the token options (e.g. command=) the SSH key is used with.'),
                                     '--private'             : _('Add signer for the logged in user.'),
                                 },
                 },

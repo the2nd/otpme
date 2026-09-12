@@ -39,7 +39,7 @@ from otpme.lib.protocols import status_codes
 from otpme.lib.protocols import sso_helpers
 from otpme.lib.protocols import tiqr_helpers
 from otpme.lib.protocols.otpme_server import OTPmeServer1
-from otpme.lib.daemon.clusterd import cluster_sync_state
+from otpme.lib.daemon.clusterd import add_cluster_state
 from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 from otpme.lib.token.tiqr import tiqr as tiqr_token
 
@@ -63,7 +63,22 @@ DEPLOY_NAME = "sso-deploy"
 # unlocked-portal window doesn't stay indefinitely open for account-
 # recovery-relevant changes. Sudo-mode style: refresh happens by re-
 # authenticating, not by extending the window.
-STEP_UP_MAX_AGE = 60
+#
+# Configurable as sso_reauth_timeout (site, unit, user); this is the
+# value for a site older than the parameter, where the cascade finds
+# nothing -- the same number the registration uses as its default.
+STEP_UP_MAX_AGE = 120
+
+# How much of that window has to be left when the settings page opens
+# an add form. The user still has to type a name and touch a key after
+# that, and a window that runs out in between costs them a second trip
+# through /reauth -- so get_step_up_state asks for the reauth early
+# rather than let them start something they cannot finish.
+STEP_UP_ADD_MARGIN = 30
+
+# Token types a device token may be. The role says which of them its
+# device tokens are (device_token_types); password when it says nothing.
+DEVICE_TOKEN_TYPES = ("password", "totp")
 
 # Byte length of the raw SSO-token recovery secret. 32 bytes = 256 bits
 # after hex-encoding gives a 64-char URL parameter -- fits well into a
@@ -580,11 +595,22 @@ class OTPmeSsoP1(OTPmeServer1):
                            'with a passkey. Add or remove passkeys from '
                            'the Settings page instead.',
                 'status': False})
+        # What this hands out replaces the token the user signs in with,
+        # so it is the one flow where an unlocked browser buys the whole
+        # account. The recovery deploy is a different command and is not
+        # gated here: it has no session to prove anything with, the mail
+        # link is the proof.
+        step_up = self._step_up_required(user, "deploy_login_token_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
         # Check for command redirection.
         if user.site != config.site:
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
             return self.ssod_redirect_command(command="deploy_begin",
                                             user=user,
-                                            command_args=command_args,
+                                            command_args=forward_args,
                                             mgmt=True)
         # Unknown token_type falls through here and is rejected later by
         # add_token(), which is where the list of real types lives.
@@ -779,11 +805,30 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
+        # Asked here, before anything is shown, so the deploy page can
+        # send the user through /reauth first and offer the choice
+        # afterwards. deploy_begin still enforces it -- this only
+        # decides when the user gets asked, not whether.
+        #
+        # On the portal and before the redirect below: the SSO session
+        # lives here, and the home site could not answer it.
+        if self._step_up_missing(user, "deploy_login_token_reauth",
+                                command_args):
+            return self.build_response(True, {
+                            'token_types'       : [],
+                            'step_up_required'  : True,
+                            'status'            : True,
+                        })
         if user.site != config.site:
+            # Answered above already. Without the marker the home site
+            # asks again, cannot find a session that only exists here,
+            # and sends the user back to /reauth for ever.
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
             return self.ssod_redirect_command(
                                     command="get_allowed_deploy_token_types",
                                     user=user,
-                                    command_args=command_args,
+                                    command_args=forward_args,
                                     mgmt=True)
         allowed = [tt for tt in DEPLOY_TOKEN_TYPES
                    if self._deploy_type_allowed(user, tt)]
@@ -997,12 +1042,11 @@ class OTPmeSsoP1(OTPmeServer1):
         # other side.
         expiry = 300
         fido2_state_id = f"fido2_reg_states:{stuff.gen_secret(len=32)}"
-        multiprocessing.fido2_reg_states.add(
-                key=fido2_state_id,
-                value={'state':      reg_state,
-                       'token_uuid': fido2_token.uuid},
-                expire=expiry)
-        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
+        add_cluster_state(multiprocessing.fido2_reg_states,
+                        state_id=fido2_state_id,
+                        state_data={'state':      reg_state,
+                                    'token_uuid': fido2_token.uuid},
+                        expiry=expiry)
         fido2_reg_data = {
                     'create_options'        : dict(create_options),
                     'fido2_state_id'        : fido2_state_id,
@@ -1420,6 +1464,10 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "deploy_passkey_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
         # Resolve sso_allow_passkeys under sso_allow_passkeys_trusts.
         # See list_passkeys for the full pattern.
         peer_allowed = command_args.get('_passkeys_allowed')
@@ -1445,6 +1493,7 @@ class OTPmeSsoP1(OTPmeServer1):
                         {'message':'Passkeys are not enabled.', 'status':False})
             forward_args = dict(command_args)
             forward_args['_passkeys_allowed'] = True
+            forward_args['_step_up_verified'] = True
             return self.ssod_redirect_command(command="passkey_register_begin",
                                             user=user,
                                             command_args=forward_args,
@@ -1514,13 +1563,12 @@ class OTPmeSsoP1(OTPmeServer1):
         # other side.
         expiry = 300
         passkey_state_id = f"passkey_reg_states:{stuff.gen_secret(len=32)}"
-        multiprocessing.passkey_reg_states.add(
-                key=passkey_state_id,
-                value={'state':       reg_state,
-                       'device_name': device_name,
-                       'token_name':  token_name},
-                expire=expiry)
-        cluster_sync_state(state_id=passkey_state_id, expiry=expiry)
+        add_cluster_state(multiprocessing.passkey_reg_states,
+                        state_id=passkey_state_id,
+                        state_data={'state':       reg_state,
+                                    'device_name': device_name,
+                                    'token_name':  token_name},
+                        expiry=expiry)
         return self.build_response(True, {
                     'create_options'        : dict(create_options),
                     'passkey_state_id'      : passkey_state_id,
@@ -1851,10 +1899,16 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "deploy_fido2_token_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
         if user.site != config.site:
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
             return self.ssod_redirect_command(command="fido2_add_begin",
                                             user=user,
-                                            command_args=command_args,
+                                            command_args=forward_args,
                                             mgmt=True)
         if not self._resolve_fido2_allowed(user):
             return self.build_response(False,
@@ -1917,13 +1971,12 @@ class OTPmeSsoP1(OTPmeServer1):
         # check which shape they got.
         expiry = 300
         fido2_state_id = f"fido2_reg_states:{stuff.gen_secret(len=32)}"
-        multiprocessing.fido2_reg_states.add(
-                key=fido2_state_id,
-                value={'state':       reg_state,
-                       'device_name': device_name,
-                       'token_name':  token_name},
-                expire=expiry)
-        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
+        add_cluster_state(multiprocessing.fido2_reg_states,
+                        state_id=fido2_state_id,
+                        state_data={'state':       reg_state,
+                                    'device_name': device_name,
+                                    'token_name':  token_name},
+                        expiry=expiry)
         return self.build_response(True, {
                     'create_options'    : dict(create_options),
                     'fido2_state_id'    : fido2_state_id,
@@ -2247,6 +2300,10 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "deploy_tiqr_token_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
         my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if user.site != config.site:
             # The QR code has to point at us, not at the user's home
@@ -2254,6 +2311,7 @@ class OTPmeSsoP1(OTPmeServer1):
             # site gets the URL with only the key left open.
             url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
             command_args['metadata_url_template'] = url_template
+            command_args['_step_up_verified'] = True
             # No mgmt: this writes nothing. Unlike the passkey flow it
             # keeps no state on the master either -- what the phone
             # needs travels in the signed grant -- so any node can
@@ -3504,7 +3562,18 @@ class OTPmeSsoP1(OTPmeServer1):
         user._write(callback=callback)
         return self.build_response(True, {'enabled': enabled, 'status': True})
 
-    def _require_fresh_step_up(self, user, session_uuid, max_age=STEP_UP_MAX_AGE):
+    def _step_up_max_age(self, user):
+        """ How long a reauth stays fresh for this user, in seconds.
+
+        sso_reauth_timeout, resolved over the user's cascade. None --
+        a site older than the parameter -- means the registered
+        default, for the same reason as in _add_to_trash(). """
+        max_age = user.get_config_parameter("sso_reauth_timeout")
+        if max_age is None:
+            return STEP_UP_MAX_AGE
+        return int(max_age)
+
+    def _require_fresh_step_up(self, user, session_uuid, max_age=None):
         """ Verify that the SSO session ``session_uuid`` was step-up-
         reauth'ed within the last ``max_age`` seconds. Runs on the
         originator site (the SSO session lives there, never crosses
@@ -3516,18 +3585,146 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Raises OTPmeException("STEP_UP_REQUIRED") on any failure --
         the caller returns that verbatim so the web layer can drive
-        the user through /reauth?next=... and retry. """
-        if not session_uuid:
+        the user through /reauth?next=... and retry.
+
+        ``max_age`` defaults to the user's sso_reauth_timeout. """
+        if max_age is None:
+            max_age = self._step_up_max_age(user)
+        # Every refusal says why. They all look the same from the
+        # browser -- another trip through /reauth -- and a loop of those
+        # is otherwise impossible to tell apart from a reauth that
+        # simply did not happen.
+        def refuse(reason):
+            log_msg = _("Step-up missing for '{user}' (session {session}): {reason}", log=True)[1]
+            log_msg = log_msg.format(user=user.name,
+                                    session=session_uuid,
+                                    reason=reason)
+            self.logger.debug(log_msg)
             raise OTPmeException("STEP_UP_REQUIRED")
+        if not session_uuid:
+            refuse("no session uuid in the request")
         session = backend.get_object(uuid=session_uuid)
         if not session:
-            raise OTPmeException("STEP_UP_REQUIRED")
+            refuse("session not found on this site")
         if session.user_uuid != user.uuid:
-            raise OTPmeException("STEP_UP_REQUIRED")
+            refuse(f"session belongs to user {session.user_uuid}, not {user.uuid}")
         if not session.reauth_time:
-            raise OTPmeException("STEP_UP_REQUIRED")
-        if time.time() - session.reauth_time > max_age:
-            raise OTPmeException("STEP_UP_REQUIRED")
+            refuse("session has no reauth_time")
+        age = time.time() - session.reauth_time
+        if age > max_age:
+            refuse(f"reauth is {int(age)}s old, allowed {max_age}s")
+
+    def _step_up_required(self, user, parameter, command_args):
+        """ Make the user prove themselves again, if this flow says so.
+
+        Returns a STEP_UP_REQUIRED response to hand back, or None when
+        the way is clear. Every caller of it is about to give out a new
+        credential -- a token, a phone, a key -- and that credential
+        outlives the session it was made in, which is why an unlocked
+        browser alone must not be enough.
+
+        Unset means yes: the default lives in the registration and is
+        written into a site object only when the site is created, so an
+        older site answers None, and None must not read as "no gate"
+        (same reason as _add_to_trash()).
+
+        Checked on the portal, because that is where the SSO session
+        lives -- ssod_redirect_command() does not carry session_uuid
+        across sites. A foreign user's home site is told the answer
+        with the _step_up_verified marker, which is only worth
+        anything from a node. """
+        if not self._step_up_missing(user, parameter, command_args):
+            return None
+        log_msg = _("Step-up required for '{user}': {parameter}", log=True)[1]
+        log_msg = log_msg.format(user=user.name, parameter=parameter)
+        self.logger.debug(log_msg)
+        return self.build_response(False, {
+                'message': 'STEP_UP_REQUIRED',
+                'status':  False,
+            })
+
+    def get_step_up_state(self, username, sso_jwt, command_args):
+        """ Which add flows need a fresh reauth right now.
+
+        Asked by the settings page when an add button is pressed, so it
+        can ask for the reauth before the user types a name instead of
+        after they pressed the button that registers. A
+        security key or a passkey is only registered in answer to a
+        real click, and the trip to /reauth reloads the page -- asked at
+        the button, it would cost the user a second click on the same
+        button, which nobody expects even when the page says so.
+
+        All four add flows. For a security key or a passkey there is no
+        other way; for a phone and a device token it is simply the
+        nicer order -- prove yourself first, then type the name.
+
+        Answered here and never forwarded: the SSO session lives on
+        this site, and the user's reauth parameters are synced to us
+        with the user, unit and site objects. Nothing here is a
+        permission -- the add commands still check for themselves. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        # With STEP_UP_ADD_MARGIN: the form this opens still has a name
+        # to be typed and a key to be touched, so a reauth that is about
+        # to run out counts as gone already.
+        missing = {
+                'fido2'     : self._step_up_missing(user,
+                                            "deploy_fido2_token_reauth",
+                                            command_args,
+                                            margin=STEP_UP_ADD_MARGIN),
+                'passkey'   : self._step_up_missing(user,
+                                            "deploy_passkey_reauth",
+                                            command_args,
+                                            margin=STEP_UP_ADD_MARGIN),
+                'tiqr'      : self._step_up_missing(user,
+                                            "deploy_tiqr_token_reauth",
+                                            command_args,
+                                            margin=STEP_UP_ADD_MARGIN),
+                'device'    : self._step_up_missing(user,
+                                            "deploy_device_token_reauth",
+                                            command_args,
+                                            margin=STEP_UP_ADD_MARGIN),
+            }
+        return self.build_response(True, {
+                'step_up_missing'   : missing,
+                'step_up_max_age'   : self._step_up_max_age(user),
+                'status'            : True,
+            })
+
+    def _step_up_missing(self, user, parameter, command_args, margin=0):
+        """ The question _step_up_required() answers, as a plain yes.
+
+        For the callers that only need to know in advance -- the deploy
+        page asks before it shows the choice of token types, so that
+        the user proves themselves first and then picks, instead of
+        picking, being sent away, and landing on the choice again.
+
+        ``margin`` seconds of the window have to be left for it to
+        count, see STEP_UP_ADD_MARGIN. Never more than half of it: a
+        margin that ate the whole window would call every reauth stale
+        the moment it happened, and send the user round in a circle. """
+        if self.from_peer_node and command_args.get('_step_up_verified'):
+            return False
+        required = user.get_config_parameter(parameter)
+        if required is None:
+            required = True
+        if not required:
+            return False
+        max_age = self._step_up_max_age(user)
+        max_age = max(max_age - margin, max_age // 2)
+        try:
+            self._require_fresh_step_up(user,
+                                        command_args.get('session_uuid'),
+                                        max_age=max_age)
+        except OTPmeException:
+            return True
+        return False
 
     def get_recovery_mail(self, username, sso_jwt, command_args):
         """ Return the user's recovery e-mail address (LDIF attribute
@@ -3553,14 +3750,14 @@ class OTPmeSsoP1(OTPmeServer1):
         recovery_mail = values[0] if values else None
         return self.build_response(True, {
                 'recovery_mail':   recovery_mail,
-                'step_up_max_age': STEP_UP_MAX_AGE,
+                'step_up_max_age': self._step_up_max_age(user),
                 'status':          True,
             })
 
     def set_recovery_mail(self, username, sso_jwt, command_args):
         """ Self-service write of the user's recovery e-mail address.
         Gated behind a fresh step-up reauth on the originator site
-        (``session.reauth_time`` within ``STEP_UP_MAX_AGE``), then
+        (``session.reauth_time`` within ``sso_reauth_timeout``), then
         forwarded to the user's home site for the actual attribute
         write. Empty/None ``recovery_mail`` clears the attribute.
 
@@ -4209,12 +4406,11 @@ class OTPmeSsoP1(OTPmeServer1):
         )
         expiry = 300
         fido2_state_id = f"fido2_reg_states:{stuff.gen_secret(len=32)}"
-        multiprocessing.fido2_reg_states.add(
-                key=fido2_state_id,
-                value={'state':      reg_state,
-                       'token_uuid': fido2_token.uuid},
-                expire=expiry)
-        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
+        add_cluster_state(multiprocessing.fido2_reg_states,
+                        state_id=fido2_state_id,
+                        state_data={'state':      reg_state,
+                                    'token_uuid': fido2_token.uuid},
+                        expiry=expiry)
         return self.build_response(True, {
                     'create_options': dict(create_options),
                     'fido2_state_id': fido2_state_id,
@@ -4938,6 +5134,193 @@ class OTPmeSsoP1(OTPmeServer1):
         prefix = self._token_name_prefix("device", command_args)
         return sso_helpers.sanitize_token_name(device_name, prefix=prefix)
 
+    def _session_mgmt_allowed(self, user):
+        """ Resolve ``sso_allow_session_mgmt`` for the given user.
+
+        The same cascade as the other portal parameters (user -> unit
+        -> site, anchored at the user's home). get_config_parameter()
+        returns None when no level sets it, so the registered default
+        -- off -- has to be applied here. """
+        try:
+            registered_default = bool(
+                config.get_config_parameter("sso_allow_session_mgmt")['default'])
+        except Exception:
+            registered_default = False
+        try:
+            value = user.get_config_parameter("sso_allow_session_mgmt")
+        except Exception:
+            value = None
+        if value is None:
+            return registered_default
+        return bool(value)
+
+    def _get_user_sessions(self, user):
+        """ The sessions of the given user on this site.
+
+        A session lives on the site the login happened on, so these are
+        the ones this portal can show and end -- the same span the
+        passkey listing has. """
+        try:
+            sessions = backend.search(object_type="session",
+                                    attributes={'user_uuid':
+                                                {'value': user.uuid}},
+                                    return_type="instance")
+        except Exception as e:
+            log_msg = _("Failed to search sessions of user '{user}': {e}", log=True)[1]
+            log_msg = log_msg.format(user=user.name, e=e)
+            self.logger.warning(log_msg)
+            return []
+        return sessions or []
+
+    def _resolve_session_name(self, object_uuid, name_cache,
+        object_type=None, return_type="name"):
+        """ Resolve a UUID a session refers to to its name.
+
+        The client of a session may be a client or a host object, so
+        that one is searched without an object type -- the same way the
+        session listing of the CLI does it. The UUID is the fallback: a
+        session may well outlive the object it was created for. """
+        if not object_uuid:
+            return ""
+        if object_uuid in name_cache:
+            return name_cache[object_uuid]
+        name = object_uuid
+        search_args = {}
+        if object_type:
+            search_args['object_type'] = object_type
+        try:
+            result = backend.search(attribute="uuid",
+                                    value=object_uuid,
+                                    return_type=return_type,
+                                    **search_args)
+        except Exception as e:
+            log_msg = _("Failed to resolve session attribute '{uuid}': {e}", log=True)[1]
+            log_msg = log_msg.format(uuid=object_uuid, e=e)
+            self.logger.debug(log_msg)
+            result = None
+        if result:
+            name = result[0]
+        name_cache[object_uuid] = name
+        return name
+
+    def _session_info(self, session, current_session_uuid, name_cache):
+        """ What the settings page shows for one session. """
+        try:
+            expire_time = session.expire_time()
+        except Exception:
+            expire_time = 0
+        try:
+            last_used = float(session.last_used)
+        except Exception:
+            last_used = 0
+        client = self._resolve_session_name(session.client, name_cache)
+        token = self._resolve_session_name(session.auth_token, name_cache,
+                                        object_type="token",
+                                        return_type="rel_path")
+        session_info = {
+                    'uuid'          : session.uuid,
+                    'session_type'  : session.session_type or "",
+                    'access_group'  : session.access_group or "",
+                    'client'        : client,
+                    'client_ip'     : session.client_ip or "",
+                    'token'         : token,
+                    'creation_time' : float(session.creation_time or 0),
+                    'expire_time'   : float(expire_time or 0),
+                    'last_used'     : last_used,
+                    # The session this page is served from. Marked rather
+                    # than hidden: seeing where one is logged in should
+                    # include here, but ending it would log the user out
+                    # in the middle of managing their sessions.
+                    'current'       : session.uuid == current_session_uuid,
+                    }
+        return session_info
+
+    def list_sessions(self, username, sso_jwt, command_args):
+        """ Return the user's sessions on this site.
+
+        Gated by ``sso_allow_session_mgmt``. When disabled, answer
+        ``allowed=False`` and an empty list so the frontend can hide
+        the whole card. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'JWT_INVALID', 'status': False,
+            })
+        if not self._session_mgmt_allowed(user):
+            return self.build_response(True, {'sessions': [],
+                                            'allowed': False,
+                                            'status': True})
+        current_session_uuid = command_args.get('session_uuid')
+        name_cache = {}
+        sessions = []
+        for session in self._get_user_sessions(user):
+            sessions.append(self._session_info(session,
+                                            current_session_uuid,
+                                            name_cache))
+        sessions.sort(key=lambda x: x['creation_time'], reverse=True)
+        return self.build_response(True, {'sessions': sessions,
+                                        'allowed': True,
+                                        'status': True})
+
+    def delete_session(self, username, sso_jwt, command_args):
+        """ End one of the user's own sessions. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'JWT_INVALID', 'status': False,
+            })
+        if not self._session_mgmt_allowed(user):
+            return self.build_response(False, {
+                'message': 'NOT_ALLOWED', 'status': False,
+            })
+        target_session = command_args.get('target_session')
+        if not target_session:
+            return self.build_response(False, {
+                'message': 'target_session missing', 'status': False,
+            })
+        if target_session == command_args.get('session_uuid'):
+            return self.build_response(False, {
+                'message': 'CURRENT_SESSION', 'status': False,
+            })
+        session = backend.get_object(uuid=target_session)
+        if session is None or session.type != "session" \
+        or session.user_uuid != user.uuid:
+            # Same answer for a session of someone else: whether it
+            # exists is none of this user's business.
+            log_msg = _("User '{user}' tried to end a session that is not theirs: {session}", log=True)[1]
+            log_msg = log_msg.format(user=user.name, session=target_session)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'UNKNOWN_SESSION', 'status': False,
+            })
+        try:
+            # Recursive: the child sessions (one per accessgroup) and
+            # the OIDC sessions below it are what the login actually
+            # got the user, and the user asked for it to end.
+            session.delete(force=True,
+                        recursive=True,
+                        verify_acls=False,
+                        callback=self.get_callback())
+        except Exception as e:
+            log_msg = _("Failed to delete session '{session}': {e}", log=True)[1]
+            log_msg = log_msg.format(session=target_session, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, {
+                'message': 'DELETE_FAILED', 'status': False,
+            })
+        emit_audit("SSO", 'session_deleted',
+                        user=user.name,
+                        session=target_session)
+        return self.build_response(True, {'status': True})
+
     def list_oidc_consents(self, username, sso_jwt, command_args):
         """ Return the user's stored OIDC consents enriched with the
         client's display name so the settings UI can show "Disconnect
@@ -5158,6 +5541,8 @@ class OTPmeSsoP1(OTPmeServer1):
                         'role_uuid'         : role.uuid,
                         'role_name'         : role.name,
                         'role_info'         : self._localized_info(role, language),
+                        'token_types'       : self._role_device_token_types(role),
+                        'max_device_tokens' : self._role_max_device_tokens(role),
                         'device_tokens'     : [],
                     }
         # Iterate the user's own tokens and check role membership on each.
@@ -5173,7 +5558,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 continue
             if not token:
                 continue
-            if token.token_type != "password":
+            if token.token_type not in DEVICE_TOKEN_TYPES:
                 continue
             # No is_current here, unlike the passkey and tiqr listings:
             # a device token is for WLAN, IMAP, SMTP, CardDAV and the
@@ -5182,6 +5567,7 @@ class OTPmeSsoP1(OTPmeServer1):
             entry = {
                         'name'          : token.name,
                         'device_name'   : self._token_label(token) or token.name,
+                        'token_type'    : token.token_type,
                         'enabled'       : bool(token.enabled),
                     }
             for role_uuid in token.get_roles(return_type="uuid"):
@@ -5196,23 +5582,113 @@ class OTPmeSsoP1(OTPmeServer1):
                 }
         return self.build_response(True, response)
 
-    def _local_create_device_token(self, user, token_name, device_name, callback):
-        """ Create a password device token for the given user on this node.
-        Returns (token_instance, new_password). The token is already written
-        to the local backend. """
-        new_password = user.add_token(token_name=token_name,
-                                    token_type="password",
-                                    no_token_infos=True,
-                                    gen_qrcode=False,
-                                    force=True,
-                                    verify_acls=False,
-                                    enable_mschap=True,
-                                    run_policies=True,
-                                    callback=callback)
+    def _role_device_token_types(self, role):
+        """ The token types this role's device tokens may be, in the
+        order the role lists them -- the first is the default. Unset, or
+        nothing usable, means password: that is what a device token was
+        before roles could say anything else. """
+        token_types = role.get_config_parameter("device_token_types") or []
+        token_types = [x for x in token_types if x in DEVICE_TOKEN_TYPES]
+        if not token_types:
+            token_types = ["password"]
+        return token_types
+
+    def _role_max_device_tokens(self, role):
+        """ How many device tokens one user may hold in this role, or
+        None for no limit. """
+        max_tokens = role.get_config_parameter("max_device_tokens")
+        if max_tokens is None:
+            return None
+        return int(max_tokens)
+
+    def _count_role_device_tokens(self, user, role):
+        """ How many device tokens this user holds in this role.
+
+        Walks the user's tokens rather than the role's: a role shared by
+        many users holds many more. """
+        role_tokens = set(role.tokens or [])
+        count = 0
+        for token_uuid in user.tokens:
+            if token_uuid not in role_tokens:
+                continue
+            token = backend.get_object(object_type="token", uuid=token_uuid)
+            if token is None:
+                continue
+            if token.token_type not in DEVICE_TOKEN_TYPES:
+                continue
+            count += 1
+        return count
+
+    def _device_token_refused(self, user, role, token_type):
+        """ Why this device token may not be created, or None.
+
+        The requested type has to be one the role offers, and the user
+        must still have room under max_device_tokens. Asked on both ends
+        of a cross-site add: the portal first, so the user hears it
+        without a round trip, the home site again because that is where
+        the token is written. """
+        if token_type not in self._role_device_token_types(role):
+            return _("This token type is not allowed for this role.")
+        max_tokens = self._role_max_device_tokens(role)
+        if max_tokens is not None:
+            if self._count_role_device_tokens(user, role) >= max_tokens:
+                msg = _("You already have the maximum number of device tokens for this role ({max_tokens}).")
+                return msg.format(max_tokens=max_tokens)
+        return None
+
+    def _local_create_device_token(self, user, token_name, device_name,
+        callback, token_type="password"):
+        """ Create a device token for the given user on this node.
+
+        Returns (token_instance, reveal): what the user has to be shown
+        now, since nothing hands it out again -- the password of a
+        password token, the secret and its QR code of a TOTP one. The
+        token is already written to the local backend.
+
+        A TOTP device token has its PIN disabled. It goes into a device
+        that has to produce the OTP by itself, and there is nobody at
+        that device to type a PIN in front of it. """
+        if token_type not in DEVICE_TOKEN_TYPES:
+            raise OTPmeException(f"Invalid device token type: {token_type}")
+        add_args = {
+                'token_name'        : token_name,
+                'token_type'        : token_type,
+                'no_token_infos'    : True,
+                'gen_qrcode'        : False,
+                'force'             : True,
+                'verify_acls'       : False,
+                'run_policies'      : True,
+                'callback'          : callback,
+            }
+        if token_type == "password":
+            add_args['enable_mschap'] = True
+        else:
+            # mode1: the secret is kept on the server, so the QR code can
+            # be built from it without anybody entering a PIN.
+            add_args['mode'] = "mode1"
+        new_password = user.add_token(**add_args)
         user._write(callback=callback)
         token = user.token(token_name)
         if not token:
             raise OTPmeException("Failed to create device token.")
+        reveal = {}
+        if token_type == "password":
+            reveal['password'] = new_password
+        else:
+            token.disable_pin(force=True,
+                            verify_acls=False,
+                            run_policies=False,
+                            callback=callback)
+            reveal['secret'] = token.get_secret(pin=token.pin,
+                                                encoding="base32")
+            qrcode_data = token.gen_qrcode(pin=token.pin,
+                                        fmt="svg",
+                                        run_policies=False,
+                                        verify_acls=False)
+            if isinstance(qrcode_data, bytes):
+                qrcode_data = qrcode_data.decode('utf-8')
+            reveal['qrcode_img'] = ("data:image/svg+xml;base64,"
+                            + base64.b64encode(qrcode_data.encode()).decode())
         # The setter, not a plain assignment: it is what keeps the
         # changelog and the audit trail in step with the object.
         token.change_device_name(device_name,
@@ -5221,10 +5697,10 @@ class OTPmeSsoP1(OTPmeServer1):
                                 run_policies=False,
                                 callback=callback)
         token._write(callback=callback)
-        return token, new_password
+        return token, reveal
 
     def sso_create_device_token(self, username, sso_jwt, command_args):
-        """ Internal cross-site command: create a password device token on
+        """ Internal cross-site command: create a device token on
         the user's home site and add it to the requested role. The
         caller passes the target role_uuid (chosen from the per-role
         section in the SSO portal); we re-validate it against the
@@ -5239,6 +5715,7 @@ class OTPmeSsoP1(OTPmeServer1):
             role_uuid = command_args['role_uuid']
         except KeyError:
             return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        token_type = command_args.get('token_type')
         try:
             user = self.verify_sso_jwt(username, sso_jwt)
         except Exception as e:
@@ -5271,12 +5748,20 @@ class OTPmeSsoP1(OTPmeServer1):
         token_name = f"{sanitized}-{suffix}"
         if user.token(token_name):
             return self.build_response(False, {'message':'A device with this name already exists.', 'status':False})
+        # Again here, where the token is written -- the peer asked too,
+        # but the count that matters is the one of this site.
+        if not token_type:
+            token_type = self._role_device_token_types(role)[0]
+        refused = self._device_token_refused(user, role, token_type)
+        if refused:
+            return self.build_response(False, {'message': refused, 'status': False})
         callback = self.get_callback()
         callback.raise_exception = True
         try:
-            token, new_password = self._local_create_device_token(user=user,
+            token, reveal = self._local_create_device_token(user=user,
                                                     token_name=token_name,
                                                     device_name=device_name,
+                                                    token_type=token_type,
                                                     callback=callback)
         except Exception as e:
             log_msg = _("Failed to create device token for user '{user_name}': {e}", log=True)[1]
@@ -5313,11 +5798,14 @@ class OTPmeSsoP1(OTPmeServer1):
                 pass
         response = {
                     'status'        : True,
-                    'password'      : new_password,
+                    'token_type'    : token_type,
                     'token_full_oid': token.oid.full_oid,
                     'token_oc'      : oc_obj.copy(),
                     'role_uuid'     : role.uuid,
                 }
+        # The password, or the TOTP secret and its QR code -- for the
+        # portal to show the user once.
+        response.update(reveal)
         return self.build_response(True, response)
 
     def sso_delete_device_token(self, username, sso_jwt, command_args):
@@ -5397,6 +5885,9 @@ class OTPmeSsoP1(OTPmeServer1):
         except Exception:
             message = "SSOD_INCOMPLETE_COMMAND"
             return self.build_response(False, message)
+        # One of the role's device_token_types. None means the role's
+        # first, which is all a role with a single type needs.
+        token_type = command_args.get('token_type')
         device_name = sso_helpers.sanitize_device_label(device_name)
         if not device_name:
             response = {'message':'Device name required.', 'status':False}
@@ -5410,13 +5901,17 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             auth_response = {'message':'JWT_INVALID', 'status':False}
             return self.build_response(False, auth_response)
+        step_up = self._step_up_required(user, "deploy_device_token_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
         sanitized = self._sanitize_device_token_name(device_name, command_args)
         if not sanitized:
             response = {'message':'Invalid device name.', 'status':False}
             return self.build_response(False, response)
         callback = self.get_callback()
         callback.raise_exception = True
-        new_password = None
+        reveal = {}
         role = None
         token_name = None
         if user.site != config.site:
@@ -5434,9 +5929,15 @@ class OTPmeSsoP1(OTPmeServer1):
             if not role:
                 response = {'message':'Invalid role.', 'status':False}
                 return self.build_response(False, response)
+            if not token_type:
+                token_type = self._role_device_token_types(role)[0]
+            refused = self._device_token_refused(user, role, token_type)
+            if refused:
+                return self.build_response(False, {'message': refused, 'status': False})
             remote_args = dict(command_args)
             remote_args['device_name'] = device_name
             remote_args['role_uuid'] = role_uuid
+            remote_args['token_type'] = token_type
             # Drop any caller-supplied token_name — the remote derives
             # it authoritatively from the role's suffix.
             remote_args.pop('token_name', None)
@@ -5446,7 +5947,9 @@ class OTPmeSsoP1(OTPmeServer1):
                                                     mgmt=True)
             if not status or not isinstance(remote_resp, dict):
                 return self.build_response(False, remote_resp)
-            new_password = remote_resp.get('password')
+            reveal = {x: remote_resp[x]
+                    for x in ('password', 'secret', 'qrcode_img')
+                    if remote_resp.get(x)}
             token_full_oid = remote_resp.get('token_full_oid')
             token_oc = remote_resp.get('token_oc')
             confirmed_role_uuid = remote_resp.get('role_uuid')
@@ -5510,10 +6013,16 @@ class OTPmeSsoP1(OTPmeServer1):
             if user.token(token_name):
                 response = {'message':'A device with this name already exists.', 'status':False}
                 return self.build_response(False, response)
+            if not token_type:
+                token_type = self._role_device_token_types(role)[0]
+            refused = self._device_token_refused(user, role, token_type)
+            if refused:
+                return self.build_response(False, {'message': refused, 'status': False})
             try:
-                _token, new_password = self._local_create_device_token(user=user,
+                _token, reveal = self._local_create_device_token(user=user,
                                                     token_name=token_name,
                                                     device_name=device_name,
+                                                    token_type=token_type,
                                                     callback=callback)
             except Exception as e:
                 log_msg = _("Failed to add device token for user '{user_name}': {e}", log=True)[1]
@@ -5562,8 +6071,10 @@ class OTPmeSsoP1(OTPmeServer1):
                     'status'        : True,
                     'name'          : token_name,
                     'device_name'   : device_name,
-                    'password'      : new_password,
+                    'token_type'    : token_type,
                 }
+        # Shown once: the password, or the TOTP secret and its QR code.
+        response.update(reveal)
         return self.build_response(True, response)
 
     def del_device_token(self, username, sso_jwt, command_args):
@@ -5675,7 +6186,7 @@ class OTPmeSsoP1(OTPmeServer1):
         if not token or token.owner_uuid != user.uuid:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
-        if token.token_type != "password":
+        if token.token_type not in DEVICE_TOKEN_TYPES:
             return self.build_response(False,
                             {'message':'Not a device token.', 'status':False})
 
@@ -8147,6 +8658,29 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _process(self, command, command_args, **kwargs):
         """ Handle SSO commands received from client. """
+        # Many commands write objects (e.g. adding a token). So we have to
+        # prevent a master failover and a service shutdown (e.g. node
+        # disable) while we handle the command. On an already running
+        # failover/shutdown we must not add a blocker. The command is
+        # refused below (cluster status check) and a blocker would prevent
+        # a second failover/shutdown request.
+        blocker_name = f"SSO: {command}"
+        failover_blocker_id = None
+        if not config.master_failover:
+            failover_blocker_id = multiprocessing.add_master_failover_blocker(blocker_name)
+        shutdown_blocker_id = None
+        if not config.service_shutdown:
+            shutdown_blocker_id = multiprocessing.add_service_shutdown_blocker(blocker_name)
+        try:
+            return self._process_command(command, command_args, **kwargs)
+        finally:
+            if failover_blocker_id is not None:
+                multiprocessing.del_master_failover_blocker(failover_blocker_id)
+            if shutdown_blocker_id is not None:
+                multiprocessing.del_service_shutdown_blocker(shutdown_blocker_id)
+
+    def _process_command(self, command, command_args, **kwargs):
+        """ Handle SSO commands received from client. """
         # All valid commands.
         valid_commands = [
                             "get_apps",
@@ -8192,6 +8726,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "set_admin_access_state",
                             "get_recovery_mail",
                             "set_recovery_mail",
+                            "get_step_up_state",
                             "request_sso_token_recovery",
                             "get_sso_token_recovery_info",
                             "recovery_deploy_begin",
@@ -8212,6 +8747,8 @@ class OTPmeSsoP1(OTPmeServer1):
                             "revoke_oidc_consent",
                             "oidc_get_consent_for_client",
                             "oidc_set_consent_for_client",
+                            "list_sessions",
+                            "delete_session",
                         ]
 
         # The phone talks to us without a session: the signed grant it
@@ -8460,6 +8997,11 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.info(log_msg)
             return self.get_recovery_mail(username, sso_jwt, command_args)
 
+        if command == "get_step_up_state":
+            log_msg = _("Processing command get_step_up_state.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.get_step_up_state(username, sso_jwt, command_args)
+
         if command == "set_recovery_mail":
             log_msg = _("Processing command set_recovery_mail.", log=True)[1]
             self.logger.info(log_msg)
@@ -8559,6 +9101,16 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command oidc_authorize_validate.", log=True)[1]
             self.logger.info(log_msg)
             return self.oidc_authorize_validate(username, sso_jwt, command_args)
+
+        if command == "list_sessions":
+            log_msg = _("Processing command list_sessions.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.list_sessions(username, sso_jwt, command_args)
+
+        if command == "delete_session":
+            log_msg = _("Processing command delete_session.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.delete_session(username, sso_jwt, command_args)
 
         if command == "list_oidc_consents":
             log_msg = _("Processing command list_oidc_consents.", log=True)[1]

@@ -38,7 +38,7 @@ from otpme.lib.protocols import status_codes
 from otpme.lib.protocols import tiqr_helpers
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.token.tiqr import tiqr as tiqr_token
-from otpme.lib.daemon.clusterd import cluster_sync_state
+from otpme.lib.daemon.clusterd import add_cluster_state
 from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 
 from otpme.lib.exceptions import *
@@ -883,12 +883,11 @@ class OTPmeAuthP1(OTPmeServer1):
         # resistance. The map is popped at fido2_auth_complete to
         # resolve matched_token_name.
         expiry = 60
-        multiprocessing.fido2_auth_states.add(key=fido2_state_id,
-                                            value={'state':auth_state,
-                                                    'credential_token_map':credential_token_map},
-                                            expire=expiry)
-        # Sync fido state.
-        cluster_sync_state(state_id=fido2_state_id, expiry=expiry)
+        add_cluster_state(multiprocessing.fido2_auth_states,
+                        state_id=fido2_state_id,
+                        state_data={'state': auth_state,
+                                    'credential_token_map': credential_token_map},
+                        expiry=expiry)
         # Build reply.
         fido2_auth_data = {
                     'request_options'           : dict(request_options),
@@ -995,7 +994,9 @@ class OTPmeAuthP1(OTPmeServer1):
                     return self.build_response(False, {
                         'message': 'Login failed.', 'status': False,
                     })
-                if not self.verify_redirect_jwt(response, dst_token, dst_token,
+                # No source token: we did not ask about a token, home
+                # found out which one from the assertion and told us.
+                if not self.verify_redirect_jwt(response, dst_token, None,
                                                 jwt_challenge, jwt_reason):
                     return self.build_response(False, {
                         'message': 'Login failed.', 'status': False,
@@ -1143,14 +1144,13 @@ class OTPmeAuthP1(OTPmeServer1):
             jwt_reason = command_args.get('jwt_reason')
             jwt_challenge = command_args.get('jwt_challenge')
             try:
-                # src_token=verify_token (not the local link token) so
-                # the JWT's src_token/login_token both point to the
-                # dst_token -- portal validates via verify_redirect_jwt
-                # with dst_token=src_token=verify_token, no need to
-                # transmit the local link's uuid across sites.
+                # No src_token: the portal did not ask about a token,
+                # we found the one that answers from the assertion, so
+                # there is no link to name -- the same as token_verify
+                # does for a token that is not one. The portal checks
+                # login_token against the uuid we send back with it.
                 proof_jwt = self.gen_jwt(username=verify_token.owner,
                                         token=verify_token,
-                                        src_token=verify_token,
                                         reason=jwt_reason,
                                         access_group=None,
                                         challenge=jwt_challenge)
@@ -1551,19 +1551,19 @@ class OTPmeAuthP1(OTPmeServer1):
         # than "keep waiting" -- collecting it is refused on the stored
         # expiry below, not on the entry still being there.
         ttl = int(expiry - now) + TIQR_RESULT_TTL_GRACE
-        multiprocessing.tiqr_auth_results.add(key=state_id,
-                            value={
-                                'user_uuid'     : user.uuid,
-                                'token_uuid'    : matched_token.uuid,
-                                'session_key'   : session_key,
-                                'response'      : response,
-                                'expiry'        : expiry,
-                                },
-                            expire=ttl)
         # Waits for the other nodes: the browser polls wherever the load
         # balancer sends it, and it may get there before we answer the
         # phone.
-        cluster_sync_state(state_id=state_id, expiry=ttl)
+        add_cluster_state(multiprocessing.tiqr_auth_results,
+                        state_id=state_id,
+                        state_data={
+                            'user_uuid'     : user.uuid,
+                            'token_uuid'    : matched_token.uuid,
+                            'session_key'   : session_key,
+                            'response'      : response,
+                            'expiry'        : expiry,
+                            },
+                        expiry=ttl)
         log_msg = _("tiqr: response accepted for token {token}", log=True)[1]
         log_msg = log_msg.format(token=matched_verify_token.rel_path)
         self.logger.info(log_msg)
@@ -2097,7 +2097,6 @@ class OTPmeAuthP1(OTPmeServer1):
                 ('challenge', jwt_challenge),
                 ('reason', jwt_reason),
                 ('login_token', dst_token.uuid),
-                ('src_token', src_token.uuid),
                 ]
         for x_field, x_wanted in checks:
             if jwt_data.get(x_field) == x_wanted:
@@ -2106,6 +2105,21 @@ class OTPmeAuthP1(OTPmeServer1):
             log_msg = log_msg.format(field=x_field, token=dst_token.rel_path)
             self.logger.warning(log_msg)
             return False
+
+        # The link we asked about, if we asked about one. Only then is
+        # there a source token at all: token_verify names one only for a
+        # link it resolved, so when we asked about the token itself -- a
+        # user of another site reauthing with the token that lives there,
+        # no link in between -- its answer carries none, and there is
+        # nothing to compare. None says the same for a caller that did
+        # not ask about a token at all. For a link it is what ties the
+        # answer to the link we asked about.
+        if src_token is not None and src_token.uuid != dst_token.uuid:
+            if jwt_data.get('src_token') != src_token.uuid:
+                log_msg = _("JWT of redirected verify has wrong {field}: {token}", log=True)[1]
+                log_msg = log_msg.format(field='src_token', token=dst_token.rel_path)
+                self.logger.warning(log_msg)
+                return False
 
         return True
 
@@ -2330,8 +2344,9 @@ class OTPmeAuthP1(OTPmeServer1):
                     if not status:
                         continue
                     if not self.verify_redirect_jwt(response, dst_token,
-                                                x_token, jwt_challenge,
-                                                jwt_reason):
+                                                    x_token,
+                                                    jwt_challenge,
+                                                    jwt_reason):
                         continue
                     # Verified by another site, so whatever we hand back
                     # has to come out of its answer -- verify() never
@@ -2798,9 +2813,23 @@ class OTPmeAuthP1(OTPmeServer1):
         return self.build_response(status, message)
 
     def _process(self, *args, **kwargs):
+        # Prevent a service shutdown (e.g. node disable) while we handle
+        # the auth request. On an already running service shutdown we must
+        # not add a blocker. The request is refused below (cluster status
+        # check) and a blocker would prevent a second shutdown request.
+        blocker_id = None
+        if not config.service_shutdown:
+            try:
+                command = kwargs['command']
+            except KeyError:
+                command = args[0]
+            blocker_name = f"Auth: {command}"
+            blocker_id = multiprocessing.add_service_shutdown_blocker(blocker_name)
         try:
             return self.__process(*args, **kwargs)
         finally:
+            if blocker_id is not None:
+                multiprocessing.del_service_shutdown_blocker(blocker_id)
             # End any implicit read-only transaction so the DB
             # connection doesn't sit in "idle in transaction".
             if config.session is not None:
@@ -3218,6 +3247,13 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(False, {
                     'message': 'Login failed.', 'status': False,
                 })
+            # The other half of ssod's "Step-up missing" lines: which
+            # session got stamped, and when.
+            log_msg = _("Reauth: reauth_time of session {session} set to {time} for user '{user}'.", log=True)[1]
+            log_msg = log_msg.format(session=sso_session.uuid,
+                                    time=sso_session.reauth_time,
+                                    user=user.name)
+            self.logger.info(log_msg)
             emit_audit("Auth", "reauth_success",
                             user=user.name,
                             token=verify_token.name,

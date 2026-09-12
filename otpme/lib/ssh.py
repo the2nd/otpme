@@ -249,6 +249,72 @@ def get_ssh_key_type(ssh_public_key):
     algo, key_type, key_len = get_ssh_key_info(ssh_public_key)
     return key_type
 
+def split_key_options(token_options):
+    """ Split SSH key options into single options.
+
+    The options of an authorized_keys entry are comma separated, but a
+    quoted option value may contain a comma itself (e.g.
+    from="10.0.0.1,10.0.0.2" or command="/bin/x --a,--b"). So we cannot
+    just split() the option string: that would cut such an option in
+    half and the authorized_keys line would end up with an unterminated
+    quote. Within quotes sshd(8) escapes with a backslash.
+    """
+    options = []
+    current = ""
+    in_quotes = False
+    escaped = False
+    for char in token_options:
+        if escaped:
+            current += char
+            escaped = False
+            continue
+        if char == "\\":
+            current += char
+            escaped = True
+            continue
+        if char == '"':
+            in_quotes = not in_quotes
+            current += char
+            continue
+        if char == "," and not in_quotes:
+            options.append(current)
+            current = ""
+            continue
+        current += char
+    options.append(current)
+    if in_quotes:
+        msg = _("Unterminated quote in token options: {token_options}")
+        msg = msg.format(token_options=token_options)
+        raise OTPmeException(msg)
+    # Ignore empty options (e.g. a trailing comma).
+    options = [x for x in options if x]
+    return options
+
+def filter_key_options(token_options, valid_options):
+    """ Get the SSH key options that are valid for the token.
+
+    Returns the valid options and the ones we dropped. The signature of
+    a token includes the options it was signed for (see
+    OTPmeObject.add_token()) and the options the key is used with are
+    verified against it. So both sides have to build the option list the
+    same way.
+    """
+    options = []
+    dropped = []
+    for opt in split_key_options(token_options):
+        if "=" in opt:
+            opt_name = opt.split("=")[0]
+            opt_value = "=".join(opt.split("=")[1:])
+            option = f'{opt_name}={opt_value}'
+        else:
+            opt_name = opt
+            option = opt
+        if opt_name not in valid_options:
+            dropped.append(opt)
+            continue
+        options.append(option)
+    return options, dropped
+
 def gen_challenge(ssh_public_key, otp_len=0):
     """ Generate OTPme SSH challenge. """
     epoch_time = str(int(time.time()))
@@ -413,9 +479,8 @@ def update_authorized_keys():
         # We need to emtpy all SSH keys if host is disabled.
         all_ssh_keys = {}
 
-    # Users we have checked policies for.
     processed_users = {}
-    processed_tokens = {}
+    # Users we have checked policies for.
     ssh_token_types = config.get_ssh_token_types()
     # Check for valid signatures, policy restrictions etc.
     for token_uuid in all_ssh_keys:
@@ -443,8 +508,8 @@ def update_authorized_keys():
             logger.debug(log_msg)
             continue
 
-        # Users to run policies for etc.
-        check_users = [user_uuid]
+        ## Users to run policies for etc.
+        #check_users = [user_uuid]
         # Tokens to run policies for etc.
         check_tokens = [token]
 
@@ -456,8 +521,8 @@ def update_authorized_keys():
             log_msg = _("Found linked token: {token_path}", log=True)[1]
             log_msg = log_msg.format(token_path=token_path)
             logger.debug(log_msg)
-            # Make sure we check the user of the linked token.
-            check_users.append(token.owner_uuid)
+            ## Make sure we check the user of the linked token.
+            #check_users.append(token.owner_uuid)
             # Get destination token.
             dst_token = token.dst_token
             if not dst_token:
@@ -481,29 +546,23 @@ def update_authorized_keys():
             logger.debug(log_msg)
             continue
 
-        # Make sure user/token owner exists, is enabled and run policies.
-        for uuid in check_users:
-            if uuid in processed_users:
-                continue
+        # Run token policies.
+        user_valid = False
+        for x_token in list(check_tokens):
+            owner_uuid = x_token.owner_uuid
             # Get user.
-            x_user = backend.get_object(object_type="user", uuid=uuid)
+            x_user = backend.get_object(object_type="user", uuid=owner_uuid)
             if not x_user:
-                # Make sure we do not process a unknown user more than once.
-                processed_users[uuid] = None
                 log_msg = _("Ignoring SSH key from unknown user: {uuid}", log=True)[1]
-                log_msg = log_msg.format(uuid=uuid)
+                log_msg = log_msg.format(uuid=owner_uuid)
                 logger.warning(log_msg)
                 continue
-
-            # Add user to list of processed users.
-            processed_users[uuid] = x_user
-
+            processed_users[owner_uuid] = x_user
             if not x_user.enabled:
-                log_msg = _("Ignoring SSH key from disabled user: {user_oid}", log=True)[1]
-                log_msg = log_msg.format(user_oid=x_user.oid)
+                log_msg = _("Ignoring SSH key from disabled user: {user_oid}: {verify_token}", log=True)[1]
+                log_msg = log_msg.format(user_oid=x_user.oid, verify_token=verify_token.oid)
                 logger.debug(log_msg)
                 continue
-
             # Check user policies.
             try:
                 x_user.run_policies("authenticate")
@@ -513,12 +572,6 @@ def update_authorized_keys():
                 continue
             except Exception as e:
                 config.raise_exception()
-
-        # Run token policies.
-        for x_token in check_tokens:
-            if x_token.uuid in processed_tokens:
-                continue
-            processed_tokens[x_token.uuid] = x_token
             # Check token policies.
             try:
                 x_token.run_policies("authenticate")
@@ -531,24 +584,27 @@ def update_authorized_keys():
                 log_msg = str(e)
                 logger.debug(log_msg)
                 continue
+            user_valid = True
+
+        if not user_valid:
+            continue
 
         # Filter SSH authorized_keys options.
         key_opts = []
         if token_options:
-            for opt in token_options.split(","):
-                if "=" in opt:
-                    o = opt.split("=")[0]
-                    v = "=".join(opt.split("=")[1:])
-                    option = f'{o}={v}'
-                else:
-                    o = opt
-                    option = opt
-                if o not in verify_token.valid_token_options:
-                    log_msg = _("Ignoring unknown token option: {token_path}: {o}", log=True)[1]
-                    log_msg = log_msg.format(token_path=verify_token.rel_path, o=o)
-                    logger.warning(log_msg)
-                    continue
-                key_opts.append(option)
+            try:
+                key_opts, \
+                dropped_opts = filter_key_options(token_options,
+                                        verify_token.valid_token_options)
+            except OTPmeException as e:
+                log_msg = _("Ignoring SSH key with invalid token options: {token_path}: {e}", log=True)[1]
+                log_msg = log_msg.format(token_path=verify_token.rel_path, e=e)
+                logger.warning(log_msg)
+                continue
+            for opt in dropped_opts:
+                log_msg = _("Ignoring unknown token option: {token_path}: {opt}", log=True)[1]
+                log_msg = log_msg.format(token_path=verify_token.rel_path, opt=opt)
+                logger.warning(log_msg)
 
         # Try to authorize token for this host (e.g. run role/group policies).
         try:
@@ -584,13 +640,15 @@ def update_authorized_keys():
             user_tag = f"user:{user_uuid}"
             # Remove OTPME_USER from token opts because we never add a sign
             # tag for this option.
-            token_opts = dict(key_opts)
+            token_opts = list(key_opts)
             try:
                 token_opts.remove(otpme_user_env)
-            except Exception:
+            except ValueError:
                 pass
             # Add token options to e.g. prevent an SSH key from being used for
-            # interactive login even if the "command=" option is used.
+            # interactive login even if the "command=" option is used. The
+            # options tag is only checked for signers added with
+            # --verify-token-opts (see OTPmeSigner.verify_signature()).
             check_tags = [user_tag]
             if token_opts:
                 opts_tag = f"options:{','.join(token_opts)}"
@@ -603,8 +661,16 @@ def update_authorized_keys():
                                 signers=signers,
                                 signatures=signatures,
                                 sign_data=sign_data,
+                                tags=check_tags,
+                                login_interface="ssh",
                                 stop_on_fist_match=True)
-            except Exception:
+            except Exception as e:
+                # The key is dropped from authorized_keys. The reason of
+                # each signature we skipped is logged on debug level only,
+                # so we have to say why the key is gone.
+                log_msg = _("Ignoring SSH key without valid signature: {token_path}: {e}", log=True)[1]
+                log_msg = log_msg.format(token_path=token_path, e=e)
+                logger.warning(log_msg)
                 continue
 
         # Add OTPME_USER to environment.
@@ -624,11 +690,11 @@ def update_authorized_keys():
         line = f"{','.join(key_opts)} {key_algo} {verify_token.ssh_public_key} {token.rel_path}"
 
         system_user_name = system_user.name
-        if not system_user_name in authorized_keys:
+        if system_user_name not in authorized_keys:
             authorized_keys[system_user_name] = {}
-        if not 'user_uuid' in authorized_keys[system_user_name]:
+        if 'user_uuid' not in authorized_keys[system_user_name]:
             authorized_keys[system_user_name]['user_uuid'] = system_user.uuid
-        if not 'authorized_keys' in authorized_keys[system_user_name]:
+        if 'authorized_keys' not in authorized_keys[system_user_name]:
             authorized_keys[system_user_name]['authorized_keys'] = []
         authorized_keys[system_user_name]['authorized_keys'].append(line)
 

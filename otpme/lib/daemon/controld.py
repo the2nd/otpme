@@ -195,6 +195,18 @@ def register():
                             getx=master_failover_getter,
                             setx=master_failover_setter)
     config.register_config_var("_master_failover", None, False)
+    # Register service shutdown property.
+    def service_shutdown_getter(self):
+        try:
+            return config._service_shutdown.value
+        except AttributeError:
+            return False
+    def service_shutdown_setter(self, new_status):
+        config._service_shutdown.value = new_status
+    config.register_property(name="service_shutdown",
+                            getx=service_shutdown_getter,
+                            setx=service_shutdown_setter)
+    config.register_config_var("_service_shutdown", None, False)
     # Register one node setup property.
     def one_node_setup_getter(self):
         try:
@@ -449,6 +461,12 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             log_msg = _("Failed to close shared bool: {name}", log=True)[1]
             log_msg = log_msg.format(name=config._master_failover.name)
+            self.logger.critical(log_msg)
+        try:
+            config._service_shutdown.close()
+        except Exception as e:
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._service_shutdown.name)
             self.logger.critical(log_msg)
         try:
             config._one_node_setup.close()
@@ -784,6 +802,14 @@ class ControlDaemon(UnixDaemon):
         master_failover = "otpme-master-failover"
         try:
             config._master_failover = multiprocessing.get_bool(master_failover,
+                                                            random_name=False)
+        except Exception as e:
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        service_shutdown = "otpme-service-shutdown"
+        try:
+            config._service_shutdown = multiprocessing.get_bool(service_shutdown,
                                                             random_name=False)
         except Exception as e:
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]

@@ -464,6 +464,59 @@ class OTPmeClusterP1(OTPmeClient1):
                 backend.set_last_used_times(x_type, updates)
         return True
 
+    def sync_states(self):
+        """ Take over the short-lived states the peer holds.
+
+        WebAuthn and tiqr states, handed on by the states sync only to
+        the nodes online at the time. Run while this node comes up, so
+        a flow that started elsewhere can still be finished here.
+
+        Only what is missing is added, each with the seconds it has left
+        on the peer -- counted from now on this node's clock, so the two
+        clocks never have to agree. Nothing local is dropped: whatever
+        this node has but the peer does not was either made here in the
+        meantime or runs out within minutes by itself. """
+        # Here rather than at the top: clusterd imports the protocols.
+        import time
+        from otpme.lib import multiprocessing
+        from otpme.lib.daemon.clusterd import SUPPORTED_STATE_DICTS
+        log_msg = _("Syncing states...", log=True)[1]
+        self.logger.info(log_msg)
+        command = "get_states"
+        status, \
+        status_code, \
+        remote_states, \
+        binary_data = self.connection.send(command, {}, timeout=None)
+        if not status:
+            raise OTPmeException(remote_states)
+        added = 0
+        for state_id, entry in remote_states.items():
+            shared_dict_name = state_id.split(":")[0]
+            if shared_dict_name not in SUPPORTED_STATE_DICTS:
+                log_msg = _("Got state of unsupported dict from peer: {state_id}", log=True)[1]
+                log_msg = log_msg.format(state_id=state_id)
+                self.logger.warning(log_msg)
+                continue
+            shared_dict = getattr(multiprocessing, shared_dict_name, None)
+            if shared_dict is None:
+                continue
+            if state_id in shared_dict:
+                continue
+            try:
+                ttl = int(entry['ttl'])
+                state_data = dict(entry['data'])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if ttl <= 0:
+                continue
+            state_data['state_expires'] = time.time() + ttl
+            shared_dict.add(key=state_id, value=state_data, expire=ttl)
+            added += 1
+        log_msg = _("Took over {count} states from peer.", log=True)[1]
+        log_msg = log_msg.format(count=added)
+        self.logger.info(log_msg)
+        return True
+
     def sync_trash(self):
         """ Sync trash with peer. """
         command = "sync_trash"
@@ -716,6 +769,42 @@ class OTPmeClusterP1(OTPmeClient1):
         if not status:
             raise OTPmeException(response)
         return response
+
+    def start_service_shutdown(self):
+        """ Stop node services (e.g. on node disable). """
+        command = "start_service_shutdown"
+        command_args = {}
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            raise OTPmeException(response)
+        return response
+
+    def stop_service_shutdown(self):
+        """ Start node services again (e.g. on node enable). """
+        command = "stop_service_shutdown"
+        command_args = {}
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = _("Stopping service shutdown failed: {response}")
+            msg = msg.format(response=response)
+            raise OTPmeException(msg)
+        return response
+
+    def get_service_shutdown_status(self):
+        """ Get service shutdown status. """
+        command = "get_service_shutdown_status"
+        command_args = {}
+        status, \
+        status_code, \
+        response, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        return status
 
     def get_master_failover_status(self):
         """ Do master failover. """

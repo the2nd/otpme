@@ -27,6 +27,7 @@
      data-url-get-admin-access="{{ url_for('get_admin_access_state', _external=True, _scheme='https') }}"
      data-url-set-admin-access="{{ url_for('set_admin_access_state', _external=True, _scheme='https') }}"
      data-url-get-recovery-mail="{{ url_for('get_recovery_mail', _external=True, _scheme='https') }}"
+     data-url-step-up-state="{{ url_for('get_step_up_state', _external=True, _scheme='https') }}"
      data-url-set-recovery-mail="{{ url_for('set_recovery_mail', _external=True, _scheme='https') }}"
      data-url-reauth="{{ url_for('reauth', _external=True, _scheme='https') }}"
      data-settings-path="{{ url_for('settings', _external=True, _scheme='https') }}"></div>
@@ -112,6 +113,7 @@
      data-label-need-old-tiqr-name="{{ gettext('Please enter a name for your current default token.') }}"
      data-label-failed-promote-tiqr="{{ gettext('Failed to change the default token.') }}"
      data-label-tiqr-promoted="{{ gettext('Default token changed.') }}"
+     data-label-step-up-press-again="{{ gettext('Confirmed. Press the button again to continue.') }}"
      data-label-token-enabled="{{ gettext('Enabled') }}"
      data-label-token-disabled="{{ gettext('Disabled') }}"
      data-label-failed-load-consents="{{ gettext('Failed to load consents.') }}"
@@ -122,6 +124,17 @@
      data-label-confirm-revoke="{{ gettext('Disconnect \"{name}\"? Active sessions for this application will be terminated.')|forceescape }}"
      data-label-failed-revoke="{{ gettext('Failed to revoke consent.') }}"
      data-label-disconnected="{{ gettext('Disconnected.') }}"
+     data-label-failed-load-sessions="{{ gettext('Failed to load sessions.') }}"
+     data-label-no-sessions="{{ gettext('No active sessions.') }}"
+     data-label-current-session="{{ gettext('This session') }}"
+     data-label-end-session-btn="{{ gettext('End session') }}"
+     data-label-confirm-end-session="{{ gettext('End this session? Applications you signed in to with it will be signed out.') }}"
+     data-label-failed-end-session="{{ gettext('Failed to end session.') }}"
+     data-label-session-ended="{{ gettext('Session ended.') }}"
+     data-label-session-login-prefix="{{ gettext('Login:') }}"
+     data-label-session-expires-prefix="{{ gettext('Expires:') }}"
+     data-label-session-client-prefix="{{ gettext('Client:') }}"
+     data-label-session-token-prefix="{{ gettext('Token:') }}"
      data-label-admin-access-failed-load="{{ gettext('Failed to load admin access state.') }}"
      data-label-admin-access-failed-save="{{ gettext('Failed to update admin access.') }}"
      data-label-admin-access-on="{{ gettext('Admin access enabled.') }}"
@@ -233,6 +246,15 @@
          data-label-copy="{{ gettext('Copy') }}"
          data-label-shown-once="{{ gettext('This password is shown only once. Copy it now.') }}"
          data-label-delete="{{ gettext('Delete') }}"
+         data-label-device-token-type="{{ gettext('Token Type') }}"
+         data-label-type-password="{{ gettext('Password') }}"
+         data-label-type-totp="{{ gettext('Authenticator app (TOTP)') }}"
+         data-label-type-totp-short="{{ gettext('TOTP') }}"
+         data-label-scan-totp="{{ gettext('Scan this code with your authenticator app:') }}"
+         data-label-totp-secret="{{ gettext('Secret:') }}"
+         data-label-totp-qr-alt="{{ gettext('TOTP code') }}"
+         data-label-totp-shown-once="{{ gettext('This code is shown only once. Scan it now.') }}"
+         data-label-max-device-tokens="{{ gettext('You have the maximum number of device tokens for this role ({max}).') }}"
          class="is-hidden"></div>
 
     <!-- Passkeys (WebAuthn discoverable credentials).
@@ -242,9 +264,16 @@
         <h3>{{ gettext("Passkeys") }}</h3>
         <p class="settings-desc">{{ gettext("Sign in without a password using a passkey on this device or a synced credential provider (iCloud Keychain, Google Password Manager, 1Password, ...).") }}</p>
         <div class="settings-form" id="passkeyAddForm">
-            <label for="passkeyName">{{ gettext("Passkey Name") }}</label>
-            <input type="text" id="passkeyName" placeholder="{{ gettext('e.g. my iPhone, work laptop') }}" autocomplete="off">
-            <button type="button" id="addPasskeyBtn" class="btn btn-primary mt-8">{{ gettext("Add Passkey") }}</button>
+            <!-- The fields below open from this button, after a
+                 reauth if deploy_passkey_reauth wants one: the reauth
+                 has to come before the name, not after the button that
+                 registers -- see get_step_up_state in sso1.py. -->
+            <button type="button" id="startPasskeyBtn" class="btn btn-primary">{{ gettext("Add Passkey") }}</button>
+            <div id="passkeyAddFields" class="is-hidden">
+                <label for="passkeyName">{{ gettext("Passkey Name") }}</label>
+                <input type="text" id="passkeyName" placeholder="{{ gettext('e.g. my iPhone, work laptop') }}" autocomplete="off">
+                <button type="button" id="addPasskeyBtn" class="btn btn-primary mt-8">{{ gettext("Add Passkey") }}</button>
+            </div>
             <div class="status-msg" id="passkeyStatus"></div>
             <div class="error-msg" id="passkeyError"></div>
         </div>
@@ -260,9 +289,13 @@
         <h3>{{ gettext("Security Keys (FIDO2)") }}</h3>
         <p class="settings-desc">{{ gettext("Sign in with a hardware security key (YubiKey, Nitrokey, Titan, ...). The key is plugged in or held to the device, and never leaves your hands.") }}</p>
         <div class="settings-form" id="fido2AddForm">
-            <label for="fido2DeviceName">{{ gettext("Key Name") }}</label>
-            <input type="text" id="fido2DeviceName" placeholder="{{ gettext('e.g. my YubiKey, backup key') }}" autocomplete="off">
-            <button type="button" id="addFido2Btn" class="btn btn-primary mt-8">{{ gettext("Add Security Key") }}</button>
+            <!-- Same as on the passkey card, for deploy_fido2_token_reauth. -->
+            <button type="button" id="startFido2Btn" class="btn btn-primary">{{ gettext("Add Security Key") }}</button>
+            <div id="fido2AddFields" class="is-hidden">
+                <label for="fido2DeviceName">{{ gettext("Key Name") }}</label>
+                <input type="text" id="fido2DeviceName" placeholder="{{ gettext('e.g. my YubiKey, backup key') }}" autocomplete="off">
+                <button type="button" id="addFido2Btn" class="btn btn-primary mt-8">{{ gettext("Add Security Key") }}</button>
+            </div>
             <div class="status-msg" id="fido2Status"></div>
             <div class="error-msg" id="fido2Error"></div>
         </div>
@@ -280,9 +313,13 @@
         <h3>{{ gettext("Smartphone Authentication App (tiqr)") }}</h3>
         <p class="settings-desc">{{ gettext("Sign in by confirming on your phone. Scan the code with the tiqr app, or tap the link if you are reading this on the phone itself.") }}</p>
         <div class="settings-form" id="tiqrAddForm">
-            <label for="tiqrDeviceName">{{ gettext("Device Name") }}</label>
-            <input type="text" id="tiqrDeviceName" placeholder="{{ gettext('e.g. my phone, work phone') }}" autocomplete="off">
-            <button type="button" id="addTiqrBtn" class="btn btn-primary mt-8">{{ gettext("Add Phone") }}</button>
+            <!-- Same as on the passkey card, for deploy_tiqr_token_reauth. -->
+            <button type="button" id="startTiqrBtn" class="btn btn-primary">{{ gettext("Add Phone") }}</button>
+            <div id="tiqrAddFields" class="is-hidden">
+                <label for="tiqrDeviceName">{{ gettext("Device Name") }}</label>
+                <input type="text" id="tiqrDeviceName" placeholder="{{ gettext('e.g. my phone, work phone') }}" autocomplete="off">
+                <button type="button" id="addTiqrBtn" class="btn btn-primary mt-8">{{ gettext("Add Phone") }}</button>
+            </div>
             <div class="status-msg" id="tiqrStatus"></div>
             <div class="error-msg" id="tiqrError"></div>
         </div>
@@ -360,6 +397,20 @@
         </div>
     </div>
 
+    <!-- Active sessions. Hidden by default; revealed by loadSessions()
+         when the server reports allowed=true (sso_allow_session_mgmt).
+         Only the sessions of this site are listed -- a session lives on
+         the site its login happened on. -->
+    <div class="settings-card is-hidden" id="sessionCard">
+        <h3>{{ gettext("Active Sessions") }}</h3>
+        <p class="settings-desc">
+            {{ gettext("Where your account is currently logged in on this site. Ending a session also ends what it opened (applications you signed in to with it).") }}
+        </p>
+        <div class="status-msg" id="sessionStatus"></div>
+        <div class="error-msg" id="sessionError"></div>
+        <ul id="sessionList" class="device-token-list"></ul>
+    </div>
+
     <!-- Connected applications (OIDC consents) -->
     <div class="settings-card">
         <h3>{{ gettext("Connected Applications") }}</h3>
@@ -375,6 +426,11 @@
 <div id="oidc-consent-urls"
      data-url-list="{{ url_for('list_oidc_consents', _external=True, _scheme='https') }}"
      data-url-revoke="{{ url_for('revoke_oidc_consent', _external=True, _scheme='https') }}"
+     class="is-hidden"></div>
+
+<div id="session-urls"
+     data-url-list="{{ url_for('list_sessions', _external=True, _scheme='https') }}"
+     data-url-delete="{{ url_for('delete_session', _external=True, _scheme='https') }}"
      class="is-hidden"></div>
 
 <script src="{{ url_for('static', filename='settings.js') }}"></script>

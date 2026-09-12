@@ -496,7 +496,7 @@ class HostDaemon(OTPmeDaemon):
             return True
 
         log_msg = _("Starting sync of realms/sites...", log=True)[1]
-        self.logger.debug(log_msg)
+        self.logger.info(log_msg)
 
         sync_sites = []
         site_certs = []
@@ -723,7 +723,7 @@ class HostDaemon(OTPmeDaemon):
 
         # Update site certs.
         if update_site_certs:
-            host.update_data(site_certs=site_certs)
+            host.update_data(site_certs=site_certs, force_site_certs=request_site_cert)
 
         # If we got no sync sites (e.g. realm master node with no other sites)
         # we have nothing to do.
@@ -791,15 +791,11 @@ class HostDaemon(OTPmeDaemon):
                     realm.delete(force=True, verify_acls=False)
                     removed_objects += 1
 
-        if added_objects > 0 or updated_objects > 0 or removed_objects >0:
-            log_method = self.logger.info
-        else:
-            log_method = self.logger.debug
         log_msg = _("Realms/sites sync finished: adds: {added} updates: {updated_objects} removes: {removed_objects}", log=True)[1]
         log_msg = log_msg.format(added=added_objects,
                         updated_objects=updated_objects,
                         removed_objects=removed_objects)
-        log_method(log_msg)
+        self.logger.info(log_msg)
 
         if sync_status:
             self.update_realm_data()
@@ -1189,16 +1185,10 @@ class HostDaemon(OTPmeDaemon):
                 sync_last_used = False
                 if self.host_type == "node":
                     sync_last_used = True
-                # Add sync job to running jobs to prevent master failover
-                # while jobs are running.
-                job_uuid = stuff.gen_uuid()
+                # Add blocker to prevent master failover while jobs are running.
                 job_name = f"Sync: {sync_type}"
-                multiprocessing.running_jobs[job_uuid] = {
-                                                        'name'      : job_name,
-                                                        'start_time': time.time(),
-                                                        'auth_token': "hostd",
-                                                        'pid'       : os.getpid(),
-                                                        }
+                job_uuid = multiprocessing.add_master_failover_blocker(job_name,
+                                                            auth_token="hostd")
                 # Start sync job.
                 try:
                     sync_status = proto_handler.do_sync(sync_type=sync_type,
@@ -1238,7 +1228,7 @@ class HostDaemon(OTPmeDaemon):
                 finally:
                     if sync_conn:
                         sync_conn.close()
-                    multiprocessing.running_jobs.pop(job_uuid)
+                    multiprocessing.del_master_failover_blocker(job_uuid)
 
                 # Start sync of other objects if required.
                 if resync_token_data:
@@ -1284,16 +1274,10 @@ class HostDaemon(OTPmeDaemon):
                                 realm=realm,
                                 site=site)
 
-            # Add sync job to running jobs to prevent master failover
-            # while jobs are running.
-            job_uuid = stuff.gen_uuid()
+            # Add blocker to prevent master failover while jobs are running.
             job_name = "Sync: nsscache"
-            multiprocessing.running_jobs[job_uuid] = {
-                                                    'name'      : job_name,
-                                                    'start_time': time.time(),
-                                                    'auth_token': "hostd",
-                                                    'pid'       : os.getpid(),
-                                                    }
+            job_uuid = multiprocessing.add_master_failover_blocker(job_name,
+                                                        auth_token="hostd")
             nsscache_sync_status = False
             try:
                 nsscache_sync_status = nsscache.update(realm,
@@ -1318,7 +1302,7 @@ class HostDaemon(OTPmeDaemon):
             finally:
                 # Release sync lock.
                 sync_lock.release_lock()
-                multiprocessing.running_jobs.pop(job_uuid)
+                multiprocessing.del_master_failover_blocker(job_uuid)
 
             if sync_status is None:
                 sync_status = nsscache_sync_status

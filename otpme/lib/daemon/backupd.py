@@ -34,6 +34,9 @@ def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("backupd")
     register_config_params()
+    # Backup reports of backup_report_mode=summary. The backups run in
+    # child processes, so we need a shared dict to collect their reports.
+    multiprocessing.register_shared_dict("backup_reports")
 
 def register_config_params():
     object_types = [
@@ -143,6 +146,116 @@ class BackupDaemon(OTPmeDaemon):
             if backup_report_mode == "error":
                 if status is not False:
                     return
+            if backup_report_mode == "summary":
+                # One report for all backups. It is sent by the daemon
+                # process when the last backup has finished.
+                return self.queue_backup_report(backup_object, status, result)
+        mail_settings = self.get_mail_settings(backup_object)
+        if not mail_settings:
+            return False
+        message = "\n".join(result['log'])
+        return self.send_report_mail(mail_settings, subject, message)
+
+    def queue_backup_report(self, backup_object, status, result):
+        """ Add backup report to be sent with the summary report. """
+        mail_to = backup_object.get_config_parameter("backup_report_mail_to")
+        if not mail_to:
+            log_msg = _("Cannot send backup report: backup_report_mail_to not configured.", log=True)[1]
+            self.logger.warning(log_msg)
+            return False
+        report_name = f"{backup_object.type}/{backup_object.name}"
+        report = {
+                'uuid'          : backup_object.uuid,
+                'name'          : report_name,
+                'mail_to'       : mail_to,
+                'status'        : status,
+                'time'          : time.time(),
+                'duration'      : result.get('duration'),
+                'total_bytes'   : result.get('total_bytes'),
+                'stored_bytes'  : result.get('stored_bytes'),
+                }
+        if not status:
+            # Without counters the report line has to tell why.
+            report['message'] = result['log'][-1]
+        multiprocessing.backup_reports[report_name] = report
+        return True
+
+    def process_backup_reports(self):
+        """ Send summary report when all backups have finished. """
+        reports = dict(multiprocessing.backup_reports)
+        if not reports:
+            return
+        for x_uuid in dict(self.backup_childs):
+            backup_child = self.backup_childs[x_uuid]
+            if backup_child.is_alive():
+                return
+        queued_reports = []
+        for x in reports:
+            try:
+                x_report = multiprocessing.backup_reports.pop(x)
+            except KeyError:
+                continue
+            queued_reports.append(x_report)
+        self.send_summary_report(queued_reports)
+
+    def send_summary_report(self, reports):
+        """ Send one report for all finished backups. """
+        from otpme.lib.classes.backup import _format_size
+        # Backup objects may have different report receivers.
+        reports_by_mail_to = {}
+        for x_report in reports:
+            x_mail_to = x_report['mail_to']
+            if x_mail_to not in reports_by_mail_to:
+                reports_by_mail_to[x_mail_to] = []
+            reports_by_mail_to[x_mail_to].append(x_report)
+        host_name = config.host_data['name']
+        for x_mail_to in reports_by_mail_to:
+            x_reports = reports_by_mail_to[x_mail_to]
+            x_reports = sorted(x_reports, key=lambda report: report['time'])
+            # The mail settings (e.g. relay) of the receiver are the ones
+            # of the first backup object that reports to it.
+            first_report = x_reports[0]
+            backup_object = backend.get_object(uuid=first_report['uuid'])
+            if not backup_object:
+                log_msg = _("Cannot send backup report: Unknown object: {name}", log=True)[1]
+                log_msg = log_msg.format(name=first_report['name'])
+                self.logger.warning(log_msg)
+                continue
+            mail_settings = self.get_mail_settings(backup_object)
+            if not mail_settings:
+                continue
+            # The receiver is the one the backups reported to, not the one
+            # the object is configured with right now.
+            mail_settings['mail_to'] = x_mail_to
+            failed_backups = 0
+            successful_backups = 0
+            message = []
+            for x_report in x_reports:
+                if x_report['status']:
+                    successful_backups += 1
+                    x_status = "ok"
+                else:
+                    failed_backups += 1
+                    x_status = "failed"
+                x_duration = x_report['duration']
+                if not x_duration:
+                    x_duration = "-"
+                x_info = x_report.get('message')
+                if not x_info:
+                    x_total = _format_size(x_report['total_bytes'] or 0)
+                    x_stored = _format_size(x_report['stored_bytes'] or 0)
+                    x_info = f"{x_total} -> {x_stored}"
+                x_line = f"{x_report['name']:<20} {x_status:<8} {x_duration:<10} {x_info}"
+                message.append(x_line)
+            message = "\n".join(message)
+            subject = _("Backup report {host_name} ({successful} ok, {failed} failed)")
+            subject = subject.format(host_name=host_name,
+                                    successful=successful_backups,
+                                    failed=failed_backups)
+            self.send_report_mail(mail_settings, subject, message)
+
+    def get_mail_settings(self, backup_object):
+        """ Get mail settings to send a backup report. """
         server = backup_object.get_config_parameter("smtp_relay_server")
         if not server:
             log_msg = _("Cannot send backup report: smtp_relay_server not configured.", log=True)[1]
@@ -180,19 +293,29 @@ class BackupDaemon(OTPmeDaemon):
                 log_msg = _("Cannot send backup report: smtp_relay_auth configured without smtp_relay_password.", log=True)[1]
                 self.logger.warning(log_msg)
                 return False
+        mail_settings = {
+                        'server'    : server,
+                        'port'      : port,
+                        'starttls'  : starttls,
+                        'username'  : username,
+                        'password'  : password,
+                        'mail_from' : mail_from,
+                        'mail_to'   : mail_to,
+                        }
+        return mail_settings
 
-        message = "\n".join(result['log'])
-
+    def send_report_mail(self, mail_settings, subject, message):
+        """ Send backup report mail. """
         try:
-            send_mail(mail_from=mail_from,
-                    mail_to=mail_to,
+            send_mail(mail_from=mail_settings['mail_from'],
+                    mail_to=mail_settings['mail_to'],
                     subject=subject,
                     message=message,
-                    server=server,
-                    port=port,
-                    starttls=starttls,
-                    username=username,
-                    password=password)
+                    server=mail_settings['server'],
+                    port=mail_settings['port'],
+                    starttls=mail_settings['starttls'],
+                    username=mail_settings['username'],
+                    password=mail_settings['password'])
         except Exception as e:
             log_msg = _("Failed to send backup report: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -461,6 +584,8 @@ class BackupDaemon(OTPmeDaemon):
                         self.comm_handler.send("controld", command="reload_done")
                 # Check if its backup time.
                 self.process_backups()
+                # Check if we have to send a backup summary report.
+                self.process_backup_reports()
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:

@@ -158,12 +158,29 @@ def get_signers(signer_type, username=None):
 
     return signers
 
+def get_signature_info(signature):
+    """ Describe the given signature for a log message. """
+    try:
+        sign_info = signature.get_sign_info()
+    except Exception:
+        # Without the signer/object OIDs the UUIDs have to do.
+        return signature.signer_oid
+    tags = ",".join(sign_info['tags'])
+    signer_oid = sign_info['signer_uuid']
+    sign_ref = sign_info['sign_ref']
+    return f"{signer_oid} for {sign_ref} (tags: {tags})"
+
 def verify_signatures(signer_type, signers, signatures, sign_data,
-    stop_on_fist_match=False):
+    tags=None, login_interface=None, stop_on_fist_match=False):
     """
     Verify given signatures/data with the signers configured for this host.
     """
     found_valid_signature = False
+    # Signatures we actually verified (e.g. signed by a signer we know).
+    checked_signatures = 0
+    # Why we skipped a signature. Without a valid one the caller has to
+    # tell the user what was wrong with the ones we had.
+    sign_errors = []
     for signer_uuid in signatures:
         if found_valid_signature:
             if stop_on_fist_match:
@@ -179,33 +196,51 @@ def verify_signatures(signer_type, signers, signatures, sign_data,
                 if sig.signer_uuid not in signer.signers:
                     continue
 
-                sign_info = sig.signer_oid
+                checked_signatures += 1
                 try:
                     signer.verify_signature(signature=sig,
                                             sign_data=sign_data,
-                                            login_interface="ssh")
+                                            tags=tags,
+                                            login_interface=login_interface)
                 except VerificationFailed as e:
+                    # Resolved in the error paths only: it costs a lookup
+                    # per signature and only a failure needs the details.
+                    sign_info = get_signature_info(sig)
                     log_msg = _("Failed to verify signature: {sign_info}: {e}", log=True)[1]
                     log_msg = log_msg.format(sign_info=sign_info, e=e)
                     logger.warning(log_msg)
+                    sign_errors.append(f"{sign_info}: {e}")
                     continue
                 except NoTagsMatch as e:
+                    # A signature that does not match the tags we ask for
+                    # is the normal case for an object with more than one
+                    # signature.
+                    sign_info = get_signature_info(sig)
                     log_msg = _("Ignoring signature: {sign_info}: {e}", log=True)[1]
                     log_msg = log_msg.format(sign_info=sign_info, e=e)
                     logger.debug(log_msg)
+                    sign_errors.append(f"{sign_info}: {e}")
                     continue
                 except Exception as e:
                     config.raise_exception()
+                    sign_info = get_signature_info(sig)
                     log_msg = _("Error verifying signature: {sign_info}: {e}", log=True)[1]
                     log_msg = log_msg.format(sign_info=sign_info, e=e)
                     logger.warning(log_msg)
+                    sign_errors.append(f"{sign_info}: {e}")
                     continue
                 found_valid_signature = True
                 if stop_on_fist_match:
                     break
 
     if not found_valid_signature:
+        if not checked_signatures:
+            msg = _("No signature from a configured signer found.")
+            raise OTPmeException(msg)
         msg = _("No valid signature found.")
+        if sign_errors:
+            sign_errors = ", ".join(sign_errors)
+            msg = f"{msg} {sign_errors}"
         raise OTPmeException(msg)
 
 
@@ -230,7 +265,8 @@ class OTPmeSigner(object):
                                 ]
 
     def __init__(self, uuid=None, object_uuid=None,
-        signer_type=None, pinned=False, tags=None):
+        signer_type=None, pinned=False, tags=None,
+        verify_token_opts=True):
         # Handle UUID.
         if not uuid:
             uuid = stuff.gen_uuid()
@@ -254,6 +290,11 @@ class OTPmeSigner(object):
         self.tags = tags
         # Indicates that the signer is pinned (e.g. inclues public key).
         self.pinned = pinned
+        # Indicates that the signature must also include the token options
+        # (e.g. command=) the SSH key is used with. A key without options
+        # has no options tag to ask for, so this only applies to keys that
+        # are used with options.
+        self.verify_token_opts = verify_token_opts
 
         # All signers with public keys.
         self.signers = {}
@@ -265,6 +306,12 @@ class OTPmeSigner(object):
                             'enabled',
                             'object_uuid',
                             'signer_type',
+                        ]
+        # Attributes added after the first signers were written. A signers
+        # file without them is still valid, so loads() must not require
+        # them.
+        self._optional_attributes = [
+                            'verify_token_opts',
                         ]
 
     def __repr__(self):
@@ -397,6 +444,12 @@ class OTPmeSigner(object):
             value = signer_dict[attr]
             setattr(self, attr, value)
 
+        # Keep the default of attributes the signers file does not have.
+        for attr in self._optional_attributes:
+            if attr not in signer_dict:
+                continue
+            setattr(self, attr, signer_dict[attr])
+
         object_oid = signer_dict['object_oid']
         object_oid = oid.get(object_id=object_oid)
         self.object_oid = object_oid
@@ -409,7 +462,7 @@ class OTPmeSigner(object):
     def dumps(self):
         """ Dump signer. """
         dump_data = {}
-        for attr in self._attributes:
+        for attr in self._attributes + self._optional_attributes:
             value = getattr(self, attr)
             dump_data[attr] = value
         dump_data['object_oid'] = self.object_oid.full_oid
@@ -543,12 +596,10 @@ class OTPmeSigner(object):
             msg = _("Signature not singed by this signer.")
             raise VerificationFailed(msg)
 
-        # Verify signature data (hash).
-        sign_data_hash = hash_sign_data(sign_data)
-        if signature.sign_data != sign_data_hash:
-            msg = _("Signature data mismatch: {signer_oid}")
-            msg = msg.format(signer_oid=signature.signer_oid)
-            raise VerificationFailed(msg)
+        # No data check here: signature.verify() below does it, and it
+        # does it after the tag check. Else a signature that was made for
+        # other tags (e.g. another host) would be reported as a data
+        # mismatch instead of simply not being the one we are looking for.
 
         # Get signer key etc.
         entry = self.signers[signature.signer_uuid]
@@ -559,6 +610,13 @@ class OTPmeSigner(object):
         check_tags = list(self.tags)
         if tags:
             for x in tags:
+                # The token options tag is built from the options the
+                # caller (e.g. ssh.py) parsed. An option that is not valid
+                # anymore is dropped there, so the tag can differ from the
+                # one that was signed. A signer may opt out of this check
+                # (add_signer --no-verify-token-opts).
+                if x.startswith("options:") and not self.verify_token_opts:
+                    continue
                 if x in check_tags:
                     continue
                 check_tags.append(x)
@@ -816,48 +874,51 @@ class OTPmeSignature(object):
         # Create copy of signature tags to be modified while verifying.
         # We need this below when removing the login_interfaces tag.
         verify_tags = list(self.tags)
-        found_login_interface_tag = False
-        duplicate_login_interfaces_tag = False
-        for x in list(verify_tags):
-            if not x.startswith("login_interfaces:"):
-                continue
-            if found_login_interface_tag:
-                duplicate_login_interfaces_tag = True
-                break
-            found_login_interface_tag = True
-            login_interface_tag = x
-            login_interfaces = login_interface_tag.split(":")[1:]
-            verify_tags.remove(x)
+        if login_interface:
+            found_login_interface_tag = False
+            duplicate_login_interfaces_tag = False
+            for x in list(verify_tags):
+                if not x.startswith("login_interfaces:"):
+                    continue
+                if found_login_interface_tag:
+                    duplicate_login_interfaces_tag = True
+                    break
+                found_login_interface_tag = True
+                login_interface_tag = x
+                login_interfaces = login_interface_tag.split(":")[1:]
+                verify_tags.remove(x)
 
-        if duplicate_login_interfaces_tag:
-            msg = _("Ignoring invalid signature: More than one login_interfaces tag found.")
-            raise OTPmeException(msg)
+            if duplicate_login_interfaces_tag:
+                msg = _("Ignoring invalid signature: More than one login_interfaces tag found.")
+                raise OTPmeException(msg)
 
-        if login_interfaces:
-            login_interface_neg = f"-{login_interface}"
-            if login_interface_neg in login_interfaces:
-                msg = _("Ignoring signature: Login interface denied by signature tag: {login_interface_tag}")
-                msg = msg.format(login_interface_tag=login_interface_tag)
-                raise OTPmeException(msg)
-            if login_interface not in login_interfaces:
-                msg = _("Ignoring signature: Login interface not allowed by signature tag: {login_interface_tag}")
-                msg = msg.format(login_interface_tag=login_interface_tag)
-                raise OTPmeException(msg)
+            if login_interfaces:
+                login_interface_neg = f"-{login_interface}"
+                if login_interface_neg in login_interfaces:
+                    msg = _("Ignoring signature: Login interface denied by signature tag: {login_interface_tag}")
+                    msg = msg.format(login_interface_tag=login_interface_tag)
+                    raise OTPmeException(msg)
+                if login_interface not in login_interfaces:
+                    msg = _("Ignoring signature: Login interface not allowed by signature tag: {login_interface_tag}")
+                    msg = msg.format(login_interface_tag=login_interface_tag)
+                    raise OTPmeException(msg)
 
         # Sort tags.
         verify_tags.sort()
 
         # Check if the signature includes all the requested tags.
-        checked_tags = []
+        failed_tags = []
         found_valid_sign_tags = True
         for tag in tags:
-            checked_tags.append(tag)
-            if tag not in verify_tags:
-                found_valid_sign_tags = False
+            if tag in verify_tags:
+                continue
+            failed_tags.append(tag)
+            found_valid_sign_tags = False
 
-        if checked_tags and not found_valid_sign_tags:
-            msg = _("Signature tags do not match: {checked_tags}")
-            msg = msg.format(checked_tags=','.join(checked_tags))
+        if failed_tags and not found_valid_sign_tags:
+            failed_tags = resolve_tags(failed_tags)
+            msg = _("Signature tags do not match: {failed_tags}")
+            msg = msg.format(failed_tags=','.join(failed_tags))
             raise NoTagsMatch(msg)
 
     def verify_signature(self, public_key):
@@ -902,13 +963,23 @@ class OTPmeSignature(object):
         #if cache_result != None:
         #    return cache_result
 
-        # Verify signature data (hash).
-        sign_data_hash = hash_sign_data(sign_data)
-        if self.sign_data != sign_data_hash:
-            msg = _("Signature data mismatch: {signer_oid}")
-            msg = msg.format(signer_oid=self.signer_oid)
-            raise VerificationFailed(msg)
-
+        # Tags first: a signature that was made for other tags (e.g.
+        # another host) is simply not the one we are looking for, and
+        # saying that is more helpful than complaining about its data.
         if tags:
             self.check_tags(tags, login_interface=login_interface)
+
+        # Verify signature data (hash). Without this check the signature
+        # is not bound to the data we verify: the cryptographic signature
+        # covers the sign template, which carries the hash the signer
+        # signed, not the data in front of us.
+        sign_data_hash = hash_sign_data(sign_data)
+        if self.sign_data != sign_data_hash:
+            # The tags matched, so this signature was meant for what we
+            # verify -- but not for this version of it.
+            msg = _("Signature data mismatch: signed data {signed_hash}, data to verify {verify_hash}")
+            msg = msg.format(signed_hash=self.sign_data[0:16],
+                            verify_hash=sign_data_hash[0:16])
+            raise VerificationFailed(msg)
+
         self.verify_signature(public_key)

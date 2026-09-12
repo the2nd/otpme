@@ -140,8 +140,11 @@ Generate MSCHAP SLP challenge/response from given username and password.
 
 ## Signer Management
 
-**add_signer \[**--private**\] \[**--no-pin**\] \[**--tag** *tag*\] **--signer-type** *type* *object_id***  
-Add signer.
+**add_signer \[**--private**\] \[**--no-pin**\] \[**--no-verify-token-opts**\] \[**--tag** *tag*\] **--signer-type** *type* *object_id***  
+Add signer. A token signature includes the token options (e.g.
+*command=*) the SSH key may be used with, and those are verified against
+the options the key is served with. **--no-verify-token-opts** turns
+that check off for this signer.
 
 **del_signer \[**--private**\] *signer_uuid***  
 Delete signer.

@@ -124,8 +124,12 @@ Generate SLP (Session-Logout-Password) from given password.
 Generate MSCHAP SLP challenge/response from given username and password.
 .SS Signer Management
 .TP
-.B add_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-tag\fR \fItag\fR] \fB\-\-signer\-type\fR \fItype\fR \fIobject_id\fR
-Add signer.
+.B add_signer \fR[\fB\-\-private\fR] [\fB\-\-no\-pin\fR] [\fB\-\-no\-verify\-token\-opts\fR] [\fB\-\-tag\fR \fItag\fR] \fB\-\-signer\-type\fR \fItype\fR \fIobject_id\fR
+Add signer. A token signature includes the token options (e.g.
+.IR command= )
+the SSH key may be used with, and those are verified against the options the key is served with.
+.B \-\-no\-verify\-token\-opts
+turns that check off for this signer.
 .TP
 .B del_signer \fR[\fB\-\-private\fR] \fIsigner_uuid\fR
 Delete signer.

@@ -236,6 +236,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'enable',
+                    'oargs'             : ['offline'],
                     'job_type'          : 'process',
                     },
                 },
@@ -244,6 +245,7 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'oargs'             : ['offline'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1184,12 +1186,112 @@ class Node(OTPmeHost):
         self.vote_script_enabled = False
         return self._cache(callback=callback)
 
-    def disable(self, *args, callback: JobCallback=default_callback, **kwargs):
+    def get_clusterd_conn(self):
+        """ Get clusterd connection to this node. """
+        from otpme.lib import stuff
+        from otpme.lib import connections
+        try:
+            socket_uri = stuff.get_daemon_socket("clusterd", self.name)
+        except Exception as e:
+            msg = _("Failed to get clusterd socket: {node}: {error}")
+            msg = msg.format(node=self.name, error=e)
+            raise OTPmeException(msg) from e
+        try:
+            clusterd_conn = connections.get("clusterd",
+                                            timeout=30,
+                                            socket_uri=socket_uri)
+        except Exception as e:
+            msg = _("Failed to get clusterd connection: {node}: {error}")
+            msg = msg.format(node=self.name, error=e)
+            raise OTPmeException(msg) from e
+        return clusterd_conn
+
+    def start_service_shutdown(self):
+        """ Stop node services (e.g. auth) before we disable the node. """
+        clusterd_conn = self.get_clusterd_conn()
+        try:
+            clusterd_conn.start_service_shutdown()
+        except Exception as e:
+            msg = _("Failed to shutdown node services: {node}: {error}")
+            msg = msg.format(node=self.name, error=e)
+            raise OTPmeException(msg) from e
+        finally:
+            clusterd_conn.close()
+
+    def stop_service_shutdown(self):
+        """ Start node services again (e.g. on node enable). """
+        clusterd_conn = self.get_clusterd_conn()
+        try:
+            clusterd_conn.stop_service_shutdown()
+        except Exception as e:
+            msg = _("Failed to start node services: {node}: {error}")
+            msg = msg.format(node=self.name, error=e)
+            raise OTPmeException(msg) from e
+        finally:
+            clusterd_conn.close()
+
+    def disable(self, *args, force: bool=False, offline: bool=False,
+        callback: JobCallback=default_callback, **kwargs):
         if config.master_node:
             if self.name == config.host_data['name']:
                 msg = "Cannot disable master node."
                 return callback.error(msg)
-        return super().disable(*args, callback=callback, **kwargs)
+        # Make sure the node does not handle any auth request anymore
+        # before we disable it. A disabled node refuses our connection
+        # anyway (and handles no requests).
+        shutdown_started = False
+        if not config.use_api and not offline and self._enabled:
+            # Ask before we shutdown the node services. Else the node
+            # would not handle any request while we wait for the answer.
+            msg = _("Disable {type} '{name}'?: ")
+            msg = msg.format(type=self.type, name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+            # The change is confirmed. So no need to ask again.
+            force = True
+            try:
+                self.start_service_shutdown()
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+            shutdown_started = True
+        disable_status = None
+        try:
+            disable_status = super().disable(*args,
+                                            force=force,
+                                            callback=callback,
+                                            **kwargs)
+        finally:
+            # Node not disabled (e.g. aborted). So the node has to handle
+            # requests again.
+            if shutdown_started and not disable_status:
+                try:
+                    self.stop_service_shutdown()
+                except Exception as e:
+                    log_msg = _("Failed to start node services: {node}: {error}", log=True)[1]
+                    log_msg = log_msg.format(node=self.name, error=e)
+                    logger.warning(log_msg)
+        return disable_status
+
+    def enable(self, *args, offline: bool=False,
+        callback: JobCallback=default_callback, **kwargs):
+        enable_status = super().enable(*args, callback=callback, **kwargs)
+        if not enable_status:
+            return enable_status
+        if config.use_api or offline:
+            return enable_status
+        # The node services are shutdown while the node is disabled. This
+        # will only work while the node is still reachable (e.g. it did not
+        # yet notice that it was disabled). A node that noticed its disabled
+        # status starts its services again when it notices that it is
+        # enabled again (see clusterd.enable_node()).
+        try:
+            self.stop_service_shutdown()
+        except Exception as e:
+            log_msg = _("Failed to start node services: {node}: {error}", log=True)[1]
+            log_msg = log_msg.format(node=self.name, error=e)
+            logger.warning(log_msg)
+        return enable_status
 
     @backend.transaction
     def add(

@@ -577,6 +577,23 @@ Suffix appended to the device token name when the SSO portal registers a token u
 .br
 Object types: role
 .TP
+.B device_token_types \fR(list)
+Comma\-separated list of the token types the SSO portal creates for this role's device tokens: \fBpassword\fR and/or \fBtotp\fR. With more than one the user chooses per token, the first being the default. Unset means \fBpassword\fR.
+.br
+A \fBtotp\fR device token is created with its PIN disabled \(em it goes into a device that has to produce the OTP on its own \(em and its secret is shown once, with a QR code for an authenticator app, when it is created.
+.br
+Object types: role
+.TP
+.B max_device_tokens \fR(int)
+How many device tokens one user may hold in this role, between 1 and 128. Unset means no limit. Once it is reached the SSO portal offers no form to add another, and adding one is refused.
+.br
+Object types: role
+.TP
+.B sso_allow_session_mgmt \fR(bool, default: false)
+Whether a user may see and end their own sessions on the Settings page of the SSO portal. Off by default: the listing shows where the account is logged in (client or host, address, token and times), which an install should hand out deliberately. Only the sessions of the portal's own site are listed \- that is where a login of this portal lives. Ending a session ends its child sessions and the application (OIDC) sessions below it. The session the Settings page is served from is shown but cannot be ended from there.
+.br
+Object types: site, unit, user
+.TP
 .B sso_allow_passkeys \fR(bool, default: true)
 Whether passkeys (FIDO2 resident credentials) are accepted as a login method on this site. Set to false to refuse passkey authentication entirely; the SSO portal login mask is unchanged. Foreign\-site users only resolve via this cascade if the local site lists the home site under
 .BR sso_allow_passkeys_trusts ;
@@ -777,6 +794,43 @@ Object types: site, unit, user
 .TP
 .B add_tiqr_token_to_trash \fR(bool, default: true)
 The same for phones the user removes on the SSO portal settings page. Restoring one puts the token back with its secret, so the phone that was enrolled against it can authenticate again without being enrolled anew.
+.br
+Object types: site, unit, user
+.TP
+.B deploy_login_token_reauth \fR(bool, default: true)
+Whether re\-deploying the default token through the SSO portal requires a fresh step\-up re\-authentication. What that flow hands out replaces the token the user signs in with, so without this an unlocked browser is enough to take over the account. The user is sent through the portal's re\-auth page and lands back on the deploy page; how long a re\-auth stays fresh is
+.BR sso_reauth_timeout . The recovery deploy (\fBotpme\-trash\fR link by mail) is not covered \(em it has no session to prove anything with, the mail link is the proof. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
+.br
+Object types: site, unit, user
+.TP
+.B deploy_fido2_token_reauth \fR(bool, default: true)
+The same before a security key is registered on the settings page. Every one of these enrolls a second way into the account, and the new credential outlives the session it was created in.
+.br
+Object types: site, unit, user
+.TP
+.B deploy_passkey_reauth \fR(bool, default: true)
+The same before a passkey is registered, see
+.BR deploy_fido2_token_reauth .
+.br
+Object types: site, unit, user
+.TP
+.B deploy_tiqr_token_reauth \fR(bool, default: true)
+The same before a phone is enrolled, see
+.BR deploy_fido2_token_reauth .
+.br
+Object types: site, unit, user
+.TP
+.B deploy_device_token_reauth \fR(bool, default: true)
+The same before a device token is added, see
+.BR deploy_fido2_token_reauth .
+This is the one whose credential is a password shown on screen rather than a device the user has to be holding, so it is also the one an install is most likely to find in the way.
+.br
+Object types: site, unit, user
+.TP
+.B sso_reauth_timeout \fR(int, default: 120)
+How long a re\-authentication on the SSO portal stays fresh, in seconds; accepts time units (e.g. \fB2m\fR). Applies to every gate that asks for one: changing the recovery mail and the \fBdeploy_*_reauth\fR flows. Short on purpose \(em it is a window the user is actively working in, not a second session. Minimum 60.
+.br
+When the settings page opens the form for a security key or a passkey, it asks for a new re\-authentication once less than 30 seconds of the window are left, so the user still has time to name the key and touch it. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
 .br
 Object types: site, unit, user
 .TP
@@ -1166,13 +1220,17 @@ parameters below.
 Object types: site, unit, node, share
 .TP
 .B backup_report_mode \fR(str, default: all)
-Which backup runs to report on. Valid values:
+Which backup runs to report on and how. Valid values:
 .IR all
-(report every run),
+(one e\-mail per run),
 .IR success
 (only successful runs),
 .IR error
-(only failed runs).
+(only failed runs),
+.IR summary
+(one e\-mail for all backup runs of the host instead of one per backup object, with one line per object: name, status, duration and the backed\-up/stored size). The summary is sent as soon as the last running backup has finished. Objects with a different
+.B backup_report_mail_to
+get their own summary e\-mail.
 .br
 Object types: site, unit, node, share
 .TP

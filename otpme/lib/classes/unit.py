@@ -810,6 +810,14 @@ class Unit(OTPmeObject):
                             # (user overrides unit overrides site), so
                             # it travels with the other two.
                             "CONFIG_PARAMS:device_token_roles",
+                            # Same cascade, same reason: a portal of
+                            # another site asks these of our users.
+                            "CONFIG_PARAMS:deploy_login_token_reauth",
+                            "CONFIG_PARAMS:deploy_fido2_token_reauth",
+                            "CONFIG_PARAMS:deploy_passkey_reauth",
+                            "CONFIG_PARAMS:deploy_tiqr_token_reauth",
+                            "CONFIG_PARAMS:deploy_device_token_reauth",
+                            "CONFIG_PARAMS:sso_reauth_timeout",
                             ]
                         },
                     }

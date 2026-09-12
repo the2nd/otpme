@@ -5076,7 +5076,8 @@ class CommandHandler(object):
         return dump_result
 
     def add_signer(self, signer_type, object_oid,
-        private=False, pin=True, tags=None, **kwargs):
+        private=False, pin=True, tags=None,
+        verify_token_opts=True, **kwargs):
         """ Add signer. """
         from otpme.lib.classes.signing import OTPmeSigner
         from otpme.lib.classes.signing import resolve_tags
@@ -5134,7 +5135,8 @@ class CommandHandler(object):
         signer = OTPmeSigner(object_uuid=object_uuid,
                             signer_type=signer_type,
                             pinned=pin,
-                            tags=resolved_tags)
+                            tags=resolved_tags,
+                            verify_token_opts=verify_token_opts)
         signer.load()
 
         # Save signer to file.
@@ -5325,6 +5327,7 @@ class CommandHandler(object):
                     "uuid (*pinned)",
                     "status",
                     "type",
+                    "verify opts",
                     "user/role",
                     "signers",
                     #"realm",
@@ -5362,6 +5365,13 @@ class CommandHandler(object):
             current_row.append(signer_status)
 
             current_row.append(x_signer.signer_type)
+
+            # Token options the SSH key is used with must be included in
+            # the signature.
+            verify_token_opts = "no"
+            if x_signer.verify_token_opts:
+                verify_token_opts = "yes"
+            current_row.append(verify_token_opts)
 
             # Get user/signer OID.
             signer_uuid = x_signer.object_uuid

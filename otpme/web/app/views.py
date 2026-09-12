@@ -477,22 +477,32 @@ def add_device_token():
     data = request.json or {}
     device_name = data.get('device_name', '').strip()
     role_uuid = (data.get('role_uuid') or '').strip()
+    # One of the role's device_token_types; ssod picks the role's first
+    # when there is none.
+    token_type = (data.get('token_type') or '').strip()
     if not device_name:
         return jsonify({"error": gettext("Device name is required.")}), 400
     if not role_uuid:
         return jsonify({"error": gettext("Role is required.")}), 400
+    extra_args = {'device_name': device_name, 'role_uuid': role_uuid}
+    if token_type:
+        extra_args['token_type'] = token_type
     response, error = _send_ssod_command(command="add_device_token",
-                                        extra_args={'device_name': device_name,
-                                                    'role_uuid':   role_uuid},
+                                        extra_args=extra_args,
                                         default_error=gettext("Failed to add device token."),
                                         mgmt=True)
     if error:
         return error
+    # Shown to the user once: the password of a password token, the
+    # secret and its QR code of a TOTP one.
     return jsonify({
                 "status"        : "ok",
                 "name"          : response.get('name'),
                 "device_name"   : response.get('device_name'),
+                "token_type"    : response.get('token_type') or 'password',
                 "password"      : response.get('password'),
+                "secret"        : response.get('secret'),
+                "qrcode_img"    : response.get('qrcode_img'),
             })
 
 @app.route('/settings/device_tokens/delete', methods=['POST'])
@@ -1029,6 +1039,34 @@ def set_admin_access_state():
                 "enabled"   : new_enabled,
             })
 
+@app.route('/settings/step_up_state', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def get_step_up_state():
+    """ Which add forms need a fresh /reauth before they are
+    shown. Asked when an add button is pressed, so the settings page can
+    ask for the reauth before the user types a name -- see
+    get_step_up_state in sso1.py for why asking at the button that
+    registers does not work. """
+    try:
+        response, error = _send_ssod_command(
+                command="get_step_up_state",
+                default_error=gettext("Failed to load settings."))
+    except Exception as e:
+        logger.critical(f"get_step_up_state failed: {e}")
+        return jsonify({"error": gettext("Failed to load settings.")}), 500
+    if error:
+        return error
+    missing = {}
+    max_age = 0
+    if isinstance(response, dict):
+        missing = response.get('step_up_missing') or {}
+        max_age = int(response.get('step_up_max_age') or 0)
+    return jsonify({
+            "step_up_missing":  missing,
+            "step_up_max_age":  max_age,
+        })
+
 @app.route('/settings/recovery_mail', methods=['GET'])
 @login_required
 @limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
@@ -1062,7 +1100,7 @@ def get_recovery_mail():
 def set_recovery_mail():
     """ Write / clear the user's recovery e-mail address. Requires a
     fresh /reauth (checked in ssod via session.reauth_time within
-    STEP_UP_MAX_AGE); a stale session triggers step_up_required=True
+    sso_reauth_timeout); a stale session triggers step_up_required=True
     in the response so the JS drives the user through /reauth and
     retries. Empty string clears the attribute. """
     data = request.json or {}
@@ -1084,6 +1122,46 @@ def set_recovery_mail():
             "status":        "ok",
             "recovery_mail": stored,
         })
+
+@app.route('/settings/sessions', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def list_sessions():
+    try:
+        response, error = _send_ssod_command(
+                command="list_sessions",
+                default_error=gettext("Failed to list sessions."))
+    except Exception as e:
+        logger.critical(f"list_sessions failed: {e}")
+        return jsonify({"error": gettext("Failed to list sessions.")}), 500
+    if error:
+        return error
+    sessions = []
+    allowed = False
+    if isinstance(response, dict):
+        sessions = response.get('sessions', [])
+        allowed = bool(response.get('allowed'))
+    return jsonify({"sessions": sessions, "allowed": allowed})
+
+
+@app.route('/settings/sessions/delete', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def delete_session():
+    data = request.json or {}
+    target_session = (data.get('session_uuid') or '').strip()
+    if not target_session:
+        return jsonify({"error": gettext("session_uuid is required.")}), 400
+    response, error = _send_ssod_command(
+            command="delete_session",
+            extra_args={'target_session': target_session},
+            default_error=gettext("Failed to end session."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok",
+                    "message": gettext("Session ended.")})
+
 
 @app.route('/settings/oidc_consents', methods=['GET'])
 @login_required
@@ -1274,6 +1352,18 @@ def deploy():
     sso_deploy = flask_session.get('sso_deploy')
     if not sso_deploy:
         return redirect(url_for('index', _external=True, _scheme='https'))
+    # Asked for a fixed token type too: the answer also says whether
+    # the user has to prove themselves first (deploy_login_token_reauth),
+    # and that has to happen before the choice is shown. Asking only
+    # when a button is pressed sent the user to /reauth and back to the
+    # very choice they had just made.
+    response, _err = _send_ssod_command(
+            command="get_allowed_deploy_token_types",
+            default_error=None, mgmt=True)
+    if isinstance(response, dict) and response.get('step_up_required'):
+        return redirect(url_for('reauth',
+                                next=url_for('deploy'),
+                                _external=True, _scheme='https'))
     # Determine allowed token types.
     if isinstance(sso_deploy, str) and sso_deploy is not True:
         deploy_token_types = [sso_deploy]
@@ -1285,9 +1375,6 @@ def deploy():
         # enforces the same gate authoritatively, so the worst case is
         # a button that errors out. tiqr defaults to off, so it only
         # shows up where an admin turned it on.
-        response, _err = _send_ssod_command(
-                command="get_allowed_deploy_token_types",
-                default_error=None, mgmt=True)
         if isinstance(response, dict):
             ssod_types = response.get('token_types')
             if isinstance(ssod_types, list):
@@ -1324,6 +1411,10 @@ def deploy_begin():
                     'client'            : config.sso_client_name,
                     'client_ip'         : client_ip,
                     'token_type'        : token_type,
+                    # deploy_login_token_reauth is checked against this
+                    # session's reauth_time, so ssod needs to know which
+                    # session is asking.
+                    'session_uuid'      : request.cookies.get('otpme_sso_session'),
                 }
     if token_type in ("tiqr", "fido2"):
         # For tiqr it also becomes the enrollment's token name; for
@@ -1346,6 +1437,15 @@ def deploy_begin():
     finally:
         ssod_conn.close()
     if not status:
+        # deploy_login_token_reauth: the session has no fresh reauth, so
+        # send the user through /reauth and back here. Same signal the
+        # settings page gets from _send_ssod_command().
+        if isinstance(deploy_data, dict) \
+        and deploy_data.get('message') == 'STEP_UP_REQUIRED':
+            return jsonify({
+                    "error": gettext("Please re-authenticate to continue."),
+                    "step_up_required": True,
+                }), 401
         error_msg = _ssod_error_message(deploy_data, "Failed to start token deploy.")
         return jsonify({"error": error_msg}), 400
     # Store info in session for verification step.

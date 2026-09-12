@@ -127,7 +127,8 @@ def set_ssl_file_perms():
         filetools.set_fs_permissions(path=file, mode=file_mode)
 
 def update_ssl_files(host_cert=None, host_key=None,
-    ca_data=None, site_certs=None, host_auth_key=None):
+    ca_data=None, site_certs=None, force_site_certs=False,
+    host_auth_key=None):
     """ Update SSL cert/key files. """
     # Create cert file if it does not exist.
     if host_cert:
@@ -232,6 +233,14 @@ def update_ssl_files(host_cert=None, host_key=None,
             realm = x['realm']
             cert = x['cert']
             site_cert_file = get_cert_file(realm=realm, site=site)
+            # A site cert we already have is pinned: it stays whatever a
+            # sync brings, and is only ever replaced when somebody asks
+            # for it (otpme-tool sync --request-site-cert). Not compared
+            # with what arrived either -- a cert that differs is exactly
+            # the case this is here for.
+            if not force_site_certs:
+                if os.path.exists(site_cert_file):
+                    continue
             try:
                 filetools.create_file(path=site_cert_file,
                                         content=cert,
@@ -375,7 +384,8 @@ def load_data(ignore_missing=False):
     return
 
 def update_data(host_cert=None, host_key=None, ca_data=None,
-    site_certs=None, host_auth_key=None, ignore_missing=None):
+    site_certs=None, force_site_certs=False, host_auth_key=None,
+    ignore_missing=None):
     """
     Update data of our host "host_data" dictionary as well
     as SSL cert/key files.
@@ -454,6 +464,7 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
                         host_key=host_key,
                         ca_data=ca_data,
                         site_certs=site_certs,
+                        force_site_certs=force_site_certs,
                         host_auth_key=host_auth_key)
 
     if config.realm_init:

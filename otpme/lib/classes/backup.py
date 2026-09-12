@@ -3527,7 +3527,18 @@ class BackupClient:
         for line in log_lines:
             self.logger.info(line)
 
-        result = {'snap_name':snap_name, 'log':log_lines}
+        # The counters are also in the log lines above. But a caller that
+        # builds its own report (e.g. the backup summary report of
+        # backupd) must not parse them back from the log.
+        result = {
+                'snap_name'     : snap_name,
+                'log'           : log_lines,
+                'file_count'    : file_count,
+                'skipped_files' : skipped_files,
+                'total_bytes'   : total_bytes,
+                'stored_bytes'  : stored_bytes,
+                'duration'      : duration,
+                }
         return result
 
     def restore(self, snap_name: str, dest: str,

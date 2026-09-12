@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import hmac
-import time
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -806,7 +805,10 @@ class OTPmeJoinP1(OTPmeServer1):
                 raise OTPmeException(msg) from e
 
             try:
+                # The host/node left the realm. So we cannot shutdown its
+                # services via clusterd connection.
                 host.disable(force=True,
+                            offline=True,
                             verify_acls=False,
                             callback=self.callback)
             except Exception as e:
@@ -1196,8 +1198,8 @@ class OTPmeJoinP1(OTPmeServer1):
             # Disable sending of client messages, raise exceptions instead.
             self.callback.disable()
 
-        # Add job to running jobs to prevent master failover while host/node join.
-        if self.job_uuid not in multiprocessing.running_jobs:
+        # Add blocker to prevent master failover while host/node join.
+        if self.job_uuid not in multiprocessing.get_master_failover_blocker():
             add_job = False
             if command == "join":
                 add_job = True
@@ -1210,12 +1212,9 @@ class OTPmeJoinP1(OTPmeServer1):
             if add_job:
                 if config.auth_token:
                     auth_token = config.auth_token.rel_path
-                multiprocessing.running_jobs[self.job_uuid] = {
-                                                        'name'      : name,
-                                                        'start_time': time.time(),
-                                                        'auth_token': auth_token,
-                                                        'pid'       : os.getpid(),
-                                                        }
+                multiprocessing.add_master_failover_blocker(name,
+                                                blocker_id=self.job_uuid,
+                                                auth_token=auth_token)
         if command == "join":
             try:
                 join_result = self.handle_join_command(host_name,
@@ -1226,14 +1225,14 @@ class OTPmeJoinP1(OTPmeServer1):
                                                 _request,
                                                 finish)
             except Exception as e:
-                multiprocessing.running_jobs.pop(self.job_uuid)
+                multiprocessing.del_master_failover_blocker(self.job_uuid)
                 message = str(e)
                 log_msg = message
                 self.logger.warning(log_msg)
                 status = False
                 return self.build_response(status, message)
             if finish:
-                multiprocessing.running_jobs.pop(self.job_uuid)
+                multiprocessing.del_master_failover_blocker(self.job_uuid)
             return join_result
 
         if command == "leave":
@@ -1247,9 +1246,9 @@ class OTPmeJoinP1(OTPmeServer1):
                 message = str(e)
                 log_msg = message
                 self.logger.warning(log_msg)
-                multiprocessing.running_jobs.pop(self.job_uuid)
+                multiprocessing.del_master_failover_blocker(self.job_uuid)
                 return self.build_response(status, message)
-            multiprocessing.running_jobs.pop(self.job_uuid)
+            multiprocessing.del_master_failover_blocker(self.job_uuid)
             return leave_result
 
         if command == "add_site_cert":

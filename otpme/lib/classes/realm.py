@@ -37,6 +37,8 @@ from otpme.lib.protocols.utils import register_commands
 from otpme.lib.daemon.clusterd import cluster_daemon_reload
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import write_acl_types
+from otpme.lib.classes.otpme_object import sync_safe_acls
 
 from otpme.lib.classes.otpme_object import \
     get_acls as _get_acls
@@ -955,6 +957,24 @@ class Realm(OTPmeObject):
             self.own = True
         else:
             self.own = False
+
+    def verify_acl(self, action: str, **kwargs):
+        """ Verify ACLs required to allow <action>. """
+        # A realm is managed on its master site: the realms/sites sync
+        # overwrites our copy with the data we get from there and keeps
+        # only the settings below (see otpme/lib/daemon/hostd.py). So on
+        # a slave site (or for a foreign realm) changing anything else
+        # would be lost with the next sync.
+        if not config.realm_init and not config.site_init:
+            if not self.own or self.master != config.site_uuid:
+                # Removing the realm (e.g. a realm we do not trust
+                # anymore) is not a change the sync could overwrite.
+                if action != "delete:object" and action not in sync_safe_acls:
+                    acl_type = action.split(":")[0]
+                    if acl_type in write_acl_types:
+                        return False
+        # Finally try to verify ACL via parent class method.
+        return self._verify_acl(action, **kwargs)
 
     @check_acls(['enable:auth'])
     @object_lock()

@@ -40,6 +40,7 @@ from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.freeradius.utils import reload as freeradius_reload
 
 from otpme.lib.daemon.clusterd import SUPPORTED_STATE_DICTS
+from otpme.lib.daemon.clusterd import get_states_snapshot
 
 from otpme.lib.exceptions import *
 
@@ -104,9 +105,17 @@ class OTPmeClusterP1(OTPmeServer1):
         msg = _("Received invalid cluster key.")
         raise OTPmeException(msg)
 
-    def get_running_jobs(self):
-        running_jobs = dict(multiprocessing.running_jobs)
-        if len(running_jobs) == 0:
+    def get_master_failover_blockers(self):
+        blockers = multiprocessing.get_master_failover_blocker()
+        return self.get_blockers_table(blockers)
+
+    def get_service_shutdown_blockers(self):
+        blockers = multiprocessing.get_service_shutdown_blocker()
+        return self.get_blockers_table(blockers)
+
+    def get_blockers_table(self, blockers):
+        """ Get table with the given blockers. """
+        if len(blockers) == 0:
             return
         table_headers = ['Start Time', 'Job Name', 'Auth Token', 'PID']
         table = PrettyTable(table_headers,
@@ -117,16 +126,13 @@ class OTPmeClusterP1(OTPmeServer1):
         table.align = "l"
         table.padding_width = 0
         table.right_padding_width = 1
-        for x in running_jobs:
-            x_name = running_jobs[x]['name']
-            x_pid = running_jobs[x]['pid']
-            if x_pid:
-                if not stuff.check_pid(x_pid):
-                    continue
-            x_start_time = running_jobs[x]['start_time']
+        for x in blockers:
+            x_name = blockers[x]['name']
+            x_pid = blockers[x]['pid']
+            x_start_time = blockers[x]['start_time']
             x_start_time = datetime.datetime.fromtimestamp(x_start_time)
             try:
-                x_auth_token = running_jobs[x]['auth_token']
+                x_auth_token = blockers[x]['auth_token']
             except KeyError:
                 x_auth_token = None
             row = [x_start_time, x_name, x_auth_token, x_pid]
@@ -181,6 +187,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "object_exists",
                             "get_node_vote",
                             "get_last_used",
+                            "get_states",
                             "set_node_sync",
                             "set_state",
                             "del_state",
@@ -200,9 +207,12 @@ class OTPmeClusterP1(OTPmeServer1):
                             "set_master_failover",
                             "get_node_sync_status",
                             "start_master_failover",
+                            "stop_service_shutdown",
                             "get_master_sync_status",
+                            "start_service_shutdown",
                             "deconfigure_floating_ip",
                             "get_master_failover_status",
+                            "get_service_shutdown_status",
                         ]
 
         # Make sure peer is a node from our site.
@@ -244,10 +254,15 @@ class OTPmeClusterP1(OTPmeServer1):
         elif command == "disable_node":
             status = True
             node = backend.get_object(uuid=config.uuid)
+            # A disabled node must not handle any request.
+            config.service_shutdown = True
             if node.enabled:
                 node.acquire_lock(lock_caller="clusterd")
                 try:
-                    node.disable(force=True, verify_acls=False, no_audit_log=True)
+                    # We are the node to disable. So there is no need to
+                    # shutdown our services via clusterd connection.
+                    node.disable(force=True, offline=True,
+                                verify_acls=False, no_audit_log=True)
                     node._write(cluster=False)
                 finally:
                     node.release_lock(lock_caller="clusterd")
@@ -1019,6 +1034,24 @@ class OTPmeClusterP1(OTPmeServer1):
                     message = message.format(error=e)
                     status = False
 
+        elif command == "get_states":
+            # A node coming up asks for the short-lived states it missed
+            # while it was not there; see get_states_snapshot().
+            status = True
+            message = None
+            if config.daemon_shutdown:
+                message = _("Daemon shutdown.")
+                status = False
+            if status:
+                try:
+                    message = get_states_snapshot()
+                except Exception as e:
+                    log_msg = _("Failed to read states: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    logger.warning(log_msg)
+                    message = _("Failed to read states.")
+                    status = False
+
         elif command == "set_state":
             status = True
             message = None
@@ -1216,21 +1249,49 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = _("Waiting for node(s) to join cluster: {nodes}")
                 message = message.format(nodes=missing_nodes)
             else:
-                running_jobs = self.get_running_jobs()
-                if running_jobs:
+                failover_blockers = self.get_master_failover_blockers()
+                if failover_blockers:
                     status = False
                     message = _("Cannot do master failover because of running jobs")
-                    message = f"{message}\n{running_jobs}"
+                    message = f"{message}\n{failover_blockers}"
                 else:
                     status = True
                     message = _("Master failover started.")
                     config.master_failover = True
-                    running_jobs = self.get_running_jobs()
-                    if running_jobs:
+                    failover_blockers = self.get_master_failover_blockers()
+                    if failover_blockers:
                         status = False
                         config.master_failover = False
                         message = _("Cannot do master failover because of running jobs")
-                        message = f"{message}\n{running_jobs}"
+                        message = f"{message}\n{failover_blockers}"
+
+        elif command == "start_service_shutdown":
+            shutdown_blockers = self.get_service_shutdown_blockers()
+            if shutdown_blockers:
+                status = False
+                message = _("Cannot shutdown services because of running jobs")
+                message = f"{message}\n{shutdown_blockers}"
+            else:
+                status = True
+                message = _("Service shutdown started.")
+                config.service_shutdown = True
+                # Jobs that started while we set the shutdown status must
+                # not be interrupted.
+                shutdown_blockers = self.get_service_shutdown_blockers()
+                if shutdown_blockers:
+                    status = False
+                    config.service_shutdown = False
+                    message = _("Cannot shutdown services because of running jobs")
+                    message = f"{message}\n{shutdown_blockers}"
+
+        elif command == "stop_service_shutdown":
+            status = True
+            message = _("Service shutdown stopped.")
+            config.service_shutdown = False
+
+        elif command == "get_service_shutdown_status":
+            message = _("Service shutdown status.")
+            status = config.service_shutdown
 
         elif command == "set_master_failover":
             status = True

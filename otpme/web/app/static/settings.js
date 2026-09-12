@@ -164,6 +164,13 @@
     // the matching card during the next render and then drop the state.
     let pendingReveal = null;
 
+    function deviceTokenTypeLabel(tokenType, i18n) {
+        if (tokenType === 'totp') {
+            return i18n.labelTypeTotp || 'Authenticator app (TOTP)';
+        }
+        return i18n.labelTypePassword || 'Password';
+    }
+
     function buildRoleCard(role) {
         // One settings-card per device_token_roles entry. The role description
         // (admin-curated, localized server-side) is shown as the section
@@ -179,6 +186,17 @@
             password    : `devicePassword_${safeUuid}`,
             copyBtn     : `copyDevicePwBtn_${safeUuid}`,
             list        : `deviceTokenList_${safeUuid}`,
+            startBtn    : `startDeviceBtn_${safeUuid}`,
+            fields      : `deviceAddFields_${safeUuid}`,
+            // This card's entry in ADD_FORMS.
+            formKey     : `device:${safeUuid}`,
+            limit       : `deviceLimit_${safeUuid}`,
+            typeField   : `deviceTypeField_${safeUuid}`,
+            typeSelect  : `deviceType_${safeUuid}`,
+            pwBlock     : `devicePwBlock_${safeUuid}`,
+            totpBlock   : `deviceTotpBlock_${safeUuid}`,
+            qrImg       : `deviceQr_${safeUuid}`,
+            secret      : `deviceSecret_${safeUuid}`,
         };
         const card = document.createElement('div');
         card.className = 'settings-card';
@@ -188,17 +206,30 @@
             <h3></h3>
             <p class="settings-desc"></p>
             <div class="settings-form">
-                <label for="${ids.nameInput}"></label>
-                <input type="text" id="${ids.nameInput}" autocomplete="off">
-                <button type="button" id="${ids.addBtn}" class="btn btn-primary mt-8"></button>
+                <button type="button" id="${ids.startBtn}" class="btn btn-primary"></button>
+                <div id="${ids.limit}" class="hint is-hidden"></div>
+                <div id="${ids.fields}" class="is-hidden">
+                    <div id="${ids.typeField}" class="is-hidden">
+                        <label for="${ids.typeSelect}"></label>
+                        <select id="${ids.typeSelect}"></select>
+                    </div>
+                    <label for="${ids.nameInput}"></label>
+                    <input type="text" id="${ids.nameInput}" autocomplete="off">
+                    <button type="button" id="${ids.addBtn}" class="btn btn-primary mt-8"></button>
+                </div>
                 <div class="status-msg" id="${ids.status}"></div>
                 <div class="error-msg" id="${ids.error}"></div>
             </div>
             <div id="${ids.result}" class="device-token-reveal is-hidden">
-                <div>
+                <div id="${ids.pwBlock}">
                     <strong></strong>
                     <code id="${ids.password}"></code>
                     <button type="button" id="${ids.copyBtn}" class="btn btn-secondary btn-small ml-8"></button>
+                </div>
+                <div id="${ids.totpBlock}" class="is-hidden">
+                    <p class="totp-scan"></p>
+                    <div class="qr-container"><img id="${ids.qrImg}" alt=""></div>
+                    <div><strong class="totp-secret-label"></strong> <code id="${ids.secret}"></code></div>
                 </div>
                 <span class="hint"></span>
             </div>
@@ -212,13 +243,54 @@
         card.querySelector(`label[for="${ids.nameInput}"]`).textContent = i18n.labelDeviceName || 'Device Name';
         card.querySelector(`#${ids.nameInput}`).placeholder = i18n.labelDeviceNamePlaceholder || '';
         card.querySelector(`#${ids.addBtn}`).textContent = i18n.labelAddDeviceToken || 'Add Device Token';
+        card.querySelector(`#${ids.startBtn}`).textContent = i18n.labelAddDeviceToken || 'Add Device Token';
         card.querySelector(`#${ids.result} strong`).textContent = i18n.labelNewPassword || 'New password:';
         card.querySelector(`#${ids.copyBtn}`).textContent = i18n.labelCopy || 'Copy';
         card.querySelector(`#${ids.result} span.hint`).textContent = i18n.labelShownOnce || '';
         card.querySelector('h4').textContent = i18n.labelExistingDeviceTokens || 'Existing Device Tokens';
+        card.querySelector(`#${ids.totpBlock} .totp-scan`).textContent =
+                i18n.labelScanTotp || 'Scan this code with your authenticator app:';
+        card.querySelector(`#${ids.totpBlock} .totp-secret-label`).textContent =
+                i18n.labelTotpSecret || 'Secret:';
+        card.querySelector(`#${ids.qrImg}`).alt = i18n.labelTotpQrAlt || 'TOTP code';
+        // What the role lets this user create (device_token_types). A
+        // choice only where there is one: with a single type ssod takes
+        // it without being told.
+        const tokenTypes = role.token_types || ['password'];
+        if (tokenTypes.length > 1) {
+            const select = card.querySelector(`#${ids.typeSelect}`);
+            for (const tokenType of tokenTypes) {
+                const opt = document.createElement('option');
+                opt.value = tokenType;
+                opt.textContent = deviceTokenTypeLabel(tokenType, i18n);
+                select.appendChild(opt);
+            }
+            card.querySelector(`label[for="${ids.typeSelect}"]`).textContent =
+                    i18n.labelDeviceTokenType || 'Token Type';
+            card.querySelector(`#${ids.typeField}`).classList.remove('is-hidden');
+        }
+        // max_device_tokens: once the user has as many as the role
+        // allows, there is no form to open. ssod refuses the add either
+        // way; this only saves them typing a name for nothing.
+        const maxTokens = role.max_device_tokens;
+        if (maxTokens && (role.device_tokens || []).length >= maxTokens) {
+            card.querySelector(`#${ids.startBtn}`).classList.add('is-hidden');
+            const limitEl = card.querySelector(`#${ids.limit}`);
+            limitEl.textContent = interpolate(i18n.labelMaxDeviceTokens
+                    || 'You have the maximum number of device tokens for this role ({max}).',
+                    {max: maxTokens});
+            limitEl.classList.remove('is-hidden');
+        }
 
         card.querySelector(`#${ids.addBtn}`).addEventListener('click',
             () => addDeviceToken(role.role_uuid, ids));
+        // Rebuilt on every reload of the list, which also puts the form
+        // back to closed after a token was added.
+        ADD_FORMS[ids.formKey] = {start: ids.startBtn, fields: ids.fields,
+                                input: ids.nameInput, hash: `#${ids.startBtn}`,
+                                flow: 'device'};
+        card.querySelector(`#${ids.startBtn}`).addEventListener('click',
+            () => onStartAdd(ids.formKey));
         card.querySelector(`#${ids.copyBtn}`).addEventListener('click',
             () => copyDevicePassword(ids));
 
@@ -227,7 +299,16 @@
         // delete on another card) does not resurrect the password.
         if (pendingReveal && pendingReveal.role_uuid === role.role_uuid) {
             const resultEl = card.querySelector(`#${ids.result}`);
-            card.querySelector(`#${ids.password}`).textContent = pendingReveal.password;
+            if (pendingReveal.token_type === 'totp') {
+                card.querySelector(`#${ids.pwBlock}`).classList.add('is-hidden');
+                card.querySelector(`#${ids.totpBlock}`).classList.remove('is-hidden');
+                card.querySelector(`#${ids.qrImg}`).src = pendingReveal.qrcode_img || '';
+                card.querySelector(`#${ids.secret}`).textContent = pendingReveal.secret || '';
+                card.querySelector(`#${ids.result} span.hint`).textContent =
+                        i18n.labelTotpShownOnce || 'This code is shown only once. Scan it now.';
+            } else {
+                card.querySelector(`#${ids.password}`).textContent = pendingReveal.password;
+            }
             resultEl.classList.remove('is-hidden');
             card.querySelector(`#${ids.status}`).textContent = getPageI18n().labelDeviceTokenCreated || 'Device token created.';
             pendingReveal = null;
@@ -253,6 +334,15 @@
                 const label = document.createElement('span');
                 label.className = 'device-label';
                 label.textContent = t.device_name || t.name;
+                // A password token is what a device token always was;
+                // only the other kind says what it is.
+                if (t.token_type === 'totp') {
+                    const badge = document.createElement('span');
+                    badge.className = 'device-badge';
+                    badge.textContent = i18n.labelTypeTotpShort || 'TOTP';
+                    label.appendChild(document.createTextNode(' '));
+                    label.appendChild(badge);
+                }
                 li.appendChild(label);
                 const actions = document.createElement('span');
                 actions.className = 'device-token-actions';
@@ -324,6 +414,12 @@
             return;
         }
 
+        // Only there when the role offers more than one type; without it
+        // ssod takes the role's only one.
+        const typeSelect = document.getElementById(ids.typeSelect);
+        const tokenType = (typeSelect && typeSelect.options.length)
+                ? typeSelect.value : '';
+
         const btn = document.getElementById(ids.addBtn);
         btn.disabled = true;
         statusEl.textContent = i18n.labelAddingDeviceToken || 'Adding device token...';
@@ -331,16 +427,32 @@
         try {
             const resp = await fetchJSON(urls.urlAddDeviceToken, {
                 method: 'POST',
-                body: JSON.stringify({device_name: deviceName, role_uuid: roleUuid}),
+                body: JSON.stringify({device_name: deviceName, role_uuid: roleUuid,
+                                    token_type: tokenType}),
             });
             const result = await resp.json();
             if (!resp.ok) {
+                // Back to this role's card, which is where the button
+                // the user just pressed will be waiting for them.
+                if (handleStepUp(result, `#${ids.startBtn}`,
+                        {flow: ids.formKey,
+                        input: ids.nameInput, button: ids.addBtn,
+                        status: ids.status, value: deviceName, auto: true,
+                        select: ids.typeSelect, selectValue: tokenType})) {
+                    return;
+                }
                 throw new Error(result.error || i18n.labelFailedAddDeviceToken || 'Failed to add device token.');
             }
             // Stash the password for the next render to pick up — the
             // current card (incl. resultEl/passwordEl/statusEl) is about
             // to be destroyed and rebuilt by loadDeviceTokens().
-            pendingReveal = {role_uuid: roleUuid, password: result.password || ''};
+            pendingReveal = {
+                    role_uuid:  roleUuid,
+                    token_type: result.token_type || 'password',
+                    password:   result.password || '',
+                    secret:     result.secret || '',
+                    qrcode_img: result.qrcode_img || '',
+                };
             document.getElementById(ids.nameInput).value = '';
             loadDeviceTokens();
         } catch (e) {
@@ -455,6 +567,165 @@
         }
     }
 
+    // Thrown once the browser is on its way to /reauth. There is
+    // nothing to report then -- the page is going away.
+    const STEP_UP_REDIRECT = 'step-up-redirect';
+
+    // What the user was about to add when the server wanted a fresh
+    // step-up first. Kept across the trip to /reauth so that coming
+    // back finishes the job instead of leaving them on an empty form
+    // with nothing created -- see resumePendingAdd().
+    //
+    // sessionStorage: per tab, gone with it, and nothing in here is a
+    // secret -- a device name, and which button it belongs to.
+    const PENDING_ADD_KEY = 'otpme-settings-pending-add';
+    // A reauth takes a scan or a key touch, not an afternoon. Anything
+    // older is somebody coming back to the page for another reason.
+    const PENDING_ADD_MAX_AGE_MS = 5 * 60 * 1000;
+
+    // A write the server refused for want of a fresh step-up
+    // (deploy_*_reauth). Sends the user to /reauth and back to the card
+    // they were on, and remembers <pending> so the add is picked up
+    // again there.
+    //
+    // Returns true when it took over, so callers can stop right there.
+    function handleStepUp(body, hash, pending) {
+        if (!body || !body.step_up_required) return false;
+        if (pending) {
+            try {
+                sessionStorage.setItem(PENDING_ADD_KEY, JSON.stringify(
+                        Object.assign({hash: hash, at: Date.now()}, pending)));
+            } catch (e) { /* sessionStorage disabled: press again */ }
+        }
+        _driveReauth(hash);
+        return true;
+    }
+
+    // Back from /reauth: put the name back and carry on.
+    //
+    // Pressed for the user where that is possible -- a device token and
+    // a phone need nothing but a request. Not for a security key or a
+    // passkey: the browser only lets a page register one in answer to
+    // a real click (Safari insists, others may follow), and a click we
+    // fake would fail there with an error that explains nothing. Those
+    // get the name back and a word to press again.
+    //
+    // Only when we landed on the card the trip started from, which is
+    // what says the reauth actually happened rather than the user
+    // wandering off and coming back later.
+    function resumePendingAdd() {
+        let pending = null;
+        try {
+            pending = JSON.parse(sessionStorage.getItem(PENDING_ADD_KEY));
+            sessionStorage.removeItem(PENDING_ADD_KEY);
+        } catch (e) {
+            return;
+        }
+        if (!pending || !pending.hash) return;
+        if (window.location.hash !== pending.hash) return;
+        if (Date.now() - (pending.at || 0) > PENDING_ADD_MAX_AGE_MS) return;
+        // It has done its job. Leaving it would make a reload look like
+        // another trip back from /reauth.
+        history.replaceState(null, '', window.location.pathname
+                                        + window.location.search);
+        // Sent away by a start button (see onStartAdd()): the
+        // reauth is done, so the form it was holding back opens, and
+        // the user's next click -- the one after typing the name -- is
+        // the one that registers.
+        if (pending.open) {
+            if (ADD_FORMS[pending.open]) openAddFields(pending.open);
+            return;
+        }
+        // The fallback of a window that ran out between opening the
+        // form and pressing its button: the form is closed on every
+        // page load, and the name has to go back into it.
+        if (pending.flow) showAddFields(pending.flow, true);
+        const input = document.getElementById(pending.input);
+        const button = document.getElementById(pending.button);
+        if (!input || !button) return;
+        input.value = pending.value || '';
+        // The token type a device token card had picked, which the
+        // page load put back to the role's first.
+        if (pending.select && pending.selectValue) {
+            const select = document.getElementById(pending.select);
+            if (select) select.value = pending.selectValue;
+        }
+        if (pending.auto) {
+            button.click();
+            return;
+        }
+        const statusEl = document.getElementById(pending.status);
+        if (statusEl) {
+            statusEl.textContent = getPageI18n().labelStepUpPressAgain
+                    || 'Confirmed. Press the button again to continue.';
+        }
+        button.focus();
+    }
+
+    // The add forms of the cards. Closed until the user asks for one,
+    // and opened only once the reauth is out of the way -- so the user
+    // proves themselves first and then types a name, rather than typing
+    // it, being sent away, and finding it gone. For a security key or a
+    // passkey there is no other way at all: the browser registers one
+    // only in answer to a real click, and /reauth reloads the page.
+    //
+    // <flow> is the key get_step_up_state answers under. The device
+    // token cards are built per role and add themselves here, see
+    // buildRoleCard().
+    const ADD_FORMS = {
+        passkey: {start: 'startPasskeyBtn', fields: 'passkeyAddFields',
+                input: 'passkeyName', hash: '#passkeyCard', flow: 'passkey'},
+        fido2:   {start: 'startFido2Btn', fields: 'fido2AddFields',
+                input: 'fido2DeviceName', hash: '#fido2Card', flow: 'fido2'},
+        tiqr:    {start: 'startTiqrBtn', fields: 'tiqrAddFields',
+                input: 'tiqrDeviceName', hash: '#tiqrCard', flow: 'tiqr'},
+    };
+
+    function showAddFields(flow, open) {
+        const form = ADD_FORMS[flow];
+        if (!form) return;
+        const start = document.getElementById(form.start);
+        const fields = document.getElementById(form.fields);
+        if (start) start.classList.toggle('is-hidden', open);
+        if (fields) fields.classList.toggle('is-hidden', !open);
+    }
+
+    function openAddFields(flow) {
+        showAddFields(flow, true);
+        const input = document.getElementById(ADD_FORMS[flow].input);
+        if (input) input.focus();
+    }
+
+    // The add button of a card. Asks at the moment it is
+    // pressed rather than on page load, so the answer is as fresh as
+    // it can be: through /reauth first when one is due, straight to the
+    // form when not.
+    //
+    // A failed question opens the form anyway. The add command asks
+    // for the reauth itself, so nothing gets past it -- the user just
+    // gets the press-again fallback instead of this.
+    async function onStartAdd(flow) {
+        const urls = getUrls();
+        const form = ADD_FORMS[flow];
+        let missing = false;
+        try {
+            const resp = await fetchJSON(urls.urlStepUpState);
+            const body = await resp.json();
+            if (resp.ok) missing = !!(body.step_up_missing || {})[form.flow];
+        } catch (e) {
+            missing = false;
+        }
+        if (!missing) {
+            openAddFields(flow);
+            return;
+        }
+        try {
+            sessionStorage.setItem(PENDING_ADD_KEY, JSON.stringify(
+                    {hash: form.hash, at: Date.now(), open: flow}));
+        } catch (e) { /* sessionStorage disabled: press the button again */ }
+        _driveReauth(form.hash);
+    }
+
     // The WebAuthn registration dance. Identical for a passkey and for
     // a security key -- ask the server for create-options, let the
     // browser talk to the authenticator, post back what it signed. The
@@ -467,6 +738,9 @@
         });
         const beginResult = await beginResp.json();
         if (!beginResp.ok) {
+            if (handleStepUp(beginResult, opts.stepUpHash, opts.stepUpPending)) {
+                throw new Error(STEP_UP_REDIRECT);
+            }
             throw new Error(beginResult.error || opts.beginFailed);
         }
 
@@ -558,12 +832,20 @@
                 beginFailed:     i18n.labelFailedStartPasskey
                                 || 'Failed to start passkey registration.',
                 completeFailed:  i18n.labelPasskeyRegFailed || 'Passkey registration failed.',
+                stepUpHash:      '#passkeyCard',
+                stepUpPending:   {flow: 'passkey',
+                                input: 'passkeyName', button: 'addPasskeyBtn',
+                                status: 'passkeyStatus', value: deviceName,
+                                auto: false},
             });
             statusEl.textContent = i18n.labelPasskeyAdded || 'Passkey added.';
             document.getElementById('passkeyName').value = '';
+            // Back to the button: the next one asks again.
+            showAddFields('passkey', false);
             loadPasskeys();
             notifySyncPending(result);
         } catch (e) {
+            if (e.message === STEP_UP_REDIRECT) return;
             // NotAllowedError covers user cancel + timeout; surface the
             // raw message so users see "this passkey is already
             // registered" etc. unchanged.
@@ -612,12 +894,20 @@
                                 || 'Failed to register security key.',
                 completeFailed:  i18n.labelFailedAddFido2
                                 || 'Failed to register security key.',
+                stepUpHash:      '#fido2Card',
+                stepUpPending:   {flow: 'fido2',
+                                input: 'fido2DeviceName', button: 'addFido2Btn',
+                                status: 'fido2Status', value: deviceName,
+                                auto: false},
             });
             statusEl.textContent = i18n.labelFido2Added || 'Security key registered.';
             document.getElementById('fido2DeviceName').value = '';
+            // Back to the button: the next one asks again.
+            showAddFields('fido2', false);
             loadFido2Tokens();
             notifySyncPending(result);
         } catch (e) {
+            if (e.message === STEP_UP_REDIRECT) return;
             errorEl.textContent = e.message || i18n.labelFailedAddFido2
                     || 'Failed to register security key.';
             statusEl.textContent = '';
@@ -1000,6 +1290,10 @@
         const form = document.getElementById('tiqrAddForm');
         if (box) box.classList.toggle('is-hidden', !show);
         if (form) form.classList.toggle('is-hidden', show);
+        // The box goes away when the phone enrolled, the code expired
+        // or the user cancelled -- in every case the form goes back to
+        // its button, and the next phone asks again.
+        if (!show) showAddFields('tiqr', false);
     }
 
     async function addTiqrToken() {
@@ -1023,6 +1317,12 @@
             });
             const result = await resp.json();
             if (!resp.ok) {
+                if (handleStepUp(result, '#tiqrCard',
+                        {flow: 'tiqr',
+                        input: 'tiqrDeviceName', button: 'addTiqrBtn',
+                        status: 'tiqrStatus', value: deviceName, auto: true})) {
+                    return;
+                }
                 throw new Error(result.error || i18n.labelFailedStartTiqr || 'Failed to start tiqr enrollment.');
             }
             const img = document.getElementById('tiqrQrcodeImg');
@@ -1278,14 +1578,14 @@
     // Edit click redirects through /reauth?next=/settings#recoveryMailCard;
     // after the reauth completes the user lands back here and the URL
     // hash flips the card into edit mode. The server gates every
-    // write on session.reauth_time freshness -- if the 60s window
+    // write on session.reauth_time freshness -- if the window
     // elapsed by the time Save is clicked, the response carries
     // step_up_required=true and we bounce the user through /reauth
     // again.
 
     let _recoveryMailCurrentValue = null;
     // How long a step-up stays fresh, and when the last one happened.
-    // ssod hands the window down with the address (STEP_UP_MAX_AGE);
+    // ssod hands the window down with the address (sso_reauth_timeout);
     // the moment comes from landing back on this page after /reauth,
     // which is the same moment ssod bumped session.reauth_time.
     //
@@ -1351,9 +1651,13 @@
         els.input.focus();
     }
 
-    function _driveReauth() {
+    // Send the user through /reauth and back to the card they were on.
+    // The hash is what tells us, on the way back, that the step-up just
+    // happened -- see loadRecoveryMail() and _noteStepUp().
+    function _driveReauth(hash) {
         const urls = getUrls();
-        const target = (urls.settingsPath || '/settings') + '#recoveryMailCard';
+        const target = (urls.settingsPath || '/settings')
+                + (hash || '#recoveryMailCard');
         window.location.assign(urls.urlReauth
                 + '?next=' + encodeURIComponent(target));
     }
@@ -1558,6 +1862,136 @@
         }
     }
 
+    function getSessionUrls() {
+        const el = document.getElementById('session-urls');
+        return el ? el.dataset : null;
+    }
+
+    function formatSessionTime(ts) {
+        if (!ts) return '';
+        try {
+            return new Date(ts * 1000).toLocaleString();
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function sessionHint(text) {
+        const hint = document.createElement('span');
+        hint.className = 'hint is-block';
+        hint.textContent = text;
+        return hint;
+    }
+
+    async function loadSessions() {
+        const urls = getSessionUrls();
+        const i18n = getPageI18n();
+        const card = document.getElementById('sessionCard');
+        const listEl = document.getElementById('sessionList');
+        if (!urls || !listEl) return;
+        listEl.innerHTML = '';
+        try {
+            const resp = await fetchJSON(urls.urlList);
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedLoadSessions || 'Failed to load sessions.');
+            }
+            // Server gates the card on sso_allow_session_mgmt.
+            if (result.allowed === false) {
+                if (card) card.classList.add('is-hidden');
+                return;
+            }
+            if (card) card.classList.remove('is-hidden');
+            const sessions = result.sessions || [];
+            if (sessions.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = i18n.labelNoSessions || 'No active sessions.';
+                listEl.appendChild(li);
+                return;
+            }
+            for (const s of sessions) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'device-label';
+                const head = document.createElement('strong');
+                head.textContent = s.access_group || s.session_type || '';
+                label.appendChild(head);
+                if (s.current) {
+                    const current = document.createElement('span');
+                    current.className = 'hint';
+                    current.textContent = ' (' + (i18n.labelCurrentSession || 'This session') + ')';
+                    label.appendChild(current);
+                }
+                const where = [s.client, s.client_ip].filter(Boolean).join(', ');
+                if (where) {
+                    label.appendChild(sessionHint(
+                            (i18n.labelSessionClientPrefix || 'Client:') + ' ' + where));
+                }
+                if (s.token) {
+                    label.appendChild(sessionHint(
+                            (i18n.labelSessionTokenPrefix || 'Token:') + ' ' + s.token));
+                }
+                if (s.creation_time) {
+                    label.appendChild(sessionHint(
+                            (i18n.labelSessionLoginPrefix || 'Login:')
+                            + ' ' + formatSessionTime(s.creation_time)));
+                }
+                if (s.expire_time) {
+                    label.appendChild(sessionHint(
+                            (i18n.labelSessionExpiresPrefix || 'Expires:')
+                            + ' ' + formatSessionTime(s.expire_time)));
+                }
+                li.appendChild(label);
+                // No button for the session this page is served from:
+                // ending it would log the user out from here.
+                if (!s.current) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-secondary btn-small';
+                    btn.textContent = i18n.labelEndSessionBtn || 'End session';
+                    btn.addEventListener('click', () => deleteSession(s.uuid));
+                    li.appendChild(btn);
+                }
+                listEl.appendChild(li);
+            }
+        } catch (e) {
+            const li = document.createElement('li');
+            li.className = 'error-msg';
+            li.textContent = e.message || i18n.labelFailedLoadSessions || 'Failed to load sessions.';
+            listEl.appendChild(li);
+        }
+    }
+
+    async function deleteSession(sessionUuid) {
+        const urls = getSessionUrls();
+        if (!urls) return;
+        const i18n = getPageI18n();
+        const msg = i18n.labelConfirmEndSession
+                || 'End this session? Applications you signed in to with it will be signed out.';
+        if (!confirm(msg)) {
+            return;
+        }
+        const statusEl = document.getElementById('sessionStatus');
+        const errorEl = document.getElementById('sessionError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+        try {
+            const resp = await fetchJSON(urls.urlDelete, {
+                method: 'POST',
+                body: JSON.stringify({session_uuid: sessionUuid}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedEndSession || 'Failed to end session.');
+            }
+            statusEl.textContent = result.message || i18n.labelSessionEnded || 'Session ended.';
+            preserveScrollAround(loadSessions);
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedEndSession || 'Failed to end session.';
+        }
+    }
+
     async function revokeOidcConsent(clientUuid, label) {
         const urls = getConsentUrls();
         if (!urls) return;
@@ -1685,14 +2119,23 @@
         // and ids depend on the user's configured device_token_roles.
         const addPasskeyBtn = document.getElementById('addPasskeyBtn');
         if (addPasskeyBtn) addPasskeyBtn.addEventListener('click', addPasskey);
+        const startPasskeyBtn = document.getElementById('startPasskeyBtn');
+        if (startPasskeyBtn) startPasskeyBtn.addEventListener('click',
+                () => onStartAdd('passkey'));
 
         const addFido2Btn = document.getElementById('addFido2Btn');
         if (addFido2Btn) addFido2Btn.addEventListener('click', addFido2Token);
+        const startFido2Btn = document.getElementById('startFido2Btn');
+        if (startFido2Btn) startFido2Btn.addEventListener('click',
+                () => onStartAdd('fido2'));
 
         const addTiqrBtn = document.getElementById('addTiqrBtn');
         if (addTiqrBtn) addTiqrBtn.addEventListener('click', addTiqrToken);
         const tiqrCancelBtn = document.getElementById('tiqrCancelBtn');
         if (tiqrCancelBtn) tiqrCancelBtn.addEventListener('click', cancelTiqrEnrollment);
+        const startTiqrBtn = document.getElementById('startTiqrBtn');
+        if (startTiqrBtn) startTiqrBtn.addEventListener('click',
+                () => onStartAdd('tiqr'));
 
         const adminToggle = document.getElementById('adminAccessToggle');
         if (adminToggle) adminToggle.addEventListener('change', onAdminAccessToggle);
@@ -1716,6 +2159,7 @@
             loadAdminAccess().catch(() => {}),
             loadRecoveryMail().catch(() => {}),
             loadOidcConsents().catch(() => {}),
+            loadSessions().catch(() => {}),
         ]).then(function () {
             let saved = null;
             try {
@@ -1732,6 +2176,10 @@
                 if (y !== null && Number.isFinite(y)) {
                     window.scrollTo(0, y);
                 }
+                // After the loaders: the device token cards, and the
+                // buttons in them, only exist once loadDeviceTokens()
+                // has built them.
+                resumePendingAdd();
             });
         }).catch(function () {
             // Promise.all above catches each loader, so this only

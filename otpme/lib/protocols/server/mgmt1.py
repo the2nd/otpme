@@ -261,10 +261,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if self.new_message_event:
             self.new_message_event.set()
         if not config.use_api:
-            try:
-                multiprocessing.running_jobs.pop(job_uuid)
-            except KeyError:
-                pass
+            multiprocessing.del_master_failover_blocker(job_uuid)
         try:
             self.running_jobs.pop(job_uuid)
         except KeyError:
@@ -453,17 +450,15 @@ class OTPmeMgmtP1(OTPmeServer1):
             # Add job to our job list
             self.jobs[job.uuid] = job
             self.running_jobs[job.uuid] = job
-            # Add job to multiprocessing queue.
+            # Prevent master failover while the job is running.
             if not config.use_api:
                 auth_token = "API"
                 if config.auth_token:
                     auth_token = config.auth_token.rel_path
-                multiprocessing.running_jobs[job.uuid] = {
-                                                        'name'      : name,
-                                                        'start_time': time.time(),
-                                                        'auth_token': auth_token,
-                                                        'pid'       : job.pid,
-                                                        }
+                multiprocessing.add_master_failover_blocker(name,
+                                                blocker_id=job.uuid,
+                                                auth_token=auth_token,
+                                                pid=job.pid)
             # Wakeup job handler thread.
             if self.new_job_event:
                 self.new_job_event.set()

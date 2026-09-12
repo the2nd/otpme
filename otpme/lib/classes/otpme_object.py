@@ -103,6 +103,31 @@ global_write_acls = [
                     "import",
                     "touch",
                 ]
+# ACL types that change the object (e.g. the "edit" of
+# "edit:description"). The ones missing in global_write_acls are only
+# used as value ACLs (e.g. "renew:cert").
+write_acl_types = global_write_acls + [
+                    "assign",
+                    "clear",
+                    "renew",
+                    "revoke",
+                ]
+# What may still be changed on a realm/site that is managed somewhere
+# else. The realms/sites sync keeps the first three when it updates our
+# copy with the data of the site itself (see otpme/lib/daemon/hostd.py),
+# everything else is overwritten. The status is not kept, but disabling
+# a site is how one stops using it: a site we disabled is not contacted
+# (hostd) and the realm master does not offer a disabled site to anyone
+# (sync1.get_sites_command()).
+sync_safe_acls = [
+                    "edit:description",
+                    "enable:auth",
+                    "disable:auth",
+                    "enable:sync",
+                    "disable:sync",
+                    "enable:object",
+                    "disable:object",
+                ]
 
 global_read_value_acls = {
                     "view"      : [
@@ -4406,11 +4431,19 @@ class OTPmeObject(OTPmeBaseObject):
             if self.auto_sign:
                 auto_sign = True
 
+        # A signature the user asked for explicitly (--sign) must not be
+        # skipped silently below.
+        sign_requested = sign
+
         if auto_sign:
             sign = True
 
-        # Disable signing if object is not signable.
-        if not self.signable:
+        # Disable signing if token is not signable.
+        if not token.signable:
+            if sign_requested:
+                msg = _("Token {token_path} is not signable.")
+                msg = msg.format(token_path=token.rel_path)
+                return callback.error(msg)
             sign = False
 
         # Add signature to token.
@@ -4432,10 +4465,22 @@ class OTPmeObject(OTPmeBaseObject):
             user_tag = f"user:{token_user.uuid}"
             add_tags.append(user_tag)
 
-            # Add token options tag.
+            # Add token options tag. It must hold the options that are
+            # actually used (e.g. an option that is not valid for the
+            # token type is dropped), else the tag would never match on
+            # verification (see ssh.filter_key_options()).
             if token_options:
-                opts_tag = f"options:{token_options}"
-                add_tags.append(opts_tag)
+                from otpme.lib import ssh
+                try:
+                    valid_opts = ssh.filter_key_options(token_options,
+                                            token.valid_token_options)[0]
+                except OTPmeException as e:
+                    msg = _("Invalid token options: {error}")
+                    msg = msg.format(error=e)
+                    return callback.error(msg)
+                if valid_opts:
+                    opts_tag = f"options:{','.join(valid_opts)}"
+                    add_tags.append(opts_tag)
 
             # Add object tags.
             if self.type == "group":
@@ -8019,7 +8064,10 @@ class OTPmeObject(OTPmeBaseObject):
         if now >= disable_time:
             callback = JobCallback(name="auto_disable", client="auto_disable")
             try:
+                # We are called from the enabled property. So we must not
+                # do any network stuff (e.g. node service shutdown).
                 self.disable(force=True,
+                            offline=True,
                             verify_acls=False,
                             run_policies=False,
                             callback=callback)
@@ -8822,9 +8870,11 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Failed to verify signature")
             return callback.error(msg)
 
-        # Add signature to object.
+        # Add signature to object. No need to ask the user again, but an
+        # existing valid signature must still be protected by force.
         status = self.add_sign(sig,
                             force=force,
+                            ask_confirmation=False,
                             run_policies=run_policies,
                             callback=callback,
                             _caller=_caller)
@@ -8849,6 +8899,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         signature: object,
         force: bool=False,
+        ask_confirmation: bool=True,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -8882,11 +8933,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Asked here and not in sign(): that one hands the signature over
         # to us, so this is the single place where a signature actually
-        # lands on the object.
-        msg = _("Add signature to {object_type} '{object_name}'?: ")
-        msg = msg.format(object_type=self.type, object_name=self.name)
-        if not self.ask_change_confirmation(msg, force=force, callback=callback):
-            return callback.abort()
+        # lands on the object. But sign() asks us not to: the user already
+        # requested the signature with the command itself.
+        if ask_confirmation:
+            msg = _("Add signature to {object_type} '{object_name}'?: ")
+            msg = msg.format(object_type=self.type, object_name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         sign_id = signature.sign_id
         # Check if a valid signature already exists (via sign ID).
@@ -9161,10 +9214,7 @@ class OTPmeObject(OTPmeBaseObject):
                     found_valid_sign_tags = True
 
                 sign_info = _sig.get_sign_info()
-                if verbose_level > 0:
-                    sign_info = pprint.pformat(sign_info)
-                else:
-                    sign_info = sign_info['sign_ref']
+                sign_info = pprint.pformat(sign_info)
                 # Verify if signature.
                 sign_data = self.get_sign_data()
                 try:

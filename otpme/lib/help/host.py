@@ -526,6 +526,7 @@ cmd_help = {
                                     'cmd'                   : _('Add token to host.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
                                     '--sign'                : _('Sign the object with default tags.'),
+                                    '--no-auto-sign'        : _('Disable auto sign.'),
                                     '--tags <tag1,tag2>'    : _('Add tags to signature.'),
                                 },
                 },

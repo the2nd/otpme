@@ -4,7 +4,9 @@
      data-url-deploy-begin="{{ url_for('deploy_begin', _external=True, _scheme='https') }}"
      data-url-deploy-verify="{{ url_for('deploy_verify', _external=True, _scheme='https') }}"
      data-url-fido2-register-begin="{{ url_for('fido2_register_begin', _external=True, _scheme='https') }}"
-     data-url-fido2-register-complete="{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}"></div>
+     data-url-fido2-register-complete="{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}"
+     data-url-reauth="{{ url_for('reauth', _external=True, _scheme='https') }}"
+     data-deploy-path="{{ url_for('deploy') }}"></div>
 <div id="page-i18n"
      data-label-creating-token="{{ gettext('Creating token...') }}"
      data-label-deployment-failed="{{ gettext('Deployment failed.') }}"

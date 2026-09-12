@@ -59,6 +59,11 @@ SUPPORTED_STATE_DICTS = [
                         'tiqr_auth_results',
                         ]
 
+# Kept in states_sync_synced_nodes next to the per-node entries, as
+# "<state_id>:@released": the version of a state whose writer has been
+# let go already. "@" cannot be part of a node name.
+STATE_RELEASED_MARKER = "@released"
+
 CLUSTER_IN_JOURNAL_NAME = "cluster_in_journal"
 CLUSTER_IN_JOURNAL_DIR = os.path.join(config.spool_dir, CLUSTER_IN_JOURNAL_NAME)
 CLUSTER_OUT_JOURNAL_NAME = "cluster_out_journal"
@@ -77,7 +82,8 @@ def register():
     multiprocessing.register_shared_dict("online_nodes")
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_list("pause_writes")
-    multiprocessing.register_shared_dict("running_jobs")
+    multiprocessing.register_shared_dict("master_failover_blockers")
+    multiprocessing.register_shared_dict("service_shutdown_blockers")
     multiprocessing.register_shared_dict("cluster_quorum")
     multiprocessing.register_shared_dict("node_connections")
     multiprocessing.register_shared_list("master_sync_done")
@@ -107,6 +113,11 @@ def register_cluster_journal():
                             perms=0o770)
 
 def check_cluster_status(skip_master_failover=False):
+    # A service shutdown (e.g. node disable) must also stop daemons that
+    # continue to work on master failover (e.g. authd).
+    if config.service_shutdown:
+        msg = _("Ongoing service shutdown.")
+        raise OTPmeException(msg)
     if not skip_master_failover:
         if config.master_failover:
             msg = _("Ongoing master failover.")
@@ -378,6 +389,57 @@ def cluster_sync_state_delete(state_id):
     for why.
     """
     cluster_sync_object(action="state_delete", state_id=state_id)
+
+def add_cluster_state(shared_dict, state_id, state_data, expiry, timeout=30):
+    """ Store a short-lived state here and hand it to the other nodes.
+
+    The one way in for every state the states sync carries. Besides what
+    the caller gives, the state gets the moment it runs out, as
+    ``state_expires``: only a redis backed cache can tell how long a key
+    has left, and a node coming up has to be told that for every state
+    it takes over -- see get_states_snapshot(). A key of its own because
+    tiqr_auth_results has an ``expiry`` already, which is the
+    challenge's.
+
+    Waits for the other nodes, see cluster_sync_state(). """
+    state_data = dict(state_data)
+    state_data['state_expires'] = time.time() + expiry
+    shared_dict.add(key=state_id, value=state_data, expire=expiry)
+    cluster_sync_state(state_id=state_id, expiry=expiry, timeout=timeout)
+
+def get_states_snapshot():
+    """ Every short-lived state this node holds, with the time it has left.
+
+    For a node that is coming up: the states sync hands a state only to
+    the nodes online at the time and forgets it once they have it, so a
+    node that joins later would never see the ones still running -- and
+    the browser that started a WebAuthn or tiqr flow elsewhere may well
+    finish it there. See ClusterClient.sync_states(), which fetches this
+    during the initial sync.
+
+    The time left is worked out here, on this node's clock, and handed
+    on as seconds: the node taking it over never compares its clock with
+    ours.
+    """
+    now = time.time()
+    states = {}
+    for shared_dict_name in SUPPORTED_STATE_DICTS:
+        shared_dict = getattr(multiprocessing, shared_dict_name, None)
+        if shared_dict is None:
+            continue
+        for state_id, state_data in shared_dict.items():
+            try:
+                expires = float(state_data['state_expires'])
+            except (KeyError, TypeError, ValueError):
+                # Made before states carried their expiry. How long it
+                # has left is unknown, and it runs out within minutes
+                # anyway.
+                continue
+            ttl = int(expires - now)
+            if ttl <= 0:
+                continue
+            states[state_id] = {'data': state_data, 'ttl': ttl}
+    return states
 
 def calc_node_vote():
     node_name = config.host_data['name']
@@ -1408,11 +1470,16 @@ class ClusterDaemon(OTPmeDaemon):
     def enable_node(self):
         node_uuid = config.uuid
         node = backend.get_object(uuid=node_uuid)
+        # Our services have to handle requests again.
+        config.service_shutdown = False
         if node.enabled:
             return
         node.acquire_lock(lock_caller="clusterd")
         try:
-            node.enable(force=True, verify_acls=False, no_audit_log=True)
+            # We are the node to enable. So there is no need to start our
+            # services via clusterd connection.
+            node.enable(force=True, offline=True,
+                        verify_acls=False, no_audit_log=True)
             node._write(cluster=False)
         finally:
             node.release_lock(lock_caller="clusterd")
@@ -1421,11 +1488,16 @@ class ClusterDaemon(OTPmeDaemon):
     def disable_node(self):
         node_uuid = config.uuid
         node = backend.get_object(uuid=node_uuid)
+        # A disabled node must not handle any request.
+        config.service_shutdown = True
         if not node.enabled:
             return
         node.acquire_lock(lock_caller="clusterd")
         try:
-            node.disable(force=True, verify_acls=False, no_audit_log=True)
+            # We are the node to disable. So there is no need to shutdown
+            # our services via clusterd connection.
+            node.disable(force=True, offline=True,
+                        verify_acls=False, no_audit_log=True)
             node._write(cluster=False)
         finally:
             node.release_lock(lock_caller="clusterd")
@@ -1667,6 +1739,25 @@ class ClusterDaemon(OTPmeDaemon):
                 log_msg = log_msg.format(node=node_name)
                 self.logger.info(log_msg)
                 sync_finished = True
+            # Short-lived states (WebAuthn, tiqr). The states sync hands
+            # a state only to the nodes online at the time, so a node
+            # that comes up now has none of the flows still running --
+            # and a browser that started one elsewhere may finish it
+            # here. Not a reason to hold the node back if it fails:
+            # the states run out within minutes anyway.
+            log_msg = _("Starting states sync with node: {node}", log=True)[1]
+            log_msg = log_msg.format(node=node_name)
+            self.logger.info(log_msg)
+            try:
+                clusterd_conn.sync_states()
+            except Exception as e:
+                log_msg = _("Failed to sync states with node: {node}: {error}", log=True)[1]
+                log_msg = log_msg.format(node=node_name, error=e)
+                self.logger.warning(log_msg)
+            else:
+                log_msg = _("States sync finished with node: {node}", log=True)[1]
+                log_msg = log_msg.format(node=node_name)
+                self.logger.info(log_msg)
             if sync_finished:
                 break
 
@@ -4317,6 +4408,41 @@ class ClusterDaemon(OTPmeDaemon):
                 multiprocessing.states_sync_synced_nodes.pop(f"{state_id}:{n}")
             except (KeyError, ValueError):
                 pass
+        try:
+            multiprocessing.states_sync_synced_nodes.pop(f"{state_id}:{STATE_RELEASED_MARKER}")
+        except (KeyError, ValueError):
+            pass
+
+    def _state_synced_to(self, state_id, entry_ts, nodes):
+        """ Do all of <nodes> have this version of the state? """
+        for n in nodes:
+            try:
+                n_ts = multiprocessing.states_sync_synced_nodes[f"{state_id}:{n}"]
+            except (KeyError, ValueError):
+                return False
+            if n_ts != entry_ts:
+                return False
+        return True
+
+    def release_state_writer(self, state_id, entry_ts):
+        """ Let the caller waiting in cluster_sync_state() go on.
+
+        Once per version of the state, which the marker remembers --
+        every node's states process gets here for the same entry. Set
+        but not unlinked, like check_member_nodes() does it: the entry
+        stays queued until the online nodes have it too, and
+        drop_state_entry() unlinks the event when it goes. """
+        marker_key = f"{state_id}:{STATE_RELEASED_MARKER}"
+        try:
+            released_ts = multiprocessing.states_sync_synced_nodes[marker_key]
+        except (KeyError, ValueError):
+            released_ts = None
+        if released_ts == entry_ts:
+            return
+        object_event = multiprocessing.Event(f"/cluster_journal_{entry_ts}")
+        object_event.set()
+        object_event.close()
+        multiprocessing.states_sync_synced_nodes[marker_key] = entry_ts
 
     def process_states(self, node_name):
         """ Process states from shared dict. """
@@ -4422,9 +4548,20 @@ class ClusterDaemon(OTPmeDaemon):
             log_msg = log_msg.format(node=node_name, action=action,
                                     state_id=state_id)
             self.logger.debug(log_msg)
-        # Mark this node as synced. Remove entry once all online
-        # nodes have received it.
-        online_nodes = list(multiprocessing.online_nodes)
+        # Mark this node as synced. Then the same two steps the object
+        # journal takes (check_member_nodes/check_online_nodes): the
+        # writer waiting in cluster_sync_state() is let go once every
+        # member node has the state, and the entry is only dropped once
+        # every online node has it -- a node that is online but not a
+        # member yet is still catching up, and has to get it as well.
+        #
+        # Without the min_written_nodes shortcut check_member_nodes()
+        # has: it would let the login go on before a member has the
+        # state, which is what waiting for them is there to prevent.
+        member_nodes = [n for n in multiprocessing.member_nodes
+                        if n != self.host_name]
+        online_nodes = [n for n in multiprocessing.online_nodes
+                        if n != self.host_name]
         for state_id, value in sent.items():
             action, _expiry, entry_ts = value.split("|", 2)
             # Check if value was updated since our snapshot.
@@ -4438,24 +4575,18 @@ class ClusterDaemon(OTPmeDaemon):
             # Mark this node as synced for this timestamp.
             synced_key = f"{state_id}:{node_name}"
             multiprocessing.states_sync_synced_nodes[synced_key] = entry_ts
-            # Check if all online nodes have synced this entry.
-            all_synced = True
-            for n in online_nodes:
-                check_key = f"{state_id}:{n}"
-                try:
-                    n_ts = multiprocessing.states_sync_synced_nodes[check_key]
-                except (KeyError, ValueError):
-                    all_synced = False
-                    break
-                if n_ts != entry_ts:
-                    all_synced = False
-                    break
-            if all_synced:
-                # Everyone has it: release the writer and clear the
-                # entry. Same way out as a state that turned out to be
-                # gone, so both go through one place.
-                self.drop_state_entry(state_id, entry_ts, all_nodes,
-                                    notify=action != "delete")
+            if not self._state_synced_to(state_id, entry_ts, member_nodes):
+                continue
+            # Nobody waits for a delete.
+            notify = action != "delete"
+            if notify:
+                self.release_state_writer(state_id, entry_ts)
+            if not self._state_synced_to(state_id, entry_ts, online_nodes):
+                continue
+            # Everyone has it: clear the entry. Same way out as a state
+            # that turned out to be gone, so both go through one place.
+            self.drop_state_entry(state_id, entry_ts, all_nodes,
+                                notify=notify)
 
     def set_node_sync(self, node_name, sync_time):
         try:

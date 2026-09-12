@@ -5,6 +5,7 @@ import sys
 import pwd
 import grp
 import mmap
+import time
 import atexit
 import psutil
 import signal
@@ -136,6 +137,86 @@ def register_shared_list(name, clear=False, locking=False, pickle=False):
                         }
     fake_shared_list = SharedList(name)
     register_module_var(name, fake_shared_list)
+
+def add_master_failover_blocker(name, blocker_id=None,
+    auth_token=None, pid=None):
+    """ Add blocker to prevent master failover while jobs are running. """
+    if blocker_id is None:
+        blocker_id = stuff.gen_uuid()
+    if pid is None:
+        pid = os.getpid()
+    if auth_token is None:
+        if config.auth_token:
+            auth_token = config.auth_token.rel_path
+    master_failover_blockers[blocker_id] = {
+                                        'name'          : name,
+                                        'start_time'    : time.time(),
+                                        'auth_token'    : auth_token,
+                                        'pid'           : pid,
+                                        }
+    return blocker_id
+
+def del_master_failover_blocker(blocker_id):
+    """ Remove master failover blocker. """
+    try:
+        master_failover_blockers.pop(blocker_id)
+    except KeyError:
+        pass
+
+def get_master_failover_blocker():
+    """ Get master failover blockers (e.g. running jobs). """
+    blockers = {}
+    all_blockers = dict(master_failover_blockers)
+    for x in all_blockers:
+        x_blocker = all_blockers[x]
+        x_pid = x_blocker['pid']
+        # Processes that died (e.g. killed) will not remove their blocker.
+        # So we have to do it here to prevent a blocked master failover.
+        if x_pid and not stuff.check_pid(x_pid):
+            del_master_failover_blocker(x)
+            continue
+        blockers[x] = x_blocker
+    return blockers
+
+def add_service_shutdown_blocker(name, blocker_id=None,
+    auth_token=None, pid=None):
+    """ Add blocker to prevent service shutdown while jobs are running. """
+    if blocker_id is None:
+        blocker_id = stuff.gen_uuid()
+    if pid is None:
+        pid = os.getpid()
+    if auth_token is None:
+        if config.auth_token:
+            auth_token = config.auth_token.rel_path
+    service_shutdown_blockers[blocker_id] = {
+                                        'name'          : name,
+                                        'start_time'    : time.time(),
+                                        'auth_token'    : auth_token,
+                                        'pid'           : pid,
+                                        }
+    return blocker_id
+
+def del_service_shutdown_blocker(blocker_id):
+    """ Remove service shutdown blocker. """
+    try:
+        service_shutdown_blockers.pop(blocker_id)
+    except KeyError:
+        pass
+
+def get_service_shutdown_blocker():
+    """ Get service shutdown blockers (e.g. running auth jobs). """
+    blockers = {}
+    all_blockers = dict(service_shutdown_blockers)
+    for x in all_blockers:
+        x_blocker = all_blockers[x]
+        x_pid = x_blocker['pid']
+        # Processes that died (e.g. killed) will not remove their blocker.
+        # So we have to do it here to prevent a blocked service shutdown.
+        if x_pid and not stuff.check_pid(x_pid):
+            del_service_shutdown_blocker(x)
+            continue
+        blockers[x] = x_blocker
+    return blockers
 
 def get_id():
     """ Get uniq ID depending on process type. """

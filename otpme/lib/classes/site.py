@@ -44,6 +44,8 @@ from otpme.lib.compression.base import get_uncompressed_size
 from otpme.lib.policy.idrange.idrange  import BASE_POLICY_NAME
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import write_acl_types
+from otpme.lib.classes.otpme_object import sync_safe_acls
 from otpme.lib.classes.otpme_object import \
     get_acls as _get_acls
 from otpme.lib.classes.otpme_object import \
@@ -1310,7 +1312,9 @@ def register_config():
                                     default_value=False,
                                     object_types=object_types)
     def backup_report_mode_setter(mode, callback=JobCallback, **kwargs):
-        valid_backup_report_modes = ['all', 'error', 'success']
+        # summary: one report for all backups of this host instead of one
+        # report per backup object.
+        valid_backup_report_modes = ['all', 'error', 'success', 'summary']
         if mode not in valid_backup_report_modes:
             msg = _("Invalid backup report mode: {mode}: Must be {modes}")
             msg = msg.format(mode=mode, modes=valid_backup_report_modes)
@@ -2181,6 +2185,73 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Let a user see and end their own sessions on the settings page.
+    #
+    # Off by default, unlike the sso_allow_* parameters above: those
+    # cover credentials the user owns anyway, while this shows where an
+    # account is logged in (client, address, token) -- something an
+    # install should hand out deliberately. Only the sessions of the
+    # portal site are listed, that is where a login of this portal
+    # lives.
+    config.register_config_parameter(name="sso_allow_session_mgmt",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    # Ask the user to prove themselves again before they hand out a new
+    # credential. Same gate the recovery mail change sits behind: a
+    # browser somebody left unlocked must not be enough to enroll a
+    # second way in, which is what every one of these does -- and the
+    # new credential would outlive the session it was created from.
+    #
+    # One per flow because the cost differs: a security key is a device
+    # the user has to be holding anyway, while a device token is a
+    # password on a screen. Default on; an install that finds it in the
+    # way turns the ones it does not want off.
+    config.register_config_parameter(name="deploy_login_token_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="deploy_fido2_token_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="deploy_passkey_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="deploy_tiqr_token_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="deploy_device_token_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    # How long a reauth stays fresh for every one of the gates above
+    # and for the recovery mail change. Short on purpose -- the point
+    # is a window the user is actively using, not a second session.
+    #
+    # No getter: get_config_parameter() applies one by default, and
+    # everything that reads this wants seconds, not "2m".
+    def sso_reauth_timeout_setter(timeout, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            timeout = units.time2int(timeout, time_unit="s")
+        except Exception as err:
+            msg = _("Invalid reauth timeout.")
+            raise ValueError(msg) from err
+        # The settings page wants 30 seconds of the window left before
+        # it opens an add form, so anything much shorter would leave
+        # the user nothing to work with.
+        if timeout < 60:
+            msg = _("Reauth timeout must be at least 60 seconds.")
+            raise ValueError(msg)
+        return timeout
+    config.register_config_parameter(name="sso_reauth_timeout",
+                                    ctype=int,
+                                    setter=sso_reauth_timeout_setter,
+                                    default_value=120,
+                                    object_types=object_types)
     # Put SSO device tokens to trash
     config.register_config_parameter(name="add_device_token_to_trash",
                                     ctype=bool,
@@ -3026,6 +3097,16 @@ class Site(OTPmeObject):
                             # roles that user gets.
                             "CONFIG_PARAMS:device_token_roles",
                             "CONFIG_PARAMS:device_token_roles_trusts",
+                            # The bottom of the reauth cascade. Asked on
+                            # the portal, which for a user of ours is
+                            # another site -- without this it would only
+                            # ever see the default.
+                            "CONFIG_PARAMS:deploy_login_token_reauth",
+                            "CONFIG_PARAMS:deploy_fido2_token_reauth",
+                            "CONFIG_PARAMS:deploy_passkey_reauth",
+                            "CONFIG_PARAMS:deploy_tiqr_token_reauth",
+                            "CONFIG_PARAMS:deploy_device_token_reauth",
+                            "CONFIG_PARAMS:sso_reauth_timeout",
                             ],
                         },
                     }
@@ -3255,6 +3336,28 @@ class Site(OTPmeObject):
         """ Set instance variables. """
         return True
 
+    def verify_acl(self, action: str, **kwargs):
+        """ Verify ACLs required to allow <action>. """
+        # A site is managed on the site itself: the realms/sites sync
+        # overwrites our copy with the data we get from it and keeps only
+        # the settings of sync_safe_acls (see otpme/lib/daemon/hostd.py).
+        # So changing anything else here would be lost with the next
+        # sync. A site object has no site attribute (it is its own site,
+        # see OTPmeObject.__init__()), so its name is what we compare.
+        # While a site is added it is not our site either, but the ACLs
+        # of the add were checked on the realm (_prepare_add()).
+        if not config.site_init:
+            if self.realm != config.realm or self.name != config.site:
+                # Removing the site is not a change the sync could
+                # overwrite. Where a site may be removed is handled by
+                # mgmt1.
+                if action != "delete:object" and action not in sync_safe_acls:
+                    acl_type = action.split(":")[0]
+                    if acl_type in write_acl_types:
+                        return False
+        # Finally try to verify ACL via parent class method.
+        return self._verify_acl(action, **kwargs)
+
     def _write(self, **kwargs):
         """ Wrapper to make sure radius gets reloaded. """
         result = super()._write(**kwargs)
@@ -3400,6 +3503,12 @@ class Site(OTPmeObject):
         **kwargs,
         ):
         """ Change site IP address. """
+        if not force:
+            if address == self.address:
+                msg = _("Address already set to: {address}")
+                msg = msg.format(address=address)
+                return callback.error(msg)
+
         msg = _("Change address of site '{site_name}' to '{address}'?: ")
         msg = msg.format(site_name=self.name, address=address)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -3436,6 +3545,12 @@ class Site(OTPmeObject):
         **kwargs,
         ):
         """ Change site auth FQDN. """
+        if not force:
+            if fqdn == self.auth_fqdn:
+                msg = _("Fqdn already set to: {fqdn}")
+                msg = msg.format(fqdn=fqdn)
+                return callback.error(msg)
+
         msg = _("Change auth FQDN of site '{site_name}' to '{fqdn}'?: ")
         msg = msg.format(site_name=self.name, fqdn=fqdn)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):

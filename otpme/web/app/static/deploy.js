@@ -60,6 +60,17 @@
             });
             const result = await resp.json();
             if (!resp.ok) {
+                // deploy_login_token_reauth: what comes out of this
+                // flow replaces the token the user signs in with, so
+                // the server wants a fresh proof first. Send them
+                // through /reauth and back to this page, where they
+                // start again -- there is nothing to resume, nothing
+                // was created yet.
+                if (result.step_up_required) {
+                    window.location.assign(urls.urlReauth + '?next='
+                            + encodeURIComponent(urls.deployPath || '/deploy'));
+                    return;
+                }
                 throw new Error(result.error || i18n.labelDeploymentFailed || 'Deployment failed.');
             }
 

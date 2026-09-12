@@ -906,6 +906,47 @@ def register_config_parameters():
     config.register_config_parameter(name="device_token_suffix",
                                     ctype=str,
                                     object_types=['role'])
+    # Which token types the SSO portal creates for this role's device
+    # tokens. password is what every device speaks (WLAN, IMAP, ...);
+    # totp is for one that can run an authenticator app. With several
+    # the user picks one per token, the first being the default. Unset
+    # means password, which is what a device token always was.
+    valid_device_token_types = ('password', 'totp')
+    def device_token_types_setter(token_types, **kwargs):
+        if isinstance(token_types, str):
+            token_types = token_types.split(",")
+        result = []
+        for token_type in token_types:
+            token_type = str(token_type).strip()
+            if not token_type:
+                continue
+            if token_type not in valid_device_token_types:
+                msg = _("Invalid device token type: {token_type}")
+                msg = msg.format(token_type=token_type)
+                raise ValueError(msg)
+            if token_type not in result:
+                result.append(token_type)
+        return result
+    config.register_config_parameter(name="device_token_types",
+                                    ctype=list,
+                                    setter=device_token_types_setter,
+                                    object_types=['role'])
+    # How many device tokens one user may hold in this role. Unset means
+    # no limit.
+    def max_device_tokens_setter(max_tokens, **kwargs):
+        try:
+            max_tokens = int(max_tokens)
+        except (TypeError, ValueError) as err:
+            msg = _("Invalid maximum number of device tokens.")
+            raise ValueError(msg) from err
+        if max_tokens < 1 or max_tokens > 128:
+            msg = _("Maximum number of device tokens must be between 1 and 128.")
+            raise ValueError(msg)
+        return max_tokens
+    config.register_config_parameter(name="max_device_tokens",
+                                    ctype=int,
+                                    setter=max_device_tokens_setter,
+                                    object_types=['role'])
 
 def get_roles(role_uuid=None, skip_disabled=False, parent=False,
     recursive=True, return_type="name", return_attributes=None):
@@ -1103,6 +1144,10 @@ class Role(OTPmeObject):
                             "SYNC_USERS",
                             "DYNAMIC_GROUPS",
                             "CONFIG_PARAMS:device_token_suffix",
+                            # Read where the token is written, which for
+                            # a user of another site is their home site.
+                            "CONFIG_PARAMS:device_token_types",
+                            "CONFIG_PARAMS:max_device_tokens",
                             ]
                         },
                     }

@@ -1905,6 +1905,17 @@ class User(OTPmeObject):
                             # the user gets them. Stored as role UUIDs,
                             # which mean the same thing everywhere.
                             "CONFIG_PARAMS:device_token_roles",
+                            # Whether this user has to prove themselves
+                            # again before enrolling something. Asked on
+                            # the portal, because that is where the SSO
+                            # session is -- so the portal needs the
+                            # user's answer, not just the home site.
+                            "CONFIG_PARAMS:deploy_login_token_reauth",
+                            "CONFIG_PARAMS:deploy_fido2_token_reauth",
+                            "CONFIG_PARAMS:deploy_passkey_reauth",
+                            "CONFIG_PARAMS:deploy_tiqr_token_reauth",
+                            "CONFIG_PARAMS:deploy_device_token_reauth",
+                            "CONFIG_PARAMS:sso_reauth_timeout",
                             ]
                         },
                     }

@@ -112,18 +112,20 @@ cmd_help = {
                 },
 
     'enable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node enable {node}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-node enable [--offline] {node}'),
+                    'cmd'   :   '--offline :offline=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Enable node'),
+                                    '--offline'             : _('Do not start the node services (e.g. node not reachable).'),
                                 },
                 },
 
     'disable'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node disable {node}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-node disable [--offline] {node}'),
+                    'cmd'   :   '--offline :offline=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable node'),
+                                    '--offline'             : _('Do not shutdown the node services (e.g. node not reachable).'),
                                 },
                 },
 
@@ -513,6 +515,7 @@ cmd_help = {
                                     'cmd'                   : _('Add token to node.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
                                     '--sign'                : _('Sign the object with default tags.'),
+                                    '--no-auto-sign'        : _('Disable auto sign.'),
                                     '--tags <tag1,tag2>'    : _('Add tags to signature.'),
                                 },
                 },

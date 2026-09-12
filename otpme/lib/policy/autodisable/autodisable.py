@@ -366,7 +366,10 @@ class AutodisablePolicy(Policy):
             if hook_object.enabled:
                 callback = JobCallback(name="auto_disable", client="auto_disable_policy")
                 try:
-                    hook_object.disable(force=True, verify_acls=False, callback=callback)
+                    # We are called from a policy hook. So we must not do
+                    # any network stuff (e.g. node service shutdown).
+                    hook_object.disable(force=True, offline=True,
+                                    verify_acls=False, callback=callback)
                     object_disabled = True
                     hook_object._write()
                 except Exception as e:
