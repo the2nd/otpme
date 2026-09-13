@@ -398,6 +398,9 @@ def register_backend():
     config.register_index_attribute('resolver_checksum')
     config.register_index_attribute('auto_disable')
     config.register_index_attribute('origin')
+    # Names of the config parameters set on the object (not their
+    # values), to find the objects that have a parameter set.
+    config.register_index_attribute('config')
 
 def name_len_setter(value, **kwargs):
     """ Shared setter for the per-object-type max_<type>_name_len config
@@ -10612,6 +10615,7 @@ class OTPmeObject(OTPmeBaseObject):
             except KeyError:
                 msg = _("Config parameter not set.")
                 return callback.error(msg)
+            self.del_index('config', parameter)
             config_cache.invalidate()
             self.set_changelog(f"removed unknown config parameter '{parameter}'")
             return self._cache(callback=callback)
@@ -10694,6 +10698,7 @@ class OTPmeObject(OTPmeBaseObject):
                 except KeyError:
                     msg = _("Config parameter not set.")
                     return callback.error(msg)
+                self.del_index('config', parameter)
                 config_cache.invalidate()
                 self.set_changelog(f"removed config parameter '{parameter}'")
                 return self._cache(callback=callback)
@@ -10797,6 +10802,9 @@ class OTPmeObject(OTPmeBaseObject):
             except KeyError:
                 pass
             self.config_params[parameter] = value
+
+        # add_index() ignores a name that is already there (e.g. append).
+        self.add_index('config', parameter)
 
         config_cache.invalidate()
 

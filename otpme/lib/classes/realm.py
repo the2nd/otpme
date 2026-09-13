@@ -747,8 +747,8 @@ def register_oid():
     read_oid_schema = None
     # OID regex stuff.
     # Exactly one dot, with something before and after it: a realm is a
-    # domain of two labels, "hboss.intern". Neither a deeper one
-    # ("sub.hboss.intern") nor a name that starts or ends with the dot.
+    # domain of two labels, "example.org". Neither a deeper one
+    # ("sub.example.org") nor a name that starts or ends with the dot.
     # Every other OID regex builds on this one -- they read it back out
     # of oid.object_regex['realm']['name'] -- so the rule reaches the
     # site, unit and object OIDs as well.

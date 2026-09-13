@@ -271,9 +271,9 @@ def canonical_service_identifier(display_name, realm):
     handing the result to OkHttp, which canonicalises the authority --
     so the identifier comes back lower case, whatever we sent. The
     enrollment metadata is JSON and passes through no URL parser, so
-    what it declares is stored verbatim. Send "HBOSS" in both and the
-    app stores "HBOSS", looks up "hboss", finds nothing, and asks the
-    user to enroll -- while still displaying "HBOSS", because that is
+    what it declares is stored verbatim. Send "EXAMPLE" in both and the
+    app stores "EXAMPLE", looks up "example", finds nothing, and asks the
+    user to enroll -- while still displaying "EXAMPLE", because that is
     the separate displayName field.
 
     So: the identifier is folded here, once, for both the metadata and

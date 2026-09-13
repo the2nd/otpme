@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import traceback
 import setproctitle
+from pyotp.totp import TOTP
 from urllib.parse import quote
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
@@ -76,6 +77,13 @@ STEP_UP_MAX_AGE = 120
 # rather than let them start something they cannot finish.
 STEP_UP_ADD_MARGIN = 30
 
+# How long a TOTP enrollment waits for its first code (seconds), and how
+# many wrong ones it takes. Long enough to install an app first; the
+# attempts are there for typos, not for security -- whoever holds the
+# session sees the secret anyway.
+TOTP_ENROLL_EXPIRY = 600
+TOTP_ENROLL_MAX_ATTEMPTS = 5
+
 # Token types a device token may be. The role says which of them its
 # device tokens are (device_token_types); password when it says nothing.
 DEVICE_TOKEN_TYPES = ("password", "totp")
@@ -102,7 +110,7 @@ SSO_RECOVERY_DEPLOY_TYPES = ("totp", "fido2", "tiqr", "password")
 # makes promoting it meaningful: you can see the thing you are choosing.
 # Passkeys are deliberately out -- they are meant as peers of the login
 # token, not as the token the recovery flow looks for.
-PROMOTABLE_TOKEN_TYPES = ("tiqr", "fido2")
+PROMOTABLE_TOKEN_TYPES = ("tiqr", "fido2", "totp")
 
 # Name prefixes are built by OTPmeSsoP1._token_name_prefix(), which is
 # the one place both ends go through: the add flows name tokens with it
@@ -114,10 +122,15 @@ PROMOTABLE_TOKEN_TYPES = ("tiqr", "fido2")
 # another of the same kind, so the deploy asks what to call it. The
 # label is what the rename dialog offers when the SSO role later moves
 # to another token -- exactly the types that can hold that role.
-#
-# TOTP is out: it lives in an app the user already named, and it cannot
-# be promoted to or from, so nothing would ever show the label back.
 DEVICE_NAME_TOKEN_TYPES = PROMOTABLE_TOKEN_TYPES
+
+# The parameter that allows managing tokens of a type on the settings
+# page. Promoting is done from those cards, so it needs the same.
+MGMT_ALLOW_PARAMS = {
+            "fido2":    "sso_allow_fido2_mgmt",
+            "tiqr":     "sso_allow_tiqr_mgmt",
+            "totp":     "sso_allow_totp_mgmt",
+            }
 
 # Token types the portal can provision, and the parameter that says
 # whether a user may be handed one. Order is what the deploy page shows.
@@ -136,6 +149,7 @@ DEPLOY_ALLOW_PARAMS = {
 DEPLOY_TYPE_ENABLED_PARAMS = {
             "fido2":    "sso_allow_fido2",
             "tiqr":     "sso_allow_tiqr",
+            "totp":     "sso_allow_totp",
             }
 
 REGISTER_BEFORE = []
@@ -595,6 +609,10 @@ class OTPmeSsoP1(OTPmeServer1):
                            'with a passkey. Add or remove passkeys from '
                            'the Settings page instead.',
                 'status': False})
+        # Before the step-up: a re-deploy that is not allowed must not
+        # send the user through /reauth first.
+        if self._redeploy_refused(user):
+            return self._redeploy_refused_response()
         # What this hands out replaces the token the user signs in with,
         # so it is the one flow where an unlocked browser buys the whole
         # account. The recovery deploy is a different command and is not
@@ -766,6 +784,13 @@ class OTPmeSsoP1(OTPmeServer1):
                                         callback=callback)
             deploy_token._write(callback=callback)
             return self.build_response(True, response)
+        # TOTP carries its label the same way, see above.
+        if device_name:
+            deploy_token.change_device_name(device_name,
+                                        force=True,
+                                        verify_acls=False,
+                                        run_policies=False,
+                                        callback=callback)
         deploy_token._write(callback=callback)
         # Get token secret.
         secret = deploy_token.get_secret(pin=deploy_token.pin, encoding="base32")
@@ -792,6 +817,46 @@ class OTPmeSsoP1(OTPmeServer1):
         self.logger.info(log_msg)
         return self.build_response(True, response)
 
+    def _redeploy_refused(self, user):
+        """ Is this a re-deploy of the login token the config refuses?
+
+        A token flagged sso_deploy has to be deployed, that is the
+        forced first-login deploy and never refused here. Anything else
+        is the user replacing their login token by choice, which
+        sso_allow_login_token_redeploy allows or not. """
+        login_token = config.auth_token
+        if login_token is not None and login_token.sso_deploy:
+            return False
+        return not self._mgmt_allowed(user, "sso_allow_login_token_redeploy")
+
+    def _redeploy_refused_response(self):
+        return self.build_response(False,
+                {'message':'Re-deploying your login token is not allowed.',
+                'status':False})
+
+    def get_login_token_options(self, username, sso_jwt, command_args):
+        """ What the settings page offers for the login token.
+
+        Read only and answered here, also for a user of another site:
+        the parameters are synced, and the login token is the one of
+        this SSO session. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        return self.build_response(True, {
+                # For login tokens an administrator manages: with
+                # sso_allow_totp_mgmt on the TOTP card sets PINs itself.
+                'pin_change'    : not self._mgmt_allowed(user,
+                                                "sso_allow_totp_mgmt"),
+                'redeploy'      : not self._redeploy_refused(user),
+                'status'        : True,
+            })
+
     def get_allowed_deploy_token_types(self, username, sso_jwt, command_args):
         """ Return the token types this user is allowed to deploy in the
         SSO portal. Drives the deploy page UI so disabled types are not
@@ -812,6 +877,15 @@ class OTPmeSsoP1(OTPmeServer1):
         #
         # On the portal and before the redirect below: the SSO session
         # lives here, and the home site could not answer it.
+        #
+        # A re-deploy that is not allowed goes first, or the page would
+        # send the user through /reauth for nothing.
+        if self._redeploy_refused(user):
+            return self.build_response(True, {
+                            'token_types'       : [],
+                            'redeploy_refused'  : True,
+                            'status'            : True,
+                        })
         if self._step_up_missing(user, "deploy_login_token_reauth",
                                 command_args):
             return self.build_response(True, {
@@ -867,6 +941,8 @@ class OTPmeSsoP1(OTPmeServer1):
         or login_token_name != config.auth_token.name:
             response = {'message':'LOGIN_TOKEN_MISMATCH', 'status':False}
             return self.build_response(False, response)
+        if self._redeploy_refused(user):
+            return self._redeploy_refused_response()
         # Check for command redirection.
         if user.site != config.site:
             return self.ssod_redirect_command(command="deploy_verify",
@@ -1231,40 +1307,55 @@ class OTPmeSsoP1(OTPmeServer1):
         prefix = self._token_name_prefix("passkey", command_args)
         return sso_helpers.sanitize_token_name(device_name, prefix=prefix)
 
-    def _site_trusts_user_home_for_passkeys(self, user):
-        """ Originator side: does the local site list the user's home
-        site under ``sso_allow_passkeys_trusts``? Own-site users are
-        implicitly trusted. Returns False when the trust list is
-        unset/empty. """
-        if user.site == config.site:
-            return True
-        local_site = backend.get_object(object_type="site",
-                                        uuid=config.site_uuid)
-        if local_site is None:
-            return False
-        try:
-            trusts = local_site.get_config_parameter("sso_allow_passkeys_trusts")
-        except Exception:
-            trusts = None
-        if not trusts:
-            return False
-        return user.site in trusts
+    def _from_other_site_node(self):
+        """ Did a node of another site send this request?
 
-    def _site_trusts_site_for_passkeys(self, site):
-        """ Home side: does the local site list ``site`` under
-        ``sso_allow_passkeys_trusts``? Used to accept a peer-forwarded
-        passkey operation only when reciprocal trust exists. """
+        That is the home side of a cross-site passkey or tiqr request,
+        and it has to pass the trust check whether it carries the
+        originator's marker or not: a node that leaves the marker out
+        must not end up being treated like a local request. Nodes of our
+        own site forward within the cluster and are not asked. """
+        if not self.from_peer_node:
+            return False
+        return self.peer.site != config.site
+
+    def _site_trusts_site(self, site, trusts_parameter):
+        """ Does the local site list ``site`` under the given trusts
+        parameter (e.g. ``sso_allow_passkeys_trusts``)? Returns False when
+        the trust list is unset/empty. """
         local_site = backend.get_object(object_type="site",
                                         uuid=config.site_uuid)
         if local_site is None:
             return False
         try:
-            trusts = local_site.get_config_parameter("sso_allow_passkeys_trusts")
+            trusts = local_site.get_config_parameter(trusts_parameter)
         except Exception:
             trusts = None
         if not trusts:
             return False
         return site in trusts
+
+    def _trusts_user_home_site(self, user, trusts_parameter):
+        """ Originator side: does the local site list the user's home
+        site under the given trusts parameter? Own-site users are
+        implicitly trusted. (Not _site_trusts_user_home(): that one is
+        the device token roles trust further down.) """
+        if user.site == config.site:
+            return True
+        return self._site_trusts_site(user.site, trusts_parameter)
+
+    def _site_trusts_user_home_for_passkeys(self, user):
+        """ Originator side: does the local site list the user's home
+        site under ``sso_allow_passkeys_trusts``? Own-site users are
+        implicitly trusted. Returns False when the trust list is
+        unset/empty. """
+        return self._trusts_user_home_site(user, "sso_allow_passkeys_trusts")
+
+    def _site_trusts_site_for_passkeys(self, site):
+        """ Home side: does the local site list ``site`` under
+        ``sso_allow_passkeys_trusts``? Used to accept a peer-forwarded
+        passkey operation only when reciprocal trust exists. """
+        return self._site_trusts_site(site, "sso_allow_passkeys_trusts")
 
     def _log_passkey_denied(self, command, reason, user):
         """ Say which of the passkey gates refused, and on what.
@@ -1309,8 +1400,13 @@ class OTPmeSsoP1(OTPmeServer1):
         config layer is NOT auto-applied at read time. Apply it
         ourselves so foreign users (whose home cascade often has no
         explicit value) don't fall through to a False-looking None
-        and see "Passkeys are not enabled." """
+        and see "Passkeys are not enabled."
+
+        Every caller is a settings page command, so the settings card
+        also needs ``sso_allow_passkey_mgmt``. """
         if not self._site_trusts_user_home_for_passkeys(user):
+            return False
+        if not self._mgmt_allowed(user, "sso_allow_passkey_mgmt"):
             return False
         try:
             registered_default = bool(
@@ -1343,7 +1439,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False, {'message':'JWT_INVALID', 'status':False})
         peer_allowed = command_args.get('_passkeys_allowed')
-        if self.from_peer_node and peer_allowed is not None:
+        if self._from_other_site_node():
             # Home, peer-forwarded. Accept the originator's decision
             # only when the peer's site is reciprocally trusted.
             if not self._site_trusts_site_for_passkeys(self.peer.site):
@@ -1416,7 +1512,10 @@ class OTPmeSsoP1(OTPmeServer1):
                         # pressing the button.
                         'is_current'    : _is_current_token(token),
                     })
-        return self.build_response(True, {'passkeys': passkeys, 'allowed': True, 'status': True})
+        return self.build_response(True, {'passkeys': passkeys,
+                        'allowed': True,
+                        'max_tokens': self._max_card_tokens(user, "passkey"),
+                        'status': True})
 
     def _get_user_passkey(self, user, token_name, command_args):
         """ One of the user's own passkeys, by name.
@@ -1471,7 +1570,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # Resolve sso_allow_passkeys under sso_allow_passkeys_trusts.
         # See list_passkeys for the full pattern.
         peer_allowed = command_args.get('_passkeys_allowed')
-        if self.from_peer_node and peer_allowed is not None:
+        if self._from_other_site_node():
             if not self._site_trusts_site_for_passkeys(self.peer.site):
                 self._log_passkey_denied("passkey_register_begin",
                                     "peer site not in sso_allow_passkeys_trusts",
@@ -1510,6 +1609,9 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {'message':'Invalid device name.', 'status':False})
         if user.token(token_name):
             return self.build_response(False, {'message':'A passkey with this name already exists.', 'status':False})
+        refused = self._card_token_limit_reached(user, "passkey", command_args)
+        if refused is not None:
+            return refused
         # excludeCredentials: any already-bound FIDO2 or passkey credential
         # of this user. Browsers honour this to stop the same authenticator
         # registering twice (UX: "this key is already registered").
@@ -1597,7 +1699,7 @@ class OTPmeSsoP1(OTPmeServer1):
         # fresh command_args and we don't want a peer to skip the
         # check by calling complete directly.
         peer_allowed = command_args.get('_passkeys_allowed')
-        if self.from_peer_node and peer_allowed is not None:
+        if self._from_other_site_node():
             if not self._site_trusts_site_for_passkeys(self.peer.site):
                 self._log_passkey_denied("passkey_register_complete",
                                     "peer site not in sso_allow_passkeys_trusts",
@@ -1669,6 +1771,9 @@ class OTPmeSsoP1(OTPmeServer1):
         token_name = state_data['token_name']
         if user.token(token_name):
             return self.build_response(False, {'message':'A passkey with this name already exists.', 'status':False})
+        refused = self._card_token_limit_reached(user, "passkey", command_args)
+        if refused is not None:
+            return refused
         rp_data = {"id": rp_id, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="none")
         try:
@@ -1755,7 +1860,13 @@ class OTPmeSsoP1(OTPmeServer1):
     #     different question from who may manage their own keys.
 
     def _resolve_fido2_allowed(self, user):
-        """ The sso_allow_fido2 cascade (user -> unit -> site). """
+        """ The sso_allow_fido2 cascade (user -> unit -> site).
+
+        Every caller is a settings page command, so the settings card
+        also needs sso_allow_fido2_mgmt. Deploying a key is not asked
+        here, see _deploy_type_allowed(). """
+        if not self._mgmt_allowed(user, "sso_allow_fido2_mgmt"):
+            return False
         try:
             value = user.get_config_parameter("sso_allow_fido2")
         except Exception:
@@ -1870,6 +1981,7 @@ class OTPmeSsoP1(OTPmeServer1):
                                                         command_args)
         return self.build_response(True, {
                             'fido2_tokens': fido2_tokens,
+                            'max_tokens': self._max_card_tokens(user, "fido2"),
                             'allowed': True,
                             'sso_token_name': sso_token_name,
                             'sso_token_type': (sso_token.token_type
@@ -1877,6 +1989,8 @@ class OTPmeSsoP1(OTPmeServer1):
                             'sso_token_label': sso_token_label,
                             'sso_token_suggested_label': sso_token_suggested_label,
                             'sso_token_ask_label': sso_token_ask_label,
+                            'sso_token_managed': self._sso_token_managed(user,
+                                                                sso_token),
                             'status': True})
 
     def fido2_add_begin(self, username, sso_jwt, command_args):
@@ -1925,6 +2039,9 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'A token with this name already exists.',
                     'status':False})
+        refused = self._card_token_limit_reached(user, "fido2", command_args)
+        if refused is not None:
+            return refused
         # excludeCredentials: every credential this user already has, of
         # either kind. Browsers use it to refuse binding the same
         # authenticator twice, which is the difference between "you
@@ -2052,6 +2169,9 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'A token with this name already exists.',
                     'status':False})
+        refused = self._card_token_limit_reached(user, "fido2", command_args)
+        if refused is not None:
+            return refused
         rp_data = {"id": rp_id, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="direct")
         try:
@@ -2304,14 +2424,28 @@ class OTPmeSsoP1(OTPmeServer1):
                                         command_args)
         if step_up is not None:
             return step_up
+        if self._tiqr_refused_from_peer_site("tiqr_enroll_begin", user,
+                                            command_args):
+            return self.build_response(False,
+                    {'message':'tiqr is not enabled.', 'status':False})
         my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if user.site != config.site:
+            # Decided before the home site gets asked: the phone will
+            # deliver its secret to us.
+            if not self._resolve_tiqr_allowed(user):
+                self._log_tiqr_denied("tiqr_enroll_begin",
+                                    "originator: user home not in "
+                                    "sso_allow_tiqr_trusts, or "
+                                    "sso_allow_tiqr off", user)
+                return self.build_response(False,
+                        {'message':'tiqr is not enabled.', 'status':False})
             # The QR code has to point at us, not at the user's home
             # site, but the grant inside it is minted there. So the home
             # site gets the URL with only the key left open.
             url_template = tiqr_helpers.build_metadata_url_template(my_site.sso_fqdn)
             command_args['metadata_url_template'] = url_template
             command_args['_step_up_verified'] = True
+            command_args['_tiqr_allowed'] = True
             # No mgmt: this writes nothing. Unlike the passkey flow it
             # keeps no state on the master either -- what the phone
             # needs travels in the signed grant -- so any node can
@@ -2350,6 +2484,9 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'A tiqr token with this name already exists.',
                     'status':False})
+        refused = self._card_token_limit_reached(user, "tiqr", command_args)
+        if refused is not None:
+            return refused
 
         # The token the user presented in this session, not
         # user.default_token. This is the only point in the flow where a
@@ -2681,7 +2818,22 @@ class OTPmeSsoP1(OTPmeServer1):
         if user is None:
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
+        # The request that carries the secret. The home site accepts it
+        # from another site only when it trusts that site, and a portal
+        # does not forward a secret to a home site it does not trust.
+        if self._tiqr_refused_from_peer_site("tiqr_enroll_finish", user,
+                                            command_args):
+            return self.build_response(False,
+                            {'message':'INVALID_REQUEST', 'status':False})
         if user.site != config.site:
+            if not self._resolve_tiqr_allowed(user):
+                self._log_tiqr_denied("tiqr_enroll_finish",
+                                    "originator: user home not in "
+                                    "sso_allow_tiqr_trusts, or "
+                                    "sso_allow_tiqr off", user)
+                return self.build_response(False,
+                                {'message':'INVALID_REQUEST', 'status':False})
+            command_args['_tiqr_allowed'] = True
             # To the master: this creates a token and writes the role,
             # access group and group memberships onto it. No multi
             # master in OTPme, so tree object writes have to land there.
@@ -2728,6 +2880,13 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'INVALID_REQUEST', 'status':False})
+        # Not for a deploy: that one replaces the SSO token and adds
+        # nothing to the card.
+        if not self._is_deploy_token_name(token_name):
+            refused = self._card_token_limit_reached(user, "tiqr",
+                                                    command_args)
+            if refused is not None:
+                return refused
 
         # Without the token named in the grant there is nothing to
         # inherit reach from -- the settings flow mirrors its
@@ -2859,7 +3018,20 @@ class OTPmeSsoP1(OTPmeServer1):
 
         Fail-open, like the FIDO2 one -- an explicit False blocks. What
         keeps tiqr off an install that never set it up is
-        sso_allow_tiqr_deploy, which is off by default. """
+        sso_allow_tiqr_deploy, which is off by default.
+
+        A user of another site only if the local site lists their home
+        site under sso_allow_tiqr_trusts. Unlike the cascade this one is
+        not fail-open: the phone delivers its secret to the site whose QR
+        code it scanned, and which sites may see it is the operator's
+        decision.
+
+        Every caller is a settings page command, so the settings card
+        also needs sso_allow_tiqr_mgmt. """
+        if not self._trusts_user_home_site(user, "sso_allow_tiqr_trusts"):
+            return False
+        if not self._mgmt_allowed(user, "sso_allow_tiqr_mgmt"):
+            return False
         try:
             value = user.get_config_parameter("sso_allow_tiqr")
         except Exception:
@@ -2867,6 +3039,38 @@ class OTPmeSsoP1(OTPmeServer1):
         if value is None:
             return True
         return bool(value)
+
+    def _log_tiqr_denied(self, command, reason, user):
+        """ Say which of the tiqr trust gates refused, and on what. See
+        _log_passkey_denied(). """
+        log_msg = _("tiqr denied: {command}: {reason}: user={user} user_site={user_site} own_site={own_site} peer={peer} peer_site={peer_site}", log=True)[1]
+        log_msg = log_msg.format(command=command,
+                                reason=reason,
+                                user=getattr(user, 'name', None),
+                                user_site=getattr(user, 'site', None),
+                                own_site=config.site,
+                                peer=getattr(self.peer, 'name', None),
+                                peer_site=getattr(self.peer, 'site', None))
+        self.logger.warning(log_msg)
+
+    def _tiqr_refused_from_peer_site(self, command, user, command_args):
+        """ Home side of a tiqr request forwarded by another site.
+
+        Such a request is accepted only when the local site lists the
+        forwarding site under sso_allow_tiqr_trusts (the reciprocal half
+        of the trust) and the forwarding site said it allows tiqr for the
+        user (_tiqr_allowed). See _from_other_site_node(). """
+        if not self._from_other_site_node():
+            return False
+        if not self._site_trusts_site(self.peer.site, "sso_allow_tiqr_trusts"):
+            self._log_tiqr_denied(command,
+                                "peer site not in sso_allow_tiqr_trusts",
+                                user)
+            return True
+        if not command_args.get('_tiqr_allowed'):
+            self._log_tiqr_denied(command, "originator did not allow it", user)
+            return True
+        return False
 
     def _get_user_tiqr_token(self, user, token_name, sso_token_name,
         command_args):
@@ -2888,16 +3092,43 @@ class OTPmeSsoP1(OTPmeServer1):
             return None
         return token
 
-    def _get_user_managed_token(self, user, token_name):
+    def _get_user_managed_token(self, user, token_name, command_args):
         """ One of the user's own tokens, by name, of a type they are
         allowed to manage themselves. Anything else is not ours to
-        touch from the portal. """
+        touch from the portal.
+
+        And only one this portal created, i.e. one carrying its prefix
+        -- the same rule the listings follow. An administrator hands out
+        TOTP tokens under names of their own, for purposes the user is
+        not meant to redirect: promoting one would make it the SSO
+        token. """
         token = user.token(token_name)
         if token is None:
             return None
         if token.token_type not in PROMOTABLE_TOKEN_TYPES:
             return None
+        if not self._mgmt_allowed(user, MGMT_ALLOW_PARAMS[token.token_type]):
+            return None
+        prefix = self._token_name_prefix(token.token_type, command_args)
+        if not token.name.startswith(prefix):
+            return None
         return token
+
+    def _sso_token_managed(self, user, sso_token):
+        """ Is the user's current SSO token one the portal manages?
+
+        Only then may promote_token() hand its role to another token and
+        rename it. Otherwise the administrator chose it -- a password or
+        HOTP token, or a type whose management is off for this user --
+        and the rename would give it a name of the portal's scheme, and
+        maybe a delete button in a card, behind their back. No SSO token
+        at all leaves nothing to displace. """
+        if sso_token is None:
+            return True
+        if sso_token.token_type not in PROMOTABLE_TOKEN_TYPES:
+            return False
+        return self._mgmt_allowed(user,
+                                MGMT_ALLOW_PARAMS[sso_token.token_type])
 
     def list_tiqr_tokens(self, username, sso_jwt, command_args):
         """ The user's enrolled phones.
@@ -2920,11 +3151,26 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
+        if self._tiqr_refused_from_peer_site("list_tiqr_tokens", user,
+                                            command_args):
+            return self.build_response(True, {'tiqr_tokens': [],
+                                            'allowed': False,
+                                            'status': True})
         if user.site != config.site:
+            if not self._resolve_tiqr_allowed(user):
+                self._log_tiqr_denied("list_tiqr_tokens",
+                                    "originator: user home not in "
+                                    "sso_allow_tiqr_trusts, or "
+                                    "sso_allow_tiqr off", user)
+                return self.build_response(True, {'tiqr_tokens': [],
+                                                'allowed': False,
+                                                'status': True})
+            forward_args = dict(command_args)
+            forward_args['_tiqr_allowed'] = True
             # Read only, so no need to go to the master.
             return self.ssod_redirect_command(command="list_tiqr_tokens",
                                             user=user,
-                                            command_args=command_args)
+                                            command_args=forward_args)
         if not self._resolve_tiqr_allowed(user):
             return self.build_response(True, {'tiqr_tokens': [],
                                             'allowed': False,
@@ -2989,12 +3235,15 @@ class OTPmeSsoP1(OTPmeServer1):
                                                         command_args)
         return self.build_response(True, {
                             'tiqr_tokens': tiqr_tokens,
+                            'max_tokens': self._max_card_tokens(user, "tiqr"),
                             'allowed': True,
                             'sso_token_name': sso_token_name,
                             'sso_token_type': sso_token_type,
                             'sso_token_label': sso_token_label,
                             'sso_token_suggested_label': sso_token_suggested_label,
                             'sso_token_ask_label': sso_token_ask_label,
+                            'sso_token_managed': self._sso_token_managed(user,
+                                                                sso_token),
                             'status': True})
 
     def del_tiqr_token(self, username, sso_jwt, command_args):
@@ -3090,10 +3339,22 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message':'JWT_INVALID', 'status':False})
+        if self._tiqr_refused_from_peer_site(command, user, command_args):
+            return self.build_response(False,
+                    {'message':'tiqr is not enabled.', 'status':False})
         if user.site != config.site:
+            if not self._resolve_tiqr_allowed(user):
+                self._log_tiqr_denied(command,
+                                    "originator: user home not in "
+                                    "sso_allow_tiqr_trusts, or "
+                                    "sso_allow_tiqr off", user)
+                return self.build_response(False,
+                        {'message':'tiqr is not enabled.', 'status':False})
+            forward_args = dict(command_args)
+            forward_args['_tiqr_allowed'] = True
             return self.ssod_redirect_command(command=command,
                                             user=user,
-                                            command_args=command_args,
+                                            command_args=forward_args,
                                             mgmt=True)
         if not self._resolve_tiqr_allowed(user):
             return self.build_response(False,
@@ -3147,6 +3408,678 @@ class OTPmeSsoP1(OTPmeServer1):
         return self._set_tiqr_token_enabled(username, sso_jwt,
                                             command_args, False)
 
+    def _resolve_totp_allowed(self, user):
+        """ The sso_allow_totp cascade (user -> unit -> site).
+
+        Fail-open like the tiqr one. A user of another site only if the
+        local site lists their home site under sso_allow_totp_trusts --
+        the secret is handed out by, and passes through, the portal the
+        user stands in front of. See _resolve_tiqr_allowed().
+
+        Every caller is a settings page command, so the settings card
+        also needs sso_allow_totp_mgmt. """
+        if not self._trusts_user_home_site(user, "sso_allow_totp_trusts"):
+            return False
+        if not self._mgmt_allowed(user, "sso_allow_totp_mgmt"):
+            return False
+        try:
+            value = user.get_config_parameter("sso_allow_totp")
+        except Exception:
+            return True
+        if value is None:
+            return True
+        return bool(value)
+
+    def _log_totp_denied(self, command, reason, user):
+        """ Say which of the TOTP trust gates refused, and on what. See
+        _log_passkey_denied(). """
+        log_msg = _("TOTP denied: {command}: {reason}: user={user} user_site={user_site} own_site={own_site} peer={peer} peer_site={peer_site}", log=True)[1]
+        log_msg = log_msg.format(command=command,
+                                reason=reason,
+                                user=getattr(user, 'name', None),
+                                user_site=getattr(user, 'site', None),
+                                own_site=config.site,
+                                peer=getattr(self.peer, 'name', None),
+                                peer_site=getattr(self.peer, 'site', None))
+        self.logger.warning(log_msg)
+
+    def _totp_refused_from_peer_site(self, command, user, command_args):
+        """ Home side of a TOTP request forwarded by another site. Same
+        rule as _tiqr_refused_from_peer_site(), under
+        sso_allow_totp_trusts and _totp_allowed. """
+        if not self._from_other_site_node():
+            return False
+        if not self._site_trusts_site(self.peer.site, "sso_allow_totp_trusts"):
+            self._log_totp_denied(command,
+                                "peer site not in sso_allow_totp_trusts",
+                                user)
+            return True
+        if not command_args.get('_totp_allowed'):
+            self._log_totp_denied(command, "originator did not allow it", user)
+            return True
+        return False
+
+    def _totp_not_enabled(self):
+        """ The answer to a TOTP command the gates refused. """
+        return self.build_response(False,
+                {'message':'Authenticator apps are not enabled.',
+                'status':False})
+
+    def _get_user_totp_token(self, user, token_name, sso_token_name,
+        command_args):
+        """ One of the user's own TOTP tokens, by name.
+
+        Only the ones the portal lists: the SSO token, and apps carrying
+        this portal's prefix. An administrator hands out TOTP tokens
+        under names of their own -- device tokens among them -- and
+        those are not the user's to delete or switch off from here. """
+        token = user.token(token_name)
+        if token is None:
+            return None
+        if token.token_type != "totp":
+            return None
+        prefix = self._token_name_prefix("totp", command_args)
+        if token.name != sso_token_name \
+        and not token.name.startswith(prefix):
+            return None
+        return token
+
+    def list_totp_tokens(self, username, sso_jwt, command_args):
+        """ The user's authenticator apps.
+
+        Same shape and the same rule as list_tiqr_tokens(): the SSO token
+        when it is a TOTP one, flagged, plus everything carrying this
+        portal's prefix. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        not_allowed = self.build_response(True, {'totp_tokens': [],
+                                                'allowed': False,
+                                                'status': True})
+        if self._totp_refused_from_peer_site("list_totp_tokens", user,
+                                            command_args):
+            return not_allowed
+        if user.site != config.site:
+            if not self._resolve_totp_allowed(user):
+                self._log_totp_denied("list_totp_tokens",
+                                    "originator: user home not in "
+                                    "sso_allow_totp_trusts, or "
+                                    "sso_allow_totp off", user)
+                return not_allowed
+            forward_args = dict(command_args)
+            forward_args['_totp_allowed'] = True
+            # Read only, so no need to go to the master.
+            return self.ssod_redirect_command(command="list_totp_tokens",
+                                            user=user,
+                                            command_args=forward_args)
+        if not self._resolve_totp_allowed(user):
+            return not_allowed
+        sso_token_name = self._sso_token_name(command_args)
+        totp_prefix = self._token_name_prefix("totp", command_args)
+        totp_tokens = []
+        for token_uuid in user.tokens:
+            try:
+                token = backend.get_object(object_type="token", uuid=token_uuid)
+            except Exception as e:
+                log_msg = _("Failed to read token object: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                continue
+            if not token or token.token_type != "totp":
+                continue
+            if token.name != sso_token_name \
+            and not token.name.startswith(totp_prefix):
+                continue
+            totp_tokens.append({
+                        'name'          : token.name,
+                        'device_name'   : self._token_label(token) or token.name,
+                        'enabled'       : bool(token.enabled),
+                        'is_sso_token'  : token.name == sso_token_name,
+                        'is_current'    : _is_current_token(token),
+                    })
+        sso_token = user.token(sso_token_name)
+        sso_token_label = None
+        sso_token_suggested_label = None
+        sso_token_ask_label = True
+        if sso_token is not None:
+            sso_token_label = (self._token_label(sso_token)
+                            or sso_token.name)
+            sso_token_suggested_label, sso_token_ask_label = \
+                            self._suggest_displaced_token_label(user,
+                                                        sso_token,
+                                                        command_args)
+        return self.build_response(True, {
+                            'totp_tokens': totp_tokens,
+                            'max_tokens': self._max_card_tokens(user, "totp"),
+                            'allowed': True,
+                            'sso_token_name': sso_token_name,
+                            'sso_token_type': (sso_token.token_type
+                                            if sso_token else None),
+                            'sso_token_label': sso_token_label,
+                            'sso_token_suggested_label': sso_token_suggested_label,
+                            'sso_token_ask_label': sso_token_ask_label,
+                            'sso_token_managed': self._sso_token_managed(user,
+                                                                sso_token),
+                            'status': True})
+
+    def _totp_enroll_state(self, user, token_name, device_name, secret, pin,
+        attempts, expiry):
+        """ Park a TOTP enrollment until its first code arrives.
+
+        A new state id every time, also for a retry: the delete of the
+        old one is not waited for (cluster_sync_state_delete()), and a
+        re-add under the same id could be overtaken by it on the other
+        nodes. """
+        state_id = f"totp_enroll_states:{stuff.gen_secret(len=32)}"
+        add_cluster_state(multiprocessing.totp_enroll_states,
+                        state_id=state_id,
+                        state_data={'user_uuid':   user.uuid,
+                                    'token_name':  token_name,
+                                    'device_name': device_name,
+                                    'secret':      secret,
+                                    'pin':         pin,
+                                    'attempts':    attempts},
+                        expiry=expiry)
+        return state_id
+
+    def totp_enroll_begin(self, username, sso_jwt, command_args):
+        """ Start adding an authenticator app. Creates no token.
+
+        Rolls the secret and the PIN and keeps both in
+        totp_enroll_states. totp_enroll_verify() creates the token only
+        once the app has shown with a first code that it got the secret
+        right, so a scan that went wrong leaves nothing behind. """
+        try:
+            device_name = command_args['device_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        device_name = sso_helpers.sanitize_device_label(device_name)
+        if not device_name:
+            return self.build_response(False,
+                            {'message':'Device name required.', 'status':False})
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "deploy_totp_token_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
+        if self._totp_refused_from_peer_site("totp_enroll_begin", user,
+                                            command_args):
+            return self._totp_not_enabled()
+        if user.site != config.site:
+            # Decided here: the secret comes back through us.
+            if not self._resolve_totp_allowed(user):
+                self._log_totp_denied("totp_enroll_begin",
+                                    "originator: user home not in "
+                                    "sso_allow_totp_trusts, or "
+                                    "sso_allow_totp off", user)
+                return self._totp_not_enabled()
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
+            forward_args['_totp_allowed'] = True
+            # To the master, where totp_enroll_verify creates the token.
+            return self.ssod_redirect_command(command="totp_enroll_begin",
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        if not self._resolve_totp_allowed(user):
+            return self._totp_not_enabled()
+        totp_prefix = self._token_name_prefix("totp", command_args)
+        token_name = sso_helpers.sanitize_token_name(device_name,
+                                                    prefix=totp_prefix)
+        if not token_name:
+            return self.build_response(False,
+                            {'message':'Invalid device name.', 'status':False})
+        if user.token(token_name):
+            return self.build_response(False,
+                    {'message':'A token with this name already exists.',
+                    'status':False})
+        refused = self._card_token_limit_reached(user, "totp", command_args)
+        if refused is not None:
+            return refused
+        # What TotpToken._add() would roll, from the same parameters.
+        secret_len = user.get_config_parameter("totp_secret_len")
+        pin_len = user.get_config_parameter("totp_default_pin_len")
+        secret = stuff.gen_secret(secret_len, "base32")
+        pin = stuff.gen_pin(pin_len)
+        # The URI TotpToken.gen_qrcode() builds, for a token that does
+        # not exist yet.
+        user_string = f"{user.name}/{token_name}@{config.realm}"
+        oath_uri = TOTP(secret).provisioning_uri(name=user_string,
+                                                issuer_name=config.my_name)
+        try:
+            qrcode_data = qrcode.gen_qrcode(oath_uri, fmt="svg")
+            if isinstance(qrcode_data, bytes):
+                qrcode_data = qrcode_data.decode('utf-8')
+            qrcode_img = ("data:image/svg+xml;base64,"
+                        + base64.b64encode(qrcode_data.encode()).decode())
+        except Exception as e:
+            log_msg = _("TOTP: QR code generation failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'ENROLL_FAILED', 'status':False})
+        state_id = self._totp_enroll_state(user, token_name, device_name,
+                                        secret, pin, attempts=0,
+                                        expiry=TOTP_ENROLL_EXPIRY)
+        log_msg = _("TOTP enrollment started for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(user_name=user.name)
+        self.logger.info(log_msg)
+        return self.build_response(True, {
+                    'status'        : True,
+                    'state_id'      : state_id,
+                    'token_name'    : token_name,
+                    'device_name'   : device_name,
+                    'secret'        : secret,
+                    'pin'           : pin,
+                    'qrcode_img'    : qrcode_img,
+                })
+
+    def totp_enroll_verify(self, username, sso_jwt, command_args):
+        """ Check the first code of an enrollment and create the token.
+
+        A wrong code hands back a new state id to try again with, up to
+        TOTP_ENROLL_MAX_ATTEMPTS. The token gets the secret and PIN the
+        app was set up with, and the reach of the token the user signed
+        in with. """
+        try:
+            state_id = command_args['state_id']
+            otp = command_args['otp']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if self._totp_refused_from_peer_site("totp_enroll_verify", user,
+                                            command_args):
+            return self._totp_not_enabled()
+        if user.site != config.site:
+            if not self._resolve_totp_allowed(user):
+                self._log_totp_denied("totp_enroll_verify",
+                                    "originator: user home not in "
+                                    "sso_allow_totp_trusts, or "
+                                    "sso_allow_totp off", user)
+                return self._totp_not_enabled()
+            forward_args = dict(command_args)
+            forward_args['_totp_allowed'] = True
+            # _remote_ssod_call, not ssod_redirect_command: the home site
+            # creates the token, we mirror it and write the memberships
+            # of our own site. See fido2_add_complete().
+            status, remote_resp = self._remote_ssod_call(user=user,
+                                            command="totp_enroll_verify",
+                                            extra_args=forward_args,
+                                            mgmt=True)
+            if not status or not isinstance(remote_resp, dict):
+                return self.build_response(False, remote_resp)
+            if not remote_resp.get('verified'):
+                # A wrong code: nothing was created, pass the retry on.
+                return self.build_response(True, remote_resp)
+            self._mirror_remote_token(user, remote_resp, flow="TOTP")
+            return self.build_response(True, {
+                        'status'        : True,
+                        'verified'      : True,
+                        'name'          : remote_resp.get('name'),
+                        'device_name'   : remote_resp.get('device_name'),
+                        'sync_pending'  : True,
+                    })
+        if not self._resolve_totp_allowed(user):
+            return self._totp_not_enabled()
+        expired = self.build_response(False,
+                {'message':'Enrollment expired. Please start again.',
+                'status':False})
+        if not isinstance(state_id, str) \
+        or not state_id.startswith("totp_enroll_states:"):
+            return expired
+        # Single use, on every node -- see fido2_add_complete().
+        try:
+            state_data = multiprocessing.totp_enroll_states.delete(state_id)
+        except KeyError:
+            return expired
+        cluster_sync_state_delete(state_id)
+        if state_data.get('user_uuid') != user.uuid:
+            log_msg = _("TOTP enroll state of another user presented by '{user_name}'.", log=True)[1]
+            log_msg = log_msg.format(user_name=user.name)
+            self.logger.warning(log_msg)
+            return expired
+        token_name = state_data['token_name']
+        device_name = state_data.get('device_name') or token_name
+        secret = state_data['secret']
+        pin = state_data['pin']
+        otp = str(otp).strip()
+        try:
+            verified = otp.isdigit() and TOTP(secret).verify(otp)
+        except Exception:
+            verified = False
+        if not verified:
+            attempts = state_data.get('attempts', 0) + 1
+            remaining = state_data.get('state_expires', 0) - time.time()
+            if attempts >= TOTP_ENROLL_MAX_ATTEMPTS or remaining < 1:
+                return self.build_response(False,
+                        {'message':'Too many invalid codes. Please start again.',
+                        'status':False})
+            new_state_id = self._totp_enroll_state(user, token_name,
+                                                device_name, secret, pin,
+                                                attempts=attempts,
+                                                expiry=int(remaining))
+            return self.build_response(True, {
+                        'status'    : True,
+                        'verified'  : False,
+                        'state_id'  : new_state_id,
+                        'message'   : 'Invalid code. Please try again.',
+                    })
+        if user.token(token_name):
+            return self.build_response(False,
+                    {'message':'A token with this name already exists.',
+                    'status':False})
+        refused = self._card_token_limit_reached(user, "totp", command_args)
+        if refused is not None:
+            return refused
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            user.add_token(token_name=token_name,
+                            token_type="totp",
+                            mode="mode1",
+                            no_token_infos=True,
+                            gen_qrcode=False,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("TOTP: failed to add token for user '{user_name}': {e}", log=True)[1]
+            log_msg = log_msg.format(user_name=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                    {'message':f'Failed to create token: {e}', 'status':False})
+        token = user.token(token_name)
+        if token is None:
+            return self.build_response(False,
+                    {'message':'Failed to create token.', 'status':False})
+        # The secret and PIN the app was set up with, not the ones
+        # add_token() just rolled.
+        token.secret = secret
+        token.pin = pin
+        token.pin_len = len(pin)
+        token.change_device_name(device_name,
+                                force=True,
+                                verify_acls=False,
+                                run_policies=False,
+                                callback=callback)
+        token._write(callback=callback)
+        # The code that proved the app works is not good for a login.
+        token.add_used_otp(otp=f"{pin}{otp}")
+        token.add_used_otp(otp=otp)
+        self._mirror_login_token_memberships(user, token,
+                                            config.auth_token,
+                                            callback,
+                                            flow="TOTP")
+        emit_audit("Crypto", "totp_token_enrolled",
+                        user=user.name,
+                        token=token.rel_path,
+                        device_name=token.device_name)
+        log_msg = _("TOTP token '{token}' enrolled for user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token=token.rel_path, user_name=user.name)
+        self.logger.info(log_msg)
+        response = {
+                    'status'        : True,
+                    'verified'      : True,
+                    'name'          : token.name,
+                    'device_name'   : token.device_name,
+                }
+        response = self._token_sync_config(token, response,
+                                        config.auth_token)
+        return self.build_response(True, response)
+
+    def del_totp_token(self, username, sso_jwt, command_args):
+        """ Delete one of the user's own authenticator apps.
+
+        Not the SSO token and not the one of the current session, for
+        the reasons del_tiqr_token() gives. """
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="del_totp_token",
+                                            user=user,
+                                            command_args=command_args,
+                                            mgmt=True)
+        if not self._resolve_totp_allowed(user):
+            return self._totp_not_enabled()
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_totp_token(user, token_name, sso_token_name,
+                                        command_args)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if token_name == sso_token_name:
+            return self.build_response(False,
+                    {'message':'Cannot delete the default token. Make another '
+                            'token the default token first.',
+                    'status':False})
+        if _is_current_token(token):
+            return self.build_response(False,
+                    {'message':'Cannot delete the authenticator app you are '
+                            'currently signed in with. Sign in with another '
+                            'factor first.',
+                    'status':False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            add_to_trash = self._add_to_trash(user, "add_totp_token_to_trash")
+            user.del_token(token_name=token_name,
+                            force=True,
+                            verify_acls=False,
+                            run_policies=True,
+                            add_to_trash=add_to_trash,
+                            callback=callback)
+            user._write(callback=callback)
+        except Exception as e:
+            log_msg = _("TOTP: failed to delete token '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        emit_audit("Crypto", "totp_token_deleted",
+                        user=user.name,
+                        token=f"{user.name}/{token_name}")
+        return self.build_response(True, {'status':True})
+
+    def _set_totp_token_enabled(self, username, sso_jwt, command_args,
+        enable):
+        """ Shared body of enable_totp_token / disable_totp_token. """
+        command = "enable_totp_token" if enable else "disable_totp_token"
+        try:
+            token_name = command_args['token_name']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if self._totp_refused_from_peer_site(command, user, command_args):
+            return self._totp_not_enabled()
+        if user.site != config.site:
+            if not self._resolve_totp_allowed(user):
+                self._log_totp_denied(command,
+                                    "originator: user home not in "
+                                    "sso_allow_totp_trusts, or "
+                                    "sso_allow_totp off", user)
+                return self._totp_not_enabled()
+            forward_args = dict(command_args)
+            forward_args['_totp_allowed'] = True
+            return self.ssod_redirect_command(command=command,
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        if not self._resolve_totp_allowed(user):
+            return self._totp_not_enabled()
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_totp_token(user, token_name, sso_token_name,
+                                        command_args)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        if not enable:
+            if token_name == sso_token_name:
+                return self.build_response(False,
+                        {'message':'Cannot disable the default token.',
+                        'status':False})
+            if _is_current_token(token):
+                return self.build_response(False,
+                        {'message':'Cannot disable the authenticator app you '
+                                'are currently signed in with.',
+                        'status':False})
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            if enable:
+                token.enable(force=True, verify_acls=False,
+                            run_policies=True, callback=callback)
+            else:
+                token.disable(force=True, verify_acls=False,
+                            run_policies=True, callback=callback)
+            token._write(callback=callback)
+        except Exception as e:
+            log_msg = _("TOTP: failed to change token '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token_name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        return self.build_response(True, {'status':True,
+                                        'enabled':bool(enable)})
+
+    def enable_totp_token(self, username, sso_jwt, command_args):
+        """ Enable one of the user's own TOTP tokens. """
+        return self._set_totp_token_enabled(username, sso_jwt,
+                                            command_args, True)
+
+    def disable_totp_token(self, username, sso_jwt, command_args):
+        """ Disable one of the user's own TOTP tokens. """
+        return self._set_totp_token_enabled(username, sso_jwt,
+                                            command_args, False)
+
+    def change_totp_pin(self, username, sso_jwt, command_args):
+        """ Set a new PIN on one of the user's own TOTP tokens.
+
+        No current PIN asked: the step-up (deploy_totp_token_reauth) is
+        the proof, and it lets a user who forgot the PIN set a new one.
+        The token's secret stays, so the app keeps working. """
+        try:
+            token_name = command_args['token_name']
+            new_pin = command_args['new_pin']
+        except Exception:
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "deploy_totp_token_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
+        if self._totp_refused_from_peer_site("change_totp_pin", user,
+                                            command_args):
+            return self._totp_not_enabled()
+        if user.site != config.site:
+            # Decided here: the new PIN comes through us.
+            if not self._resolve_totp_allowed(user):
+                self._log_totp_denied("change_totp_pin",
+                                    "originator: user home not in "
+                                    "sso_allow_totp_trusts, or "
+                                    "sso_allow_totp/sso_allow_totp_mgmt off",
+                                    user)
+                return self._totp_not_enabled()
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
+            forward_args['_totp_allowed'] = True
+            return self.ssod_redirect_command(command="change_totp_pin",
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        if not self._resolve_totp_allowed(user):
+            return self._totp_not_enabled()
+        sso_token_name = self._sso_token_name(command_args)
+        token = self._get_user_totp_token(user, token_name, sso_token_name,
+                                        command_args)
+        if token is None:
+            return self.build_response(False,
+                            {'message':'UNKNOWN_TOKEN', 'status':False})
+        # Token.change_pin() asks interactively for an empty PIN, and
+        # accepts anything else unless a PIN policy says otherwise.
+        new_pin = str(new_pin)
+        if not new_pin.isdigit():
+            return self.build_response(False,
+                    {'message':'PIN must be numerical.', 'status':False})
+        # In mode2 the PIN is part of the secret: a new one needs the
+        # app set up again, which is not what this form is for.
+        if token.mode != "mode1":
+            return self.build_response(False,
+                    {'message':'Token does not support PIN change.',
+                    'status':False})
+        client_ip = command_args.get('client_ip')
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            # check_pin() inside applies the PIN policies.
+            token.change_pin(pin=new_pin,
+                            run_policies=False,
+                            verify_acls=False,
+                            callback=callback)
+            token._write(callback=callback)
+        except Exception as e:
+            log_msg = _("TOTP: PIN change failed for token '{token}': {e}", log=True)[1]
+            log_msg = log_msg.format(token=token.rel_path, e=e)
+            self.logger.warning(log_msg)
+            emit_audit("Auth", "pin_change_failed",
+                            level='warning',
+                            user=user.name,
+                            token=token.rel_path,
+                            reason='policy_or_write_error',
+                            error=str(e),
+                            ip=client_ip)
+            return self.build_response(False,
+                            {'message':str(e), 'status':False})
+        emit_audit("Auth", "pin_changed",
+                        user=user.name,
+                        token=token.rel_path,
+                        ip=client_ip)
+        return self.build_response(True, {'status':True})
+
     def _deploy_device_name(self, user, token_type, command_args):
         """ The label a token gets at deploy time, checked up front.
 
@@ -3190,6 +4123,54 @@ class OTPmeSsoP1(OTPmeServer1):
         must not offer back. Callers that need something to display
         fall back to it themselves. """
         return token.device_name or token.description or None
+
+    def _max_card_tokens(self, user, token_type):
+        """ sso_max_<type>_token for this user, or None for no limit. """
+        max_tokens = user.get_config_parameter(f"sso_max_{token_type}_token")
+        if max_tokens is None:
+            return None
+        return int(max_tokens)
+
+    def _count_card_tokens(self, user, token_type, command_args):
+        """ How many tokens of this type the settings card lists.
+
+        The same rule the listings follow: the SSO token and what
+        carries this portal's prefix, without the residue of flows that
+        never finished (no credential, no tiqr secret). """
+        sso_token_name = self._sso_token_name(command_args)
+        prefix = self._token_name_prefix(token_type, command_args)
+        count = 0
+        for token_uuid in user.tokens:
+            token = backend.get_object(object_type="token", uuid=token_uuid)
+            if token is None or token.token_type != token_type:
+                continue
+            if token.name != sso_token_name \
+            and not token.name.startswith(prefix):
+                continue
+            if token_type in ("fido2", "passkey") \
+            and not token.credential_data:
+                continue
+            if token_type == "tiqr" and not token.has_auth_data():
+                continue
+            count += 1
+        return count
+
+    def _card_token_limit_reached(self, user, token_type, command_args):
+        """ The refusal when the user already holds sso_max_<type>_token
+        tokens of this type in the card, or None.
+
+        Asked where the token is created -- the user's home site -- at
+        the start of an add, so the user hears it before scanning or
+        touching anything, and again when it completes, because two adds
+        may have been started side by side. """
+        max_tokens = self._max_card_tokens(user, token_type)
+        if max_tokens is None:
+            return None
+        if self._count_card_tokens(user, token_type, command_args) < max_tokens:
+            return None
+        msg = _("You already have the maximum number of tokens of this type ({max_tokens}).")
+        msg = msg.format(max_tokens=max_tokens)
+        return self.build_response(False, {'message': msg, 'status': False})
 
     def _add_to_trash(self, user, parameter):
         """ Does a token the user deletes here go to the trash?
@@ -3320,7 +4301,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False,
                     {'message':'This is already the default token.',
                     'status':False})
-        token = self._get_user_managed_token(user, token_name)
+        token = self._get_user_managed_token(user, token_name, command_args)
         if token is None:
             return self.build_response(False,
                             {'message':'UNKNOWN_TOKEN', 'status':False})
@@ -3335,6 +4316,11 @@ class OTPmeSsoP1(OTPmeServer1):
         old_token = user.token(sso_token_name)
 
         # Everything that can refuse, before anything is renamed.
+        if not self._sso_token_managed(user, old_token):
+            return self.build_response(False,
+                    {'message':'Your default token is managed by your '
+                            'administrator and cannot be replaced here.',
+                    'status':False})
         blocked = self._token_rename_blocked(token)
         if blocked is not None:
             return self.build_response(False,
@@ -3686,7 +4672,11 @@ class OTPmeSsoP1(OTPmeServer1):
                                             "deploy_tiqr_token_reauth",
                                             command_args,
                                             margin=STEP_UP_ADD_MARGIN),
-                'device'    : self._step_up_missing(user,
+                'totp'      : self._step_up_missing(user,
+                                            "deploy_totp_token_reauth",
+                                            command_args,
+                                            margin=STEP_UP_ADD_MARGIN),
+                'device'    :self._step_up_missing(user,
                                             "deploy_device_token_reauth",
                                             command_args,
                                             margin=STEP_UP_ADD_MARGIN),
@@ -4326,6 +5316,12 @@ class OTPmeSsoP1(OTPmeServer1):
             deploy_token._write(callback=callback)
             return self.build_response(True, response)
         # TOTP: return the shared secret + PIN + QR image.
+        if device_name:
+            deploy_token.change_device_name(device_name,
+                                        force=True,
+                                        verify_acls=False,
+                                        run_policies=False,
+                                        callback=callback)
         deploy_token._write(callback=callback)
         try:
             secret = deploy_token.get_secret(pin=deploy_token.pin,
@@ -4786,6 +5782,12 @@ class OTPmeSsoP1(OTPmeServer1):
         if token.pass_type != "otp":
             response = {'message':'Token does not support PIN change.', 'status':False}
             return self.build_response(False, response)
+        # Only for tokens an administrator manages. With
+        # sso_allow_totp_mgmt on the TOTP card sets PINs itself
+        # (change_totp_pin).
+        if self._mgmt_allowed(user, "sso_allow_totp_mgmt"):
+            response = {'message':'PIN change is not enabled.', 'status':False}
+            return self.build_response(False, response)
         # Verify current PIN against the token.
         if not token.pin or str(token.pin) != str(current_pin):
             emit_audit("Auth", "pin_change_failed",
@@ -5134,8 +6136,9 @@ class OTPmeSsoP1(OTPmeServer1):
         prefix = self._token_name_prefix("device", command_args)
         return sso_helpers.sanitize_token_name(device_name, prefix=prefix)
 
-    def _session_mgmt_allowed(self, user):
-        """ Resolve ``sso_allow_session_mgmt`` for the given user.
+    def _mgmt_allowed(self, user, parameter):
+        """ Resolve one of the ``sso_allow_*_mgmt`` parameters for the
+        given user.
 
         The same cascade as the other portal parameters (user -> unit
         -> site, anchored at the user's home). get_config_parameter()
@@ -5143,11 +6146,11 @@ class OTPmeSsoP1(OTPmeServer1):
         -- off -- has to be applied here. """
         try:
             registered_default = bool(
-                config.get_config_parameter("sso_allow_session_mgmt")['default'])
+                config.get_config_parameter(parameter)['default'])
         except Exception:
             registered_default = False
         try:
-            value = user.get_config_parameter("sso_allow_session_mgmt")
+            value = user.get_config_parameter(parameter)
         except Exception:
             value = None
         if value is None:
@@ -5250,7 +6253,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {
                 'message': 'JWT_INVALID', 'status': False,
             })
-        if not self._session_mgmt_allowed(user):
+        if not self._mgmt_allowed(user, "sso_allow_session_mgmt"):
             return self.build_response(True, {'sessions': [],
                                             'allowed': False,
                                             'status': True})
@@ -5277,7 +6280,7 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {
                 'message': 'JWT_INVALID', 'status': False,
             })
-        if not self._session_mgmt_allowed(user):
+        if not self._mgmt_allowed(user, "sso_allow_session_mgmt"):
             return self.build_response(False, {
                 'message': 'NOT_ALLOWED', 'status': False,
             })
@@ -6275,7 +7278,7 @@ class OTPmeSsoP1(OTPmeServer1):
 
         peer_allowed = command_args.get('_passkeys_allowed')
 
-        if self.from_peer_node and peer_allowed is not None:
+        if self._from_other_site_node():
             # Home, peer-forwarded. Accept the originator's decision only
             # when reciprocally trusted.
             if not self._site_trusts_site_for_passkeys(self.peer.site):
@@ -8688,6 +9691,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "deploy_begin",
                             "deploy_verify",
                             "get_allowed_deploy_token_types",
+                            "get_login_token_options",
                             "change_password",
                             "change_pin",
                             "change_language",
@@ -8711,6 +9715,13 @@ class OTPmeSsoP1(OTPmeServer1):
                             "del_tiqr_token",
                             "enable_tiqr_token",
                             "disable_tiqr_token",
+                            "totp_enroll_begin",
+                            "totp_enroll_verify",
+                            "list_totp_tokens",
+                            "del_totp_token",
+                            "enable_totp_token",
+                            "disable_totp_token",
+                            "change_totp_pin",
                             "promote_token",
                             "list_device_tokens",
                             "add_device_token",
@@ -8907,6 +9918,11 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.info(log_msg)
             return self.get_allowed_deploy_token_types(username, sso_jwt, command_args)
 
+        if command == "get_login_token_options":
+            log_msg = _("Processing command get_login_token_options.", log=True)[1]
+            self.logger.debug(log_msg)
+            return self.get_login_token_options(username, sso_jwt, command_args)
+
         if command == "deploy_verify":
             log_msg = _("Processing command deploy_verify.", log=True)[1]
             self.logger.info(log_msg)
@@ -9066,6 +10082,41 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command disable_tiqr_token.", log=True)[1]
             self.logger.info(log_msg)
             return self.disable_tiqr_token(username, sso_jwt, command_args)
+
+        if command == "totp_enroll_begin":
+            log_msg = _("Processing command totp_enroll_begin.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.totp_enroll_begin(username, sso_jwt, command_args)
+
+        if command == "totp_enroll_verify":
+            log_msg = _("Processing command totp_enroll_verify.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.totp_enroll_verify(username, sso_jwt, command_args)
+
+        if command == "list_totp_tokens":
+            log_msg = _("Processing command list_totp_tokens.", log=True)[1]
+            self.logger.debug(log_msg)
+            return self.list_totp_tokens(username, sso_jwt, command_args)
+
+        if command == "del_totp_token":
+            log_msg = _("Processing command del_totp_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.del_totp_token(username, sso_jwt, command_args)
+
+        if command == "enable_totp_token":
+            log_msg = _("Processing command enable_totp_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.enable_totp_token(username, sso_jwt, command_args)
+
+        if command == "disable_totp_token":
+            log_msg = _("Processing command disable_totp_token.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.disable_totp_token(username, sso_jwt, command_args)
+
+        if command == "change_totp_pin":
+            log_msg = _("Processing command change_totp_pin.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.change_totp_pin(username, sso_jwt, command_args)
 
         if command == "promote_token":
             log_msg = _("Processing command promote_token.", log=True)[1]

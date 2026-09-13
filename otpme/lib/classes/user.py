@@ -1914,6 +1914,11 @@ class User(OTPmeObject):
                             "CONFIG_PARAMS:deploy_fido2_token_reauth",
                             "CONFIG_PARAMS:deploy_passkey_reauth",
                             "CONFIG_PARAMS:deploy_tiqr_token_reauth",
+                            "CONFIG_PARAMS:deploy_totp_token_reauth",
+                            "CONFIG_PARAMS:sso_allow_passkey_mgmt",
+                            "CONFIG_PARAMS:sso_allow_tiqr_mgmt",
+                            "CONFIG_PARAMS:sso_allow_totp_mgmt",
+                            "CONFIG_PARAMS:sso_allow_login_token_redeploy",
                             "CONFIG_PARAMS:deploy_device_token_reauth",
                             "CONFIG_PARAMS:sso_reauth_timeout",
                             ]

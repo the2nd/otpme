@@ -435,8 +435,8 @@ class AuthHandler(object):
         # We want to allow a session logout even if the token used at login is
         # not allowed for login anymore (e.g. daemon settings changed).
         if not self.session_logout:
-            if self.require_token_types \
-            and not self.verify_token.token_type in self.require_token_types:
+            if self.allowed_token_types \
+            and not self.verify_token.token_type in self.allowed_token_types:
                 log_msg = _("Token '{token_name}' is not a valid token type for this request. Authentication will fail.", log=True)[1]
                 log_msg = log_msg.format(token_name=self.auth_token.name)
                 self.logger.debug(log_msg)
@@ -1237,7 +1237,7 @@ class AuthHandler(object):
                 dot1x_tokens = True
 
             for ag in valid_ags:
-                # Select user tokens by pass type and self.require_token_types if given.
+                # Select user tokens by pass type and self.allowed_token_types if given.
                 ag_tokens = self.user.get_tokens(support_dot1x=dot1x_tokens,
                                                 access_group=ag,
                                                 host=self.auth_host,
@@ -1254,9 +1254,6 @@ class AuthHandler(object):
                     if dot1x_tokens:
                         if token.support_dot1x:
                             self.valid_user_tokens_dot1x.append(token)
-                    if self.require_token_types:
-                        if token.token_types not in self.require_token_types:
-                            continue
                     if token.pass_type not in select_tokens:
                         continue
                     if token.count_fails:
@@ -2555,7 +2552,7 @@ class AuthHandler(object):
         response=None, smartcard_data=None, token_auth_data=None, client=None,
         client_ip=None, access_group=None, user_token=None, src_token=None,
         count_fails=None, host_type=None, host=None, host_ip=None, replace_sessions=None,
-        require_token_types=None, require_pass_types=None, redirect_challenge=None,
+        allowed_token_types=None, require_pass_types=None, redirect_challenge=None,
         jwt_auth=False, authorize_host=True, share=None, allow_sotp_reuse=False,
         redirect_response=None, gen_jwt=None, jwt_challenge=None, sotp_ag_auth=None,
         rsp_ecdh_client_pub=None, verify_host=True, check_sotp=None, require_sotp_auth=False,
@@ -2597,7 +2594,7 @@ class AuthHandler(object):
             count_fails can be True or False
                 - specifies if a failed authentication should count up failcount
                   of user
-            require_token_types must be a list of allowed token types for this request
+            allowed_token_types must be a list of allowed token types for this request
             require_pass_types must be a list of allowed token types for this request
             gen_jwt can be True of False
                 - specifies if we should generated a JWT on successful auth.
@@ -2751,7 +2748,7 @@ class AuthHandler(object):
         # Will hold the peer host/node (instance) of this request.
         self.auth_host = None
         # Will hold all allowed token types for this request.
-        self.require_token_types = require_token_types
+        self.allowed_token_types = allowed_token_types
         # Will hold all allowed pass types for this request.
         self.require_pass_types = require_pass_types
         # Users default token to be verified first.

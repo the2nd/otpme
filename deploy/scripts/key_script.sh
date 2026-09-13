@@ -836,7 +836,7 @@ case "$COMMAND" in
 
 	gen_csr)
 		PRIVATE_KEY="$(get_private_key sign)"
-		CSR_SUBJECT="/C=DE/ST=NRW/L=Koeln/O=OTPme/OU=Development/CN=otpme.org"
+		CSR_SUBJECT="/C=DE/ST=BE/L=Berlin/O=OTPme/OU=Development/CN=otpme.org"
 		OPENSSL_CSR_CMD="openssl req -new -nodes -key /dev/stdin -subj "$CSR_SUBJECT""
 		if ! CSR="$(echo "$PRIVATE_KEY" | $OPENSSL_CSR_CMD)" ; then
 			exit 1

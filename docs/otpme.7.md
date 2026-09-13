@@ -634,6 +634,17 @@ Object types: site, unit, user
 If enabled, temporary passwords can be set on tokens.  
 Object types: site, unit, user, token
 
+**allow_sso_account_recovery (bool, default: false)**  
+Top-level switch of the SSO-token recovery flow. With it off, asking for
+a recovery mail gets the same generic answer as asking for an unknown
+user, so it tells nobody whether the account exists, and a recovery link
+is refused as invalid. Independent of **allow_sso_token_recovery** on
+purpose: this one decides whether recovery is offered at all, that one
+which token types it may hand out. Whether the login page shows the
+entry point is **sso_show_recover_link**. Resolved via the
+user/unit/site cascade on the user's home site.  
+Object types: site, unit, user
+
 **allow_sso_token_recovery (list, default: empty)**  
 Comma-separated list of token types that are eligible for the SSO-token
 recovery flow (*forgot my token -\> receive re-deploy link by e-mail*).
@@ -644,6 +655,21 @@ the user/unit/site cascade on the user's home site; the recovery mail
 address is stored on the user object as the **otpmeRecoveryMail** LDAP
 attribute.  
 Object types: site, unit, user
+
+**sso_recovery_link_ttl (int, default: 900)**  
+How long a recovery link sent by mail stays valid, in seconds; accepts
+time units (e.g. **15m**, **2h**). Between 1 minute and 24 hours, so a
+typo like **1** (one second) fails right away and nobody sets a recovery
+window of days by accident. Resolved via the user/unit/site cascade on
+the user's home site.  
+Object types: site, unit, user
+
+**sso_recovery_mail_from (str)**  
+Envelope and **From:** address of the recovery mail. The mail is sent by
+the user's home site through the **smtp_relay\_\*** parameters. No
+default: without a sender no recovery mail is sent, which leaves
+recovery off without saying so.  
+Object types: site, unit, node, share
 
 **admin_access_role (str)**  
 Role whose members are allowed to set a temporary password on another
@@ -820,9 +846,9 @@ and it is the only place where it is made. Own-site users need no
 entry.  
 An entry is *site* or *site***:***role*, where *site* is the user's home
 site and *role* is a role of *this* site — no other role is ever shown
-here. Both are needed, e.g. on site **koblenz**:  
-**koeln** — users of koeln may carry device token roles here at all.  
-**koeln:wlan-users** — and they get this site's role **wlan-users**, if
+here. Both are needed, e.g. on site **munich**:  
+**berlin** — users of berlin may carry device token roles here at all.  
+**berlin:wlan-users** — and they get this site's role **wlan-users**, if
 their own **device_token_roles** name it.  
 Without the bare site entry a user of that site is offered nothing here,
 and a role without its own entry is left out of the portal even when the
@@ -868,17 +894,48 @@ Object types: site, unit, user
 **sso_allow_passkeys (bool, default: true)**  
 Whether passkeys (FIDO2 resident credentials) are accepted as a login
 method on this site. Set to false to refuse passkey authentication
-entirely; the SSO portal login mask is unchanged. Foreign-site users
-only resolve via this cascade if the local site lists the home site
-under **sso_allow_passkeys_trusts**; otherwise the local site's setting
-is used as a fallback.  
+entirely; the SSO portal login mask is unchanged. A user of another site
+gets the Settings card only when this site lists the user's home site
+under **sso_allow_passkeys_trusts**; there is no fallback to this site's
+own setting. The Settings card also needs **sso_allow_passkey_mgmt**.  
 Object types: site, unit, user, token
 
+**sso_allow_passkey_mgmt (bool, default: false)**  
+Whether a user may manage their own passkeys on the Settings page of the
+SSO portal: listing, registering, enabling and disabling, deleting. Only
+on top of **sso_allow_passkeys**, which still has to allow passkeys. Off
+by default: which credentials a user may add or remove on their own is
+something an install should hand out deliberately. Signing in with a
+passkey is not affected.  
+Object types: site, unit, user
+
 **sso_allow_passkeys_trusts (list)**  
-Comma-separated list of remote sites whose user-scoped
-**sso_allow_passkeys** cascade this site trusts when a foreign user
-opens the SSO portal here. Sites not in the list fall back to the local
-site's **sso_allow_passkeys**. Own-site users are always trusted.  
+Comma-separated list of sites this site trusts with passkeys of users of
+other sites. It has to be set on **both** sites, because each of them
+makes a decision of its own, and each can only read its own list — the
+parameter is not synced to other sites.
+
+-   On the site whose SSO portal the user is standing in front of, it
+    lists the users' home sites. This protects the portal site's backend
+    and access groups from users of other sites: a passkey registered
+    here is written into this site's backend and added to this site's
+    SSO access group, roles and groups — it gives a user of another site
+    a new way in here. Without an entry the Settings card (listing,
+    registering, enabling and disabling passkeys) is not offered.
+
+-   On the user's home site, it lists the portal sites. This protects
+    the home site's users from other sites: the portal site runs the
+    registration and decides which authenticator gets bound to the
+    account, so whoever controls that site could bind one of their own.
+    The home site accepts such a request only from a site in its list,
+    and it tells the requesting site by the certificate of its node, not
+    by anything the request says.
+
+Neither side can make the other's decision: the home site protects its
+users from other sites, the portal site protects its backend and access
+groups from users of other sites. A site not in the list gets nothing -
+there is no fallback to the local **sso_allow_passkeys**. Own-site users
+need no entry.  
 Object types: site
 
 **sso_allow_fido2_deploy (bool, default: true)**  
@@ -918,7 +975,88 @@ Object types: site
 **sso_allow_totp_deploy (bool, default: true)**  
 Whether TOTP may be chosen as the token type of a first-login deployment
 or an SSO-token recovery. Set to false to restrict those to
-administrator workflows. TOTP has no Settings card of its own.  
+administrator workflows. Adding further authenticator apps from the
+Settings page is governed by **sso_allow_totp**, which this parameter
+narrows.  
+Object types: site, unit, user, token
+
+**sso_allow_totp (bool, default: true)**  
+Whether TOTP tokens may be used in the SSO portal at all - signing in
+with the PIN followed by the code of an authenticator app, and managing
+authenticator apps on the Settings page including adding one (the latter
+also needs **sso_allow_totp_mgmt**). Set to false to refuse TOTP
+authentication to the portal and hide the card; it takes
+**sso_allow_totp_deploy** with it. Other access groups are not
+affected.  
+Checked after the token was verified, so a code sent with a refused
+token is spent all the same. For a user of another site both the user's
+own cascade and this site have to allow it.  
+Resolves fail-open: only an explicit false blocks, so adding the
+parameter underneath a running installation cannot switch off a login
+that works today.  
+A user of another site gets the Settings card only when this site lists
+the user's home site under **sso_allow_totp_trusts**.  
+Object types: site, unit, user
+
+**sso_allow_totp_mgmt (bool, default: false)**  
+Whether a user may manage their own authenticator apps on the Settings
+page of the SSO portal: listing, adding, enabling and disabling,
+deleting, making one the default token, and setting a new PIN on one.
+Only on top of **sso_allow_totp**, which still has to allow TOTP. Off by
+default: which credentials a user may add or remove on their own is
+something an install should hand out deliberately. Signing in with a
+TOTP token is not affected.  
+Making one the default token also needs the current default token to be
+one the portal manages: FIDO2, tiqr or TOTP, with its own
+**sso_allow\_\*\_mgmt** on. A default token the administrator chose is
+never replaced or renamed from the Settings page.  
+With it off - the administrator manages the user's tokens - the Settings
+page instead offers changing the PIN of the OTP token the user signed in
+with, asking for the current PIN. With it on that form is gone, and PINs
+are set on the authenticator apps in the card.  
+Setting a new PIN on an authenticator app asks for no current PIN - the
+re-authentication of **deploy_totp_token_reauth** is the proof, so a
+user who forgot the PIN can set a new one. The secret stays, so the app
+keeps working.  
+Object types: site, unit, user
+
+**sso_allow_totp_trusts (list)**  
+Comma-separated list of sites this site trusts with authenticator apps
+(TOTP tokens) of users of other sites. It has to be set on **both**
+sites, because each of them makes a decision of its own, and each can
+only read its own list — the parameter is not synced to other sites.
+
+-   On the site whose SSO portal the user is standing in front of, it
+    lists the users' home sites. This protects the portal site's backend
+    and access groups from users of other sites: a token added here is
+    written into this site's backend and added to this site's SSO access
+    group, roles and groups — it gives a user of another site a new way
+    in here. Without an entry the Settings card (listing, adding,
+    enabling and disabling authenticator apps) is not offered.
+
+-   On the user's home site, it lists the portal sites. This protects
+    the secrets of the home site's users from other sites: the secret
+    and PIN of a new authenticator app are generated on the home site
+    but shown by the portal site, so whoever controls that site can
+    capture them and sign in as the user. The home site accepts such a
+    request only from a site in its list, and it tells the requesting
+    site by the certificate of its node, not by anything the request
+    says.
+
+Neither side can make the other's decision: the home site protects its
+users' secrets from other sites, the portal site protects its backend
+and access groups from users of other sites. A site not in the list gets
+nothing - there is no fallback to the local **sso_allow_totp**. Own-site
+users need no entry. Without the trust the Settings card is not offered
+at all, so an authenticator app cannot be deleted there either. Signing
+in with one is not affected.  
+Object types: site
+
+**sso_allow_password_deploy (bool, default: false)**  
+Whether a password may be chosen as the token type of a first-login
+deployment or an SSO-token recovery. Off by default: a password is a
+weaker credential than TOTP or a security key, so an install has to
+decide for it.  
 Object types: site, unit, user, token
 
 **sso_allow_tiqr_deploy (bool, default: false)**  
@@ -934,25 +1072,101 @@ Object types: site, unit, user, token
 **sso_allow_tiqr (bool, default: true)**  
 Whether tiqr may be used in the SSO portal at all - signing in by
 confirming on a phone, and managing phones on the Settings page
-including enrolling one. Set to false to refuse tiqr authentication
-entirely and hide the card.  
+including enrolling one (the latter also needs **sso_allow_tiqr_mgmt**).
+Set to false to refuse tiqr authentication entirely and hide the card.  
 Resolves fail-open: only an explicit false blocks, so adding the
 parameter underneath a running installation cannot switch off a login
 that works today. Note that this defaults to *true* while
 **sso_allow_tiqr_deploy** defaults to *false*, which is what keeps tiqr
 out of the way on an installation that never set it up: a tiqr login
 needs a phone somebody enrolled deliberately.  
+A user of another site gets the Settings card only when this site lists
+the user's home site under **sso_allow_tiqr_trusts**.  
 Object types: site, unit, user
+
+**sso_allow_tiqr_mgmt (bool, default: false)**  
+Whether a user may manage their own tiqr phones on the Settings page of
+the SSO portal: listing, enrolling, enabling and disabling, deleting,
+making one the default token. Only on top of **sso_allow_tiqr**, which
+still has to allow tiqr. Off by default: which credentials a user may
+add or remove on their own is something an install should hand out
+deliberately. Signing in with a phone is not affected.  
+Making one the default token also needs the current default token to be
+one the portal manages, see **sso_allow_totp_mgmt**.  
+Object types: site, unit, user
+
+**sso_allow_tiqr_trusts (list)**  
+Comma-separated list of sites this site trusts with tiqr phones of users
+of other sites. It has to be set on **both** sites, because each of them
+makes a decision of its own, and each can only read its own list — the
+parameter is not synced to other sites.
+
+-   On the site whose SSO portal the user is standing in front of, it
+    lists the users' home sites. This protects the portal site's backend
+    and access groups from users of other sites: an enrolled phone is
+    written into this site's backend and added to this site's SSO access
+    group, roles and groups — it gives a user of another site a new way
+    in here. Without an entry the Settings card (listing, enrolling,
+    enabling and disabling phones) is not offered.
+
+-   On the user's home site, it lists the portal sites. This protects
+    the secrets of the home site's users from other sites: a phone
+    delivers its tiqr secret to the site whose QR code it scanned, which
+    passes it on to the home site, so whoever controls that site can
+    capture it and sign in as the user. The home site accepts such a
+    request only from a site in its list, and it tells the requesting
+    site by the certificate of its node, not by anything the request
+    says.
+
+Neither side can make the other's decision: the home site protects its
+users' secrets from other sites, the portal site protects its backend
+and access groups from users of other sites. A site not in the list gets
+nothing - there is no fallback to the local **sso_allow_tiqr**. Own-site
+users need no entry. Without the trust the Settings card is not offered
+at all, so a phone cannot be deleted there either. Signing in with a
+phone is not affected: the phone answers a login with a one-time
+response, its secret stays on the phone.  
+Not needed for FIDO2 security keys: a key never hands out its secret.  
+Object types: site
 
 **sso_allow_fido2 (bool, default: true)**  
 Whether FIDO2 security keys may be used in the SSO portal at all -
 signing in with one, and managing them on the Settings page including
-registering another. Set to false to refuse FIDO2 authentication
-entirely and hide the card; it takes **sso_allow_fido2_deploy** with
-it.  
+registering another (the latter also needs **sso_allow_fido2_mgmt**).
+Set to false to refuse FIDO2 authentication entirely and hide the card;
+it takes **sso_allow_fido2_deploy** with it.  
 Resolves fail-open, unlike **sso_allow_passkeys**: FIDO2 login predates
 this parameter and must not stop working because nobody set it. Only an
 explicit false blocks.  
+Object types: site, unit, user
+
+**sso_allow_fido2_mgmt (bool, default: false)**  
+Whether a user may manage their own security keys on the Settings page
+of the SSO portal: listing, registering, enabling and disabling,
+deleting, making one the default token. Only on top of
+**sso_allow_fido2**, which still has to allow FIDO2. Off by default:
+which credentials a user may add or remove on their own is something an
+install should hand out deliberately. Signing in with a key is not
+affected.  
+Making one the default token also needs the current default token to be
+one the portal manages, see **sso_allow_totp_mgmt**.  
+Object types: site, unit, user
+
+**sso_max_fido2_token (int)**  
+
+**sso_max_passkey_token (int)**  
+
+**sso_max_tiqr_token (int)**  
+
+**sso_max_totp_token (int)**  
+How many security keys, passkeys, tiqr phones or authenticator apps one
+user may hold in the Settings card of an SSO portal, between 1 and 128.
+Unset means no limit. Counted are the tokens the card lists: the ones
+added at this portal, and the default token when it is of that type.
+Once the limit is reached the card offers no form to add another, and
+adding one is refused - checked on the user's home site when the add
+starts and again when it completes. Tokens an administrator creates, a
+deploy of the default token and signing in are not affected.  
 Object types: site, unit, user
 
 **sso_show_fido2_button (bool, default: true)**  
@@ -1047,6 +1261,15 @@ bucket. Accepts the standard Flask-Limiter syntax (e.g. **60/minute**,
 **600/hour**).  
 Object types: site
 
+**sso_rate_limit_recover (str, default: 20/minute)**  
+Per-username rate limit on the unauthenticated SSO-token recovery
+endpoints (**/recover**, **/recover/complete/\***). Bounds mail flooding
+and guessing of recovery links; a real recovery is a handful of
+requests. Keyed on the submitted username, so users behind a shared NAT
+address do not share a bucket. Accepts the standard Flask-Limiter
+syntax.  
+Object types: site
+
 **httpd_ssl_socket_uri (str, default: tcp://\[::\]:443)**  
 Listen socket URI for the SSO portal HTTPS (TLS) daemon. Supports
 **tcp://address:port**. The most specific match wins (node/host override
@@ -1111,6 +1334,23 @@ enrolled against it can authenticate again without being enrolled
 anew.  
 Object types: site, unit, user
 
+**add_totp_token_to_trash (bool, default: true)**  
+The same for authenticator apps the user removes on the SSO portal
+settings page. Restoring one puts the token back with its secret and
+PIN, so the app still produces valid codes for it.  
+Object types: site, unit, user
+
+**sso_allow_login_token_redeploy (bool, default: true)**  
+Whether a user may re-deploy their login token from the Settings page of
+the SSO portal, i.e. replace it with a new token of a type the
+**sso_allow\_\*\_deploy** parameters allow. Turn it off where the
+administrator manages the users' login tokens: otherwise a user could
+swap the token they were given for one of their own choosing. The forced
+deploy of a token flagged for SSO deploy is not affected. The parameter
+is resolved per user; the most specific match wins (user overrides unit
+overrides site).  
+Object types: site, unit, user
+
 **deploy_login_token_reauth (bool, default: true)**  
 Whether re-deploying the default token through the SSO portal requires a
 fresh step-up re-authentication. What that flow hands out replaces the
@@ -1134,6 +1374,11 @@ Object types: site, unit, user
 
 **deploy_tiqr_token_reauth (bool, default: true)**  
 The same before a phone is enrolled, see
+**deploy_fido2_token_reauth**.  
+Object types: site, unit, user
+
+**deploy_totp_token_reauth (bool, default: true)**  
+The same before an authenticator app is added, see
 **deploy_fido2_token_reauth**.  
 Object types: site, unit, user
 

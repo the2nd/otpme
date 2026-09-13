@@ -524,6 +524,8 @@
             }
             if (card) card.classList.remove('is-hidden');
             const passkeys = result.passkeys || [];
+            applyCardTokenLimit('passkey', 'passkeyLimit', passkeys.length,
+                                result.max_tokens);
             if (passkeys.length === 0) {
                 const li = document.createElement('li');
                 li.className = 'empty';
@@ -636,6 +638,12 @@
             if (ADD_FORMS[pending.open]) openAddFields(pending.open);
             return;
         }
+        // Sent away by a TOTP token's "Change PIN" button: open its box.
+        // The PIN itself was never stored, it is typed after the reauth.
+        if (pending.totpPin) {
+            openTotpPinBox(pending.totpPin.name, pending.totpPin.label);
+            return;
+        }
         // The fallback of a window that ran out between opening the
         // form and pressing its button: the form is closed on every
         // page load, and the name has to go back into it.
@@ -679,7 +687,34 @@
                 input: 'fido2DeviceName', hash: '#fido2Card', flow: 'fido2'},
         tiqr:    {start: 'startTiqrBtn', fields: 'tiqrAddFields',
                 input: 'tiqrDeviceName', hash: '#tiqrCard', flow: 'tiqr'},
+        totp:    {start: 'startTotpBtn', fields: 'totpAddFields',
+                input: 'totpDeviceName', hash: '#totpCard', flow: 'totp'},
     };
+
+    // sso_max_<type>_token: once a card lists as many tokens as the user
+    // may hold, there is no form to open. ssod refuses the add either
+    // way; this only saves typing a name for nothing.
+    function applyCardTokenLimit(flow, limitId, count, max) {
+        const form = ADD_FORMS[flow];
+        const start = document.getElementById(form.start);
+        const fields = document.getElementById(form.fields);
+        const limitEl = document.getElementById(limitId);
+        const reached = !!max && count >= max;
+        if (reached) {
+            showAddFields(flow, false);
+            if (start) start.classList.add('is-hidden');
+        } else if (start && fields && fields.classList.contains('is-hidden')) {
+            start.classList.remove('is-hidden');
+        }
+        if (limitEl) {
+            limitEl.textContent = reached
+                    ? interpolate(getPageI18n().labelMaxCardTokens
+                        || 'You have the maximum number of tokens of this type ({max}).',
+                        {max: max})
+                    : '';
+            limitEl.classList.toggle('is-hidden', !reached);
+        }
+    }
 
     function showAddFields(flow, open) {
         const form = ADD_FORMS[flow];
@@ -978,6 +1013,8 @@
             }
             card.classList.remove('is-hidden');
             const tokens = result.fido2_tokens || [];
+            applyCardTokenLimit('fido2', 'fido2Limit', tokens.length,
+                                result.max_tokens);
             const ssoToken = result.sso_token || {};
             if (tokens.length === 0) {
                 const li = document.createElement('li');
@@ -1021,7 +1058,9 @@
                                         ssoToken,
                                         {statusId: 'fido2Status',
                                         errorId: 'fido2Error'}));
-                    actions.appendChild(promoteBtn);
+                    // Not while an administrator's token holds the role:
+                    // promote_token refuses to rename it.
+                    if (ssoToken.managed) actions.appendChild(promoteBtn);
                     const delBtn = document.createElement('button');
                     delBtn.type = 'button';
                     delBtn.className = 'btn btn-secondary btn-small';
@@ -1217,6 +1256,8 @@
             }
             if (card) card.classList.remove('is-hidden');
             const tokens = result.tiqr_tokens || [];
+            applyCardTokenLimit('tiqr', 'tiqrLimit', tokens.length,
+                                result.max_tokens);
             // Whatever holds the SSO role right now. Promoting renames
             // it, and it need not be one of the phones below -- it can
             // just as well be a security key.
@@ -1261,7 +1302,9 @@
                                         ssoToken,
                                         {statusId: 'tiqrStatus',
                                         errorId: 'tiqrError'}));
-                    actions.appendChild(promoteBtn);
+                    // Not while an administrator's token holds the role:
+                    // promote_token refuses to rename it.
+                    if (ssoToken.managed) actions.appendChild(promoteBtn);
                     const delBtn = document.createElement('button');
                     delBtn.type = 'button';
                     delBtn.className = 'btn btn-secondary btn-small';
@@ -1428,6 +1471,368 @@
         }
     }
 
+    // ---- Login token options ----
+    //
+    // The PIN change card is for login tokens an administrator manages
+    // (sso_allow_totp_mgmt off -- otherwise the TOTP card sets PINs), the
+    // re-deploy card needs sso_allow_login_token_redeploy. Both stay
+    // hidden when the question fails; the server refuses either way.
+
+    async function loadLoginTokenOptions() {
+        const urls = getUrls();
+        let result = {};
+        try {
+            const resp = await fetchJSON(urls.urlLoginTokenOptions);
+            if (resp.ok) result = await resp.json();
+        } catch (e) {
+            result = {};
+        }
+        const pinCard = document.getElementById('pinChangeCard');
+        if (pinCard) pinCard.classList.toggle('is-hidden', !result.pin_change);
+        const redeployCard = document.getElementById('redeployCard');
+        if (redeployCard) redeployCard.classList.toggle('is-hidden', !result.redeploy);
+    }
+
+    // ---- TOTP ----
+    //
+    // Same list rules as the tiqr card. Adding one is two steps: begin
+    // hands out QR code, secret and PIN, and the token is created only
+    // when the first code from the app checks out.
+
+    async function loadTotpTokens() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const card = document.getElementById('totpCard');
+        const listEl = document.getElementById('totpList');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        try {
+            const resp = await fetchJSON(urls.urlListTotp);
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedLoadTotp || 'Failed to load authenticator apps.');
+            }
+            // allowed=false means sso_allow_totp or sso_allow_totp_mgmt
+            // is off for this user.
+            if (card && !result.allowed) {
+                card.classList.add('is-hidden');
+                return;
+            }
+            if (card) card.classList.remove('is-hidden');
+            const tokens = result.totp_tokens || [];
+            applyCardTokenLimit('totp', 'totpLimit', tokens.length,
+                                result.max_tokens);
+            const ssoToken = result.sso_token || {};
+            if (tokens.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = i18n.labelNoTotp || 'No authenticator apps set up yet.';
+                listEl.appendChild(li);
+                return;
+            }
+            for (const t of tokens) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'device-label';
+                label.textContent = t.device_name || t.name;
+                if (t.is_sso_token) {
+                    const badge = document.createElement('span');
+                    badge.className = 'device-badge';
+                    badge.textContent = i18n.labelSsoToken || 'Default token';
+                    label.appendChild(document.createTextNode(' '));
+                    label.appendChild(badge);
+                }
+                li.appendChild(label);
+                const actions = document.createElement('span');
+                actions.className = 'device-token-actions';
+                // The SSO token's PIN may change as well.
+                const pinBtn = document.createElement('button');
+                pinBtn.type = 'button';
+                pinBtn.className = 'btn btn-secondary btn-small';
+                pinBtn.textContent = i18n.labelChangePinBtn || 'Change PIN';
+                pinBtn.addEventListener('click',
+                    () => openTotpPinBox(t.name, t.device_name || t.name));
+                actions.appendChild(pinBtn);
+                if (!t.is_sso_token) {
+                    actions.appendChild(buildEnableToggle({
+                        enabled: !!t.enabled,
+                        onChange: (desired) => toggleTotpToken(t.name, desired),
+                        fallbackError: i18n.labelFailedToggleTotp || 'Failed to update authenticator app.',
+                        lockedReason: t.is_current ? noDisableReason() : null,
+                    }));
+                    const promoteBtn = document.createElement('button');
+                    promoteBtn.type = 'button';
+                    promoteBtn.className = 'btn btn-secondary btn-small';
+                    promoteBtn.textContent = i18n.labelMakeSsoToken || 'Make default token';
+                    promoteBtn.addEventListener('click',
+                        () => promoteToken(t.name, t.device_name || t.name,
+                                        ssoToken,
+                                        {statusId: 'totpStatus',
+                                        errorId: 'totpError'}));
+                    // Not while an administrator's token holds the role:
+                    // promote_token refuses to rename it.
+                    if (ssoToken.managed) actions.appendChild(promoteBtn);
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'btn btn-secondary btn-small';
+                    delBtn.textContent = i18n.labelDeleteBtn || 'Delete';
+                    if (t.is_current) {
+                        actions.appendChild(lockControl(delBtn, noDeleteReason()));
+                    } else {
+                        delBtn.addEventListener('click',
+                            () => deleteTotpToken(t.name, t.device_name || t.name));
+                        actions.appendChild(delBtn);
+                    }
+                }
+                li.appendChild(actions);
+                listEl.appendChild(li);
+            }
+        } catch (e) {
+            const li = document.createElement('li');
+            li.className = 'error-msg';
+            li.textContent = e.message || i18n.labelFailedLoadTotp || 'Failed to load authenticator apps.';
+            listEl.appendChild(li);
+        }
+    }
+
+    function showTotpEnrollBox(show) {
+        const box = document.getElementById('totpEnrollBox');
+        const form = document.getElementById('totpAddForm');
+        if (box) box.classList.toggle('is-hidden', !show);
+        if (form) form.classList.toggle('is-hidden', show);
+        document.getElementById('totpCode').value = '';
+        document.getElementById('totpEnrollStatus').textContent = '';
+        document.getElementById('totpEnrollError').textContent = '';
+        if (!show) {
+            // Secret and PIN are shown once; nothing of them stays in
+            // the page after the box is gone.
+            document.getElementById('totpQrcodeImg').src = '';
+            document.getElementById('totpSecret').textContent = '';
+            document.getElementById('totpPin').textContent = '';
+            showAddFields('totp', false);
+        }
+    }
+
+    async function addTotpToken() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const statusEl = document.getElementById('totpStatus');
+        const errorEl = document.getElementById('totpError');
+        errorEl.textContent = '';
+        const deviceName = cleanNameValue(document.getElementById('totpDeviceName').value);
+        if (!deviceName) {
+            errorEl.textContent = i18n.labelDeviceNameRequired || 'Device name is required.';
+            return;
+        }
+        const btn = document.getElementById('addTotpBtn');
+        btn.disabled = true;
+        statusEl.textContent = i18n.labelPreparingTotp || 'Preparing setup...';
+        try {
+            const resp = await fetchJSON(urls.urlTotpEnrollBegin, {
+                method: 'POST',
+                body: JSON.stringify({device_name: deviceName}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                if (handleStepUp(result, '#totpCard',
+                        {flow: 'totp',
+                        input: 'totpDeviceName', button: 'addTotpBtn',
+                        status: 'totpStatus', value: deviceName, auto: true})) {
+                    return;
+                }
+                throw new Error(result.error || i18n.labelFailedStartTotp || 'Failed to start authenticator app setup.');
+            }
+            statusEl.textContent = '';
+            showTotpEnrollBox(true);
+            document.getElementById('totpQrcodeImg').src = result.qrcode_img || '';
+            document.getElementById('totpSecret').textContent = result.secret || '';
+            document.getElementById('totpPin').textContent = result.pin || '';
+            document.getElementById('totpCode').focus();
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedStartTotp || 'Failed to start authenticator app setup.';
+            statusEl.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function verifyTotpToken() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const statusEl = document.getElementById('totpEnrollStatus');
+        const errorEl = document.getElementById('totpEnrollError');
+        errorEl.textContent = '';
+        const code = (document.getElementById('totpCode').value || '').replace(/\s+/g, '');
+        if (!code) {
+            errorEl.textContent = i18n.labelTotpCodeRequired || 'Please enter the code from your app.';
+            return;
+        }
+        const btn = document.getElementById('verifyTotpBtn');
+        btn.disabled = true;
+        statusEl.textContent = i18n.labelVerifyingTotp || 'Verifying code...';
+        try {
+            const resp = await fetchJSON(urls.urlTotpEnrollVerify, {
+                method: 'POST',
+                body: JSON.stringify({otp: code}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                statusEl.textContent = '';
+                // A typo: the box stays, with the same secret.
+                if (result.retry) {
+                    errorEl.textContent = result.error;
+                    document.getElementById('totpCode').value = '';
+                    document.getElementById('totpCode').focus();
+                    return;
+                }
+                throw new Error(result.error || i18n.labelFailedVerifyTotp || 'Failed to verify the code.');
+            }
+            showTotpEnrollBox(false);
+            document.getElementById('totpDeviceName').value = '';
+            document.getElementById('totpStatus').textContent = i18n.labelTotpAdded || 'Authenticator app added.';
+            preserveScrollAround(loadTotpTokens);
+            notifySyncPending(result);
+        } catch (e) {
+            // Expired or too many wrong codes: nothing left to retry.
+            showTotpEnrollBox(false);
+            document.getElementById('totpError').textContent = e.message || i18n.labelFailedVerifyTotp || 'Failed to verify the code.';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function cancelTotpEnrollment() {
+        showTotpEnrollBox(false);
+        const statusEl = document.getElementById('totpStatus');
+        if (statusEl) statusEl.textContent = '';
+    }
+
+    // The token the PIN box is open for.
+    let totpPinTokenName = null;
+    let totpPinTokenLabel = null;
+
+    function showTotpPinBox(show) {
+        document.getElementById('totpPinBox').classList.toggle('is-hidden', !show);
+        document.getElementById('totpNewPin').value = '';
+        document.getElementById('totpConfirmPin').value = '';
+        document.getElementById('totpPinStatus').textContent = '';
+        document.getElementById('totpPinError').textContent = '';
+        if (!show) totpPinTokenName = null;
+    }
+
+    // Asks for the reauth before the box opens, like onStartAdd(): the
+    // user proves themselves first and then types the PIN. Back from
+    // /reauth resumePendingAdd() opens the box.
+    async function openTotpPinBox(name, label) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        let missing = false;
+        try {
+            const resp = await fetchJSON(urls.urlStepUpState);
+            const body = await resp.json();
+            if (resp.ok) missing = !!(body.step_up_missing || {}).totp;
+        } catch (e) {
+            missing = false;
+        }
+        if (missing) {
+            handleStepUp({step_up_required: true}, '#totpCard',
+                        {totpPin: {name: name, label: label}});
+            return;
+        }
+        showTotpPinBox(true);
+        totpPinTokenName = name;
+        totpPinTokenLabel = label;
+        const tpl = i18n.labelTotpPinTitle || 'New PIN for "{name}".';
+        document.getElementById('totpPinTitle').textContent = interpolate(tpl, {name: label});
+        document.getElementById('totpNewPin').focus();
+    }
+
+    async function saveTotpPin() {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const statusEl = document.getElementById('totpPinStatus');
+        const errorEl = document.getElementById('totpPinError');
+        errorEl.textContent = '';
+        const newPin = document.getElementById('totpNewPin').value;
+        const confirmPin = document.getElementById('totpConfirmPin').value;
+        if (!totpPinTokenName) return;
+        if (!newPin || !confirmPin) {
+            errorEl.textContent = i18n.labelAllFieldsRequired || 'All fields are required.';
+            return;
+        }
+        if (newPin !== confirmPin) {
+            errorEl.textContent = i18n.labelNewPinsMismatch || 'New PINs do not match.';
+            return;
+        }
+        const btn = document.getElementById('saveTotpPinBtn');
+        btn.disabled = true;
+        statusEl.textContent = i18n.labelChangingPin || 'Changing PIN...';
+        try {
+            const resp = await fetchJSON(urls.urlChangeTotpPin, {
+                method: 'POST',
+                body: JSON.stringify({name: totpPinTokenName, new_pin: newPin}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                // The reauth ran out while the PIN was typed.
+                if (handleStepUp(result, '#totpCard',
+                        {totpPin: {name: totpPinTokenName,
+                                label: totpPinTokenLabel}})) {
+                    return;
+                }
+                throw new Error(result.error || i18n.labelPinFailed || 'PIN change failed.');
+            }
+            showTotpPinBox(false);
+            document.getElementById('totpStatus').textContent =
+                    i18n.labelPinSuccess || 'PIN changed successfully.';
+        } catch (e) {
+            statusEl.textContent = '';
+            errorEl.textContent = e.message || i18n.labelPinFailed || 'PIN change failed.';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function toggleTotpToken(name, enabled) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const resp = await fetchJSON(urls.urlToggleTotp, {
+            method: 'POST',
+            body: JSON.stringify({name: name, enabled: enabled}),
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            throw new Error(result.error || i18n.labelFailedToggleTotp || 'Failed to update authenticator app.');
+        }
+        return !!result.enabled;
+    }
+
+    async function deleteTotpToken(name, label) {
+        const urls = getUrls();
+        const i18n = getPageI18n();
+        const tpl = i18n.labelConfirmDeleteTotp || 'Remove authenticator app "{name}"?';
+        if (!confirm(interpolate(tpl, {name: label}))) {
+            return;
+        }
+        const statusEl = document.getElementById('totpStatus');
+        const errorEl = document.getElementById('totpError');
+        errorEl.textContent = '';
+        try {
+            const resp = await fetchJSON(urls.urlDelTotp, {
+                method: 'POST',
+                body: JSON.stringify({name: name}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || i18n.labelFailedDeleteTotp || 'Failed to delete authenticator app.');
+            }
+            statusEl.textContent = i18n.labelTotpDeleted || 'Authenticator app removed.';
+            preserveScrollAround(loadTotpTokens);
+        } catch (e) {
+            errorEl.textContent = e.message || i18n.labelFailedDeleteTotp || 'Failed to delete authenticator app.';
+        }
+    }
+
     // Shared by every card whose tokens may hold the SSO role. The card
     // only says where to write status and errors; everything else about
     // a promotion is the same whether the thing being promoted is a
@@ -1496,6 +1901,7 @@
             preserveScrollAround(async () => {
                 await loadTiqrTokens();
                 await loadFido2Tokens();
+                await loadTotpTokens();
             });
         } catch (e) {
             errorEl.textContent = e.message || i18n.labelFailedPromoteTiqr || 'Failed to change the default token.';
@@ -2137,6 +2543,25 @@
         if (startTiqrBtn) startTiqrBtn.addEventListener('click',
                 () => onStartAdd('tiqr'));
 
+        const addTotpBtn = document.getElementById('addTotpBtn');
+        if (addTotpBtn) addTotpBtn.addEventListener('click', addTotpToken);
+        const verifyTotpBtn = document.getElementById('verifyTotpBtn');
+        if (verifyTotpBtn) verifyTotpBtn.addEventListener('click', verifyTotpToken);
+        const totpCode = document.getElementById('totpCode');
+        if (totpCode) totpCode.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') verifyTotpToken();
+        });
+        const totpCancelBtn = document.getElementById('totpCancelBtn');
+        if (totpCancelBtn) totpCancelBtn.addEventListener('click', cancelTotpEnrollment);
+        const saveTotpPinBtn = document.getElementById('saveTotpPinBtn');
+        if (saveTotpPinBtn) saveTotpPinBtn.addEventListener('click', saveTotpPin);
+        const totpPinCancelBtn = document.getElementById('totpPinCancelBtn');
+        if (totpPinCancelBtn) totpPinCancelBtn.addEventListener('click',
+                () => showTotpPinBox(false));
+        const startTotpBtn = document.getElementById('startTotpBtn');
+        if (startTotpBtn) startTotpBtn.addEventListener('click',
+                () => onStartAdd('totp'));
+
         const adminToggle = document.getElementById('adminAccessToggle');
         if (adminToggle) adminToggle.addEventListener('change', onAdminAccessToggle);
 
@@ -2156,6 +2581,8 @@
             loadPasskeys().catch(() => {}),
             loadFido2Tokens().catch(() => {}),
             loadTiqrTokens().catch(() => {}),
+            loadTotpTokens().catch(() => {}),
+            loadLoginTokenOptions().catch(() => {}),
             loadAdminAccess().catch(() => {}),
             loadRecoveryMail().catch(() => {}),
             loadOidcConsents().catch(() => {}),

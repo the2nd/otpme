@@ -3353,8 +3353,8 @@ class CommandHandler(object):
         # we want users to access this node to be in the role "verwaltung"
         # we trust the user root that she only adds users that are allowed to the role "verwaltung"
         #   - otpme-tool add_signer --type token --tag "role|realm.tld/site/roles/verwaltung" "user|realm.tld/site/users/root"
-        # we allow only the user test1 to login with a token that was signed for the node bossix-hbslx.
-        #   - otpme-tool add_signer --type token --tag "node|realm.tld/site/nodes/bossix-hbslx" --tag "user|realm.tld/site/users/test1" "user|realm.tld/site/users/root"
+        # we allow only the user test1 to login with a token that was signed for the node node1.
+        #   - otpme-tool add_signer --type token --tag "node|realm.tld/site/nodes/node1" --tag "user|realm.tld/site/users/test1" "user|realm.tld/site/users/root"
         # trust any auth_script signed by any member of the manager role.
         #   - otpme-tool add_signer --type auth_script "role|realm.tld/site/roles/manager"
         # trust scripts signed by the root user for the site site.
@@ -6235,8 +6235,8 @@ class CommandHandler(object):
         #valid=3650
 
         #country = "DE"
-        #state = "RLP"
-        #locality = "Koeln"
+        #state = "BE"
+        #locality = "Berlin"
         #organization = "OTPme"
         #email = "root@otpme.org"
 

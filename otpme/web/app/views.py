@@ -140,6 +140,16 @@ def _ssod_error_message(response, default):
         return str(response)
     return default
 
+def _card_max_tokens(response):
+    """ sso_max_<type>_token from a token listing, or None for no limit.
+    The JS compares it with the listing's length. """
+    if not isinstance(response, dict):
+        return None
+    try:
+        return int(response['max_tokens'])
+    except (KeyError, TypeError, ValueError):
+        return None
+
 def _get_fido2_rp_id():
     """ Get RP ID from request host for WebAuthn browser compatibility.
         Checks X-Forwarded-Host for reverse proxy setups. """
@@ -569,7 +579,9 @@ def list_passkeys():
     if isinstance(response, dict):
         passkeys = response.get('passkeys', []) or []
         allowed = bool(response.get('allowed', False))
-    return jsonify({"passkeys": passkeys, "allowed": allowed})
+    return jsonify({"passkeys": passkeys,
+                    "allowed": allowed,
+                    "max_tokens": _card_max_tokens(response)})
 
 @app.route('/settings/passkeys/register/begin', methods=['POST'])
 @login_required
@@ -708,9 +720,13 @@ def list_fido2_tokens():
                     'label'     : response.get('sso_token_label'),
                     'suggested' : response.get('sso_token_suggested_label'),
                     'ask_label' : bool(response.get('sso_token_ask_label', True)),
+                    # False: an administrator chose the SSO token, the
+                    # cards offer no promotion.
+                    'managed'   : bool(response.get('sso_token_managed', False)),
                 }
     return jsonify({"fido2_tokens": fido2_tokens,
                     "allowed": allowed,
+                    "max_tokens": _card_max_tokens(response),
                     "sso_token": sso_token})
 
 @app.route('/settings/fido2/add/begin', methods=['POST'])
@@ -846,9 +862,13 @@ def list_tiqr_tokens():
                     'label'     : response.get('sso_token_label'),
                     'suggested' : response.get('sso_token_suggested_label'),
                     'ask_label' : bool(response.get('sso_token_ask_label', True)),
+                    # False: an administrator chose the SSO token, the
+                    # cards offer no promotion.
+                    'managed'   : bool(response.get('sso_token_managed', False)),
                 }
     return jsonify({"tiqr_tokens": tiqr_tokens,
                     "allowed": allowed,
+                    "max_tokens": _card_max_tokens(response),
                     "sso_token": sso_token})
 
 
@@ -955,6 +975,193 @@ def toggle_tiqr_token():
     if error:
         return error
     return jsonify({"status": "ok", "enabled": enable})
+
+
+@app.route('/settings/totp', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def list_totp_tokens():
+    """ The user's authenticator apps. Same shape as the tiqr listing. """
+    try:
+        response, error = _send_ssod_command(
+                command="list_totp_tokens",
+                default_error=gettext("Failed to list authenticator apps."))
+    except Exception as e:
+        logger.critical(f"list_totp_tokens failed: {e}")
+        return jsonify({"error": gettext("Failed to list authenticator apps.")}), 500
+    if error:
+        return error
+    totp_tokens = []
+    allowed = False
+    sso_token = {}
+    if isinstance(response, dict):
+        totp_tokens = response.get('totp_tokens', []) or []
+        allowed = bool(response.get('allowed', False))
+        sso_token = {
+                    'name'      : response.get('sso_token_name'),
+                    'type'      : response.get('sso_token_type'),
+                    'label'     : response.get('sso_token_label'),
+                    'suggested' : response.get('sso_token_suggested_label'),
+                    'ask_label' : bool(response.get('sso_token_ask_label', True)),
+                    # False: an administrator chose the SSO token, the
+                    # cards offer no promotion.
+                    'managed'   : bool(response.get('sso_token_managed', False)),
+                }
+    return jsonify({"totp_tokens": totp_tokens,
+                    "allowed": allowed,
+                    "max_tokens": _card_max_tokens(response),
+                    "sso_token": sso_token})
+
+
+@app.route('/settings/login_token_options', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def get_login_token_options():
+    """ Whether the settings page offers the PIN change and the re-deploy
+    of the login token. Both off when ssod cannot be asked: deploy_begin
+    and change_pin refuse on their own anyway. """
+    response, error = _send_ssod_command(
+            command="get_login_token_options",
+            default_error=gettext("Failed to load login token options."))
+    if error:
+        return error
+    pin_change = False
+    redeploy = False
+    if isinstance(response, dict):
+        pin_change = bool(response.get('pin_change', False))
+        redeploy = bool(response.get('redeploy', False))
+    return jsonify({"pin_change": pin_change, "redeploy": redeploy})
+
+
+@app.route('/settings/totp/enroll/begin', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def totp_enroll_begin():
+    """ Start adding an authenticator app.
+
+    Nothing is created here -- ssod keeps secret and PIN under an opaque
+    state id until the first code arrives. Only that id goes into the
+    Flask session, like the security key flow does. Secret and PIN go to
+    the browser: the user has to see them. """
+    data = request.json or {}
+    device_name = (data.get('device_name') or '').strip()
+    if not device_name:
+        return jsonify({"error": gettext("Device name is required.")}), 400
+    response, error = _send_ssod_command(
+            command="totp_enroll_begin",
+            extra_args={'device_name': device_name},
+            default_error=gettext("Failed to start authenticator app setup."),
+            mgmt=True)
+    if error:
+        return error
+    if not isinstance(response, dict):
+        return jsonify({"error": gettext("Failed to start authenticator app setup.")}), 500
+    flask_session['totp_enroll_state_id'] = response.get('state_id')
+    return jsonify({
+                "status"        : "ok",
+                "qrcode_img"    : response.get('qrcode_img'),
+                "secret"        : response.get('secret'),
+                "pin"           : response.get('pin'),
+                "device_name"   : response.get('device_name'),
+            })
+
+
+@app.route('/settings/totp/enroll/verify', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def totp_enroll_verify():
+    """ Check the first code and create the token.
+
+    A wrong code comes back with a new state id, which replaces the old
+    one in the Flask session so the user can simply try again. """
+    state_id = flask_session.pop('totp_enroll_state_id', None)
+    if not state_id:
+        return jsonify({"error": gettext("No authenticator app setup in progress.")}), 400
+    data = request.json or {}
+    otp = (data.get('otp') or '').strip()
+    if not otp:
+        flask_session['totp_enroll_state_id'] = state_id
+        return jsonify({"error": gettext("Code is required.")}), 400
+    response, error = _send_ssod_command(
+            command="totp_enroll_verify",
+            extra_args={'state_id': state_id, 'otp': otp},
+            default_error=gettext("Failed to verify the code."),
+            mgmt=True)
+    if error:
+        return error
+    if not isinstance(response, dict):
+        return jsonify({"error": gettext("Failed to verify the code.")}), 500
+    if not response.get('verified'):
+        flask_session['totp_enroll_state_id'] = response.get('state_id')
+        return jsonify({"error": gettext("Invalid code. Please try again."),
+                        "retry": True}), 400
+    return jsonify({
+                "status"        : "ok",
+                "name"          : response.get('name'),
+                "device_name"   : response.get('device_name'),
+                # See passkey_register_complete.
+                "sync_pending"  : bool(response.get('sync_pending')),
+            })
+
+
+@app.route('/settings/totp/delete', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def del_totp_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    response, error = _send_ssod_command(
+            command="del_totp_token",
+            extra_args={'token_name': token_name},
+            default_error=gettext("Failed to delete authenticator app."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok"})
+
+
+@app.route('/settings/totp/toggle', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def toggle_totp_token():
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    enable = bool(data.get('enabled'))
+    command = "enable_totp_token" if enable else "disable_totp_token"
+    response, error = _send_ssod_command(
+            command=command,
+            extra_args={'token_name': token_name},
+            default_error=gettext("Failed to update authenticator app."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok", "enabled": enable})
+
+
+@app.route('/settings/totp/pin', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def change_totp_pin():
+    """ Set a new PIN on one of the user's authenticator apps. """
+    data = request.json or {}
+    token_name = (data.get('name') or '').strip()
+    new_pin = (data.get('new_pin') or '').strip()
+    if not token_name:
+        return jsonify({"error": gettext("Token name is required.")}), 400
+    if not new_pin:
+        return jsonify({"error": gettext("New PIN is required.")}), 400
+    response, error = _send_ssod_command(
+            command="change_totp_pin",
+            extra_args={'token_name': token_name, 'new_pin': new_pin},
+            default_error=gettext("PIN change failed."),
+            mgmt=True)
+    if error:
+        return error
+    return jsonify({"status": "ok"})
 
 
 @app.route('/settings/promote', methods=['POST'])
@@ -1360,6 +1567,13 @@ def deploy():
     response, _err = _send_ssod_command(
             command="get_allowed_deploy_token_types",
             default_error=None, mgmt=True)
+    # sso_allow_login_token_redeploy is off. Never for a forced deploy,
+    # ssod only says so for a voluntary one.
+    if isinstance(response, dict) and response.get('redeploy_refused'):
+        flask_session.pop('sso_deploy', None)
+        flask_session.pop('sso_deploy_optional', None)
+        flash(gettext("Re-deploying your login token is not allowed."))
+        return redirect(url_for('settings', _external=True, _scheme='https'))
     if isinstance(response, dict) and response.get('step_up_required'):
         return redirect(url_for('reauth',
                                 next=url_for('deploy'),
@@ -1416,10 +1630,10 @@ def deploy_begin():
                     # session is asking.
                     'session_uuid'      : request.cookies.get('otpme_sso_session'),
                 }
-    if token_type in ("tiqr", "fido2"):
+    if token_type in ("tiqr", "fido2", "totp"):
         # For tiqr it also becomes the enrollment's token name; for
-        # both it is the name the token keeps when the SSO role is
-        # handed to another one. ssod refuses without it.
+        # all of them it is the name the token keeps when the SSO role
+        # is handed to another one. ssod refuses without it.
         verify_args['device_name'] = (data.get('device_name') or '').strip()
     ssod_conn = get_ssod_conn(g.user.name, mgmt=True)
     try:
@@ -1851,6 +2065,13 @@ def login():
     # Get users site public key to verify the JWT.
     user_site = backend.get_object(object_type="site",
                                 uuid=login_user_site_uuid)
+    # Not synced to this host (yet): nothing to verify the JWT with.
+    if user_site is None:
+        log_msg = _("Unknown site of login user: {site_uuid}", log=True)[1]
+        log_msg = log_msg.format(site_uuid=login_user_site_uuid)
+        logger.warning(log_msg)
+        flash(gettext("Login failed."))
+        return redirect(url_for('login', _external=True, _scheme='https'))
     site_jwt_key = user_site._cert_public_key
     try:
         jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')
@@ -1947,6 +2168,7 @@ def _do_sso_logout(response, skip_backchannel_client=None,
                             'client'        : config.sso_client_name,
                             'client_ip'     : client_ip,
                             'sso_logout'    : True,
+                            'session_logout': True,
                             'realm_login'   : False,
                             'realm_logout'  : False,
                         }
@@ -2201,7 +2423,7 @@ def recover_complete_begin():
     extra_args = {'username':       username,
                 'recovery_token': raw_token,
                 'token_type':     token_type}
-    # tiqr and fido2 use it; the server rejects those without one.
+    # tiqr, fido2 and totp use it; the server rejects those without one.
     device_name = (data.get('device_name') or '').strip()
     if device_name:
         extra_args['device_name'] = device_name
@@ -2784,6 +3006,13 @@ def _finish_sso_login(username, auth_response):
     # Get users site public key to verify the JWT.
     user_site = backend.get_object(object_type="site",
                                 uuid=login_user_site_uuid)
+    # Not synced to this host (yet): nothing to verify the JWT with.
+    if user_site is None:
+        log_msg = _("Unknown site of login user: {site_uuid}", log=True)[1]
+        log_msg = log_msg.format(site_uuid=login_user_site_uuid)
+        logger.warning(log_msg)
+        flash(gettext("Login failed."))
+        return redirect(url_for('login', _external=True, _scheme='https'))
     site_jwt_key = user_site._cert_public_key
     try:
         jwt.decode(jwt=sso_jwt, key=site_jwt_key, algorithm='RS256')

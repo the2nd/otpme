@@ -1998,9 +1998,9 @@ def register_config():
     # because a portal only ever offers the roles of its own site --
     # a user's device_token_roles may name roles anywhere in the realm,
     # and each portal shows its own slice of them. So a user of site
-    # koeln whose config names koblenz/wlan-users gets that role at
-    # koblenz's portal only if koblenz lists "koeln" and
-    # "koeln:wlan-users".
+    # berlin whose config names munich/wlan-users gets that role at
+    # munich's portal only if munich lists "berlin" and
+    # "berlin:wlan-users".
     def trust_device_tokens_roles_setter(sites, config_object=None,
         callback=JobCallback, **kwargs):
         if isinstance(sites, str):
@@ -2156,6 +2156,23 @@ def register_config():
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
                                     object_types=['site'])
+    # The same for tiqr. Only for token types whose secret passes through
+    # the portal: a phone delivers its tiqr secret to the site whose QR
+    # code it scanned, which forwards it to the user's home site. A FIDO2
+    # key keeps its secret, so it needs no trusts. The same list of sites,
+    # so the same setter/getter.
+    config.register_config_parameter(name="sso_allow_tiqr_trusts",
+                                    ctype=list,
+                                    setter=sso_allow_passkeys_trusts_setter,
+                                    getter=sso_allow_passkeys_trusts_getter,
+                                    object_types=['site'])
+    # And for TOTP: the portal site shows the secret (and the PIN) of a
+    # new TOTP token to the browser, so it sees both.
+    config.register_config_parameter(name="sso_allow_totp_trusts",
+                                    ctype=list,
+                                    setter=sso_allow_passkeys_trusts_setter,
+                                    getter=sso_allow_passkeys_trusts_getter,
+                                    object_types=['site'])
     # Allow passkeys in SSO portal.
     config.register_config_parameter(name="sso_allow_passkeys",
                                     ctype=bool,
@@ -2185,6 +2202,65 @@ def register_config():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
+    # Allow TOTP in the SSO portal -- signing in with PIN+OTP and managing
+    # authenticator app tokens on the settings page, including adding
+    # one. Fail-open like the other two: TOTP login has always worked
+    # and an upgrade must not switch it off.
+    config.register_config_parameter(name="sso_allow_totp",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    # Let a user manage their own tokens of a type on the settings page.
+    # The sso_allow_* parameters above still have to allow the type; these
+    # add the settings card on top. Off by default: which credentials a
+    # user may add, switch off or remove on their own is something an
+    # install should hand out deliberately. sso_allow_totp_mgmt also
+    # governs changing the PIN of the login token.
+    config.register_config_parameter(name="sso_allow_passkey_mgmt",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="sso_allow_fido2_mgmt",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="sso_allow_tiqr_mgmt",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    config.register_config_parameter(name="sso_allow_totp_mgmt",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
+    # How many tokens of a type one user may hold in the settings card of
+    # a portal. Unset means no limit. Read on the user's home site, where
+    # the token is created, so none of these needs syncing.
+    def sso_max_token_setter(max_tokens, **kwargs):
+        try:
+            max_tokens = int(max_tokens)
+        except (TypeError, ValueError) as err:
+            msg = _("Invalid maximum number of tokens.")
+            raise ValueError(msg) from err
+        if max_tokens < 1 or max_tokens > 128:
+            msg = _("Maximum number of tokens must be between 1 and 128.")
+            raise ValueError(msg)
+        return max_tokens
+    config.register_config_parameter(name="sso_max_fido2_token",
+                                    ctype=int,
+                                    setter=sso_max_token_setter,
+                                    object_types=object_types)
+    config.register_config_parameter(name="sso_max_passkey_token",
+                                    ctype=int,
+                                    setter=sso_max_token_setter,
+                                    object_types=object_types)
+    config.register_config_parameter(name="sso_max_tiqr_token",
+                                    ctype=int,
+                                    setter=sso_max_token_setter,
+                                    object_types=object_types)
+    config.register_config_parameter(name="sso_max_totp_token",
+                                    ctype=int,
+                                    setter=sso_max_token_setter,
+                                    object_types=object_types)
     # Let a user see and end their own sessions on the settings page.
     #
     # Off by default, unlike the sso_allow_* parameters above: those
@@ -2196,6 +2272,14 @@ def register_config():
     config.register_config_parameter(name="sso_allow_session_mgmt",
                                     ctype=bool,
                                     default_value=False,
+                                    object_types=object_types)
+    # Let a user re-deploy their login token from the settings page, i.e.
+    # replace it with a new one of a type they choose. The forced deploy
+    # of a token flagged sso_deploy is not affected. Default on; an
+    # install whose administrator manages the login tokens turns it off.
+    config.register_config_parameter(name="sso_allow_login_token_redeploy",
+                                    ctype=bool,
+                                    default_value=True,
                                     object_types=object_types)
     # Ask the user to prove themselves again before they hand out a new
     # credential. Same gate the recovery mail change sits behind: a
@@ -2220,6 +2304,10 @@ def register_config():
                                     default_value=True,
                                     object_types=object_types)
     config.register_config_parameter(name="deploy_tiqr_token_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="deploy_totp_token_reauth",
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
@@ -2272,6 +2360,10 @@ def register_config():
                                     default_value=True,
                                     object_types=object_types)
     config.register_config_parameter(name="add_tiqr_token_to_trash",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    config.register_config_parameter(name="add_totp_token_to_trash",
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
@@ -3105,6 +3197,13 @@ class Site(OTPmeObject):
                             "CONFIG_PARAMS:deploy_fido2_token_reauth",
                             "CONFIG_PARAMS:deploy_passkey_reauth",
                             "CONFIG_PARAMS:deploy_tiqr_token_reauth",
+                            "CONFIG_PARAMS:deploy_totp_token_reauth",
+                            # Off by default, so a portal that cannot
+                            # see them would refuse every user of ours.
+                            "CONFIG_PARAMS:sso_allow_passkey_mgmt",
+                            "CONFIG_PARAMS:sso_allow_tiqr_mgmt",
+                            "CONFIG_PARAMS:sso_allow_totp_mgmt",
+                            "CONFIG_PARAMS:sso_allow_login_token_redeploy",
                             "CONFIG_PARAMS:deploy_device_token_reauth",
                             "CONFIG_PARAMS:sso_reauth_timeout",
                             ],

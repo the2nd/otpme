@@ -57,6 +57,7 @@ SUPPORTED_STATE_DICTS = [
                         'passkey_reg_states',
                         'fido2_auth_states',
                         'tiqr_auth_results',
+                        'totp_enroll_states',
                         ]
 
 # Kept in states_sync_synced_nodes next to the per-node entries, as

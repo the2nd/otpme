@@ -259,7 +259,10 @@ def register_config_parameters():
                         'user',
                         'token',
                     ]
-    # Allow to rename default token?
+    # Verify the attestation certificate of a FIDO2 token when it is
+    # registered: it has to be valid and signed by one of the FIDO2 CA
+    # certificates of the site (otpme-site add_fido2_ca_cert). Keys that do
+    # not pass are refused (see verify_attestation_cert()).
     config.register_config_parameter(name="check_fido2_attestation_cert",
                                     ctype=bool,
                                     default_value=False,

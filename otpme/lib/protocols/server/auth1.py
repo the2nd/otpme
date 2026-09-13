@@ -162,6 +162,37 @@ def _sso_allow_fido2_for_user(user):
     return bool(value)
 
 
+def _sso_allow_totp_for_user(user):
+    """ Home-side resolution of the ``sso_allow_totp`` cascade
+    (user → unit → site) for signing in to the portal with a TOTP token.
+    Fail-open like the tiqr one: an explicit False blocks, an unset
+    cascade does not. """
+    try:
+        value = user.get_config_parameter("sso_allow_totp")
+    except Exception:
+        return True
+    if value is None:
+        return True
+    return bool(value)
+
+
+def _sso_allowed_token_types(user):
+    """ The token types a login to the SSO portal may use, for
+    AuthHandler's ``allowed_token_types``. None when no type is switched
+    off.
+
+    Same two answers as _get_tiqr_tokens(): the account's cascade, and
+    for an account of another site also the portal's own site. """
+    totp_allowed = _sso_allow_totp_for_user(user)
+    if user.site != config.site \
+    and not _sso_allowed_here("sso_allow_totp"):
+        totp_allowed = False
+    if totp_allowed:
+        return None
+    return [token_type for token_type in config.get_sub_object_types("token")
+            if token_type != "totp"]
+
+
 # Per-process cache for the decoy HMAC seed -- derived from the site's
 # private key once, so we don't pay export_private_key() on every
 # fido2_auth_begin. Reset to None on fork; the child re-derives lazily.
@@ -2450,6 +2481,22 @@ class OTPmeAuthP1(OTPmeServer1):
                 src_token = x_token
                 break
 
+        # sso_allow_totp on a redirected portal login. After the verify,
+        # like AuthHandler's allowed_token_types: the OTP is spent, and
+        # we know which token it was. What the portal allows travels in
+        # the command (do_redirect_auth()), the account's cascade is ours.
+        if auth_token and sso_login:
+            auth_token_type = auth_token.token_type
+            if auth_token.destination_token and auth_token.dst_token:
+                auth_token_type = auth_token.dst_token.token_type
+            if auth_token_type == "totp" \
+            and (command_args.get('_totp_allowed_here') is False
+                or not _sso_allow_totp_for_user(user)):
+                log_msg = _("Token '{token}' is not a valid token type for this request (sso_allow_totp).", log=True)[1]
+                log_msg = log_msg.format(token=auth_token.rel_path)
+                self.logger.warning(log_msg)
+                auth_token = None
+
         _jwt = None
         auth_status = False
         if auth_token:
@@ -2595,6 +2642,10 @@ class OTPmeAuthP1(OTPmeServer1):
             verify_args['sso_ag'] = sso_ag
             verify_args['sso_challenge'] = sso_challenge
             verify_args['jwt_access_group'] = sso_ag
+            # What this portal allows. token_verify runs on the user's
+            # home site and would otherwise only see the account's own
+            # cascade -- see redirect_fido2_complete().
+            verify_args['_totp_allowed_here'] = _sso_allowed_here("sso_allow_totp")
         else:
             if client:
                 auth_client = backend.get_object(object_type="client",
@@ -2759,6 +2810,10 @@ class OTPmeAuthP1(OTPmeServer1):
                     'oidc_skip_backchannel'     : oidc_skip_backchannel,
                     'ecdh_curve'                : self.ecdh_curve,
                 }
+        # Token types a portal login may not use (sso_allow_totp).
+        if client == config.sso_client_name \
+        or access_group == config.sso_access_group:
+            kwargs['allowed_token_types'] = _sso_allowed_token_types(user)
         # Do authentication.
         auth_response = user.authenticate(**kwargs)
         # Get auth status and message from response.
@@ -3234,6 +3289,19 @@ class OTPmeAuthP1(OTPmeServer1):
                                 user=user.name,
                                 token=verify_token.name,
                                 reason='token_verify_failed',
+                                ip=client_ip)
+                return self.build_response(False, {
+                    'message': 'Login failed.', 'status': False,
+                })
+            # Same as at login, and after the verify for the same reason.
+            allowed_token_types = _sso_allowed_token_types(user)
+            if allowed_token_types \
+            and verify_token.token_type not in allowed_token_types:
+                emit_audit("Auth", "reauth_failed",
+                                level='warning',
+                                user=user.name,
+                                token=verify_token.name,
+                                reason='token_type_not_allowed',
                                 ip=client_ip)
                 return self.build_response(False, {
                     'message': 'Login failed.', 'status': False,

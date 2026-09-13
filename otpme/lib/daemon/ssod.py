@@ -27,6 +27,7 @@ def register():
     config.register_otpme_daemon("ssod")
     multiprocessing.register_shared_dict("fido2_reg_states")
     multiprocessing.register_shared_dict("passkey_reg_states")
+    multiprocessing.register_shared_dict("totp_enroll_states")
 
 class SSODaemon(OTPmeDaemon):
     """ SSODaemon """

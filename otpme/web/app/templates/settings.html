@@ -18,6 +18,12 @@
      data-url-tiqr-enroll-status="{{ url_for('tiqr_enroll_status', _external=True, _scheme='https') }}"
      data-url-del-tiqr="{{ url_for('del_tiqr_token', _external=True, _scheme='https') }}"
      data-url-toggle-tiqr="{{ url_for('toggle_tiqr_token', _external=True, _scheme='https') }}"
+     data-url-list-totp="{{ url_for('list_totp_tokens', _external=True, _scheme='https') }}"
+     data-url-totp-enroll-begin="{{ url_for('totp_enroll_begin', _external=True, _scheme='https') }}"
+     data-url-totp-enroll-verify="{{ url_for('totp_enroll_verify', _external=True, _scheme='https') }}"
+     data-url-del-totp="{{ url_for('del_totp_token', _external=True, _scheme='https') }}"
+     data-url-toggle-totp="{{ url_for('toggle_totp_token', _external=True, _scheme='https') }}"
+     data-url-change-totp-pin="{{ url_for('change_totp_pin', _external=True, _scheme='https') }}"
      data-url-promote-token="{{ url_for('promote_token', _external=True, _scheme='https') }}"
      data-url-list-fido2="{{ url_for('list_fido2_tokens', _external=True, _scheme='https') }}"
      data-url-fido2-add-begin="{{ url_for('fido2_add_begin', _external=True, _scheme='https') }}"
@@ -28,6 +34,7 @@
      data-url-set-admin-access="{{ url_for('set_admin_access_state', _external=True, _scheme='https') }}"
      data-url-get-recovery-mail="{{ url_for('get_recovery_mail', _external=True, _scheme='https') }}"
      data-url-step-up-state="{{ url_for('get_step_up_state', _external=True, _scheme='https') }}"
+     data-url-login-token-options="{{ url_for('get_login_token_options', _external=True, _scheme='https') }}"
      data-url-set-recovery-mail="{{ url_for('set_recovery_mail', _external=True, _scheme='https') }}"
      data-url-reauth="{{ url_for('reauth', _external=True, _scheme='https') }}"
      data-settings-path="{{ url_for('settings', _external=True, _scheme='https') }}"></div>
@@ -94,6 +101,21 @@
      data-label-failed-delete-tiqr="{{ gettext('Failed to remove phone.') }}"
      data-label-tiqr-deleted="{{ gettext('Phone removed.') }}"
      data-label-failed-toggle-tiqr="{{ gettext('Failed to update phone.') }}"
+     data-label-failed-load-totp="{{ gettext('Failed to load authenticator apps.') }}"
+     data-label-no-totp="{{ gettext('No authenticator apps set up yet.') }}"
+     data-label-preparing-totp="{{ gettext('Preparing setup...') }}"
+     data-label-failed-start-totp="{{ gettext('Failed to start authenticator app setup.') }}"
+     data-label-totp-code-required="{{ gettext('Please enter the code from your app.') }}"
+     data-label-verifying-totp="{{ gettext('Verifying code...') }}"
+     data-label-failed-verify-totp="{{ gettext('Failed to verify the code.') }}"
+     data-label-totp-added="{{ gettext('Authenticator app added.') }}"
+     data-label-confirm-delete-totp="{{ gettext('Remove authenticator app \"{name}\"?')|forceescape }}"
+     data-label-failed-delete-totp="{{ gettext('Failed to delete authenticator app.') }}"
+     data-label-totp-deleted="{{ gettext('Authenticator app removed.') }}"
+     data-label-failed-toggle-totp="{{ gettext('Failed to update authenticator app.') }}"
+     data-label-change-pin-btn="{{ gettext('Change PIN') }}"
+     data-label-max-card-tokens="{{ gettext('You have the maximum number of tokens of this type ({max}).') }}"
+     data-label-totp-pin-title="{{ gettext('New PIN for \"{name}\". The app keeps working, sign in with the new PIN followed by its code.')|forceescape }}"
      data-label-sso-token="{{ gettext('Default token') }}"
      data-label-make-sso-token="{{ gettext('Make default token') }}"
      data-label-confirm-promote-tiqr="{{ gettext('Make \"{name}\" your default token? Your current one keeps working under a new name.')|forceescape }}"
@@ -183,9 +205,11 @@
     </div>
     {% endif %}
 
-    <!-- PIN Change -->
+    <!-- PIN Change of the login token, for tokens an administrator
+         manages. Hidden until loadLoginTokenOptions() reports
+         sso_allow_totp_mgmt off; with it on, the TOTP card sets PINs. -->
     {% if show_pin_change %}
-    <div class="settings-card">
+    <div class="settings-card is-hidden" id="pinChangeCard">
         <h3>{{ gettext("Change PIN") }}</h3>
         <div class="settings-form">
             <label for="currentPin">{{ gettext("Current PIN") }}</label>
@@ -204,9 +228,10 @@
     </div>
     {% endif %}
 
-    <!-- Login Token Re-Deploy -->
+    <!-- Login Token Re-Deploy. Hidden until loadLoginTokenOptions() sees
+         sso_allow_login_token_redeploy on. -->
     {% if show_redeploy %}
-    <div class="settings-card">
+    <div class="settings-card is-hidden" id="redeployCard">
         <h3>{{ gettext("Login Token") }}</h3>
         <p class="settings-desc">{{ gettext("Re-deploy your login token. This will replace your current login token with a new one.") }}</p>
         <a href="{{ url_for('settings_redeploy', _external=True, _scheme='https') }}" class="btn btn-secondary btn-small">{{ gettext("Re-deploy Login Token") }}</a>
@@ -269,6 +294,7 @@
                  has to come before the name, not after the button that
                  registers -- see get_step_up_state in sso1.py. -->
             <button type="button" id="startPasskeyBtn" class="btn btn-primary">{{ gettext("Add Passkey") }}</button>
+            <div id="passkeyLimit" class="hint is-hidden"></div>
             <div id="passkeyAddFields" class="is-hidden">
                 <label for="passkeyName">{{ gettext("Passkey Name") }}</label>
                 <input type="text" id="passkeyName" placeholder="{{ gettext('e.g. my iPhone, work laptop') }}" autocomplete="off">
@@ -291,6 +317,7 @@
         <div class="settings-form" id="fido2AddForm">
             <!-- Same as on the passkey card, for deploy_fido2_token_reauth. -->
             <button type="button" id="startFido2Btn" class="btn btn-primary">{{ gettext("Add Security Key") }}</button>
+            <div id="fido2Limit" class="hint is-hidden"></div>
             <div id="fido2AddFields" class="is-hidden">
                 <label for="fido2DeviceName">{{ gettext("Key Name") }}</label>
                 <input type="text" id="fido2DeviceName" placeholder="{{ gettext('e.g. my YubiKey, backup key') }}" autocomplete="off">
@@ -315,6 +342,7 @@
         <div class="settings-form" id="tiqrAddForm">
             <!-- Same as on the passkey card, for deploy_tiqr_token_reauth. -->
             <button type="button" id="startTiqrBtn" class="btn btn-primary">{{ gettext("Add Phone") }}</button>
+            <div id="tiqrLimit" class="hint is-hidden"></div>
             <div id="tiqrAddFields" class="is-hidden">
                 <label for="tiqrDeviceName">{{ gettext("Device Name") }}</label>
                 <input type="text" id="tiqrDeviceName" placeholder="{{ gettext('e.g. my phone, work phone') }}" autocomplete="off">
@@ -343,6 +371,66 @@
         </div>
         <h4>{{ gettext("Enrolled Phones") }}</h4>
         <ul id="tiqrList" class="device-token-list"></ul>
+    </div>
+
+    <!-- TOTP: authenticator apps. Hidden until loadTotpTokens() sees
+         allowed=true (sso_allow_totp), which also governs signing in
+         with one. Same shape as the tiqr card. The token is created only
+         once the first code from the app checks out, so a scan that went
+         wrong leaves nothing behind. -->
+    <div class="settings-card is-hidden" id="totpCard">
+        <h3>{{ gettext("Authenticator App (TOTP)") }}</h3>
+        <p class="settings-desc">{{ gettext("Sign in with your PIN followed by the six-digit code from an authenticator app (e.g. FreeOTP, Aegis, Google Authenticator).") }}</p>
+        <div class="settings-form" id="totpAddForm">
+            <!-- Same as on the passkey card, for deploy_totp_token_reauth. -->
+            <button type="button" id="startTotpBtn" class="btn btn-primary">{{ gettext("Add Authenticator App") }}</button>
+            <div id="totpLimit" class="hint is-hidden"></div>
+            <div id="totpAddFields" class="is-hidden">
+                <label for="totpDeviceName">{{ gettext("Device Name") }}</label>
+                <input type="text" id="totpDeviceName" placeholder="{{ gettext('e.g. my phone, work phone') }}" autocomplete="off">
+                <button type="button" id="addTotpBtn" class="btn btn-primary mt-8">{{ gettext("Add Authenticator App") }}</button>
+            </div>
+            <div class="status-msg" id="totpStatus"></div>
+            <div class="error-msg" id="totpError"></div>
+        </div>
+        <div class="is-hidden" id="totpEnrollBox">
+            <p class="settings-desc">{{ gettext("Scan this code with your authenticator app, or enter the secret by hand.") }}</p>
+            <div class="qr-container">
+                <img id="totpQrcodeImg" alt="{{ gettext('TOTP code') }}">
+            </div>
+            <div><strong>{{ gettext("Secret:") }}</strong> <code id="totpSecret"></code></div>
+            <div><strong>{{ gettext("PIN:") }}</strong> <code id="totpPin"></code></div>
+            <p class="hint">{{ gettext("Remember the PIN: you sign in with the PIN followed by the code from the app. Both are shown only once.") }}</p>
+            <div class="settings-form">
+                <label for="totpCode">{{ gettext("Code from the app") }}</label>
+                <input type="text" id="totpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10">
+                <div class="login-buttons">
+                    <button type="button" id="verifyTotpBtn" class="btn btn-primary">{{ gettext("Verify") }}</button>
+                    <button type="button" id="totpCancelBtn" class="btn btn-secondary">{{ gettext("Cancel") }}</button>
+                </div>
+                <div class="status-msg" id="totpEnrollStatus"></div>
+                <div class="error-msg" id="totpEnrollError"></div>
+            </div>
+        </div>
+        <!-- Opened by a token's "Change PIN" button, after a reauth if
+             deploy_totp_token_reauth wants one. -->
+        <div class="is-hidden" id="totpPinBox">
+            <p class="settings-desc" id="totpPinTitle"></p>
+            <div class="settings-form">
+                <label for="totpNewPin">{{ gettext("New PIN") }}</label>
+                <input type="password" id="totpNewPin" autocomplete="new-password" inputmode="numeric">
+                <label for="totpConfirmPin">{{ gettext("Confirm New PIN") }}</label>
+                <input type="password" id="totpConfirmPin" autocomplete="new-password" inputmode="numeric">
+                <div class="login-buttons">
+                    <button type="button" id="saveTotpPinBtn" class="btn btn-primary">{{ gettext("Change PIN") }}</button>
+                    <button type="button" id="totpPinCancelBtn" class="btn btn-secondary">{{ gettext("Cancel") }}</button>
+                </div>
+                <div class="status-msg" id="totpPinStatus"></div>
+                <div class="error-msg" id="totpPinError"></div>
+            </div>
+        </div>
+        <h4>{{ gettext("Authenticator Apps") }}</h4>
+        <ul id="totpList" class="device-token-list"></ul>
     </div>
 
     <!-- Recovery mail: address the SSO token recovery link is sent to.

@@ -20,7 +20,7 @@
     // Types the user gives a name to before anything is created -- the
     // name the token keeps when the SSO role later moves to another
     // one. Mirrors DEVICE_NAME_TOKEN_TYPES in sso1.py.
-    const DEVICE_NAME_TYPES = ['tiqr', 'fido2'];
+    const DEVICE_NAME_TYPES = ['tiqr', 'fido2', 'totp'];
     // Which type the name step is collecting for.
     let pendingTokenType = null;
 

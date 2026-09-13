@@ -17,7 +17,7 @@
     // so it has to exist by then -- and asking afterwards is not an
     // option, the user is somewhere else entirely at that point.
     // Mirrors DEVICE_NAME_TOKEN_TYPES in sso1.py.
-    const DEVICE_NAME_TYPES = ['tiqr', 'fido2'];
+    const DEVICE_NAME_TYPES = ['tiqr', 'fido2', 'totp'];
     // Which type the name step is collecting for.
     let pendingTokenType = null;
 
