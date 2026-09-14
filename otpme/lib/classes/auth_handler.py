@@ -3413,6 +3413,12 @@ class AuthHandler(object):
             if self.auth_session:
                 auth_response['session'] = self.auth_session.uuid
                 auth_response['offline_data_key'] = self.offline_data_key
+                # The session this request is logged in with, for whatever
+                # it writes from here on (audit log). The session_id stays
+                # here: it is not the client's to have.
+                config.auth_session = self.auth_session.uuid
+                config.auth_session_id = getattr(self.auth_session,
+                                                'session_id', None)
 
             # Add share we authenticated for.
             if self.share:

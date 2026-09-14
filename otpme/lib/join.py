@@ -687,8 +687,6 @@ class JoinHandler(object):
         join_response = self.send_join_request(jotp, force, conn_kwargs)
         # Get master node join status.
         master_node_join = join_response['master_node_join']
-        # Set password hashing salt.
-        self.set_password_salt(join_response)
         # Add base objects etc..
         site_certs = self.process_objects(join_response)
 
@@ -703,6 +701,9 @@ class JoinHandler(object):
             if not self._my_site_ca.cert or not self._my_site_ca.key:
                 # Create site CA CSR.
                 site_ca_cert_req, site_ca_key = self.gen_site_ca_req(site_key_len)
+            config.set_password_salt()
+        else:
+            self.set_password_salt(join_response)
 
         # Get host cert/key.
         try:

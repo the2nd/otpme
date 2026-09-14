@@ -53,6 +53,12 @@ Change site management FQDN.
 Set a configuration parameter. Use **-d** to delete (reset to default)
 or **-a** to append the value to a list-typed parameter.
 
+**upgrade *site***  
+Add the configuration parameters the site is missing, with their
+defaults. A site gets every parameter when it is created, so parameters
+introduced by a later OTPme version are not set on an existing site
+until this is run. Parameters that are already set are not changed.
+
 **show_config *site* \[*parameter*\]**  
 Show all configuration parameters.
 

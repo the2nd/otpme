@@ -1087,6 +1087,11 @@ omits the \fIacr\fR claim entirely; only \fIamr\fR (RFC 8176) is included. AMR i
 .br
 Object types: site, unit, client
 .TP
+.B oidc_id_token_user_claims \fR(bool, default: false)
+Whether the user claims the granted scopes ask for (\fBprofile\fR: name, picture, ...; \fBemail\fR, \fBphone\fR, \fBaddress\fR, \fBgroups\fR) are put into the ID Token as well. Off by default: in the authorization code flow OIDC Core §5.4 returns them from \fI/userinfo\fR only, and an ID Token is often passed on as proof of authentication. Turn it on per client for RPs that never call \fI/userinfo\fR and read the ID Token alone \- Nextcloud's user_oidc does, and without it gets no name, email or avatar. The claims in the ID Token itself (sub, auth_time, amr, acr) are never replaced.
+.br
+Object types: site, unit, client
+.TP
 .B oidc_require_consent \fR(bool, default: false)
 Whether the OP shows an end\-user consent screen at \fI/authorize\fR. Default false matches the enterprise\-SSO sweet spot: the admin has already gated per\-Scope\-allowlist who\-can\-grant\-what; an additional per\-user click is friction for trusted internal RPs. Set true per\-client for public\-facing or multi\-tenant RPs where the user must explicitly approve data sharing. Granted consents are remembered per (user, client) trust\-on\-first\-use; a wider scope request re\-prompts. The OIDC \fBprompt=consent\fR request parameter overrides the stored value and always re\-shows the screen.
 .br
@@ -1281,6 +1286,17 @@ Object types: site, unit, node, host
 Hard cap on the size of a single request \fIafter\fR decompression. Guards against zip\-bomb style payloads that inflate small compressed messages into memory\-exhausting blobs. Each daemon reads this from its own host object at startup (inherited from unit/site) and enforces it on the decompress path. Accepts human sizes (e.g. \fB256M\fR, \fB1G\fR).
 .br
 Object types: site, unit, node, host
+.SS Description and Info Length Limits
+.TP
+.B max_description_len \fR(int, default: 1024)
+Upper bound on the length of an object's description, in characters, checked when it is changed. Existing descriptions are not affected. The most specific match wins (unit overrides site).
+.br
+Object types: site, unit
+.TP
+.B max_info_len \fR(int, default: 16384)
+Upper bound on the length of an object's info text, in characters, per language, checked when it is changed. The info is what the SSO portal shows for an application and may hold a few paragraphs. Existing texts are not affected. The most specific match wins (unit overrides site).
+.br
+Object types: site, unit
 .SS Name Length Limits
 Per\-object\-type upper bound on the length of new object names, checked at add/rename time. Existing objects are not affected. The most specific match wins (unit overrides site). Tighten these to keep LDAP DNs, file paths, and CLI output manageable; loosen them only when you know the downstream consumers can cope. All parameters are ints and apply to
 .BR site ", " unit .

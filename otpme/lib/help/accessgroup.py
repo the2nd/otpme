@@ -365,18 +365,20 @@ cmd_help = {
                 },
 
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token {accessgroup} {token} [token_options]'),
-                    'cmd'   :   '<|object|> <token_path> [token_options]',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token [--skip-portal-token] {accessgroup} {token} [token_options]'),
+                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <token_path> [token_options]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to accessgroup.'),
+                                    '--skip-portal-token'   : _('Do not add the tokens the SSO portal manages along with an SSO token.'),
                                 },
                 },
 
     'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_token {accessgroup} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_token [--skip-portal-token] {accessgroup} {token}'),
+                    'cmd'   :   '--skip-portal-token :skip_portal_token=True: <|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from accessgroup.'),
+                                    '--skip-portal-token'   : _('Do not remove the tokens the SSO portal manages along with an SSO token.'),
                                 },
                 },
 

@@ -52,11 +52,17 @@ Re-index the object to fix potential index problems.
 Set or display the client's access group. The access group controls
 which tokens are authorized to authenticate via this client.
 
-**add_token *client* *token_path***  
-Add a token to the client.
+**add_token \[**--skip-portal-token**\] *client* *token_path***  
+Add a token to the client. If the token is the SSO token of a site's
+portal (its name is that site's **default_sso_token_name**), the tokens
+the portal manages for the user are added as well, after a confirmation.
+**--skip-portal-token** adds only the given token.
 
-**remove_token *client* *token_path***  
-Remove a token from the client.
+**remove_token \[**--skip-portal-token**\] *client* *token_path***  
+Remove a token from the client. If the token is the SSO token of a
+site's portal, the tokens the portal manages for the user are removed as
+well, after a confirmation. **--skip-portal-token** removes only the
+given token.
 
 **list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *client***  
 List tokens assigned to the client. Use **--return-type** to select the

@@ -292,7 +292,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'share_notifications', 'persist_mount'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'share_notifications', 'persist_mount', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -302,7 +302,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['keep_sign', 'share_notifications', 'persist_mount'],
+                    'oargs'             : ['keep_sign', 'share_notifications', 'persist_mount', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1379,6 +1379,14 @@ class Role(OTPmeObject):
         if not result:
             return result
 
+        # The SSO token of a portal brings the tokens the portal manages.
+        # Each goes through this method, share notifications included.
+        self._add_portal_tokens(token_path,
+                                persist_mount=persist_mount,
+                                share_notifications=share_notifications,
+                                callback=callback,
+                                **kwargs)
+
         username = token_path.split("/")[0]
         if username == ADMIN_USER:
             return result
@@ -1454,6 +1462,14 @@ class Role(OTPmeObject):
 
         if not result:
             return result
+
+        # The SSO token of a portal takes the tokens the portal manages.
+        # Each goes through this method, share notifications included.
+        self._remove_portal_tokens(token_path,
+                                persist_mount=persist_mount,
+                                share_notifications=share_notifications,
+                                callback=callback,
+                                **kwargs)
 
         username = token_path.split("/")[0]
         if username == ADMIN_USER:

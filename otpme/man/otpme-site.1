@@ -45,6 +45,9 @@ Change site management FQDN.
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIsite\fR \fIparameter\fR \fR[\fIvalue\fR]
 Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
 .TP
+.B upgrade \fIsite\fR
+Add the configuration parameters the site is missing, with their defaults. A site gets every parameter when it is created, so parameters introduced by a later OTPme version are not set on an existing site until this is run. Parameters that are already set are not changed.
+.TP
 .B show_config \fIsite\fR [\fIparameter\fR]
 Show all configuration parameters.
 .TP

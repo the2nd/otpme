@@ -70,6 +70,9 @@ class OTPmeConfig(object):
         # it goes through thread local storage while we are threading,
         # see the auth_session property below.
         self.register_config_var("_auth_session", str, None)
+        # The session_id of that session, for the audit log. Same storage
+        # rules, see the auth_session_id property below.
+        self.register_config_var("_auth_session_id", str, None)
         # Token to impersonate. Needs admin permissions.
         self.register_config_var("impersonate_token", None, None)
         # Audit logger instance.
@@ -2591,6 +2594,21 @@ class OTPmeConfig(object):
             self.thread_data.auth_session = auth_session
         else:
             self._auth_session = auth_session
+
+    @property
+    def auth_session_id(self):
+        """ session_id of the session in auth_session. Logged in the
+        audit log instead of the UUID. """
+        if self.proc_mode == "threading":
+            return getattr(self.thread_data, "auth_session_id", None)
+        return self._auth_session_id
+
+    @auth_session_id.setter
+    def auth_session_id(self, auth_session_id):
+        if self.proc_mode == "threading":
+            self.thread_data.auth_session_id = auth_session_id
+        else:
+            self._auth_session_id = auth_session_id
 
     @property
     def socket_auth(self):

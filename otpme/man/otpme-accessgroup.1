@@ -44,11 +44,13 @@ Move access group to a different unit.
 Re-index the access group to fix potential index problems.
 .SS Token and Role Assignment
 .TP
-.B add_token \fIaccessgroup\fR \fItoken_path\fR
+.B add_token \fR[\fB\-\-skip\-portal\-token\fR] \fIaccessgroup\fR \fItoken_path\fR
 Add a token to the access group. Tokens in the group are authorized to access resources using this group. With SOTP signing enabled the sign public key of the tokens user is stored in the access group.
+.br
+If the token is the SSO token of a site's portal (its name is that site's \fBdefault_sso_token_name\fR), the tokens the portal manages for the user (security keys, passkeys, tiqr phones and authenticator apps added on its settings page) are added as well, after a confirmation. \fB\-\-skip\-portal\-token\fR adds only the given token.
 .TP
-.B remove_token \fIaccessgroup\fR \fItoken_path\fR
-Remove a token from the access group. The users sign public key is removed with their last token.
+.B remove_token \fR[\fB\-\-skip\-portal\-token\fR] \fIaccessgroup\fR \fItoken_path\fR
+Remove a token from the access group. The users sign public key is removed with their last token. If the token is the SSO token of a site's portal, the tokens the portal manages for the user are removed as well, after a confirmation. \fB\-\-skip\-portal\-token\fR removes only the given token.
 .TP
 .B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIaccessgroup\fR
 List tokens assigned to the access group.

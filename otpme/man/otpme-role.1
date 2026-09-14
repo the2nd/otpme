@@ -61,8 +61,8 @@ Move role to a different unit.
 Re-index the object to fix potential index problems.
 .SS Token Assignment
 .TP
-.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fItoken_path\fR
-Add a token to the role. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh).
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken_path\fR
+Add a token to the role. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh). If the token is the SSO token of a site's portal (its name is that site's \fBdefault_sso_token_name\fR), the tokens the portal manages for the user are added as well, after a confirmation, with the same options. \fB\-\-skip\-portal\-token\fR adds only the given token.
 .RS
 .TP
 .B \-\-share\-notify
@@ -75,8 +75,8 @@ Do not send notification to all online hosts on new share permissions.
 Do not persist new share mounts on hosts.
 .RE
 .TP
-.B remove_token \fR[\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] \fIrole\fR \fItoken_path\fR
-Remove a token from the role.
+.B remove_token \fR[\fB\-\-keep\-sign\fR] [\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] [\fB\-\-no\-persist\-mount\fR] [\fB\-\-skip\-portal\-token\fR] \fIrole\fR \fItoken_path\fR
+Remove a token from the role. If the token is the SSO token of a site's portal, the tokens the portal manages for the user are removed as well, after a confirmation, with the same options. \fB\-\-skip\-portal\-token\fR removes only the given token.
 .RS
 .TP
 .B \-\-share\-notify

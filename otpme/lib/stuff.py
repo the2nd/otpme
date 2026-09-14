@@ -1873,7 +1873,6 @@ def run_key_script(username, script_command, script_options=None,
             key_mode, \
             source = get_key_script(username)
         except Exception as e:
-            config.raise_exception()
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e

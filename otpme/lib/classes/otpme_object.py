@@ -64,6 +64,10 @@ from otpme.lib.exceptions import *
 
 OBJECT_LOCK_TYPE = "object"
 
+# Token types a user manages on an SSO portal's settings page next to
+# the portal's SSO token (see OTPmeObject._get_portal_tokens()).
+PORTAL_TOKEN_TYPES = ("fido2", "passkey", "tiqr", "totp")
+
 logger = config.logger
 default_callback = config.get_callback()
 
@@ -417,8 +421,34 @@ def name_len_setter(value, **kwargs):
         raise ValueError(msg)
     return value
 
+def text_len_setter(value, **kwargs):
+    """ Setter for max_description_len and max_info_len: a positive int. """
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        msg = _("max length must be an integer")
+        raise ValueError(msg) from None
+    if value < 1:
+        msg = _("max length must be positive")
+        raise ValueError(msg)
+    return value
+
 def register_config_parameters():
     """ Register config parameters. """
+    # How long an object's description and its info (per language) may
+    # be. Checked when they are changed, never on load, so lowering a
+    # limit does not break existing objects. The info is shown on the SSO
+    # portal and may hold a few paragraphs, the description is one line.
+    config.register_config_parameter(name="max_description_len",
+                                    ctype=int,
+                                    default_value=1024,
+                                    setter=text_len_setter,
+                                    object_types=['site', 'unit'])
+    config.register_config_parameter(name="max_info_len",
+                                    ctype=int,
+                                    default_value=16384,
+                                    setter=text_len_setter,
+                                    object_types=['site', 'unit'])
     # Object types our config parameters are valid for.
     object_types = [
                     'site',
@@ -2696,6 +2726,23 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
         return None
 
+    def _check_max_text_len(self, param_name, label, text,
+        callback=default_callback):
+        """ Enforce max_description_len / max_info_len on a new value.
+        Returns a callback.error result if the text exceeds the limit,
+        else None. Like _check_max_name_len() only called when the value
+        changes. """
+        para_data = config.get_config_parameter(param_name)
+        # Resolved value (site/unit inheritance) or the registered default.
+        max_len = self.get_config_parameter(param_name)
+        if not max_len:
+            max_len = para_data['default']
+        if max_len and len(text) > max_len:
+            msg = _("{label} too long ({length} > {max_len})")
+            msg = msg.format(label=label, length=len(text), max_len=max_len)
+            return callback.error(msg)
+        return None
+
     def _get_base_config(self):
         """ Get base object config """
         base_config = {
@@ -4273,6 +4320,153 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    def _get_portal_tokens(self, token):
+        """ The tokens an SSO portal manages next to <token>.
+
+        Only when <token> is the SSO token of a portal, i.e. carries the
+        default_sso_token_name of a site -- empty otherwise. What the
+        portal manages carries its prefix, <type>-<realm>-<site>-, the
+        same rule the settings page lists them by (see
+        OTPmeSsoP1._token_name_prefix()). """
+        portal_sites = []
+        sites = backend.search(object_type="site",
+                                attribute="uuid",
+                                value="*",
+                                realm=config.realm,
+                                return_type="instance")
+        for site in sites:
+            if site.get_config_parameter("default_sso_token_name") != token.name:
+                continue
+            portal_sites.append(site.name)
+        if not portal_sites:
+            return []
+        token_user = backend.get_object(object_type="user",
+                                        uuid=token.owner_uuid)
+        if not token_user:
+            return []
+        prefixes = tuple(f"{token_type}-{config.realm}-{site_name}-"
+                        for site_name in portal_sites
+                        for token_type in PORTAL_TOKEN_TYPES)
+        portal_tokens = []
+        for token_uuid in token_user.tokens:
+            if token_uuid == token.uuid:
+                continue
+            x_token = backend.get_object(object_type="token", uuid=token_uuid)
+            if not x_token:
+                continue
+            if x_token.token_type not in PORTAL_TOKEN_TYPES:
+                continue
+            if not x_token.name.startswith(prefixes):
+                continue
+            portal_tokens.append(x_token)
+        return portal_tokens
+
+    def _add_portal_tokens(
+        self,
+        token_path: str,
+        skip_portal_token: bool=False,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ After the SSO token of a portal was added, add the tokens the
+        portal manages for that user as well, after asking.
+
+        They are further ways into the same SSO login and are meant to
+        reach what the SSO token reaches -- the portal gives them its
+        memberships when they are created, but an assignment made later
+        only lands on the token it names. Each one goes through
+        add_token() of this object, so whatever the class does on top
+        (scopes, share permissions, signing keys) happens for it too. """
+        if skip_portal_token:
+            return True
+        token = self._get_token_by_path(token_path)
+        if not token:
+            return True
+        portal_tokens = [x for x in self._get_portal_tokens(token)
+                        if x.uuid not in self.tokens]
+        if not portal_tokens:
+            return True
+        portal_paths = [x.rel_path for x in portal_tokens]
+        if not force:
+            msg = _("Also add the tokens the SSO portal manages for '{user}' to {object_type} '{object_name}' ({tokens})?: ")
+            msg = msg.format(user=token.owner,
+                            object_type=self.type,
+                            object_name=self.name,
+                            tokens=", ".join(portal_paths))
+            answer = callback.ask(msg)
+            if str(answer).lower() != "y":
+                return True
+        kwargs.pop('return_uuid', None)
+        for portal_path in portal_paths:
+            result = self.add_token(token_path=portal_path,
+                                    skip_portal_token=True,
+                                    force=True,
+                                    callback=callback,
+                                    **kwargs)
+            if not result:
+                msg = _("Failed to add portal token: {token_path}")
+                msg = msg.format(token_path=portal_path)
+                callback.send(msg)
+        return True
+
+    def _remove_portal_tokens(
+        self,
+        token_path: str,
+        skip_portal_token: bool=False,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ After the SSO token of a portal was removed, remove the tokens
+        the portal manages for that user as well, after asking. The
+        counterpart of _add_portal_tokens(): without it they would keep
+        a way into what the SSO token just lost. """
+        if skip_portal_token:
+            return True
+        token = self._get_token_by_path(token_path)
+        if not token:
+            return True
+        portal_tokens = [x for x in self._get_portal_tokens(token)
+                        if x.uuid in self.tokens]
+        if not portal_tokens:
+            return True
+        portal_paths = [x.rel_path for x in portal_tokens]
+        if not force:
+            msg = _("Also remove the tokens the SSO portal manages for '{user}' from {object_type} '{object_name}' ({tokens})?: ")
+            msg = msg.format(user=token.owner,
+                            object_type=self.type,
+                            object_name=self.name,
+                            tokens=", ".join(portal_paths))
+            answer = callback.ask(msg)
+            if str(answer).lower() != "y":
+                return True
+        for portal_path in portal_paths:
+            result = self.remove_token(token_path=portal_path,
+                                    skip_portal_token=True,
+                                    force=True,
+                                    callback=callback,
+                                    **kwargs)
+            if not result:
+                msg = _("Failed to remove portal token: {token_path}")
+                msg = msg.format(token_path=portal_path)
+                callback.send(msg)
+        return True
+
+    def _get_token_by_path(self, token_path):
+        """ The token <token_path> names, a user/token path or a UUID,
+        or None. """
+        if stuff.is_uuid(token_path):
+            return backend.get_object(object_type="token", uuid=token_path)
+        if "/" not in token_path:
+            return None
+        token_user = token_path.split("/")[0]
+        token_name = token_path.split("/")[1]
+        return backend.get_object(object_type="token",
+                                realm=config.realm,
+                                user=token_user,
+                                name=token_name)
+
     @check_acls(['add:token'])
     @object_lock()
     @audit_log()
@@ -4410,8 +4604,11 @@ class OTPmeObject(OTPmeBaseObject):
             #        separate method later. Currently calling remove_token()
             #        works fine.
             # We already asked the user above, so no need to ask again.
+            # The token is added back right below; the portal tokens are
+            # not part of that.
             self.remove_token(token_path,
                             ask_confirmation=False,
+                            skip_portal_token=True,
                             callback=callback,
                             _caller=_caller,
                             force=force)
@@ -6895,6 +7092,14 @@ class OTPmeObject(OTPmeBaseObject):
             if "jpegPhoto" in attributes:
                 truncate_jpeg_photo = False
         object_ldif = self.ldif.copy()
+        # The photo of a user is an object of its own, not part of the
+        # LDIF (see data_objects/photo.py). Shown here all the same --
+        # truncated unless asked for -- so it is visible that one is set.
+        if self.type == "user":
+            from otpme.lib.classes.data_objects.photo import read_photo
+            photo = read_photo(self.uuid)
+            if photo:
+                object_ldif['jpegPhoto'] = [photo]
         ldif = get_ldif(ldif=object_ldif, text=text,
                         attributes=attributes,
                         verify_acl_func=verify_acl_func,
@@ -9431,7 +9636,13 @@ class OTPmeObject(OTPmeBaseObject):
         if description is None:
             description = callback.ask(input_prefill=self.description,
                                         message="New description: ")
-        self.description = str(description)
+        description = str(description)
+        error = self._check_max_text_len("max_description_len",
+                                        _("Description"), description,
+                                        callback=callback)
+        if error is not None:
+            return error
+        self.description = description
 
         # Update extensions.
         self.update_extensions("change_description",
@@ -9484,7 +9695,12 @@ class OTPmeObject(OTPmeBaseObject):
         if info is None:
             info = callback.ask(input_prefill=cur_info, message="New info: ")
 
-        self.info[language] = str(info)
+        info = str(info)
+        error = self._check_max_text_len("max_info_len", _("Info"), info,
+                                        callback=callback)
+        if error is not None:
+            return error
+        self.info[language] = info
 
         # Update extensions.
         self.update_extensions("change_info",

@@ -31,6 +31,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib import multiprocessing
+from otpme.lib.audit import emit_audit
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.daemon.clusterd import cluster_sync_object
@@ -287,6 +288,26 @@ def add(object_id, deleted_by, callback=default_callback):
     if cluster_event:
         cluster_event.wait()
 
+def _audit_trash(event, level='info', **fields):
+    """ Audit a trash operation. Nothing of it goes through an object
+    method, so no @audit_log sees it.
+
+    Only where the command ran: the other nodes repeat delete and empty
+    with cluster=False, and one operation is one audit event. """
+    actor = "API"
+    if config.auth_token:
+        actor = config.auth_token.rel_path
+    emit_audit("Trash", event, level=level, actor=actor, **fields)
+
+def _trash_entry_objects(trash_dir):
+    """ The objects a trash entry holds, as their OIDs. """
+    try:
+        files = os.listdir(trash_dir)
+    except Exception:
+        return []
+    return [x.replace("+", "/") for x in sorted(files)
+            if x != DELETED_BY_FILENAME]
+
 def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
     if not trash_id:
         msg = _("Need <trash_id>.")
@@ -297,27 +318,43 @@ def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
         msg = msg.format(trash_id=trash_id)
         return callback.error(msg)
 
+    deleted_by = get_deleted_by(trash_id)
     if config.auth_token and not config.auth_token.is_admin():
-        deleted_by = get_deleted_by(trash_id)
         deleted_by_token = f"token:{config.auth_token.rel_path}"
         if deleted_by != deleted_by_token:
+            if cluster:
+                _audit_trash("delete_denied", level='warning',
+                            trash_id=trash_id, deleted_by=deleted_by)
             msg = _("Permission denied")
             return callback.error(msg)
 
+    # Read before the entry is gone.
+    entry_objects = _trash_entry_objects(trash_dir)
     try:
         filetools.remove_dir(trash_dir, recursive=True, remove_non_empty=True)
     except Exception as e:
+        if cluster:
+            _audit_trash("delete_failed", level='warning',
+                        trash_id=trash_id, objects=",".join(entry_objects),
+                        error=e)
         msg = _("Failed to delete trash ID: {trash_id}: {e}")
         msg = msg.format(trash_id=trash_id, e=e)
         return callback.error(msg)
     if not cluster:
         return callback.ok()
+    _audit_trash("deleted", trash_id=trash_id,
+                objects=",".join(entry_objects), deleted_by=deleted_by)
     # Cluster trash ID deletion.
     event_data = cluster_sync_object(action="trash_delete", trash_id=trash_id)
     cluster_event = event_data[0]
     if cluster_event:
         cluster_event.wait()
     return callback.ok()
+
+def _audit_restore(event, trash_id, restored, level='info', **fields):
+    """ Audit a trash restore, see _audit_trash(). """
+    _audit_trash(event, level=level, trash_id=trash_id,
+                objects=",".join(restored), **fields)
 
 def restore(trash_id=None, objects=None, keep_trash=False,
     force=False, callback=default_callback, **kwargs):
@@ -335,8 +372,14 @@ def restore(trash_id=None, objects=None, keep_trash=False,
         deleted_by = get_deleted_by(trash_id)
         deleted_by_token = f"token:{config.auth_token.rel_path}"
         if deleted_by != deleted_by_token:
+            _audit_restore("restore_denied", trash_id, [], level='warning',
+                            deleted_by=deleted_by)
             msg = _("Permission denied")
             return callback.error(msg)
+
+    # What got written, for the audit log -- also when a later object
+    # fails and leaves the entry half restored.
+    restored = []
 
     restore_objects_count = 0
     for root, dirs, files in os.walk(trash_dir):
@@ -380,12 +423,18 @@ def restore(trash_id=None, objects=None, keep_trash=False,
             try:
                 file_content = filetools.read_file(x_trash_file)
             except Exception as e:
+                _audit_restore("restore_failed", trash_id, restored,
+                                level='warning', failed=x_oid,
+                                reason='read_failed')
                 msg = _("Failed to read object from trash: {x_trash_file}: {e}")
                 msg = msg.format(x_trash_file=x_trash_file, e=e)
                 return callback.error(msg)
             try:
                 object_data = json.loads(file_content)
             except Exception as e:
+                _audit_restore("restore_failed", trash_id, restored,
+                                level='warning', failed=x_oid,
+                                reason='parse_failed')
                 msg = _("Failed to parse JSON data from trash file: {x_trash_file}: {e}")
                 msg = msg.format(x_trash_file=x_trash_file, e=e)
                 return callback.error(msg)
@@ -395,11 +444,21 @@ def restore(trash_id=None, objects=None, keep_trash=False,
                                                     callback=callback)
             except Exception as e:
                 config.raise_exception()
+                _audit_restore("restore_failed", trash_id, restored,
+                                level='warning', failed=x_oid,
+                                reason='restore_failed', error=e)
                 msg = _("Failed to restore object from trash: {x_oid}: {e}")
                 msg = msg.format(x_oid=x_oid, e=e)
                 return callback.error(msg)
             if not restore_status:
+                # Refused or not confirmed. Only worth a line when
+                # something before it was written already.
+                if restored:
+                    _audit_restore("restore_failed", trash_id, restored,
+                                    level='warning', failed=x_oid,
+                                    reason='aborted')
                 return callback.abort()
+            restored.append(str(x_oid))
             restore_counter += 1
 
     if not keep_trash:
@@ -410,6 +469,9 @@ def restore(trash_id=None, objects=None, keep_trash=False,
                 msg = _("Failed to remove trash entry: {trash_id}: {e}")
                 msg = msg.format(trash_id=trash_id, e=e)
                 return callback.error(msg)
+
+    _audit_restore("restored", trash_id, restored,
+                    keep_trash=bool(keep_trash))
 
     msg = _("Restored {restore_counter} objects.")
     msg = msg.format(restore_counter=restore_counter)
@@ -458,6 +520,8 @@ def empty(cluster=True, auth_token=None, full=False, callback=default_callback, 
         return callback.error(msg)
     if auth_token:
         auth_token_string = f"token:{auth_token}"
+    # The entries removed, for the audit log.
+    emptied = []
     for root, dirs, files in os.walk(TRASH_DIR):
         for x_dir in dirs:
             trash_dir = os.path.join(TRASH_DIR, x_dir)
@@ -471,11 +535,19 @@ def empty(cluster=True, auth_token=None, full=False, callback=default_callback, 
                                     recursive=True,
                                     remove_non_empty=True)
             except Exception as e:
+                if cluster:
+                    _audit_trash("empty_failed", level='warning',
+                                full=bool(full), owner=auth_token,
+                                trash_ids=",".join(emptied),
+                                failed=x_dir, error=e)
                 msg = _("Failed to delete trash dir: {x_dir}: {e}")
                 msg = msg.format(x_dir=x_dir, e=e)
                 return callback.error(msg)
+            emptied.append(x_dir)
     if not cluster:
         return callback.ok()
+    _audit_trash("emptied", full=bool(full), owner=auth_token,
+                trash_ids=",".join(emptied))
     # Cluster trash empty.
     trash_data = {
                     'full'          : full,

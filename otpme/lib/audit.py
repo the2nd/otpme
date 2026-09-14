@@ -40,6 +40,11 @@ def emit_audit(prefix, event, level='info', **fields):
     else:
         head = str(event)
     parts = [head]
+    # The session the request is logged in with. A key of its own: many
+    # events carry a session= of the session they are about, which need
+    # not be this one.
+    if 'auth_session' not in fields:
+        fields['auth_session'] = config.auth_session_id
     for k, v in fields.items():
         if v is None or v == "":
             continue
@@ -174,12 +179,15 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                 except KeyError:
                     pass
 
+            # The session_id, not the UUID, see config.auth_session_id.
+            auth_session = config.auth_session_id or "-"
+
             if result is False:
-                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Job failed ({error}): Data: {func} {self} {args} {kwargs}", log=True)[1]
-                audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, error=job_error, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
+                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Session: {session}: Job failed ({error}): Data: {func} {self} {args} {kwargs}", log=True)[1]
+                audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, session=auth_session, error=job_error, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
             else:
-                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Data: {func} {self} {args} {kwargs}", log=True)[1]
-                audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
+                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Session: {session}: Data: {func} {self} {args} {kwargs}", log=True)[1]
+                audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, session=auth_session, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
             audit_logger.info(audit_msg)
             return result
         return wrapped

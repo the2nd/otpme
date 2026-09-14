@@ -209,8 +209,11 @@ def auth():
     command_args['client_ip'] = client_ip
     # The identity in the request is the tiqr identity, not a name we
     # have authenticated: authd checks it against the challenge.
-    authd_conn = get_authd_conn(username=command_args['identity_id'])
+    authd_conn = None
     try:
+        # Inside the try: on an SSO host connecting does the preauth
+        # check, which fails for an unknown identity.
+        authd_conn = get_authd_conn(username=command_args['identity_id'])
         status, \
         status_code, \
         response, \
@@ -223,7 +226,8 @@ def auth():
         return _auth_reply("INVALID_REQUEST")
     finally:
         try:
-            authd_conn.close()
+            if authd_conn is not None:
+                authd_conn.close()
         except Exception as e:
             log_msg = _("tiqr: authd_conn.close failed: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)

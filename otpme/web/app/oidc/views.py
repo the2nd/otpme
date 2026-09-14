@@ -1210,8 +1210,11 @@ def authorize():
         'oidc_code_challenge':            code_challenge,
         'oidc_code_challenge_method':     code_challenge_method,
     }
-    authd_conn = get_authd_conn(username, sotp_value)
+    # Inside the try: on an SSO host connecting does the preauth check,
+    # which fails for an unknown or disabled user.
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username, sotp_value)
         a_status, _ac, auth_response, _abin = authd_conn.send(
                             command='verify',
                             command_args=verify_args)
@@ -1227,7 +1230,8 @@ def authorize():
         return redirect(target)
     finally:
         try:
-            authd_conn.close()
+            if authd_conn is not None:
+                authd_conn.close()
         except Exception as e:
             log_msg = _("OIDC: authd_conn.close failed: {error}",
                         log=True)[1]

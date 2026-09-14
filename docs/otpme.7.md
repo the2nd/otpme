@@ -1502,6 +1502,18 @@ claim entirely; only *amr* (RFC 8176) is included. AMR is always emitted
 when an auth_token is known. Valid values: **numeric**, **none**.  
 Object types: site, unit, client
 
+**oidc_id_token_user_claims (bool, default: false)**  
+Whether the user claims the granted scopes ask for (**profile**: name,
+picture, ...; **email**, **phone**, **address**, **groups**) are put
+into the ID Token as well. Off by default: in the authorization code
+flow OIDC Core §5.4 returns them from */userinfo* only, and an ID Token
+is often passed on as proof of authentication. Turn it on per client for
+RPs that never call */userinfo* and read the ID Token alone -
+Nextcloud's user_oidc does, and without it gets no name, email or
+avatar. The claims in the ID Token itself (sub, auth_time, amr, acr) are
+never replaced.  
+Object types: site, unit, client
+
 **oidc_require_consent (bool, default: false)**  
 Whether the OP shows an end-user consent screen at */authorize*. Default
 false matches the enterprise-SSO sweet spot: the admin has already gated
@@ -1726,6 +1738,21 @@ into memory-exhausting blobs. Each daemon reads this from its own host
 object at startup (inherited from unit/site) and enforces it on the
 decompress path. Accepts human sizes (e.g. **256M**, **1G**).  
 Object types: site, unit, node, host
+
+## Description and Info Length Limits
+
+**max_description_len (int, default: 1024)**  
+Upper bound on the length of an object's description, in characters,
+checked when it is changed. Existing descriptions are not affected. The
+most specific match wins (unit overrides site).  
+Object types: site, unit
+
+**max_info_len (int, default: 16384)**  
+Upper bound on the length of an object's info text, in characters, per
+language, checked when it is changed. The info is what the SSO portal
+shows for an application and may hold a few paragraphs. Existing texts
+are not affected. The most specific match wins (unit overrides site).  
+Object types: site, unit
 
 ## Name Length Limits
 

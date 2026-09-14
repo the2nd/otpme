@@ -2868,6 +2868,12 @@ class OTPmeAuthP1(OTPmeServer1):
         return self.build_response(status, message)
 
     def _process(self, *args, **kwargs):
+        # The session of a login belongs to that one request. Without a
+        # connection login nothing else sets it, and the next request on
+        # this worker would be logged with the previous one's session.
+        if not self.authenticated:
+            config.auth_session = None
+            config.auth_session_id = None
         # Prevent a service shutdown (e.g. node disable) while we handle
         # the auth request. On an already running service shutdown we must
         # not add a blocker. The request is refused below (cluster status

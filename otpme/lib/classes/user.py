@@ -1187,6 +1187,7 @@ def register():
     register_module("otpme.lib.classes.session")
     register_module("otpme.lib.classes.data_objects.used_sotp")
     register_module("otpme.lib.classes.data_objects.failed_pass")
+    register_module("otpme.lib.classes.data_objects.photo")
     register_module("otpme.lib.classes.data_objects.revoked_signature")
     multiprocessing.register_shared_dict("otp_hashes")
     config.register_default_acl("unit", "+user")
@@ -1740,6 +1741,12 @@ class User(OTPmeObject):
 
     @classmethod
     def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        # The photo is an object of its own and is deleted with the user,
+        # so it has to travel in the user's backup.
+        from otpme.lib.classes.data_objects.photo import read_photo
+        photo = read_photo(object_uuid)
+        if photo:
+            file_content['photo'] = photo
         result = backend.search(object_type="group",
                                 attribute="user",
                                 value=object_uuid,
@@ -1752,6 +1759,22 @@ class User(OTPmeObject):
 
     @classmethod
     def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        photo_data = object_data.get('photo')
+        if photo_data:
+            from otpme.lib.classes.data_objects.photo import Photo
+            from otpme.lib.classes.data_objects.photo import get_photo_object
+            user = backend.get_object(object_type="user", uuid=object_uuid)
+            if user:
+                photo = get_photo_object(user)
+                if photo:
+                    photo.photo = photo_data
+                    photo._write(callback=callback)
+                else:
+                    photo = Photo(realm=user.realm,
+                                site=user.site,
+                                user_uuid=user.uuid,
+                                photo=photo_data)
+                    photo.add(callback=callback)
         try:
             user_group_uuid = object_data['user_group']
         except KeyError:
@@ -1835,8 +1858,6 @@ class User(OTPmeObject):
         self.used_pass_salt = None
         self.auth_script = None
         self.auth_script_enabled = False
-        # User photo.
-        self.photo = None
         # SSO-token recovery: single-slot per user. recovery_token is
         # the SHA256 hash of the raw token that was mailed out (raw
         # token never touches persistent storage). recovery_token_created
@@ -2101,11 +2122,6 @@ class User(OTPmeObject):
                         'OIDC_CONSENTS'             : {
                                                         'var_name'  : 'oidc_consents',
                                                         'type'      : dict,
-                                                        'required'  : False,
-                                                    },
-                        'PHOTO'                     : {
-                                                        'var_name'  : 'photo',
-                                                        'type'      : str,
                                                         'required'  : False,
                                                     },
                         'RECOVERY_TOKEN'            : {
@@ -2714,12 +2730,18 @@ class User(OTPmeObject):
         image_base64 = base64.b64encode(image_data)
         image_base64 = image_base64.decode()
 
-        self.photo = image_base64
-
-        self.del_attribute(attribute="jpegPhoto", force=True)
-        self.add_attribute(attribute="jpegPhoto", value=self.photo, force=True)
-
-        return self._write(callback=callback)
+        # The photo is an object of its own, see data_objects/photo.py.
+        from otpme.lib.classes.data_objects.photo import Photo
+        from otpme.lib.classes.data_objects.photo import get_photo_object
+        photo = get_photo_object(self)
+        if photo:
+            photo.photo = image_base64
+            return photo._write(callback=callback)
+        photo = Photo(realm=self.realm,
+                    site=self.site,
+                    user_uuid=self.uuid,
+                    photo=image_base64)
+        return photo.add(callback=callback)
 
     @check_acls(['del:photo'])
     @object_lock()
@@ -2751,10 +2773,12 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        self.photo = None
-        self.del_attribute(attribute="jpegPhoto", force=True)
-
-        return self._write(callback=callback)
+        from otpme.lib.classes.data_objects.photo import get_photo_object
+        photo = get_photo_object(self)
+        if not photo:
+            msg = _("No photo set.")
+            return callback.error(msg)
+        return photo.delete(callback=callback)
 
     @check_acls(['dump:photo'])
     @object_lock()
@@ -2766,7 +2790,9 @@ class User(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        if not self.photo:
+        from otpme.lib.classes.data_objects.photo import read_photo
+        photo = read_photo(self.uuid)
+        if not photo:
             msg = _("No photo set.")
             return callback.error(msg)
 
@@ -2783,7 +2809,7 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        return callback.ok(self.photo)
+        return callback.ok(photo)
 
     def get_members(self, return_type: str="full_oid", **kwargs):
         """ Get all user tokens. """
@@ -7112,6 +7138,13 @@ class User(OTPmeObject):
                                             return_type="instance")
         for failed_pass in failed_pass_list:
             failed_pass.delete()
+
+        # Remove photo. It goes to the trash with the user object, see
+        # get_backup_data().
+        from otpme.lib.classes.data_objects.photo import get_photo_object
+        photo = get_photo_object(self)
+        if photo:
+            photo.delete()
 
         # Make sure to remove user from signers cache.
         sign_key_cache.del_cache(self.oid)

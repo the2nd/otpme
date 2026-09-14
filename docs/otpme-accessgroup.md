@@ -51,14 +51,22 @@ Re-index the access group to fix potential index problems.
 
 ## Token and Role Assignment
 
-**add_token *accessgroup* *token_path***  
+**add_token \[**--skip-portal-token**\] *accessgroup* *token_path***  
 Add a token to the access group. Tokens in the group are authorized to
 access resources using this group. With SOTP signing enabled the sign
-public key of the tokens user is stored in the access group.
+public key of the tokens user is stored in the access group.  
+If the token is the SSO token of a site's portal (its name is that
+site's **default_sso_token_name**), the tokens the portal manages for
+the user (security keys, passkeys, tiqr phones and authenticator apps
+added on its settings page) are added as well, after a confirmation.
+**--skip-portal-token** adds only the given token.
 
-**remove_token *accessgroup* *token_path***  
+**remove_token \[**--skip-portal-token**\] *accessgroup* *token_path***  
 Remove a token from the access group. The users sign public key is
-removed with their last token.
+removed with their last token. If the token is the SSO token of a site's
+portal, the tokens the portal manages for the user are removed as well,
+after a confirmation. **--skip-portal-token** removes only the given
+token.
 
 **list_tokens \[**--return-type** *TYPE*\] \[**--token-types** *t1,t2*\] *accessgroup***  
 List tokens assigned to the access group. Use **--return-type** to

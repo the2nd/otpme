@@ -59,6 +59,7 @@ from otpme.lib.cache import search_cache
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.cache import index_search_cache
 from otpme.lib.classes.otpme_object import get_ldif
+from otpme.lib.classes.data_objects.photo import read_photo
 from otpme.lib.classes.otpme_object import get_ldif_whitelist_id
 from otpme.lib.classes.otpme_object import get_ldif_whitelist_attributes
 from otpme.lib.backends.file.file import get_oid_from_path
@@ -2017,6 +2018,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 if x_attr.lower() in requested_attributes:
                     continue
                 object_ldif.pop(x_attr)
+        # The photo is not in the LDIF of a user: it is an object of its
+        # own, read here and only for a search that names it. Before the
+        # ACL check, which decides about it like about any attribute.
+        if object_type == "user" \
+        and requested_attributes is not None \
+        and "jpegphoto" in requested_attributes:
+            photo = read_photo(object_uuid)
+            if photo:
+                object_ldif['jpegPhoto'] = [photo]
         if verify_acls:
             for x_attr in dict(object_ldif):
                 if x_attr in self.whitelist_attributes:

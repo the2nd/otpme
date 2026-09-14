@@ -739,7 +739,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags'],
+                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -749,7 +749,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['keep_sign'],
+                    'oargs'             : ['keep_sign', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -3409,9 +3409,34 @@ class Client(OTPmeClientObject):
                             force=True,
                             verify_acls=False,
                             callback=callback)
+        # The SSO token of a portal brings the tokens the portal manages.
+        self._add_portal_tokens(token_path,
+                                force=force,
+                                _caller=_caller,
+                                verbose_level=verbose_level,
+                                callback=callback,
+                                **kwargs)
         if return_uuid:
             return token_uuid
         return callback.ok()
+
+    @check_acls(['remove:token'])
+    @object_lock()
+    def remove_token(
+        self,
+        token_path: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove token from client, and with the SSO token of a portal
+        the tokens the portal manages. """
+        result = super().remove_token(token_path=token_path,
+                                    callback=callback,
+                                    **kwargs)
+        if not result:
+            return result
+        self._remove_portal_tokens(token_path, callback=callback, **kwargs)
+        return result
 
     @object_lock(full_lock=True)
     def delete(

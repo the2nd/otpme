@@ -369,10 +369,11 @@ cmd_help = {
 
 
     'edit'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-script edit {script}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-script edit [--sign] {script}'),
+                    'cmd'   :   '--sign :sign=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Edit script'),
+                                    '--sign'                : _('Sign the object with default tags.'),
                                 },
                 },
 

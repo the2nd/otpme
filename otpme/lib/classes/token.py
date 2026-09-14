@@ -4675,9 +4675,12 @@ class Token(OTPmeObject):
         for x in member_objects:
             if x.site != config.site:
                 continue
+            # Only this token is going. The ones an SSO portal manages
+            # next to it keep their memberships.
             x.remove_token(self.uuid,
                             force=True,
                             verify_acls=False,
+                            skip_portal_token=True,
                             callback=callback)
 
         # Delete object using parent class.

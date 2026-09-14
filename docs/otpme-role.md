@@ -63,9 +63,13 @@ Re-index the object to fix potential index problems.
 
 ## Token Assignment
 
-**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *token_path***  
+**add_token \[**-i** *interfaces*\] \[**--no-auto-sign**\] \[**--sign** **--tags** *tag1,tag2*\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token_path***  
 Add a token to the role. Use **-i** to limit login to specific
-interfaces (e.g. tty, gui, ssh).
+interfaces (e.g. tty, gui, ssh). If the token is the SSO token of a
+site's portal (its name is that site's **default_sso_token_name**), the
+tokens the portal manages for the user are added as well, after a
+confirmation, with the same options. **--skip-portal-token** adds only
+the given token.
 
 **--share-notify**  
 Send notification to all online hosts on new share permissions.
@@ -76,8 +80,11 @@ Do not send notification to all online hosts on new share permissions.
 **--no-persist-mount**  
 Do not persist new share mounts on hosts.
 
-**remove_token \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] *role* *token_path***  
-Remove a token from the role.
+**remove_token \[**--keep-sign**\] \[**--share-notify**\|**--no-share-notify**\] \[**--no-persist-mount**\] \[**--skip-portal-token**\] *role* *token_path***  
+Remove a token from the role. If the token is the SSO token of a site's
+portal, the tokens the portal manages for the user are removed as well,
+after a confirmation, with the same options. **--skip-portal-token**
+removes only the given token.
 
 **--share-notify**  
 Send notification to all online hosts on revoked share permissions.

@@ -428,6 +428,10 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
         ldif_cache.invalidate()
         # Clear LDAP cache.
         ldap_search_cache.invalidate()
+    elif object_type == "photo":
+        # The LDIF a user shows includes its photo, see
+        # OTPmeObject.get_ldif().
+        ldif_cache.invalidate()
 
     if object_type == "realm" or object_type == "site":
         # Clear sync map for all sites.
@@ -445,6 +449,15 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     if config.daemon_mode:
         if config.get_ldap_settings(object_type):
             outdate_ldap_object(object_id)
+        # A photo is handed out as the jpegPhoto of its user (see
+        # data_objects/photo.py), so it is the user's entry that is
+        # outdated.
+        elif object_type == "photo":
+            user_oid = get_oid(object_id.user_uuid,
+                                object_type="user",
+                                instance=True)
+            if user_oid:
+                outdate_ldap_object(user_oid)
 
 def outdate_ldap_object(object_id: oid.OTPmeOid):
     """ Tell ldapd to drop this object from its caches.

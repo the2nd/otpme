@@ -80,13 +80,13 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['script'],
-                    'oargs'             : ['replace'],
+                    'oargs'             : ['replace', 'sign'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
                     'args'              : ['script'],
-                    'oargs'             : ['replace'],
+                    'oargs'             : ['replace', 'sign'],
                     'job_type'          : 'process',
                     },
                 },
@@ -814,6 +814,7 @@ class Script(OTPmeObject):
         self,
         script: str,
         replace: bool=False,
+        sign: bool=False,
         uuid: Union[str,None]=None,
         verify_acls: bool=True,
         verbose_level: int=0,
@@ -882,8 +883,10 @@ class Script(OTPmeObject):
         if config.auth_user:
             if config.auth_user.autosign_enabled:
                 auto_sign = True
-
         if auto_sign:
+            sign = True
+
+        if sign:
             if not config.auth_user:
                 msg = _("Cannot update signatures: Not logged in")
                 return callback.error(msg)

@@ -374,8 +374,8 @@ cmd_help = {
                 },
 
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {token} [token_options]'),
-                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <token_path> [token_options]',
+                    '_cmd_usage_help' : _('Usage: otpme-role add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] [--share-notify] [--no-share-notify] [--no-persist-mount] [--skip-portal-token] {role} {token} [token_options]'),
+                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: --skip-portal-token :skip_portal_token=True: <|object|> <token_path> [token_options]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to role.'),
                                     '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
@@ -384,18 +384,20 @@ cmd_help = {
                                     '--share-notify'        : _('Send notification to all online hosts on new share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on new share permissions.'),
                                     '--no-persist-mount'    : _('Do not persist new share mount on hosts.'),
+                                    '--skip-portal-token'   : _('Do not add the tokens the SSO portal manages along with an SSO token.'),
                                 },
                 },
 
     'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role remove_token [--keep-sign] [--share-notify] [--no-share-notify] [--no-persist-mount] {role} {token}'),
-                    'cmd'   :   '--keep-sign :keep_sign=True: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: <|object|> <token_path>',
+                    '_cmd_usage_help' : _('Usage: otpme-role remove_token [--keep-sign] [--share-notify] [--no-share-notify] [--no-persist-mount] [--skip-portal-token] {role} {token}'),
+                    'cmd'   :   '--keep-sign :keep_sign=True: --share-notify :share_notifications=True: --no-share-notify :share_notifications=False: --no-persist-mount :persist_mount=False: --skip-portal-token :skip_portal_token=True: <|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from role'),
                                     '--keep-sign'           : _('Do not remove any signature.'),
                                     '--share-notify'        : _('Send notification to all online hosts on revoked share permissions.'),
                                     '--no-share-notify'     : _('Dont send notification to all online hosts on revoked share permissions.'),
                                     '--no-persist-mount'    : _('Keep persisted share mount on hosts (transient unmount only).'),
+                                    '--skip-portal-token'   : _('Do not remove the tokens the SSO portal manages along with an SSO token.'),
                                 },
                 },
 

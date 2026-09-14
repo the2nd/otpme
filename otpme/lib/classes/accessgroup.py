@@ -449,7 +449,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options'],
+                    'oargs'             : ['token_options', 'skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -459,6 +459,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
+                    'oargs'             : ['skip_portal_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -2555,6 +2556,9 @@ class AccessGroup(OTPmeObject):
             if not self.add_sign_public_key(user, callback=callback):
                 return callback.error()
 
+        # The SSO token of a portal brings the tokens the portal manages.
+        self._add_portal_tokens(token_path, callback=callback, **kwargs)
+
         return result
 
     @object_lock()
@@ -2580,6 +2584,9 @@ class AccessGroup(OTPmeObject):
         # remove here goes to the backend with it.
         if token_uuid:
             self.del_sign_public_key(token_uuid, callback=callback)
+
+        # The SSO token of a portal takes the tokens the portal manages.
+        self._remove_portal_tokens(token_path, callback=callback, **kwargs)
 
         return result
 

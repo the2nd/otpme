@@ -912,7 +912,7 @@ class CommandHandler(object):
 
         # When editing a script we need to dump it to a local file first.
         if command == "script" and subcommand == "edit":
-            return self.handle_script_edit_command()
+            return self.handle_script_edit_command(command, subcommand)
 
         # When running a script we need to dump it to a local file first.
         if command == "script" and subcommand == "run":
@@ -6243,7 +6243,7 @@ class CommandHandler(object):
         self.newline = False
         return script_stdout
 
-    def handle_script_edit_command(self):
+    def handle_script_edit_command(self, command, subcommand):
         """ Handle script edit command. """
         register_module("otpme.lib.multiprocessing")
         from otpme.lib import filetools
@@ -6251,6 +6251,11 @@ class CommandHandler(object):
         # Init otpme.
         #init_otpme()
         self.init()
+
+        # Get login user.
+        login_user = config.login_user
+        if not login_user:
+            login_user = config.system_user()
 
         # Show help if needed.
         if len(self.command_line) < 1:
@@ -6262,10 +6267,38 @@ class CommandHandler(object):
         except Exception:
             editor = "vim"
 
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception as e:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            help_text = self.get_help(msg)
+            raise OTPmeException(help_text) from e
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_list, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=self.command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            config.raise_exception()
+            if str(e) == "help":
+                help_text = self.get_help()
+                raise OTPmeException(help_text) from e
+            elif str(e) != "":
+                help_text = self.get_help(str(e))
+                raise OTPmeException(help_text) from e
+        script_path = object_list
         # Get script.
-        script_path = self.command_line[0]
         script_content = self.send_command(command="script",
                                         subcommand="dump",
+                                        username=login_user,
+                                        object_list=[script_path],
+                                        parse_command_syntax=False,
                                         client_type="RAPI")
 
         # We always use the same filename/path for the temp file to allow
@@ -6297,11 +6330,16 @@ class CommandHandler(object):
         # Build final command to replace OTPme script with new one.
         command_line = [ '-r', script_path, script_base64 ]
 
+        try:
+            self.command_args['sign'] = command_args['sign']
+        except KeyError:
+            pass
         # Add edited script.
         try:
             self.send_command(command="script",
                             subcommand="add",
-                            command_line=command_line)
+                            command_line=command_line,
+                            username=login_user)
         except Exception as e:
             msg = f"Error updating script: {e}\n"
             msg = f"{msg}Script saved to temporary file: {tmp_file}"

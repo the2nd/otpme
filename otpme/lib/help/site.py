@@ -159,6 +159,14 @@ cmd_help = {
                                 },
                 },
 
+     'upgrade'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site upgrade {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add config parameters the site is missing (e.g. after an update).'),
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_extension {site} {extension}'),
                     'cmd'   :   '<|object|> <extension>',

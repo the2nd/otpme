@@ -43,6 +43,7 @@ from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.daemon.clusterd import add_cluster_state
 from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 from otpme.lib.token.tiqr import tiqr as tiqr_token
+from otpme.lib.classes.data_objects.photo import read_photo
 
 from otpme.lib.exceptions import *
 
@@ -464,7 +465,42 @@ class OTPmeSsoP1(OTPmeServer1):
             raise OTPmeException(msg)
         # Set auth token.
         config.auth_token = auth_token
+        self._set_auth_session(user, jwt_data)
         return user
+
+    def _set_auth_session(self, user, jwt_data):
+        """ Take over the SSO session the request names, for the audit log.
+
+        The JWT cannot carry it: for a user of an untrusted site it is
+        signed by the home site before this site has opened the session.
+        So the web layer sends the session from its cookie -- a value the
+        browser supplies -- and it counts only when the session exists
+        here, belongs to this user and was opened with the token of this
+        JWT: the login token, the link it came through, or a link whose
+        destination it is. Otherwise nothing is set; a wrong session in
+        the audit log is worse than none. Nothing is refused here. """
+        session_uuid = getattr(self, '_request_session_uuid', None)
+        if not session_uuid:
+            return
+        try:
+            session = backend.get_object(object_type="session",
+                                        uuid=session_uuid)
+        except Exception:
+            session = None
+        if session is None:
+            return
+        if session.user_uuid != user.uuid:
+            return
+        login_token_uuid = jwt_data.get('login_token')
+        jwt_tokens = (login_token_uuid, jwt_data.get('src_token'))
+        if session.auth_token not in jwt_tokens:
+            session_token = backend.get_object(uuid=session.auth_token)
+            if session_token is None:
+                return
+            if session_token.destination_token != login_token_uuid:
+                return
+        config.auth_session = session.uuid
+        config.auth_session_id = session.session_id
 
     def get_apps(self, username, sso_jwt, command_args):
         # Verify SSO jwt.
@@ -7645,7 +7681,7 @@ class OTPmeSsoP1(OTPmeServer1):
             # cookies. The endpoint is public, with the user UUID as
             # the obscurity guard.
             site_obj = None
-            if getattr(user, 'photo', None):
+            if read_photo(user.uuid):
                 site_obj = backend.get_object(object_type="site",
                                               uuid=config.site_uuid)
                 if site_obj is not None and getattr(site_obj, 'sso_fqdn', None):
@@ -7808,7 +7844,28 @@ class OTPmeSsoP1(OTPmeServer1):
         if acr is not None:
             claims["acr"] = acr
 
+        # Some RPs never call /userinfo and read the ID Token alone
+        # (Nextcloud user_oidc does). For those the client can have the
+        # user claims put in here as well, see oidc_id_token_user_claims.
+        # They never replace one of the claims above.
+        if self._id_token_user_claims(client):
+            user_claims = self._get_user_claims(user, oidc_session.scope,
+                                                client=client)
+            for k, v in (user_claims or {}).items():
+                if k in claims:
+                    continue
+                claims[k] = v
+
         return claims
+
+    def _id_token_user_claims(self, client):
+        """ Resolve oidc_id_token_user_claims via the Site/Unit/Client
+        config-param hierarchy. Off when unset or unreadable: the spec
+        conform answer is the default. """
+        try:
+            return bool(client.get_config_parameter("oidc_id_token_user_claims"))
+        except Exception:
+            return False
 
     def oidc_token(self, command_args):
         """ /token endpoint. Dispatches by grant_type.
@@ -9492,12 +9549,14 @@ class OTPmeSsoP1(OTPmeServer1):
             return self.build_response(False, {
                 'error': 'not_found',
             })
-        user = backend.get_object(object_type="user", uuid=user_uuid)
-        if user is None or not getattr(user, 'photo', None):
+        # Straight from the photo object, without loading the user: the
+        # UUID is all read_photo() needs, and it refuses anything else.
+        photo = read_photo(user_uuid)
+        if not photo:
             return self.build_response(False, {
                 'error': 'not_found',
             })
-        return self.build_response(True, {'photo': user.photo})
+        return self.build_response(True, {'photo': photo})
 
     def oidc_prompt_none_no_session(self, command_args):
         """ Validate that ``redirect_uri`` is registered for
@@ -9661,6 +9720,14 @@ class OTPmeSsoP1(OTPmeServer1):
 
     def _process(self, command, command_args, **kwargs):
         """ Handle SSO commands received from client. """
+        # Per request: the SSO session the browser names, taken over by
+        # verify_sso_jwt() once it is checked. Reset first, or a request
+        # without one would be logged with the previous one's session.
+        config.auth_session = None
+        config.auth_session_id = None
+        self._request_session_uuid = None
+        if isinstance(command_args, dict):
+            self._request_session_uuid = command_args.get('session_uuid')
         # Many commands write objects (e.g. adding a token). So we have to
         # prevent a master failover and a service shutdown (e.g. node
         # disable) while we handle the command. On an already running

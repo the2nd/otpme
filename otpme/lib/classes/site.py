@@ -952,6 +952,14 @@ commands = {
                     },
                 },
             },
+    'upgrade'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'upgrade',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     }
 
 def get_site_admin_blacklist():
@@ -2588,6 +2596,14 @@ def register_config():
                                     ctype=str,
                                     default_value="numeric",
                                     valid_values=['numeric', 'none'],
+                                    object_types=['site', 'unit', 'client'])
+    # Put the user claims the granted scopes ask for (profile, email,
+    # ...) into the ID Token as well. Off by default: in the code flow
+    # OIDC Core §5.4 has them in /userinfo only. For RPs that never call
+    # /userinfo and read the ID Token alone.
+    config.register_config_parameter(name="oidc_id_token_user_claims",
+                                    ctype=bool,
+                                    default_value=False,
                                     object_types=['site', 'unit', 'client'])
     # Whether the OP shows an end-user consent screen at /authorize.
     # Default False matches the enterprise-SSO sweet spot: the admin
@@ -5191,6 +5207,58 @@ class Site(OTPmeObject):
         self.del_index("trusted_site", site_uuid)
 
         return self._write(callback=callback)
+
+    @check_acls(['set:config'])
+    @object_lock(full_lock=True)
+    @backend.transaction
+    @audit_log()
+    def upgrade(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Add the config parameters this site is missing.
+
+        set_default_config_params() writes the defaults when a site is
+        created, so a parameter registered in a later release is not on
+        an older site, and the cascade finds nothing there. This writes
+        exactly those: parameters valid for a site that are not set yet,
+        with the same defaults (and the same rule for genners). Nothing
+        an administrator configured is touched. """
+        added = []
+        failed = []
+        for parameter in sorted(config.get_config_parameters("site")):
+            if parameter in self.config_params:
+                continue
+            para_data = config.get_config_parameter(parameter)
+            if para_data['default'] is None:
+                if not para_data['default_genner']:
+                    continue
+                if not para_data['gen_default_on_create']:
+                    continue
+            result = self.set_config_param(parameter,
+                                        force=True,
+                                        run_policies=run_policies,
+                                        callback=callback,
+                                        _caller=_caller)
+            if result is False:
+                failed.append(parameter)
+                continue
+            added.append(parameter)
+            msg = _("Added config parameter: {parameter}")
+            msg = msg.format(parameter=parameter)
+            callback.send(msg)
+        if failed:
+            msg = _("Failed to add config parameters: {parameters}")
+            msg = msg.format(parameters=", ".join(failed))
+            return callback.error(msg)
+        if not added:
+            msg = _("Site '{name}' has all config parameters.")
+            msg = msg.format(name=self.name)
+            return callback.ok(msg)
+        return self._cache(callback=callback)
 
     def set_default_config_params(self, **kwargs):
         """ Write every config parameter that has a default to this site.

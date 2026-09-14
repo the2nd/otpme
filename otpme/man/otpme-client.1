@@ -42,11 +42,11 @@ Re-index the object to fix potential index problems.
 .B access_group \fIclient\fR \fR[\fIaccess_group\fR]
 Set or display the client's access group. The access group controls which tokens are authorized to authenticate via this client.
 .TP
-.B add_token \fIclient\fR \fItoken_path\fR
-Add a token to the client.
+.B add_token \fR[\fB\-\-skip\-portal\-token\fR] \fIclient\fR \fItoken_path\fR
+Add a token to the client. If the token is the SSO token of a site's portal (its name is that site's \fBdefault_sso_token_name\fR), the tokens the portal manages for the user are added as well, after a confirmation. \fB\-\-skip\-portal\-token\fR adds only the given token.
 .TP
-.B remove_token \fIclient\fR \fItoken_path\fR
-Remove a token from the client.
+.B remove_token \fR[\fB\-\-skip\-portal\-token\fR] \fIclient\fR \fItoken_path\fR
+Remove a token from the client. If the token is the SSO token of a site's portal, the tokens the portal manages for the user are removed as well, after a confirmation. \fB\-\-skip\-portal\-token\fR removes only the given token.
 .TP
 .B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fIclient\fR
 List tokens assigned to the client. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to filter by token type.

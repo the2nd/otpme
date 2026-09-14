@@ -2005,9 +2005,11 @@ def login():
         log_msg = log_msg.format(u=username, s=bool(verify_args['session_uuid']))
         logger.info(log_msg)
 
-    # Get authd connection.
-    authd_conn = get_authd_conn(username, password)
+    # Get authd connection. Inside the try: on an SSO host connecting
+    # does the preauth check, which fails for an unknown or disabled user.
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username, password)
         auth_status, \
         status_code, \
         auth_response, \
@@ -2017,7 +2019,7 @@ def login():
         log_msg = _("Failed to authenticate user: {user_name}", log=True)[1]
         log_msg = log_msg.format(user_name=username)
         log_msg = f"{log_msg}: {e}"
-        logger.critical(log_msg)
+        logger.warning(log_msg)
         flash(gettext("Login failed."))
         if reauth_mode:
             flask_session['reauth_mode'] = True
@@ -2030,7 +2032,8 @@ def login():
         flask_session['login_prev_username'] = username
         return redirect(url_for('login', _external=True, _scheme='https'))
     finally:
-        authd_conn.close()
+        if authd_conn is not None:
+            authd_conn.close()
     if not auth_status:
         flash(gettext("Login failed."))
         if reauth_mode:
@@ -2761,8 +2764,9 @@ def tiqr_auth_begin():
                     'client'        : config.sso_client_name,
                     'client_ip'     : client_ip,
                 }
-    authd_conn = get_authd_conn(username)
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username)
         status, \
         status_code, \
         auth_response, \
@@ -2775,7 +2779,8 @@ def tiqr_auth_begin():
         logger.critical(log_msg)
         return jsonify({"error": gettext("Failed to start tiqr authentication.")}), 500
     finally:
-        authd_conn.close()
+        if authd_conn is not None:
+            authd_conn.close()
     if not status or not isinstance(auth_response, dict):
         error_msg = _ssod_error_message(auth_response,
                                     "Failed to start tiqr authentication.")
@@ -2816,8 +2821,9 @@ def tiqr_auth_status():
                     'client_ip'     : client_ip,
                 }
     status_args.update(reauth_args)
-    authd_conn = get_authd_conn(username)
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username)
         status, \
         status_code, \
         auth_response, \
@@ -2830,7 +2836,8 @@ def tiqr_auth_status():
         logger.critical(log_msg)
         return jsonify({"error": gettext("Failed to complete tiqr authentication.")}), 500
     finally:
-        authd_conn.close()
+        if authd_conn is not None:
+            authd_conn.close()
     if not status:
         _clear_tiqr_session()
         error_msg = _ssod_error_message(auth_response,
@@ -2878,8 +2885,9 @@ def tiqr_auth_otp():
                     'client_ip'     : client_ip,
                 }
     otp_args.update(reauth_args)
-    authd_conn = get_authd_conn(username)
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username)
         status, \
         status_code, \
         auth_response, \
@@ -2892,7 +2900,8 @@ def tiqr_auth_otp():
         logger.critical(log_msg)
         return jsonify({"error": gettext("Failed to complete tiqr authentication.")}), 500
     finally:
-        authd_conn.close()
+        if authd_conn is not None:
+            authd_conn.close()
     if not status or not isinstance(auth_response, dict):
         error_msg = _ssod_error_message(auth_response,
                                     "Failed to complete tiqr authentication.")
@@ -3078,8 +3087,9 @@ def fido2_auth_begin():
                     'client_ip'         : client_ip,
                     'rp_id'             : rp_id,
                 }
-    authd_conn = get_authd_conn(username)
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username)
         status, \
         status_code, \
         auth_response, \
@@ -3092,7 +3102,8 @@ def fido2_auth_begin():
         logger.critical(log_msg)
         return jsonify({"error": gettext("Failed to start fido2 authentication.")}), 500
     finally:
-        authd_conn.close()
+        if authd_conn is not None:
+            authd_conn.close()
     if not status:
         error_msg = _ssod_error_message(auth_response, "Failed to start fido2 authentication.")
         return jsonify({"error": error_msg}), 400
@@ -3147,8 +3158,9 @@ def fido2_auth_complete():
     # Any node will do: the auth state is synced across the cluster,
     # so the browser no longer has to come back to the one that
     # started the assertion.
-    authd_conn = get_authd_conn(username)
+    authd_conn = None
     try:
+        authd_conn = get_authd_conn(username)
         status, \
         status_code, \
         auth_response, \
@@ -3161,7 +3173,8 @@ def fido2_auth_complete():
         logger.critical(log_msg)
         return jsonify({"error": gettext("Failed to complete fido2 authentication.")}), 500
     finally:
-        authd_conn.close()
+        if authd_conn is not None:
+            authd_conn.close()
     if not status:
         error_msg = _ssod_error_message(auth_response, "Failed to complete fido2 authentication.")
         return jsonify({"error": error_msg}), 400
