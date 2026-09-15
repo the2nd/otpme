@@ -280,6 +280,18 @@ class MasterNodeElectionFailed(OTPmeException):
 class NoClusterService(OTPmeException):
     pass
 
+class ServiceShutdown(OTPmeException):
+    pass
+
+class MasterFailover(OTPmeException):
+    pass
+
+class ClusterQuorum(OTPmeException):
+    pass
+
+class ClusterStatus(OTPmeException):
+    pass
+
 class NoSmartcardFound(OTPmeException):
     pass
 

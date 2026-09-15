@@ -629,6 +629,10 @@ class OTPmeServer1(object):
                     if self.require_cluster_status:
                         try:
                             self.check_cluster_status()
+                        except MasterFailover as e:
+                            message = str(e)
+                            status = status_codes.MASTER_FAILOVER
+                            return self.build_response(status, message, encrypt=False)
                         except Exception as e:
                             message = str(e)
                             status = status_codes.CLUSTER_NOT_READY

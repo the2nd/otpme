@@ -136,10 +136,10 @@ Enable sync groups.
 Disable sync groups.
 .TP
 .B enable_sync_by_login_token \fIhost\fR
-Enable sync by login token.
+Sync only the users and tokens that can log in on the host (the default). With limited logins (\fBlimit_logins\fR) those are the tokens assigned to the host, directly or via roles, and their users; without, the tokens of the REALM access group and their users. Sync users, sync groups, the users' default tokens and the destinations of link tokens are added in both cases.
 .TP
 .B disable_sync_by_login_token \fIhost\fR
-Disable sync by login token.
+Sync all users and tokens of the site, e.g. for a host that has to resolve the owners of files of users who do not log in on it.
 .SS Realm Join/Leave
 .TP
 .B enable_jotp \fIhost\fR

@@ -1194,20 +1194,24 @@ class Host(OTPmeHost, OTPmeDevice):
         token_uuids = []
         include_uuids = {}
         checksum_only_types = []
-        # Sync token/users by login token.
+        # Sync token/users by login token: only the ones that can log in
+        # here. With logins limited those assigned to the host (directly
+        # or via roles), otherwise those of the REALM accessgroup. Without
+        # it all users and tokens are synced.
         if self.sync_by_login_token:
-            if self.logins_limited:
-                try:
-                    sync_object_types.remove("user")
-                except ValueError:
-                    pass
-                checksum_only_types.append("user")
-                try:
-                    sync_object_types.remove("token")
-                except ValueError:
-                    pass
-                checksum_only_types.append("token")
-            else:
+            # Taken out of the full sync in both cases, or the selection
+            # below would be covered by it.
+            try:
+                sync_object_types.remove("user")
+            except ValueError:
+                pass
+            checksum_only_types.append("user")
+            try:
+                sync_object_types.remove("token")
+            except ValueError:
+                pass
+            checksum_only_types.append("token")
+            if not self.logins_limited:
                 # Get users/tokens to sync from REALM accessgroup.
                 result = backend.search(object_type="accessgroup",
                                         attribute="name",

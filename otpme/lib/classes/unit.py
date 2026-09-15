@@ -822,6 +822,7 @@ class Unit(OTPmeObject):
                             "CONFIG_PARAMS:sso_allow_totp_mgmt",
                             "CONFIG_PARAMS:sso_allow_login_token_redeploy",
                             "CONFIG_PARAMS:deploy_device_token_reauth",
+                            "CONFIG_PARAMS:sso_profile_edit_reauth",
                             "CONFIG_PARAMS:sso_reauth_timeout",
                             ]
                         },

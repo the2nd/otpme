@@ -327,7 +327,11 @@ Remove an extension from the user.
 .SS User Photo
 .TP
 .B photo \fIuser\fR \fIimage_path\fR
-Set the user's photo (JPEG).
+Set the user's photo (JPEG). A photo of another size than
+.B user_photo_dimensions
+(see \fBotpme\fR(7)) is resized to it after asking;
+.B \-f
+resizes without asking.
 .TP
 .B dump_photo \fIuser\fR
 Dump the user's photo as base64 to stdout.

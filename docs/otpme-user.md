@@ -349,7 +349,9 @@ Remove an extension from the user.
 ## User Photo
 
 **photo *user* *image_path***  
-Set the user's photo (JPEG).
+Set the user's photo (JPEG). A photo of another size than
+**user_photo_dimensions** (see **otpme**(7)) is resized to it after
+asking; **-f** resizes without asking.
 
 **dump_photo *user***  
 Dump the user's photo as base64 to stdout.

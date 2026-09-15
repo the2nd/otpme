@@ -947,6 +947,13 @@ def register_config_parameters():
                                     ctype=int,
                                     setter=max_device_tokens_setter,
                                     object_types=['role'])
+    # Whether a password device token of this role is created with MSCHAP
+    # enabled (e.g. for WLAN with PEAP/MSCHAPv2). Off unless the role says
+    # so: MSCHAP needs the NT hash of the password on the server.
+    config.register_config_parameter(name="device_token_mschap",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=['role'])
 
 def get_roles(role_uuid=None, skip_disabled=False, parent=False,
     recursive=True, return_type="name", return_attributes=None):
@@ -1148,6 +1155,7 @@ class Role(OTPmeObject):
                             # a user of another site is their home site.
                             "CONFIG_PARAMS:device_token_types",
                             "CONFIG_PARAMS:max_device_tokens",
+                            "CONFIG_PARAMS:device_token_mschap",
                             ]
                         },
                     }

@@ -76,7 +76,7 @@ def get_authd_conn(username,  password=None, node=None):
                                     auto_auth=False)
     return authd_conn
 
-def get_ssod_conn(username, mgmt=False):
+def get_ssod_conn(username, master_failover_timeout=10, mgmt=False):
     use_socket = False
     if config.host_data['type'] == "node":
         if mgmt:
@@ -97,16 +97,27 @@ def get_ssod_conn(username, mgmt=False):
                                     handle_user_auth=False,
                                     encrypt_session=False)
     else:
-        ssod_conn = connections.get("ssod",
-                                    mgmt=mgmt,
-                                    realm=config.realm,
-                                    site=config.site,
-                                    username=username,
-                                    follow_redirect=False,
-                                    request_token=False,
-                                    auto_preauth=False,
-                                    auto_auth=False,
-                                    encrypt_session=False)
+        start_time = time.time()
+        while True:
+            try:
+                ssod_conn = connections.get("ssod",
+                                            mgmt=mgmt,
+                                            realm=config.realm,
+                                            site=config.site,
+                                            username=username,
+                                            follow_redirect=False,
+                                            request_token=False,
+                                            auto_preauth=False,
+                                            auto_auth=False,
+                                            encrypt_session=False)
+            except (MasterFailover, ConnectionQuit, ConnectionError):
+                now = time.time()
+                if (now - start_time) <= master_failover_timeout:
+                    continue
+            except Exception:
+                raise
+            else:
+                break
     return ssod_conn
 
 def check_forwarded_for():
@@ -395,8 +406,12 @@ def _browser_preferred_language():
     except Exception:
         return None
 
-def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False):
+def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False,
+    error_messages=None):
     """ Send a command to ssod using the current user's JWT.
+
+    ``error_messages`` maps the codes ssod answers with to the text the
+    user gets instead.
 
     Returns a Flask response on error, otherwise the response payload dict. """
     if extra_args is None:
@@ -455,6 +470,8 @@ def _send_ssod_command(command, extra_args=None, default_error=None, mgmt=False)
                     "step_up_required": True,
                 }), 401)
         error_msg = _ssod_error_message(response, default_error)
+        if error_messages and error_msg in error_messages:
+            error_msg = error_messages[error_msg]
         return None, (jsonify({"error": error_msg}), 400)
     return response, None
 
@@ -1328,6 +1345,164 @@ def set_recovery_mail():
     return jsonify({
             "status":        "ok",
             "recovery_mail": stored,
+        })
+
+def _profile_attribute_labels():
+    """ What the profile page calls the attributes it knows. Any other
+    one is shown by its LDAP name. """
+    return {
+        'uid'                       : gettext("Username"),
+        'cn'                        : gettext("Full name"),
+        'givenName'                 : gettext("First name"),
+        'sn'                        : gettext("Last name"),
+        'displayName'               : gettext("Display name"),
+        'initials'                  : gettext("Initials"),
+        'mail'                      : gettext("E-mail"),
+        'telephoneNumber'           : gettext("Phone"),
+        'mobile'                    : gettext("Mobile phone"),
+        'homePhone'                 : gettext("Home phone"),
+        'facsimileTelephoneNumber'  : gettext("Fax"),
+        'title'                     : gettext("Title"),
+        'o'                         : gettext("Organization"),
+        'ou'                        : gettext("Organizational unit"),
+        'departmentNumber'          : gettext("Department"),
+        'employeeNumber'            : gettext("Employee number"),
+        'manager'                   : gettext("Manager"),
+        'roomNumber'                : gettext("Room"),
+        'street'                    : gettext("Street"),
+        'postalCode'                : gettext("Postal code"),
+        'l'                         : gettext("Location"),
+        'st'                        : gettext("State"),
+        'postalAddress'             : gettext("Postal address"),
+        'labeledURI'                : gettext("Website"),
+        'preferredLanguage'         : gettext("Preferred language"),
+        'description'               : gettext("Description"),
+        'uidNumber'                 : gettext("User ID"),
+        'gidNumber'                 : gettext("Group ID"),
+        'homeDirectory'             : gettext("Home directory"),
+        'loginShell'                : gettext("Login shell"),
+        'entryUUID'                 : gettext("UUID"),
+        'createTimestamp'           : gettext("Created"),
+        'modifyTimestamp'           : gettext("Last modified"),
+    }
+
+def _profile_error_messages():
+    return {
+        'PROFILE_EDIT_NOT_ALLOWED'  : gettext("You are not allowed to change this."),
+        'PROFILE_VALUE_TOO_LONG'    : gettext("A value is too long."),
+        'PROFILE_TOO_MANY_VALUES'   : gettext("Too many values."),
+        'PROFILE_INVALID_PHOTO'     : gettext("The photo must be a JPEG image."),
+        'PROFILE_PHOTO_TOO_LARGE'   : gettext("The photo is too large."),
+    }
+
+@app.route('/profile')
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def profile():
+    return render_template("profile.html", title=gettext('Profile'),
+                           attribute_labels=_profile_attribute_labels())
+
+@app.route('/profile/data', methods=['GET'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def get_profile():
+    """ The user's attributes and photo, and which of them may be
+    changed. """
+    try:
+        response, error = _send_ssod_command(
+                command="get_profile",
+                default_error=gettext("Failed to load profile."))
+    except Exception as e:
+        logger.critical(f"get_profile failed: {e}")
+        return jsonify({"error": gettext("Failed to load profile.")}), 500
+    if error:
+        return error
+    attributes = {}
+    order = []
+    editable = []
+    single_valued = []
+    photo = None
+    if isinstance(response, dict):
+        attributes = response.get('attributes') or {}
+        order = response.get('order') or []
+        editable = response.get('editable') or []
+        single_valued = response.get('single_valued') or []
+        photo = response.get('photo')
+    return jsonify({
+            "attributes":       attributes,
+            "order":            order,
+            "editable":         editable,
+            "single_valued":    single_valued,
+            "photo":            photo,
+        })
+
+@app.route('/profile/attribute', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def set_profile_attribute():
+    """ Replace the values of one attribute; an empty list removes it.
+    A stale step-up comes back as step_up_required, see
+    _send_ssod_command(). """
+    data = request.json or {}
+    attribute = data.get('attribute')
+    values = data.get('values')
+    if not isinstance(attribute, str) or not attribute:
+        return jsonify({"error": gettext("Missing 'attribute' field.")}), 400
+    if not isinstance(values, list):
+        return jsonify({"error": gettext("Missing 'values' field.")}), 400
+    response, error = _send_ssod_command(
+            command="set_profile_attribute",
+            extra_args={'attribute': attribute, 'values': values},
+            default_error=gettext("Failed to save profile."),
+            error_messages=_profile_error_messages(),
+            mgmt=True)
+    if error:
+        return error
+    stored = []
+    if isinstance(response, dict):
+        stored = response.get('values') or []
+    return jsonify({
+            "status":       "ok",
+            "attribute":    attribute,
+            "values":       stored,
+        })
+
+@app.route('/profile/photo', methods=['POST'])
+@login_required
+@limiter.limit(_rate_limit_settings, key_func=_settings_user_key)
+def set_profile_photo():
+    """ Set the photo (JPEG as base64) or, with an empty one, remove it.
+
+    A photo of other dimensions than user_photo_dimensions comes back
+    with resize_required instead of being stored; the page asks and
+    sends it again with resize. """
+    data = request.json or {}
+    photo = data.get('photo')
+    if photo is None:
+        return jsonify({"error": gettext("Missing 'photo' field.")}), 400
+    if not isinstance(photo, str):
+        return jsonify({"error": gettext("The photo must be a JPEG image.")}), 400
+    resize = bool(data.get('resize'))
+    response, error = _send_ssod_command(
+            command="set_profile_photo",
+            extra_args={'photo': photo, 'resize': resize},
+            default_error=gettext("Failed to save photo."),
+            error_messages=_profile_error_messages(),
+            mgmt=True)
+    if error:
+        return error
+    if not isinstance(response, dict):
+        response = {}
+    if response.get('resize_required'):
+        return jsonify({
+                "status":           "resize_required",
+                "resize_required":  True,
+                "photo_dimensions": response.get('photo_dimensions'),
+                "dimensions":       response.get('dimensions'),
+            })
+    return jsonify({
+            "status":   "ok",
+            "photo":    response.get('photo'),
         })
 
 @app.route('/settings/sessions', methods=['GET'])

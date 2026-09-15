@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import time
 import errno
 
 try:
@@ -89,32 +90,42 @@ def add_connection(proc_id, daemon, key, connection):
         connections[proc_id][daemon] = {}
     connections[proc_id][daemon][key] = connection
 
-def get_connection(**kwargs):
+def get_connection(master_failover_timeout=10, **kwargs):
     from otpme.lib.protocols.otpme_client import OTPmeClient
-    try:
-        daemon_conn = OTPmeClient(**kwargs)
-        status, \
-        status_code, \
-        response, \
-        binary_data = daemon_conn.send("ping", timeout=3)
-        exception = None
-    except Exception as e:
-        daemon_conn = None
-        status = False
-        exception = e
-        response = e
-    if not status:
-        if daemon_conn:
-            msg = _("Daemon connection failed: {socket_uri}: {response}")
-            msg = msg.format(socket_uri=daemon_conn.socket_uri, response=response)
-            daemon_conn.close()
-        else:
-            msg = _("Daemon connection failed: {response}")
-            msg = msg.format(response=response)
-        if exception:
-            raise exception
-        raise ConnectionError(msg)
-    return daemon_conn
+    start_time = time.time()
+    while True:
+        try:
+            daemon_conn = OTPmeClient(**kwargs)
+            status, \
+            status_code, \
+            response, \
+            binary_data = daemon_conn.send("ping", timeout=3)
+            exception = None
+        except MasterFailover as e:
+            daemon_conn = None
+            status = False
+            exception = e
+            response = e
+            now = time.time()
+            if (now - start_time) <= master_failover_timeout:
+                continue
+        except Exception as e:
+            daemon_conn = None
+            status = False
+            exception = e
+            response = e
+        if not status:
+            if daemon_conn:
+                msg = _("Daemon connection failed: {socket_uri}: {response}")
+                msg = msg.format(socket_uri=daemon_conn.socket_uri, response=response)
+                daemon_conn.close()
+            else:
+                msg = _("Daemon connection failed: {response}")
+                msg = msg.format(response=response)
+            if exception:
+                raise exception
+            raise ConnectionError(msg)
+        return daemon_conn
 
 def get(daemon, mgmt=None, ping=True, **kwargs):
     """ Get connection to OTPme daemons. """

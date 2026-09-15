@@ -328,14 +328,30 @@ def avatar(user_uuid):
     UUID format check before passing through to ssod -- defense in
     depth against weird path strings landing in the audit log.
     """
+    return _avatar_response(user_uuid)
+
+
+@oidc_bp.route('/avatar/<string:client_uuid>/<string:user_uuid>', methods=['GET'])
+def client_avatar(client_uuid, user_uuid):
+    """ The avatar in the size the client wants (oidc_avatar_dimensions).
+    This is the URL the picture claim carries; the one without a client
+    is kept for the tokens issued before. """
+    return _avatar_response(user_uuid, client_uuid=client_uuid)
+
+
+def _avatar_response(user_uuid, client_uuid=None):
     import base64
     from otpme.lib import stuff
     if user_uuid.endswith('.jpg'):
         user_uuid = user_uuid[:-4]
     if not stuff.is_uuid(user_uuid):
         return make_response('', 404)
-    status, response = _send_oidc_command('oidc_avatar',
-                                          {'user_uuid': user_uuid})
+    command_args = {'user_uuid': user_uuid}
+    if client_uuid is not None:
+        if not stuff.is_uuid(client_uuid):
+            return make_response('', 404)
+        command_args['client_uuid'] = client_uuid
+    status, response = _send_oidc_command('oidc_avatar', command_args)
     if status is None or not status:
         return make_response('', 404)
     photo_b64 = (response or {}).get('photo')

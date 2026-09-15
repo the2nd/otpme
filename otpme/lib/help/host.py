@@ -608,7 +608,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-host enable_sync_by_login_token {host}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Enable sync by login token.'),
+                                    'cmd'                   : _('Sync only users that can log in: assigned ones with limited logins, those of the REALM accessgroup otherwise.'),
                                 },
                 },
 
@@ -616,7 +616,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-host disable_sync_by_login_token {host}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Disable sync by login token.'),
+                                    'cmd'                   : _('Sync all users and tokens of the site.'),
                                 },
                 },
 

@@ -501,20 +501,20 @@ opening up the whole site. For admin tokens ACLs are never verified.
 Can only be changed by an admin.  
 Object types: site, unit, user, token
 
-**ldap_on_request_attributes (list, default: jpegPhoto)**  
+**ldap_on_request_attributes (list)**  
 Comma-separated list of LDIF attributes **otpme-ldapd** only returns
 when the search asked for them by name. A search that requests all
-attributes gets everything but these.  
+attributes gets everything but these. Unset holds nothing back.  
 This keeps bulky attributes out of searches that do not need them: a
 client that asks for all attributes on every query (SOGo does that on
 each address book search) would otherwise pull the photo of every hit
-over the wire and into the LDAP caches. **RFC 4522** allows a server to
+over the wire, e.g. set **jpegPhoto**. **RFC 4522** allows a server to
 hold attributes back on a wildcard request.  
 Resolved through the inheritance chain of the requesting token (token →
-user → unit → site), so a client that really needs the photos with every
-search can be exempted by setting an empty list on its token. Attribute
-names are matched case insensitively. Further values can be added with
-**-a** and removed individually with **-d**.  
+user → unit → site), so a client that really needs the held back
+attributes with every search can be exempted by setting an empty list on
+its token. Attribute names are matched case insensitively. Further
+values can be added with **-a** and removed individually with **-d**.  
 Object types: site, unit, user, token
 
 **ldif_whitelist_attributes (list, default: dn, objectClass, uid, cn, displayName, entryUUID, l, mail, mailLocalAddress)**  
@@ -585,6 +585,19 @@ Path of the default login script added to new users.
 Object types: site, unit
 
 ## User Management
+
+**user_photo_dimensions (str, default: 300x450)**  
+The size of a user's photo, as *width***x***height* in pixels (16 to
+4096 each). Adding a photo of another size asks whether to resize it,
+and refuses it otherwise; **-f** resizes without asking, and the Profile
+page of the SSO portal asks in the browser. Resizing scales the photo to
+cover the size and cuts off what is left over around the middle, so a
+photo of another aspect ratio loses the same amount on both sides rather
+than being distorted. The EXIF orientation of the photo is applied.
+Photos already stored are left as they are. The parameter is resolved
+per user; the most specific match wins (user overrides unit overrides
+site).  
+Object types: site, unit, user
 
 **failed_pass_history (int, default: 16)**  
 Number of failed login passwords to remember. Multiple failed login
@@ -880,6 +893,14 @@ and 128. Unset means no limit. Once it is reached the SSO portal offers
 no form to add another, and adding one is refused.  
 Object types: role
 
+**device_token_mschap (bool, default: false)**  
+Whether a **password** device token the SSO portal creates for this role
+gets MSCHAP enabled, e.g. for WLAN with PEAP/MSCHAPv2. Off unless the
+role says so: MSCHAP keeps the NT hash of the password on the server.
+Only affects tokens created from then on; **totp** device tokens are
+always created without MSCHAP.  
+Object types: role
+
 **sso_allow_session_mgmt (bool, default: false)**  
 Whether a user may see and end their own sessions on the Settings page
 of the SSO portal. Off by default: the listing shows where the account
@@ -889,6 +910,34 @@ own site are listed - that is where a login of this portal lives. Ending
 a session ends its child sessions and the application (OIDC) sessions
 below it. The session the Settings page is served from is shown but
 cannot be ended from there.  
+Object types: site, unit, user
+
+**sso_profile_attributes (list, default: uid,givenName,sn,mail,telephoneNumber,mobile,title,o,ou,departmentNumber,l,createTimestamp,modifyTimestamp)**  
+Comma-separated list of the LDAP attributes shown on the Profile page of
+the SSO portal, in this order. The page is reached by clicking the user
+name in the navigation bar and shows the photo and, of these attributes,
+the ones the user has. What is there for the machines rather than the
+user — **uidNumber**, **gidNumber**, **homeDirectory**, **loginShell**,
+**entryUUID**, and **cn** and **displayName** built from the others — is
+left out by default. Resolved on the user's home site; the most specific
+match wins (user overrides unit overrides site).  
+Object types: site, unit, user
+
+**sso_allow_profile_edit (list)**  
+Comma-separated list of the LDAP attributes a user may change on the
+Profile page of the SSO portal, e.g. **mail,telephoneNumber,mobile**;
+**jpegPhoto** allows setting and removing the photo. An attribute listed
+here is shown on the page even when **sso_profile_attributes** leaves it
+out, after the ones listed there. Unset (default) means nothing can be
+changed there. Attributes the user's extensions keep read-only (**uid**)
+cannot be changed even when listed. Changes are made on the user's home
+site, which also resolves this parameter; the most specific match wins
+(user overrides unit overrides site). Whether a change needs a fresh
+re-authentication is **sso_profile_edit_reauth**.  
+One change may carry up to 16 values of 1024 characters each. A photo
+must be a JPEG of at most 8 MiB, and of at most 512 KiB once it has been
+resized to **user_photo_dimensions**; a photo of another size is only
+stored after the user agreed to have it resized.  
 Object types: site, unit, user
 
 **sso_allow_passkeys (bool, default: true)**  
@@ -1390,12 +1439,18 @@ holding, so it is also the one an install is most likely to find in the
 way.  
 Object types: site, unit, user
 
+**sso_profile_edit_reauth (bool, default: true)**  
+The same before an attribute or the photo is changed on the Profile
+page, see **sso_allow_profile_edit**. Not a credential, but a mail
+address or phone number may be where a password reset or a second factor
+is sent to.  
+Object types: site, unit, user
+
 **sso_reauth_timeout (int, default: 120)**  
 How long a re-authentication on the SSO portal stays fresh, in seconds;
 accepts time units (e.g. **2m**). Applies to every gate that asks for
-one: changing the recovery mail and the **deploy\_\*\_reauth** flows.
-Short on purpose — it is a window the user is actively working in, not a
-second session. Minimum 60.  
+one: changing the recovery mail, the **deploy\_\*\_reauth** flows and
+**sso_profile_edit_reauth**.**Short**on**purpose**—**it**is**a**window**the**user**is**actively**working**in,**not**a**second**session.**Minimum**60.  
 When the settings page opens the form for a security key or a passkey,
 it asks for a new re-authentication once less than 30 seconds of the
 window are left, so the user still has time to name the key and touch
@@ -1512,6 +1567,16 @@ RPs that never call */userinfo* and read the ID Token alone -
 Nextcloud's user_oidc does, and without it gets no name, email or
 avatar. The claims in the ID Token itself (sub, auth_time, amr, acr) are
 never replaced.  
+Object types: site, unit, client
+
+**oidc_avatar_dimensions (str, default: 300x300)**  
+The size, as *width***x***height* in pixels, in which a client gets the
+user's photo that the **picture** claim points to. The claim carries the
+client in its URL (*/oidc/avatar/\<client_uuid\>/\<user_uuid\>.jpg*),
+and the photo is resized when it is fetched, the same way as for
+**user_photo_dimensions**. The default is the square Nextcloud wants. A
+client that should get the photo as stored is set to
+**user_photo_dimensions**.**The**URL**is**not**authenticated:**whoever**puts**another**client**into**it**gets**the**same**photo**in**that**client's**size.**  
 Object types: site, unit, client
 
 **oidc_require_consent (bool, default: false)**  

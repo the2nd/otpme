@@ -118,17 +118,17 @@ def check_cluster_status(skip_master_failover=False):
     # continue to work on master failover (e.g. authd).
     if config.service_shutdown:
         msg = _("Ongoing service shutdown.")
-        raise OTPmeException(msg)
+        raise ServiceShutdown(msg)
     if not skip_master_failover:
         if config.master_failover:
             msg = _("Ongoing master failover.")
-            raise OTPmeException(msg)
+            raise MasterFailover(msg)
     if not config.cluster_quorum:
         msg = _("No cluster quorum.")
-        raise OTPmeException(msg)
+        raise ClusterQuorum(msg)
     if not config.cluster_status:
         msg = _("Cluster not ready.")
-        raise OTPmeException(msg)
+        raise ClusterStatus(msg)
 
 def cluster_nsscache_sync():
     if config.use_api:

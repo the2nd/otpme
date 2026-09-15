@@ -44,6 +44,9 @@ from otpme.lib.daemon.clusterd import add_cluster_state
 from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 from otpme.lib.token.tiqr import tiqr as tiqr_token
 from otpme.lib.classes.data_objects.photo import read_photo
+from otpme.lib.classes.data_objects.photo import resize_image
+from otpme.lib.classes.data_objects.photo import get_dimensions
+from otpme.lib.classes.data_objects.photo import get_image_dimensions
 
 from otpme.lib.exceptions import *
 
@@ -88,6 +91,19 @@ TOTP_ENROLL_MAX_ATTEMPTS = 5
 # Token types a device token may be. The role says which of them its
 # device tokens are (device_token_types); password when it says nothing.
 DEVICE_TOKEN_TYPES = ("password", "totp")
+
+# What the profile page leaves out: the entry's own name and its schema,
+# neither of them data about the user. The photo has a card of its own.
+PROFILE_HIDDEN_ATTRIBUTES = ("dn", "objectClass", "jpegPhoto")
+# What one change on the profile page may carry. The attributes end up
+# in every LDAP answer about the user, the photo in every one that asks
+# for all attributes -- the portal must not be the way to make them big.
+PROFILE_MAX_VALUES = 16
+PROFILE_MAX_VALUE_LEN = 1024
+PROFILE_MAX_PHOTO_SIZE = 512 * 1024
+# What may be uploaded to be resized to user_photo_dimensions: a photo
+# straight from a phone camera.
+PROFILE_MAX_PHOTO_UPLOAD_SIZE = 8 * 1024 * 1024
 
 # Byte length of the raw SSO-token recovery secret. 32 bytes = 256 bits
 # after hex-encoding gives a 64-char URL parameter -- fits well into a
@@ -4679,6 +4695,7 @@ class OTPmeSsoP1(OTPmeServer1):
         All four add flows. For a security key or a passkey there is no
         other way; for a phone and a device token it is simply the
         nicer order -- prove yourself first, then type the name.
+        The profile page asks the same before it opens an editor.
 
         Answered here and never forwarded: the SSO session lives on
         this site, and the user's reauth parameters are synced to us
@@ -4714,6 +4731,10 @@ class OTPmeSsoP1(OTPmeServer1):
                                             margin=STEP_UP_ADD_MARGIN),
                 'device'    :self._step_up_missing(user,
                                             "deploy_device_token_reauth",
+                                            command_args,
+                                            margin=STEP_UP_ADD_MARGIN),
+                'profile'   : self._step_up_missing(user,
+                                            "sso_profile_edit_reauth",
                                             command_args,
                                             margin=STEP_UP_ADD_MARGIN),
             }
@@ -4863,6 +4884,333 @@ class OTPmeSsoP1(OTPmeServer1):
         return self.build_response(True, {
                 'recovery_mail': new_value,
                 'status':        True,
+            })
+
+    def _profile_known_attributes(self, user):
+        """ The attributes the user's extensions know, and the ones of
+        them they keep read-only. """
+        known = set()
+        read_only = set()
+        for x_name in user._extensions:
+            extension = user._extensions[x_name]
+            if user.type not in extension.object_types:
+                continue
+            known.update(config.get_ldif_attributes(extension.name, user.type))
+            read_only.update(extension.read_only_attributes.get(user.type, []))
+        return known, read_only
+
+    def _profile_editable(self, user):
+        """ The attributes the user may change on the profile page.
+
+        sso_allow_profile_edit, less what no extension of the user
+        knows and what the extensions keep read-only -- uid is the
+        user's name. jpegPhoto is not an LDIF attribute and stays in
+        when listed: it stands for the photo. """
+        allowed = user.get_config_parameter("sso_allow_profile_edit") or []
+        known, read_only = self._profile_known_attributes(user)
+        editable = []
+        for attribute in allowed:
+            if attribute == "jpegPhoto":
+                editable.append(attribute)
+                continue
+            if attribute in PROFILE_HIDDEN_ATTRIBUTES:
+                continue
+            if attribute not in known:
+                continue
+            if attribute in read_only:
+                continue
+            editable.append(attribute)
+        return editable
+
+    def _profile_attributes(self, user):
+        """ sso_profile_attributes for the given user. None -- a site
+        older than the parameter -- means the registered default, for
+        the same reason as in _mgmt_allowed(). """
+        attributes = user.get_config_parameter("sso_profile_attributes")
+        if attributes is None:
+            attributes = config.get_config_parameter("sso_profile_attributes")['default']
+        return list(attributes)
+
+    def _profile_edit_refused(self, user, attribute):
+        """ The answer to a change of an attribute the user may not edit. """
+        log_msg = _("Profile edit refused for '{user}': {attribute} not in sso_allow_profile_edit", log=True)[1]
+        log_msg = log_msg.format(user=user.name, attribute=attribute)
+        self.logger.warning(log_msg)
+        return self.build_response(False, {
+                'message': 'PROFILE_EDIT_NOT_ALLOWED',
+                'status':  False,
+            })
+
+    def get_profile(self, username, sso_jwt, command_args):
+        """ The user's LDAP attributes and photo for the profile page,
+        and which of them the user may change.
+
+        Answered by the user's home site, like get_recovery_mail(): it
+        holds the object that gets written, and the sso_allow_profile_edit
+        that decides. """
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        if user.site != config.site:
+            return self.ssod_redirect_command(command="get_profile",
+                                            user=user,
+                                            command_args=command_args)
+        editable = self._profile_editable(user)
+        # sso_profile_attributes in its order, and after them what the
+        # user may change but the list leaves out. An order of its own
+        # because the attributes travel as a JSON object, and Flask's
+        # jsonify() sorts the keys of those.
+        #
+        # Unset ones are shown as well, so the page has the same fields
+        # for every user. Except those no extension of the user knows:
+        # a user without them could never have them set.
+        known = self._profile_known_attributes(user)[0]
+        order = []
+        attributes = {}
+        for attribute in self._profile_attributes(user) + editable:
+            if attribute in PROFILE_HIDDEN_ATTRIBUTES:
+                continue
+            if attribute in order:
+                continue
+            values = user.get_attribute(attribute)
+            if not values and attribute not in known:
+                continue
+            order.append(attribute)
+            if values:
+                attributes[attribute] = [str(x) for x in values]
+        # So the page offers no second value where the schema allows
+        # one only.
+        single_valued = []
+        for attribute in editable:
+            try:
+                attribute_type = config.ldap_attribute_types[attribute]
+            except KeyError:
+                continue
+            if attribute_type.single_value:
+                single_valued.append(attribute)
+        return self.build_response(True, {
+                'attributes':       attributes,
+                'order':            order,
+                'editable':         editable,
+                'single_valued':    single_valued,
+                'photo':            read_photo(user.uuid),
+                'status':           True,
+            })
+
+    def set_profile_attribute(self, username, sso_jwt, command_args):
+        """ Replace the values of one LDAP attribute of the user.
+
+        ``values`` is the whole new list; an empty one removes the
+        attribute. Only attributes sso_allow_profile_edit names, behind
+        a fresh step-up when sso_profile_edit_reauth says so -- checked
+        on the portal, like every other step-up, and passed on to the
+        home site with the _step_up_verified marker. """
+        attribute = command_args.get('attribute')
+        values = command_args.get('values')
+        if not isinstance(attribute, str) or not isinstance(values, list):
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        new_values = []
+        for x_value in values:
+            if not isinstance(x_value, str):
+                return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+            x_value = x_value.strip()
+            if not x_value:
+                continue
+            if x_value in new_values:
+                continue
+            if len(x_value) > PROFILE_MAX_VALUE_LEN:
+                return self.build_response(False, {
+                        'message': 'PROFILE_VALUE_TOO_LONG',
+                        'status':  False,
+                    })
+            new_values.append(x_value)
+        if len(new_values) > PROFILE_MAX_VALUES:
+            return self.build_response(False, {
+                    'message': 'PROFILE_TOO_MANY_VALUES',
+                    'status':  False,
+                })
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "sso_profile_edit_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
+        if user.site != config.site:
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
+            return self.ssod_redirect_command(command="set_profile_attribute",
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        if attribute == "jpegPhoto":
+            return self._profile_edit_refused(user, attribute)
+        if attribute not in self._profile_editable(user):
+            return self._profile_edit_refused(user, attribute)
+        old_values = [str(x) for x in user.get_attribute(attribute)]
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            # Adding first: a single-valued attribute takes the new value
+            # in place of the old one, and one an object class requires
+            # could not be emptied on the way.
+            for x_value in new_values:
+                if x_value in old_values:
+                    continue
+                user.add_attribute(attribute,
+                                    x_value,
+                                    force=True,
+                                    verify_acls=False,
+                                    callback=callback)
+            for x_value in old_values:
+                if x_value in new_values:
+                    continue
+                current_values = [str(x) for x in user.get_attribute(attribute)]
+                if x_value not in current_values:
+                    continue
+                user.del_attribute(attribute,
+                                    x_value,
+                                    force=True,
+                                    verify_acls=False,
+                                    callback=callback)
+        except Exception as e:
+            log_msg = _("Profile edit failed for user '{user}': {attribute}: {e}", log=True)[1]
+            log_msg = log_msg.format(user=user.name, attribute=attribute, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message': str(e), 'status': False})
+        user._write(callback=callback)
+        return self.build_response(True, {
+                'attribute':    attribute,
+                'values':       [str(x) for x in user.get_attribute(attribute)],
+                'status':       True,
+            })
+
+    def set_profile_photo(self, username, sso_jwt, command_args):
+        """ Set or remove the user's photo from the profile page.
+
+        ``photo`` is the JPEG as base64, empty to remove it; ``resize``
+        says the user agreed to have it resized. Allowed when
+        sso_allow_profile_edit names jpegPhoto; the step-up the same as
+        for set_profile_attribute(). """
+        photo = command_args.get('photo')
+        if photo is not None and not isinstance(photo, str):
+            return self.build_response(False, "SSOD_INCOMPLETE_COMMAND")
+        if photo:
+            try:
+                image_data = base64.b64decode(photo, validate=True)
+            except Exception:
+                return self.build_response(False, {
+                        'message': 'PROFILE_INVALID_PHOTO',
+                        'status':  False,
+                    })
+            if len(image_data) > PROFILE_MAX_PHOTO_UPLOAD_SIZE:
+                return self.build_response(False, {
+                        'message': 'PROFILE_PHOTO_TOO_LARGE',
+                        'status':  False,
+                    })
+            # add_photo() looks closer, but its refusal is a sentence
+            # the page cannot translate.
+            if not image_data.startswith(b"\xff\xd8\xff"):
+                return self.build_response(False, {
+                        'message': 'PROFILE_INVALID_PHOTO',
+                        'status':  False,
+                    })
+        try:
+            user = self.verify_sso_jwt(username, sso_jwt)
+        except Exception as e:
+            log_msg = _("SSO JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message':'JWT_INVALID', 'status':False})
+        step_up = self._step_up_required(user, "sso_profile_edit_reauth",
+                                        command_args)
+        if step_up is not None:
+            return step_up
+        if user.site != config.site:
+            forward_args = dict(command_args)
+            forward_args['_step_up_verified'] = True
+            return self.ssod_redirect_command(command="set_profile_photo",
+                                            user=user,
+                                            command_args=forward_args,
+                                            mgmt=True)
+        if "jpegPhoto" not in self._profile_editable(user):
+            return self._profile_edit_refused(user, "jpegPhoto")
+        if photo:
+            # user_photo_dimensions: resized here rather than by
+            # add_photo(), which would ask on a callback nobody answers.
+            # The page asks instead, and sends the photo again with
+            # ``resize``.
+            try:
+                dimensions = get_dimensions("user_photo_dimensions", user)
+                photo_dimensions = None
+                if dimensions:
+                    photo_dimensions = tuple(get_image_dimensions(image_data))
+            except Exception as e:
+                log_msg = _("Unable to read photo of user '{user}': {e}", log=True)[1]
+                log_msg = log_msg.format(user=user.name, e=e)
+                self.logger.warning(log_msg)
+                return self.build_response(False, {
+                        'message': 'PROFILE_INVALID_PHOTO',
+                        'status':  False,
+                    })
+            if dimensions and photo_dimensions != dimensions:
+                if not command_args.get('resize'):
+                    return self.build_response(True, {
+                            'resize_required':  True,
+                            'photo_dimensions': f"{photo_dimensions[0]}x{photo_dimensions[1]}",
+                            'dimensions':       f"{dimensions[0]}x{dimensions[1]}",
+                            'status':           True,
+                        })
+                try:
+                    image_data = resize_image(image_data, *dimensions)
+                except Exception as e:
+                    log_msg = _("Unable to resize photo of user '{user}': {e}", log=True)[1]
+                    log_msg = log_msg.format(user=user.name, e=e)
+                    self.logger.warning(log_msg)
+                    return self.build_response(False, {
+                            'message': 'PROFILE_INVALID_PHOTO',
+                            'status':  False,
+                        })
+                photo = base64.b64encode(image_data).decode()
+            if len(image_data) > PROFILE_MAX_PHOTO_SIZE:
+                return self.build_response(False, {
+                        'message': 'PROFILE_PHOTO_TOO_LARGE',
+                        'status':  False,
+                    })
+        callback = self.get_callback()
+        callback.raise_exception = True
+        try:
+            if photo:
+                # Refuses anything that is not a JPEG.
+                user.add_photo(photo,
+                                force=True,
+                                verify_acls=False,
+                                callback=callback)
+            elif read_photo(user.uuid):
+                user.del_photo(force=True,
+                                verify_acls=False,
+                                callback=callback)
+        except Exception as e:
+            log_msg = _("Profile photo change failed for user '{user}': {e}", log=True)[1]
+            log_msg = log_msg.format(user=user.name, e=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False,
+                            {'message': str(e), 'status': False})
+        return self.build_response(True, {
+                'photo':    read_photo(user.uuid),
+                'status':   True,
             })
 
     # ---- SSO-token recovery (unauth "forgot my token" flow) ------------
@@ -6675,7 +7023,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 return msg.format(max_tokens=max_tokens)
         return None
 
-    def _local_create_device_token(self, user, token_name, device_name,
+    def _local_create_device_token(self, user, role, token_name, device_name,
         callback, token_type="password"):
         """ Create a device token for the given user on this node.
 
@@ -6686,7 +7034,10 @@ class OTPmeSsoP1(OTPmeServer1):
 
         A TOTP device token has its PIN disabled. It goes into a device
         that has to produce the OTP by itself, and there is nobody at
-        that device to type a PIN in front of it. """
+        that device to type a PIN in front of it.
+
+        A password device token gets MSCHAP when <role> says so
+        (device_token_mschap). """
         if token_type not in DEVICE_TOKEN_TYPES:
             raise OTPmeException(f"Invalid device token type: {token_type}")
         add_args = {
@@ -6700,7 +7051,8 @@ class OTPmeSsoP1(OTPmeServer1):
                 'callback'          : callback,
             }
         if token_type == "password":
-            add_args['enable_mschap'] = True
+            if role.get_config_parameter("device_token_mschap"):
+                add_args['enable_mschap'] = True
         else:
             # mode1: the secret is kept on the server, so the QR code can
             # be built from it without anybody entering a PIN.
@@ -6798,6 +7150,7 @@ class OTPmeSsoP1(OTPmeServer1):
         callback.raise_exception = True
         try:
             token, reveal = self._local_create_device_token(user=user,
+                                                    role=role,
                                                     token_name=token_name,
                                                     device_name=device_name,
                                                     token_type=token_type,
@@ -7059,6 +7412,7 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.build_response(False, {'message': refused, 'status': False})
             try:
                 _token, reveal = self._local_create_device_token(user=user,
+                                                    role=role,
                                                     token_name=token_name,
                                                     device_name=device_name,
                                                     token_type=token_type,
@@ -7680,14 +8034,22 @@ class OTPmeSsoP1(OTPmeServer1):
             # via ``/end_session?id_token_hint=...`` and bloat
             # cookies. The endpoint is public, with the user UUID as
             # the obscurity guard.
+            #
+            # With the client in the path, so the avatar can be handed
+            # out in the size that client wants (oidc_avatar_dimensions).
+            # Nobody authenticates at that URL -- whoever puts another
+            # client there gets the same photo in another size.
             site_obj = None
             if read_photo(user.uuid):
                 site_obj = backend.get_object(object_type="site",
                                               uuid=config.site_uuid)
                 if site_obj is not None and getattr(site_obj, 'sso_fqdn', None):
+                    avatar_path = f"/oidc/avatar/{user.uuid}.jpg"
+                    if client is not None:
+                        avatar_path = (f"/oidc/avatar/{client.uuid}"
+                                        f"/{user.uuid}.jpg")
                     claims['picture'] = (
-                        f"https://{site_obj.sso_fqdn}"
-                        f"/oidc/avatar/{user.uuid}.jpg"
+                        f"https://{site_obj.sso_fqdn}{avatar_path}"
                     )
             # Remaining profile claims per OIDC Core 1.0 §5.4. Emit
             # whatever the user has populated; missing claims are
@@ -9543,16 +9905,51 @@ class OTPmeSsoP1(OTPmeServer1):
         Returns ``{'photo': '<base64 jpeg>'}`` on success, 404-ish
         error otherwise. The web layer decodes and serves with
         Content-Type: image/jpeg.
+
+        With ``client_uuid`` -- the picture claim carries it -- resized
+        to that client's oidc_avatar_dimensions. Without, as stored: the
+        URL tokens issued before still point there.
         """
         user_uuid = command_args.get("user_uuid")
         if not user_uuid:
             return self.build_response(False, {
                 'error': 'not_found',
             })
+        client = None
+        client_uuid = command_args.get("client_uuid")
+        if client_uuid is not None:
+            if not stuff.is_uuid(client_uuid):
+                return self.build_response(False, {
+                    'error': 'not_found',
+                })
+            client = backend.get_object(object_type="client",
+                                        uuid=client_uuid)
+            if client is None:
+                return self.build_response(False, {
+                    'error': 'not_found',
+                })
         # Straight from the photo object, without loading the user: the
         # UUID is all read_photo() needs, and it refuses anything else.
         photo = read_photo(user_uuid)
         if not photo:
+            return self.build_response(False, {
+                'error': 'not_found',
+            })
+        if client is None:
+            return self.build_response(True, {'photo': photo})
+        try:
+            dimensions = get_dimensions("oidc_avatar_dimensions", client)
+            if dimensions:
+                image_data = base64.b64decode(photo)
+                if tuple(get_image_dimensions(image_data)) != dimensions:
+                    image_data = resize_image(image_data, *dimensions)
+                    photo = base64.b64encode(image_data).decode()
+        except Exception as e:
+            log_msg = _("Unable to resize avatar of user {user_uuid} for client '{client}': {e}", log=True)[1]
+            log_msg = log_msg.format(user_uuid=user_uuid,
+                                    client=client.name,
+                                    e=e)
+            self.logger.warning(log_msg)
             return self.build_response(False, {
                 'error': 'not_found',
             })
@@ -9804,6 +10201,9 @@ class OTPmeSsoP1(OTPmeServer1):
                             "set_admin_access_state",
                             "get_recovery_mail",
                             "set_recovery_mail",
+                            "get_profile",
+                            "set_profile_attribute",
+                            "set_profile_photo",
                             "get_step_up_state",
                             "request_sso_token_recovery",
                             "get_sso_token_recovery_info",
@@ -10089,6 +10489,21 @@ class OTPmeSsoP1(OTPmeServer1):
             log_msg = _("Processing command set_recovery_mail.", log=True)[1]
             self.logger.info(log_msg)
             return self.set_recovery_mail(username, sso_jwt, command_args)
+
+        if command == "get_profile":
+            log_msg = _("Processing command get_profile.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.get_profile(username, sso_jwt, command_args)
+
+        if command == "set_profile_attribute":
+            log_msg = _("Processing command set_profile_attribute.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.set_profile_attribute(username, sso_jwt, command_args)
+
+        if command == "set_profile_photo":
+            log_msg = _("Processing command set_profile_photo.", log=True)[1]
+            self.logger.info(log_msg)
+            return self.set_profile_photo(username, sso_jwt, command_args)
 
         if command == "list_passkeys":
             log_msg = _("Processing command list_passkeys.", log=True)[1]

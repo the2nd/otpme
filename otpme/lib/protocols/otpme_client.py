@@ -920,6 +920,12 @@ class OTPmeClient(OTPmeClientBase):
                                 timeout=timeout,
                                 **kwargs)
 
+        if status_code == status_codes.MASTER_FAILOVER:
+            raise MasterFailover(response)
+
+        if status_code == status_codes.CLUSTER_NOT_READY:
+            raise ConnectionError(response)
+
         if handle_auth and self.auto_auth:
             if status_code == status_codes.NEED_USER_AUTH \
             or status_code == status_codes.NEED_HOST_AUTH:
@@ -1074,11 +1080,16 @@ class OTPmeClient(OTPmeClientBase):
         if self.proto_handler:
             decode_method = self.proto_handler.decode_response
 
-        status_code, \
-        response, \
-        binary_data = decode_method(response,
-                                encryption=enc_mod,
-                                enc_key=enc_key)
+        try:
+            status_code, \
+            response, \
+            binary_data = decode_method(response,
+                                    encryption=enc_mod,
+                                    enc_key=enc_key)
+        except Exception as e:
+            msg = _("Error decoding response: {e}")
+            msg = msg.format(e=e)
+            raise ConnectionError(msg) from e
         if status_code == status_codes.SERVER_QUIT:
             self._connected = False
             msg = _("Connection closed by server: {response}")
@@ -2981,6 +2992,9 @@ class OTPmeClient1(OTPmeClientBase):
 
         if status_code == status_codes.NO_CLUSTER_SERVICE:
             raise NoClusterService(response)
+
+        if status_code == status_codes.MASTER_FAILOVER:
+            raise MasterFailover(response)
 
         if status_code == status_codes.CLUSTER_NOT_READY:
             raise ConnectionError(response)

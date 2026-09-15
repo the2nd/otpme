@@ -14,6 +14,7 @@ search. It takes no file lock -- the backend rewrites a file in place,
 so a read can catch one half written, and a half written JSON file never
 parses: then it reads again the regular way, under the lock.
 """
+import io
 import os
 from typing import Union
 
@@ -53,11 +54,103 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.data_objects.used_hash",
                 ]
 PHOTO_DIR = os.path.join(config.data_dir, "data", "photo")
+# The quality photos are written with when they are resized.
+RESIZE_JPEG_QUALITY = 85
 
 def register():
     register_oid()
     register_backend()
     register_sync_settings()
+    register_config_params()
+
+def register_config_params():
+    """ Register config parameters. """
+    def dimensions_setter(dimensions, **kwargs):
+        width, height = parse_dimensions(dimensions)
+        return f"{width}x{height}"
+    # The size a photo of a user has. One of another size is resized to
+    # it, after asking. Read on the user's home site, where the photo is
+    # added, so it needs no syncing.
+    config.register_config_parameter(name="user_photo_dimensions",
+                                    ctype=str,
+                                    setter=dimensions_setter,
+                                    default_value="300x450",
+                                    object_types=[
+                                                'site',
+                                                'unit',
+                                                'user',
+                                                ])
+    # The size an OIDC client gets the avatar in (the picture claim).
+    # Square by default, the size Nextcloud wants.
+    config.register_config_parameter(name="oidc_avatar_dimensions",
+                                    ctype=str,
+                                    setter=dimensions_setter,
+                                    default_value="300x300",
+                                    object_types=[
+                                                'site',
+                                                'unit',
+                                                'client',
+                                                ])
+
+def parse_dimensions(dimensions):
+    """ "<width>x<height>" as a tuple of ints. """
+    try:
+        width, height = str(dimensions).lower().split("x")
+        width = int(width)
+        height = int(height)
+    except Exception as err:
+        msg = _("Invalid dimensions, expected <width>x<height>: {dimensions}")
+        msg = msg.format(dimensions=dimensions)
+        raise ValueError(msg) from err
+    if width < 16 or height < 16 or width > 4096 or height > 4096:
+        msg = _("Width and height must be between 16 and 4096.")
+        raise ValueError(msg)
+    return width, height
+
+def get_dimensions(parameter, obj):
+    """ The dimensions config parameter <parameter> of <obj> as a tuple,
+    or None when it is not set. An older site that does not have it gets
+    the registered default. """
+    dimensions = obj.get_config_parameter(parameter)
+    if dimensions is None:
+        dimensions = config.get_config_parameter(parameter)['default']
+    if not dimensions:
+        return None
+    return parse_dimensions(dimensions)
+
+def _open_image(image_data):
+    # Imported here: only nodes resize photos, and only now and then.
+    from PIL import Image
+    from PIL import ImageOps
+    image = Image.open(io.BytesIO(image_data))
+    # A phone stores the picture as taken and says in EXIF which way up
+    # it is. LDAP clients do not look, so the rotation is applied.
+    return ImageOps.exif_transpose(image)
+
+def get_image_dimensions(image_data):
+    """ Width and height of the JPEG <image_data> (bytes), the way up it
+    is meant to be shown. """
+    image = _open_image(image_data)
+    return image.size
+
+def resize_image(image_data, width, height):
+    """ <image_data> (JPEG bytes) resized to <width>x<height>, as JPEG
+    bytes. Scaled to cover the size and cut down to it around the
+    middle, so a portrait turns into a square by losing the same amount
+    at the top and at the bottom rather than being squashed. """
+    from PIL import Image
+    from PIL import ImageOps
+    image = _open_image(image_data)
+    image = ImageOps.fit(image, (width, height),
+                        method=Image.Resampling.LANCZOS,
+                        centering=(0.5, 0.5))
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    output = io.BytesIO()
+    image.save(output, format="JPEG",
+                quality=RESIZE_JPEG_QUALITY,
+                optimize=True)
+    return output.getvalue()
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'user_uuid' ]

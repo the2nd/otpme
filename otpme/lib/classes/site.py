@@ -63,6 +63,24 @@ default_callback = config.get_callback()
 
 DUMP_SCRIPTS = ['key_script.sh', 'agent_script.sh', 'login_script.sh']
 
+# What the profile page of the portal shows by default, in this order:
+# name first, then how to reach the user, then where and since when.
+SSO_PROFILE_ATTRIBUTES = [
+                        'uid',
+                        'givenName',
+                        'sn',
+                        'mail',
+                        'telephoneNumber',
+                        'mobile',
+                        'title',
+                        'o',
+                        'ou',
+                        'departmentNumber',
+                        'l',
+                        'createTimestamp',
+                        'modifyTimestamp',
+                        ]
+
 read_acls = []
 write_acls = []
 
@@ -2281,6 +2299,35 @@ def register_config():
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
+    # The LDAP attributes the profile page of the portal shows, in this
+    # order. What is only there for the machines -- numeric IDs, home
+    # directory, shell, the names built from others -- is left out by
+    # default. Read on the user's home site, which answers the page, so
+    # neither this nor the next one needs syncing.
+    def profile_attributes_setter(attributes, **kwargs):
+        if isinstance(attributes, str):
+            attributes = attributes.split(",")
+        _attributes = []
+        for x_attr in attributes:
+            x_attr = x_attr.strip()
+            if not x_attr:
+                continue
+            if x_attr in _attributes:
+                continue
+            _attributes.append(x_attr)
+        return _attributes
+    config.register_config_parameter(name="sso_profile_attributes",
+                                    ctype=list,
+                                    setter=profile_attributes_setter,
+                                    default_value=SSO_PROFILE_ATTRIBUTES,
+                                    object_types=object_types)
+    # The ones a user may change there; jpegPhoto stands for the photo.
+    # Unset means none. Shown even when sso_profile_attributes leaves
+    # them out -- something to change has to be seen first.
+    config.register_config_parameter(name="sso_allow_profile_edit",
+                                    ctype=list,
+                                    setter=profile_attributes_setter,
+                                    object_types=object_types)
     # Let a user re-deploy their login token from the settings page, i.e.
     # replace it with a new one of a type they choose. The forced deploy
     # of a token flagged sso_deploy is not affected. Default on; an
@@ -2320,6 +2367,13 @@ def register_config():
                                     default_value=True,
                                     object_types=object_types)
     config.register_config_parameter(name="deploy_device_token_reauth",
+                                    ctype=bool,
+                                    default_value=True,
+                                    object_types=object_types)
+    # The same before a change on the profile page. Not a credential,
+    # but mail and phone number are where a password reset or a second
+    # factor may end up being sent.
+    config.register_config_parameter(name="sso_profile_edit_reauth",
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
@@ -3221,6 +3275,7 @@ class Site(OTPmeObject):
                             "CONFIG_PARAMS:sso_allow_totp_mgmt",
                             "CONFIG_PARAMS:sso_allow_login_token_redeploy",
                             "CONFIG_PARAMS:deploy_device_token_reauth",
+                            "CONFIG_PARAMS:sso_profile_edit_reauth",
                             "CONFIG_PARAMS:sso_reauth_timeout",
                             ],
                         },

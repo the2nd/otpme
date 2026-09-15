@@ -82,6 +82,14 @@ a:hover { text-decoration: underline; }
 .navbar-user::before {
   content: "\1F464  ";
 }
+/* The name links to the profile page; keeps its badge look. */
+a.navbar-user {
+  color: #444;
+  padding: 6px 12px;
+}
+a.navbar-user:hover {
+  background: #e4e7eb;
+}
 /* Visible warning that the user has admin-access (temp-password) mode
  * enabled on their account. Rendered on every page while enabled so
  * the user (and anyone shoulder-surfing) can see that elevated auth
@@ -682,6 +690,103 @@ body.is-loading { overflow: hidden; }
    their content instead of stretching across the container. */
 .recovery-mail-display .btn,
 .recovery-mail-actions .btn {
+  flex: 0 0 auto;
+}
+/* ---- Profile page ---- */
+.profile-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.profile-photo {
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid #dfe3ea;
+}
+.profile-photo-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  color: #888;
+  font-size: 13px;
+  font-style: italic;
+}
+.profile-photo-row .btn {
+  flex: 0 0 auto;
+}
+.profile-photo-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.profile-attribute-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.profile-attribute-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 10px 0;
+  border-top: 1px solid #eef0f3;
+  font-size: 14px;
+}
+.profile-attribute-list li:first-child {
+  border-top: none;
+}
+.profile-attribute-name {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+}
+.profile-attribute-label {
+  font-weight: 600;
+  color: #444;
+}
+.profile-attribute-ldap-name {
+  font-size: 12px;
+  color: #888;
+}
+.profile-attribute-body {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.profile-attribute-values {
+  color: #222;
+  word-break: break-word;
+}
+.profile-attribute-empty {
+  color: #888;
+  font-style: italic;
+}
+.profile-attribute-body > .btn {
+  flex: 0 0 auto;
+}
+.profile-attribute-edit {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.profile-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-attribute-edit .profile-value-row input[type="text"] {
+  margin-bottom: 0;
+}
+.profile-value-row .btn {
   flex: 0 0 auto;
 }
 .device-token-list li.empty,

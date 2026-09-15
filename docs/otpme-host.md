@@ -150,10 +150,16 @@ Enable sync groups.
 Disable sync groups.
 
 **enable_sync_by_login_token *host***  
-Enable sync by login token.
+Sync only the users and tokens that can log in on the host (the
+default). With limited logins (**limit_logins**) those are the tokens
+assigned to the host, directly or via roles, and their users; without,
+the tokens of the REALM access group and their users. Sync users, sync
+groups, the users' default tokens and the destinations of link tokens
+are added in both cases.
 
 **disable_sync_by_login_token *host***  
-Disable sync by login token.
+Sync all users and tokens of the site, e.g. for a host that has to
+resolve the owners of files of users who do not log in on it.
 
 ## Realm Join/Leave
 

@@ -165,10 +165,10 @@ SUBSCHEMA_DN = "cn=Subschema"
 # encode again rather than let one entry grow without an end.
 MAX_ENTRY_PAYLOADS = 8
 
-# Default value of the "ldap_on_request_attributes" config parameter.
-ON_REQUEST_ATTRIBUTES = [
-                    'jpegPhoto',
-                    ]
+# What "ldap_on_request_attributes" holds back when it is not set:
+# nothing. A search that asks for all attributes gets all of them unless
+# an administrator names some.
+ON_REQUEST_ATTRIBUTES = []
 
 # Attributes that say something about the server rather than about the
 # object they hang on. No object stores them, get_object() adds them to
@@ -236,10 +236,11 @@ def register_config_parameters():
                 continue
             _attributes.append(x_attr)
         return _attributes
+    # No default_value: that would be written into every new site, and
+    # unset is meant to hold nothing back.
     config.register_config_parameter(name="ldap_on_request_attributes",
                                     ctype=list,
                                     setter=on_request_attributes_setter,
-                                    default_value=ON_REQUEST_ATTRIBUTES,
                                     object_types=[
                                                 'site',
                                                 'unit',
@@ -2019,14 +2020,23 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                     continue
                 object_ldif.pop(x_attr)
         # The photo is not in the LDIF of a user: it is an object of its
-        # own, read here and only for a search that names it. Before the
+        # own, read here. For a search that names it, and for one that
+        # asks for all attributes unless ldap_on_request_attributes holds
+        # it back -- the same rule as for any attribute above. Before the
         # ACL check, which decides about it like about any attribute.
-        if object_type == "user" \
-        and requested_attributes is not None \
-        and "jpegphoto" in requested_attributes:
-            photo = read_photo(object_uuid)
-            if photo:
-                object_ldif['jpegPhoto'] = [photo]
+        if object_type == "user":
+            want_photo = False
+            if requested_attributes is not None \
+            and "jpegphoto" in requested_attributes:
+                want_photo = True
+            elif requested_attributes is None \
+            or "*" in requested_attributes:
+                if "jpegphoto" not in self.on_request_attributes:
+                    want_photo = True
+            if want_photo:
+                photo = read_photo(object_uuid)
+                if photo:
+                    object_ldif['jpegPhoto'] = [photo]
         if verify_acls:
             for x_attr in dict(object_ldif):
                 if x_attr in self.whitelist_attributes:

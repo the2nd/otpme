@@ -1941,6 +1941,7 @@ class User(OTPmeObject):
                             "CONFIG_PARAMS:sso_allow_totp_mgmt",
                             "CONFIG_PARAMS:sso_allow_login_token_redeploy",
                             "CONFIG_PARAMS:deploy_device_token_reauth",
+                            "CONFIG_PARAMS:sso_profile_edit_reauth",
                             "CONFIG_PARAMS:sso_reauth_timeout",
                             ]
                         },
@@ -2726,6 +2727,39 @@ class User(OTPmeObject):
 
         if isinstance(image_data, str):
             image_data = image_data.encode()
+
+        # A photo of another size than user_photo_dimensions is resized
+        # to it, if the user agrees -- or without asking when forced.
+        from otpme.lib.classes.data_objects.photo import get_dimensions
+        from otpme.lib.classes.data_objects.photo import resize_image
+        from otpme.lib.classes.data_objects.photo import get_image_dimensions
+        dimensions = get_dimensions("user_photo_dimensions", self)
+        if dimensions:
+            try:
+                photo_dimensions = get_image_dimensions(image_data)
+            except Exception as e:
+                msg = _("Unable to read photo: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+            if tuple(photo_dimensions) != dimensions:
+                width, height = dimensions
+                if not force:
+                    msg = _("Photo is {photo_width}x{photo_height}, expected {width}x{height}. Resize it?: ")
+                    msg = msg.format(photo_width=photo_dimensions[0],
+                                    photo_height=photo_dimensions[1],
+                                    width=width,
+                                    height=height)
+                    answer = callback.ask(msg)
+                    if str(answer).lower() != "y":
+                        msg = _("Photo must be {width}x{height}.")
+                        msg = msg.format(width=width, height=height)
+                        return callback.error(msg)
+                try:
+                    image_data = resize_image(image_data, width, height)
+                except Exception as e:
+                    msg = _("Unable to resize photo: {e}")
+                    msg = msg.format(e=e)
+                    return callback.error(msg)
 
         image_base64 = base64.b64encode(image_data)
         image_base64 = image_base64.decode()

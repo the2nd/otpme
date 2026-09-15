@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+{# attribute_labels in single quotes: tojson escapes what would end a
+   single-quoted attribute, not a double quote. #}
+<div id="page-data"
+     data-profile-path="{{ url_for('profile', _external=True, _scheme='https') }}"
+     data-url-get-profile="{{ url_for('get_profile', _external=True, _scheme='https') }}"
+     data-url-set-attribute="{{ url_for('set_profile_attribute', _external=True, _scheme='https') }}"
+     data-url-set-photo="{{ url_for('set_profile_photo', _external=True, _scheme='https') }}"
+     data-url-step-up-state="{{ url_for('get_step_up_state', _external=True, _scheme='https') }}"
+     data-url-reauth="{{ url_for('reauth', _external=True, _scheme='https') }}"
+     data-attribute-labels='{{ attribute_labels|tojson }}'></div>
+<!-- |forceescape for messages with a double quote, see settings.html. -->
+<div id="page-i18n"
+     data-label-failed-load="{{ gettext('Failed to load profile.') }}"
+     data-label-failed-save="{{ gettext('Failed to save profile.') }}"
+     data-label-failed-save-photo="{{ gettext('Failed to save photo.') }}"
+     data-label-not-set="{{ gettext('Not set') }}"
+     data-label-edit="{{ gettext('Edit') }}"
+     data-label-save="{{ gettext('Save') }}"
+     data-label-cancel="{{ gettext('Cancel') }}"
+     data-label-remove="{{ gettext('Remove') }}"
+     data-label-add-value="{{ gettext('Add value') }}"
+     data-label-saved="{{ gettext('Saved.') }}"
+     data-label-photo-saved="{{ gettext('Photo saved.') }}"
+     data-label-photo-removed="{{ gettext('Photo removed.') }}"
+     data-label-no-photo-chosen="{{ gettext('Please choose a photo first.') }}"
+     data-label-photo-not-jpeg="{{ gettext('The photo must be a JPEG image.') }}"
+     data-label-photo-too-large="{{ gettext('The photo is too large.') }}"
+     data-label-confirm-remove-photo="{{ gettext('Remove your photo?') }}"
+     data-label-confirm-resize-photo="{{ gettext('The photo is {photo_dimensions}, photos here are {dimensions}. Resize it?') }}"
+     data-label-photo-wrong-dimensions="{{ gettext('The photo must be {dimensions}.') }}"
+     class="is-hidden"></div>
+<div class="portal-wrapper">
+    <h2>{{ gettext("Profile") }}</h2>
+
+    <div class="settings-card" id="profilePhotoCard">
+        <h3>{{ gettext("Photo") }}</h3>
+        <div class="profile-photo-row">
+            <img id="profilePhotoImg" class="profile-photo is-hidden" alt="{{ gettext('Your photo') }}">
+            <div id="profilePhotoNone" class="profile-photo profile-photo-none">{{ gettext("No photo") }}</div>
+            <button type="button" id="editPhotoBtn" class="btn btn-secondary btn-small is-hidden">{{ gettext("Change photo") }}</button>
+        </div>
+        <div class="profile-photo-edit is-hidden" id="profilePhotoEdit">
+            <input type="file" id="profilePhotoInput" accept="image/jpeg">
+            <div class="recovery-mail-actions">
+                <button type="button" id="savePhotoBtn" class="btn btn-primary btn-small">{{ gettext("Upload") }}</button>
+                <button type="button" id="removePhotoBtn" class="btn btn-secondary btn-small">{{ gettext("Remove") }}</button>
+                <button type="button" id="cancelPhotoBtn" class="btn btn-secondary btn-small">{{ gettext("Cancel") }}</button>
+            </div>
+        </div>
+        <div class="status-msg" id="profilePhotoStatus"></div>
+        <div class="error-msg" id="profilePhotoError"></div>
+    </div>
+
+    <div class="settings-card" id="profileAttributesCard">
+        <h3>{{ gettext("Your Data") }}</h3>
+        <p class="settings-desc">{{ gettext("The details stored for your account, as applications that use the directory (LDAP) see them.") }}</p>
+        <div class="status-msg" id="profileStatus"></div>
+        <div class="error-msg" id="profileError"></div>
+        <ul id="profileAttributeList" class="profile-attribute-list"></ul>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='profile.js') }}"></script>
+{% endblock %}
