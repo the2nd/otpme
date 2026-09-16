@@ -22,20 +22,27 @@ def send_mail(mail_from, mail_to, subject, message=None,
     html_message=None, server="127.0.0.1", port=587,
     starttls=False, username=None, password=None,
     force=False, timeout=30):
-    """ Send mail via SMTP. """
-    msg = MIMEMultipart()
+    """ Send mail via SMTP.
+
+    With both <message> and <html_message> the mail carries both, and
+    the mail client shows the HTML one unless it cannot. """
+    if message is None and html_message is None:
+        raise OTPmeException("Need <message> or <html_message>.")
+    if message is not None and html_message is not None:
+        # The last part is the preferred one (RFC 2046 5.1.4).
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(message, "plain"))
+        msg.attach(MIMEText(html_message, "html"))
+    else:
+        msg = MIMEMultipart()
+        if message is not None:
+            msg.attach(MIMEText(message, "plain"))
+        else:
+            msg.attach(MIMEText(html_message, "html"))
     msg['From'] = mail_from
     msg['To'] = mail_to
     msg['Subject'] = subject
     msg["Date"] = formatdate(localtime=True)
-    if message is not None:
-        body = MIMEText(message, "plain")
-    elif html_message is not None:
-        body = MIMEText(html_message, "html")
-    else:
-        raise OTPmeException("Need <message> or <html_message>.")
-
-    msg.attach(body)
 
     try:
         mailserver = smtplib.SMTP(server, port, timeout=timeout)

@@ -10,12 +10,12 @@ msgstr ""
 "POT-Creation-Date: 2026-09-06 19:25+0200\n"
 "PO-Revision-Date: 2026-08-31 17:44+0200\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language: de\n"
 "Language-Team: de <LL@li.org>\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.18.0\n"
 
 #: templates/base.html:8 templates/base.html:10 templates/base.html:28
@@ -105,53 +105,66 @@ msgstr "Aktivieren des Passkeys fehlgeschlagen."
 msgid "Failed to disable passkey."
 msgstr "Deaktivieren des Passkeys fehlgeschlagen."
 
+#. AI-generated
 #: views.py:670 views.py:673
 msgid "Failed to list security keys."
-msgstr ""
+msgstr "Auflisten der Sicherheitsschlüssel fehlgeschlagen."
 
+#. AI-generated
 #: views.py:710 views.py:715
 msgid "Failed to start security key registration."
-msgstr ""
+msgstr "Starten der Registrierung des Sicherheitsschlüssels fehlgeschlagen."
 
+#. AI-generated
 #: views.py:725
 msgid "No security key registration in progress"
-msgstr ""
+msgstr "Keine Registrierung eines Sicherheitsschlüssels in Bearbeitung"
 
+#. AI-generated
 #: views.py:737
 msgid "Failed to complete security key registration."
 msgstr ""
+"Abschließen der Registrierung des Sicherheitsschlüssels fehlgeschlagen."
 
+#. AI-generated
 #: templates/settings.html:101 views.py:758
 msgid "Failed to delete security key."
-msgstr ""
+msgstr "Löschen des Sicherheitsschlüssels fehlgeschlagen."
 
+#. AI-generated
 #: views.py:776
 msgid "Failed to enable security key."
-msgstr ""
+msgstr "Aktivieren des Sicherheitsschlüssels fehlgeschlagen."
 
+#. AI-generated
 #: views.py:778
 msgid "Failed to disable security key."
-msgstr ""
+msgstr "Deaktivieren des Sicherheitsschlüssels fehlgeschlagen."
 
+#. AI-generated
 #: views.py:801 views.py:804 views.py:871
 msgid "Failed to list tiqr tokens."
-msgstr ""
+msgstr "Auflisten der tiqr-Token fehlgeschlagen."
 
+#. AI-generated
 #: templates/settings.html:82 views.py:843 views.py:847
 msgid "Failed to start tiqr enrollment."
-msgstr ""
+msgstr "Starten der tiqr-Registrierung fehlgeschlagen."
 
+#. AI-generated
 #: views.py:896
 msgid "Failed to delete tiqr token."
-msgstr ""
+msgstr "Löschen des tiqr-Tokens fehlgeschlagen."
 
+#. AI-generated
 #: views.py:916
 msgid "Failed to update tiqr token."
-msgstr ""
+msgstr "Aktualisieren des tiqr-Tokens fehlgeschlagen."
 
+#. AI-generated
 #: templates/settings.html:107 views.py:947 views.py:952
 msgid "Failed to change the default token."
-msgstr ""
+msgstr "Ändern des Standard-Tokens fehlgeschlagen."
 
 #: templates/settings.html:119 views.py:969 views.py:972
 msgid "Failed to load admin access state."
@@ -267,10 +280,11 @@ msgstr "Anmeldung fehlgeschlagen."
 msgid "Re-authenticate"
 msgstr "Erneut authentifizieren"
 
+#. AI-generated
 #: templates/recover.html:15 templates/recover_complete.html:37 views.py:1998
 #: views.py:2051
 msgid "Recover Your Account"
-msgstr ""
+msgstr "Konto wiederherstellen"
 
 #: views.py:2017
 msgid "Recovery request failed."
@@ -297,9 +311,10 @@ msgstr "Wiederherstellungsbereitstellung fehlgeschlagen."
 msgid "Security key registration failed."
 msgstr "Registrierung des Sicherheitsschlüssels fehlgeschlagen."
 
+#. AI-generated
 #: views.py:2163
 msgid "Done. Please sign in with your new credentials."
-msgstr ""
+msgstr "Fertig. Bitte melden Sie sich mit Ihren neuen Anmeldedaten an."
 
 #: views.py:2227
 msgid "Failed to get app list."
@@ -325,17 +340,20 @@ msgstr "Abschließen der fido2-Registrierung fehlgeschlagen."
 msgid "Username required"
 msgstr "Benutzername erforderlich"
 
+#. AI-generated
 #: templates/login.html:23 views.py:2426
 msgid "Failed to start tiqr authentication."
-msgstr ""
+msgstr "Starten der tiqr-Authentifizierung fehlgeschlagen."
 
+#. AI-generated
 #: views.py:2478 views.py:2536
 msgid "Failed to complete tiqr authentication."
-msgstr ""
+msgstr "Abschließen der tiqr-Authentifizierung fehlgeschlagen."
 
+#. AI-generated
 #: views.py:2513
 msgid "Response required"
-msgstr ""
+msgstr "Antwort erforderlich"
 
 #: views.py:2515 views.py:2684
 msgid "No authentication in progress"
@@ -414,8 +432,8 @@ msgstr "Angemeldet bleiben, wenn offline"
 #: oidc/views.py:828
 msgid "Allow the application to refresh its session without asking you again."
 msgstr ""
-"Erlauben Sie der Anwendung, ihre Sitzung zu aktualisieren, ohne Sie "
-"erneut zu fragen."
+"Erlauben Sie der Anwendung, ihre Sitzung zu aktualisieren, ohne Sie erneut "
+"zu fragen."
 
 #: oidc/views.py:874
 #, python-format
@@ -453,8 +471,8 @@ msgid ""
 "This SSO portal requires JavaScript. Please enable JavaScript in your "
 "browser and reload the page."
 msgstr ""
-"Dieses SSO-Portal erfordert JavaScript. Bitte aktivieren Sie JavaScript "
-"in Ihrem Browser und laden Sie die Seite neu."
+"Dieses SSO-Portal erfordert JavaScript. Bitte aktivieren Sie JavaScript in "
+"Ihrem Browser und laden Sie die Seite neu."
 
 #: templates/base.html:29
 msgid "Home"
@@ -462,11 +480,10 @@ msgstr "Startseite"
 
 #: templates/base.html:33
 msgid ""
-"Temporary passwords for admin access are currently enabled on your "
-"account."
+"Temporary passwords for admin access are currently enabled on your account."
 msgstr ""
-"Temporäre Passwörter für den Administratorzugriff sind derzeit für Ihr "
-"Konto aktiviert."
+"Temporäre Passwörter für den Administratorzugriff sind derzeit für Ihr Konto"
+" aktiviert."
 
 #: templates/base.html:33
 msgid "Admin access enabled"
@@ -498,17 +515,20 @@ msgstr "WebAuthn erfordert HTTPS."
 msgid "WebAuthn is not supported in this browser."
 msgstr "WebAuthn wird in diesem Browser nicht unterstützt."
 
+#. AI-generated
 #: templates/deploy.html:13 templates/recover_complete.html:31
 msgid "Please enter a name for your phone."
-msgstr ""
+msgstr "Bitte geben Sie einen Namen für Ihr Telefon ein."
 
+#. AI-generated
 #: templates/deploy.html:14 templates/login.html:21 templates/settings.html:83
 msgid "Waiting for your phone..."
-msgstr ""
+msgstr "Warten auf Ihr Telefon..."
 
+#. AI-generated
 #: templates/deploy.html:15 templates/login.html:22 templates/settings.html:85
 msgid "The code expired. Please try again."
-msgstr ""
+msgstr "Der Code ist abgelaufen. Bitte versuchen Sie es erneut."
 
 #: templates/deploy.html:16 templates/recover_complete.html:18
 msgid "Preparing security key registration..."
@@ -557,10 +577,11 @@ msgid "Your account requires a new authentication token."
 msgstr "Ihr Konto erfordert ein neues Authentifizierungstoken."
 
 #: templates/deploy.html:37 templates/recover_complete.html:47
-msgid "Token enrollment is currently disabled. Please contact your administrator."
+msgid ""
+"Token enrollment is currently disabled. Please contact your administrator."
 msgstr ""
-"Token-Registrierung ist derzeit deaktiviert. Bitte wenden Sie sich an "
-"Ihren Administrator."
+"Token-Registrierung ist derzeit deaktiviert. Bitte wenden Sie sich an Ihren "
+"Administrator."
 
 #: templates/deploy.html:39 templates/recover_complete.html:49
 msgid "Choose your preferred authentication method:"
@@ -574,18 +595,20 @@ msgstr "Authenticator-App (TOTP)"
 msgid "Security Key (FIDO2)"
 msgstr "Sicherheitsschlüssel (FIDO2)"
 
+#. AI-generated
 #: templates/deploy.html:48 templates/login.html:79
 #: templates/recover_complete.html:58 templates/settings.html:262
 msgid "Smartphone Authentication App (tiqr)"
-msgstr ""
+msgstr "Smartphone-Authentifizierungs-App (tiqr)"
 
 #: templates/deploy.html:58 templates/recover_complete.html:70
 msgid "Register Security Key"
 msgstr "Sicherheitsschlüssel registrieren"
 
+#. AI-generated
 #: templates/deploy.html:60 templates/recover_complete.html:72
 msgid "Set Up Smartphone Authentication App"
-msgstr ""
+msgstr "Smartphone-Authentifizierungs-App einrichten"
 
 #: templates/deploy.html:62 templates/recover_complete.html:76
 msgid "Set Up Authenticator App"
@@ -596,25 +619,32 @@ msgstr "Authenticator-App einrichten"
 msgid "Device Name"
 msgstr "Gerätename"
 
+#. AI-generated
 #: templates/deploy.html:74 templates/recover_complete.html:88
 msgid "e.g. my phone"
-msgstr ""
+msgstr "z. B. mein Telefon"
 
+#. AI-generated
 #: templates/deploy.html:75 templates/recover_complete.html:89
 msgid "Continue"
-msgstr ""
+msgstr "Weiter"
 
+#. AI-generated
 #: templates/deploy.html:90 templates/recover_complete.html:102
 #: templates/settings.html:283
 msgid "tiqr enrollment code"
-msgstr ""
+msgstr "tiqr-Registrierungscode"
 
+#. AI-generated
 #: templates/deploy.html:92
 msgid ""
 "Scan the code with the tiqr app. You need the code on a different screen "
-"from the phone: the app only takes it through its own scanner. Waiting "
-"for your phone..."
+"from the phone: the app only takes it through its own scanner. Waiting for "
+"your phone..."
 msgstr ""
+"Scannen Sie den Code mit der tiqr-App. Sie benötigen den Code auf einem "
+"anderen Bildschirm als dem Telefon: Die App nimmt ihn nur über ihren eigenen"
+" Scanner auf. Warten auf Ihr Telefon..."
 
 #: templates/deploy.html:97 templates/recover_complete.html:110
 msgid "QR Code"
@@ -634,8 +664,8 @@ msgid ""
 "Authy). Then enter the OTP shown in your app to verify."
 msgstr ""
 "Scannen Sie den QR-Code mit Ihrer Authenticator-App (z. B. Google "
-"Authenticator, Authy). Geben Sie dann das in Ihrer App angezeigte OTP zur"
-" Überprüfung ein."
+"Authenticator, Authy). Geben Sie dann das in Ihrer App angezeigte OTP zur "
+"Überprüfung ein."
 
 #: templates/deploy.html:110 templates/login.html:51
 #: templates/recover_complete.html:123
@@ -672,7 +702,8 @@ msgstr "Bitte geben Sie zuerst Ihren Benutzernamen ein."
 
 #: templates/login.html:12
 msgid "WebAuthn requires HTTPS. Please access this page via HTTPS."
-msgstr "WebAuthn erfordert HTTPS. Bitte greifen Sie über HTTPS auf diese Seite zu."
+msgstr ""
+"WebAuthn erfordert HTTPS. Bitte greifen Sie über HTTPS auf diese Seite zu."
 
 #: templates/login.html:14
 msgid "Requesting authentication challenge..."
@@ -694,13 +725,17 @@ msgstr "Authentifizierung fehlgeschlagen."
 msgid "Login successful! Redirecting..."
 msgstr "Anmeldung erfolgreich! Weiterleitung..."
 
+#. AI-generated
 #: templates/login.html:20
 msgid "Scan the code with the tiqr app, or tap it if you are on your phone."
 msgstr ""
+"Scannen Sie den Code mit der tiqr-App oder tippen Sie darauf, wenn Sie auf "
+"Ihrem Telefon sind."
 
+#. AI-generated
 #: templates/login.html:24
 msgid "Please enter the code from your app."
-msgstr ""
+msgstr "Bitte geben Sie den Code aus Ihrer App ein."
 
 #: templates/login.html:30
 msgid "Please verify your identity to continue."
@@ -718,30 +753,35 @@ msgstr "Passwort"
 msgid "Security Key"
 msgstr "Sicherheitsschlüssel"
 
+#. AI-generated
 #: templates/login.html:93
 msgid "tiqr login code"
-msgstr ""
+msgstr "tiqr-Anmeldecode"
 
+#. AI-generated
 #: templates/login.html:96
 msgid "Open tiqr app"
-msgstr ""
+msgstr "tiqr-App öffnen"
 
+#. AI-generated
 #: templates/login.html:97
 msgid "Enter code manually"
-msgstr ""
+msgstr "Code manuell eingeben"
 
 #: templates/login.html:98 templates/settings.html:286
 #: templates/settings.html:315
 msgid "Cancel"
 msgstr "Abbrechen"
 
+#. AI-generated
 #: templates/login.html:101
 msgid "Code from your app"
-msgstr ""
+msgstr "Code aus Ihrer App"
 
+#. AI-generated
 #: templates/login.html:111
 msgid "Can't sign in?"
-msgstr ""
+msgstr "Anmeldung nicht möglich?"
 
 #: templates/oidc_consent.html:5
 #, python-format
@@ -753,14 +793,13 @@ msgid ""
 "is asking permission to access your account. If you approve, it will "
 "receive:"
 msgstr ""
-"bittet um Erlaubnis, auf Ihr Konto zuzugreifen. Wenn Sie zustimmen, "
-"erhält es:"
+"bittet um Erlaubnis, auf Ihr Konto zuzugreifen. Wenn Sie zustimmen, erhält "
+"es:"
 
 #: templates/oidc_consent.html:34
 msgid "You can revoke this approval at any time from the Settings page."
 msgstr ""
-"Sie können diese Zustimmung jederzeit auf der Einstellungsseite "
-"widerrufen."
+"Sie können diese Zustimmung jederzeit auf der Einstellungsseite widerrufen."
 
 #: templates/oidc_consent.html:54
 msgid "Allow"
@@ -773,8 +812,8 @@ msgstr "Verweigern"
 #: templates/oidc_maintenance.html:8
 #, python-format
 msgid ""
-"The application <strong>%(client)s</strong> is currently unavailable due "
-"to scheduled maintenance."
+"The application <strong>%(client)s</strong> is currently unavailable due to "
+"scheduled maintenance."
 msgstr ""
 "Die Anwendung <strong>%(client)s</strong> ist derzeit aufgrund geplanter "
 "Wartungsarbeiten nicht verfügbar."
@@ -784,8 +823,8 @@ msgid ""
 "The requested application is currently unavailable due to scheduled "
 "maintenance."
 msgstr ""
-"Die angeforderte Anwendung ist derzeit aufgrund geplanter "
-"Wartungsarbeiten nicht verfügbar."
+"Die angeforderte Anwendung ist derzeit aufgrund geplanter Wartungsarbeiten "
+"nicht verfügbar."
 
 #: templates/oidc_maintenance.html:16
 msgid "Please try again later."
@@ -817,8 +856,8 @@ msgstr ""
 
 #: templates/recover.html:16
 msgid ""
-"Enter your username. If a recovery e-mail address is set on the account, "
-"a re-deploy link will be sent to it."
+"Enter your username. If a recovery e-mail address is set on the account, a "
+"re-deploy link will be sent to it."
 msgstr ""
 "Geben Sie Ihren Benutzernamen ein. Wenn eine Wiederherstellungs-E-Mail-"
 "Adresse für das Konto festgelegt ist, wird ein Link zur erneuten "
@@ -845,39 +884,46 @@ msgstr "Passwörter stimmen nicht überein."
 msgid "Setting new password..."
 msgstr "Neues Passwort wird festgelegt..."
 
+#. AI-generated
 #: templates/recover_complete.html:32
 msgid "Please use letters or digits in the name."
-msgstr ""
+msgstr "Bitte verwenden Sie Buchstaben oder Ziffern im Namen."
 
+#. AI-generated
 #: templates/recover_complete.html:33
 msgid "Checking your phone..."
-msgstr ""
+msgstr "Ihr Telefon wird überprüft..."
 
 #: templates/recover_complete.html:38
 #, python-brace-format
 msgid "Re-deploying token '{token_name}' for user '{user_name}'."
 msgstr ""
-"Token '{token_name}' für Benutzer '{user_name}' wird erneut "
-"bereitgestellt."
+"Token '{token_name}' für Benutzer '{user_name}' wird erneut bereitgestellt."
 
 #: templates/recover_complete.html:74
 msgid "Set New Password"
 msgstr "Neues Passwort festlegen"
 
+#. AI-generated
 #: templates/recover_complete.html:104
 msgid ""
 "Scan the code with the tiqr app. You need the code on a different screen "
 "from the phone: the app only takes it through its own scanner. Then come "
 "back here and continue."
 msgstr ""
+"Scannen Sie den Code mit der tiqr-App. Sie benötigen den Code auf einem "
+"anderen Bildschirm als dem Telefon: Die App nimmt ihn nur über ihren eigenen"
+" Scanner auf. Kommen Sie dann hierher zurück und fahren Sie fort."
 
+#. AI-generated
 #: templates/recover_complete.html:105
 msgid "I have added the account"
-msgstr ""
+msgstr "Ich habe das Konto hinzugefügt"
 
+#. AI-generated
 #: templates/recover_complete.html:130
 msgid "Choose a new password to sign in with."
-msgstr ""
+msgstr "Wählen Sie ein neues Passwort für die Anmeldung."
 
 #: templates/recover_complete.html:131 templates/settings.html:142
 msgid "New Password"
@@ -897,8 +943,8 @@ msgstr "Wiederherstellungslink ungültig"
 
 #: templates/recover_invalid.html:7
 msgid ""
-"This recovery link is invalid or has expired. Recovery links are single-"
-"use and time-limited."
+"This recovery link is invalid or has expired. Recovery links are single-use "
+"and time-limited."
 msgstr ""
 "Dieser Wiederherstellungslink ist ungültig oder abgelaufen. "
 "Wiederherstellungslinks sind einmalig verwendbar und zeitlich begrenzt."
@@ -1023,113 +1069,147 @@ msgstr "Passkey gelöscht."
 msgid "Failed to update passkey."
 msgstr "Passkey konnte nicht aktualisiert werden."
 
+#. AI-generated
 #: templates/settings.html:78
 msgid "Failed to load phones."
-msgstr ""
+msgstr "Laden der Telefone fehlgeschlagen."
 
+#. AI-generated
 #: templates/settings.html:79
 msgid "No phones enrolled yet."
-msgstr ""
+msgstr "Noch keine Telefone registriert."
 
+#. AI-generated
 #: templates/settings.html:81
 msgid "Preparing enrollment..."
-msgstr ""
+msgstr "Registrierung wird vorbereitet..."
 
+#. AI-generated
 #: templates/settings.html:84
 msgid "Phone enrolled."
-msgstr ""
+msgstr "Telefon registriert."
 
+#. AI-generated
 #: templates/settings.html:86
 #, python-brace-format
 msgid "Remove phone \"{name}\"?"
-msgstr ""
+msgstr "Telefon \"{name}\" entfernen?"
 
+#. AI-generated
 #: templates/settings.html:87
 msgid "Failed to remove phone."
-msgstr ""
+msgstr "Entfernen des Telefons fehlgeschlagen."
 
+#. AI-generated
 #: templates/settings.html:88
 msgid "Phone removed."
-msgstr ""
+msgstr "Telefon entfernt."
 
+#. AI-generated
 #: templates/settings.html:89
 msgid "Failed to update phone."
-msgstr ""
+msgstr "Aktualisieren des Telefons fehlgeschlagen."
 
+#. AI-generated
 #: templates/settings.html:90
 msgid "Default token"
-msgstr ""
+msgstr "Standard-Token"
 
+#. AI-generated
 #: templates/settings.html:91
 msgid "Make default token"
-msgstr ""
+msgstr "Als Standard-Token festlegen"
 
+#. AI-generated
 #: templates/settings.html:92
 #, python-brace-format
 msgid ""
-"Make \"{name}\" your default token? Your current one keeps working under "
-"a new name."
+"Make \"{name}\" your default token? Your current one keeps working under a "
+"new name."
 msgstr ""
+"\"{name}\" zu Ihrem Standard-Token machen? Ihr aktueller funktioniert unter "
+"einem neuen Namen weiter."
 
+#. AI-generated
 #: templates/settings.html:93
 #, python-brace-format
 msgid "Name for your current default token (\"{name}\"), which keeps working:"
 msgstr ""
+"Name für Ihren aktuellen Standard-Token (\"{name}\"), der weiter "
+"funktioniert:"
 
+#. AI-generated
 #: templates/settings.html:94
 msgid "Failed to load security keys."
-msgstr ""
+msgstr "Sicherheitsschlüssel konnten nicht geladen werden."
 
+#. AI-generated
 #: templates/settings.html:95
 msgid "No security keys registered yet."
-msgstr ""
+msgstr "Noch keine Sicherheitsschlüssel registriert."
 
+#. AI-generated
 #: templates/settings.html:96
 msgid "Key name is required."
-msgstr ""
+msgstr "Ein Schlüsselname ist erforderlich."
 
+#. AI-generated
 #: templates/settings.html:97
 msgid "Touch your security key..."
-msgstr ""
+msgstr "Berühren Sie Ihren Sicherheitsschlüssel..."
 
+#. AI-generated
 #: templates/settings.html:98
 msgid "Registering security key..."
-msgstr ""
+msgstr "Sicherheitsschlüssel wird registriert..."
 
+#. AI-generated
 #: templates/settings.html:99
 msgid "Security key registered."
-msgstr ""
+msgstr "Sicherheitsschlüssel registriert."
 
+#. AI-generated
 #: templates/settings.html:100
 msgid "Failed to register security key."
-msgstr ""
+msgstr "Sicherheitsschlüssel konnte nicht registriert werden."
 
+#. AI-generated
 #: templates/settings.html:102
 msgid "Failed to update security key."
-msgstr ""
+msgstr "Sicherheitsschlüssel konnte nicht aktualisiert werden."
 
+#. AI-generated
 #: templates/settings.html:103
 #, python-brace-format
 msgid "Delete security key \"{name}\"?"
-msgstr ""
+msgstr "Sicherheitsschlüssel \"{name}\" löschen?"
 
+#. AI-generated
 #: templates/settings.html:104
-msgid "You are signed in with this one. Sign in with another factor to remove it."
+msgid ""
+"You are signed in with this one. Sign in with another factor to remove it."
 msgstr ""
+"Sie sind hiermit angemeldet. Melden Sie sich mit einem anderen Faktor an, um"
+" ihn zu entfernen."
 
+#. AI-generated
 #: templates/settings.html:105
 msgid ""
-"You are signed in with this one. Sign in with another factor to switch it"
-" off."
+"You are signed in with this one. Sign in with another factor to switch it "
+"off."
 msgstr ""
+"Sie sind hiermit angemeldet. Melden Sie sich mit einem anderen Faktor an, um"
+" ihn auszuschalten."
 
+#. AI-generated
 #: templates/settings.html:106
 msgid "Please enter a name for your current default token."
-msgstr ""
+msgstr "Bitte geben Sie einen Namen für Ihr aktuelles Standard-Token ein."
 
+#. AI-generated
 #: templates/settings.html:108
 msgid "Default token changed."
-msgstr ""
+msgstr "Standard-Token geändert."
 
 #: templates/settings.html:109
 msgid "Enabled"
@@ -1232,8 +1312,8 @@ msgstr "Login-Token"
 
 #: templates/settings.html:180
 msgid ""
-"Re-deploy your login token. This will replace your current login token "
-"with a new one."
+"Re-deploy your login token. This will replace your current login token with "
+"a new one."
 msgstr ""
 "Ihren Login-Token neu bereitstellen. Dies ersetzt Ihren aktuellen Login-"
 "Token durch einen neuen."
@@ -1251,8 +1331,8 @@ msgid ""
 "Choose your preferred language. \"Browser default\" follows the language "
 "sent by your browser."
 msgstr ""
-"Wählen Sie Ihre bevorzugte Sprache. \"Browser-Standard\" folgt der von "
-"Ihrem Browser gesendeten Sprache."
+"Wählen Sie Ihre bevorzugte Sprache. \"Browser-Standard\" folgt der von Ihrem"
+" Browser gesendeten Sprache."
 
 #: templates/settings.html:192
 msgid "Browser default"
@@ -1301,12 +1381,12 @@ msgstr "Passkeys"
 #: templates/settings.html:225
 msgid ""
 "Sign in without a password using a passkey on this device or a synced "
-"credential provider (iCloud Keychain, Google Password Manager, 1Password,"
-" ...)."
+"credential provider (iCloud Keychain, Google Password Manager, 1Password, "
+"...)."
 msgstr ""
-"Melden Sie sich ohne Passwort mit einem Passkey auf diesem Gerät oder "
-"einem synchronisierten Anbieter für Anmeldedaten (iCloud-Schlüsselbund, "
-"Google Passwortmanager, 1Password, ...) an."
+"Melden Sie sich ohne Passwort mit einem Passkey auf diesem Gerät oder einem "
+"synchronisierten Anbieter für Anmeldedaten (iCloud-Schlüsselbund, Google "
+"Passwortmanager, 1Password, ...) an."
 
 #: templates/settings.html:227
 msgid "Passkey Name"
@@ -1324,67 +1404,92 @@ msgstr "Passkey hinzufügen"
 msgid "Existing Passkeys"
 msgstr "Vorhandene Passkeys"
 
+#. AI-generated
 #: templates/settings.html:242
 msgid "Security Keys"
-msgstr ""
+msgstr "Sicherheitsschlüssel"
 
+#. AI-generated
 #: templates/settings.html:243
 msgid ""
-"Sign in with a hardware security key (YubiKey, Nitrokey, Titan, ...). The"
-" key is plugged in or held to the device, and never leaves your hands."
+"Sign in with a hardware security key (YubiKey, Nitrokey, Titan, ...). The "
+"key is plugged in or held to the device, and never leaves your hands."
 msgstr ""
+"Melden Sie sich mit einem Hardware-Sicherheitsschlüssel an (YubiKey, "
+"Nitrokey, Titan, ...). Der Schlüssel wird eingesteckt oder an das Gerät "
+"gehalten und verlässt niemals Ihre Hände."
 
+#. AI-generated
 #: templates/settings.html:245
 msgid "Key Name"
-msgstr ""
+msgstr "Schlüsselname"
 
+#. AI-generated
 #: templates/settings.html:246
 msgid "e.g. yubikey, backup key"
-msgstr ""
+msgstr "z. B. YubiKey, Backup-Schlüssel"
 
+#. AI-generated
 #: templates/settings.html:247
 msgid "Add Security Key"
-msgstr ""
+msgstr "Sicherheitsschlüssel hinzufügen"
 
+#. AI-generated
 #: templates/settings.html:251
 msgid "Registered Keys"
-msgstr ""
+msgstr "Registrierte Schlüssel"
 
+#. AI-generated
 #: templates/settings.html:263
 msgid ""
-"Sign in by confirming on your phone. Scan the code with the tiqr app, or "
-"tap the link if you are reading this on the phone itself."
+"Sign in by confirming on your phone. Scan the code with the tiqr app, or tap"
+" the link if you are reading this on the phone itself."
 msgstr ""
+"Melden Sie sich durch Bestätigung auf Ihrem Telefon an. Scannen Sie den Code"
+" mit der tiqr-App oder tippen Sie auf den Link, wenn Sie dies auf dem "
+"Telefon selbst lesen."
 
+#. AI-generated
 #: templates/settings.html:266
 msgid "e.g. my phone, work phone"
-msgstr ""
+msgstr "z. B. mein Telefon, Diensttelefon"
 
+#. AI-generated
 #: templates/settings.html:267
 msgid "Add Phone"
-msgstr ""
+msgstr "Telefon hinzufügen"
 
+#. AI-generated
 #: templates/settings.html:281
 msgid ""
-"Scan this code with the tiqr app. You need the code on a different screen"
-" from the phone: the app only takes it through its own scanner. Waiting "
-"for your phone..."
+"Scan this code with the tiqr app. You need the code on a different screen "
+"from the phone: the app only takes it through its own scanner. Waiting for "
+"your phone..."
 msgstr ""
+"Scannen Sie diesen Code mit der tiqr-App. Sie benötigen den Code auf einem "
+"anderen Bildschirm als dem Telefon: Die App erfasst ihn nur über ihren "
+"eigenen Scanner. Warten auf Ihr Telefon..."
 
+#. AI-generated
 #: templates/settings.html:289
 msgid "Enrolled Phones"
-msgstr ""
+msgstr "Registrierte Telefone"
 
 #: templates/settings.html:303
 msgid "Recovery E-Mail"
 msgstr "Wiederherstellungs-E-Mail"
 
+#. AI-generated
 #: templates/settings.html:304
 msgid ""
-"If you lose access to your default token, a re-deploy link is sent to "
-"this address. Keep it under an account only you control (private mailbox,"
-" not your work address). Editing requires re-authentication."
+"If you lose access to your default token, a re-deploy link is sent to this "
+"address. Keep it under an account only you control (private mailbox, not "
+"your work address). Editing requires re-authentication."
 msgstr ""
+"Wenn Sie den Zugriff auf Ihr Standard-Token verlieren, wird ein Link zur "
+"erneuten Bereitstellung an diese Adresse gesendet. Bewahren Sie sie unter "
+"einem Konto auf, das nur Sie kontrollieren (privates Postfach, nicht Ihre "
+"Arbeitsadresse). Die Bearbeitung erfordert eine erneute Authentifizierung."
 
 #: templates/settings.html:308
 msgid "Edit"
@@ -1400,12 +1505,11 @@ msgstr "Admin-Zugriff"
 
 #: templates/settings.html:331
 msgid ""
-"Allow administrators to set a temporary password on your account for "
-"support purposes. Turn off when no longer needed."
+"Allow administrators to set a temporary password on your account for support"
+" purposes. Turn off when no longer needed."
 msgstr ""
-"Administratoren erlauben, zu Supportzwecken ein temporäres Passwort für "
-"Ihr Konto festzulegen. Deaktivieren Sie dies, wenn es nicht mehr benötigt"
-" wird."
+"Administratoren erlauben, zu Supportzwecken ein temporäres Passwort für Ihr "
+"Konto festzulegen. Deaktivieren Sie dies, wenn es nicht mehr benötigt wird."
 
 #: templates/settings.html:338
 msgid "Allow admin access"
@@ -1417,39 +1521,37 @@ msgstr "Verbundene Anwendungen"
 
 #: templates/settings.html:349
 msgid ""
-"Applications you have granted access to your account. Disconnecting "
-"removes the approval and terminates the application's active session."
+"Applications you have granted access to your account. Disconnecting removes "
+"the approval and terminates the application's active session."
 msgstr ""
 "Anwendungen, denen Sie Zugriff auf Ihr Konto gewährt haben. Durch das "
-"Trennen wird die Genehmigung aufgehoben und die aktive Sitzung der "
-"Anwendung beendet."
+"Trennen wird die Genehmigung aufgehoben und die aktive Sitzung der Anwendung"
+" beendet."
 
 #~ msgid "tiqr"
-#~ msgstr ""
+#~ msgstr "tiqr"
 
 #~ msgid "Phone (tiqr)"
-#~ msgstr ""
+#~ msgstr "Telefon (tiqr)"
 
 #~ msgid "Set Up Phone"
-#~ msgstr ""
+#~ msgstr "Telefon einrichten"
 
 #~ msgid "Sign in with tiqr"
-#~ msgstr ""
+#~ msgstr "Mit tiqr anmelden"
 
 #~ msgid "Failed to change the SSO token."
-#~ msgstr ""
+#~ msgstr "SSO-Token konnte nicht geändert werden."
 
 #~ msgid "Recover SSO token"
 #~ msgstr "SSO-Token wiederherstellen"
 
 #~ msgid ""
-#~ "SSO token successfully re-deployed. "
-#~ "Please sign in with your new "
+#~ "SSO token successfully re-deployed. Please sign in with your new "
 #~ "credentials."
 #~ msgstr ""
-#~ "SSO-Token erfolgreich erneut bereitgestellt."
-#~ " Bitte melden Sie sich mit Ihren "
-#~ "neuen Anmeldedaten an."
+#~ "SSO-Token erfolgreich erneut bereitgestellt. Bitte melden Sie sich mit Ihren"
+#~ " neuen Anmeldedaten an."
 
 #~ msgid "Lost access to your SSO token?"
 #~ msgstr "Zugriff auf Ihr SSO-Token verloren?"
@@ -1461,57 +1563,51 @@ msgstr ""
 #~ msgstr "Wählen Sie ein neues Passwort für Ihren SSO-Token."
 
 #~ msgid "SSO token"
-#~ msgstr ""
+#~ msgstr "SSO-Token"
 
 #~ msgid "Make SSO token"
-#~ msgstr ""
+#~ msgstr "SSO-Token erstellen"
 
 #~ msgid ""
-#~ "Make \"{name}\" your SSO token? Your "
-#~ "current one keeps working under a "
-#~ "new name."
+#~ "Make \"{name}\" your SSO token? Your current one keeps working under a new "
+#~ "name."
 #~ msgstr ""
+#~ "\"{name}\" zu Ihrem SSO-Token machen? Ihr aktuelles funktioniert weiterhin "
+#~ "unter einem neuen Namen."
 
 #~ msgid "Name for your current SSO token (\"{name}\"), which keeps working:"
 #~ msgstr ""
+#~ "Name für Ihr aktuelles SSO-Token (\"{name}\"), das weiterhin funktioniert:"
 
 #~ msgid "Please enter a name for your current SSO token."
-#~ msgstr ""
+#~ msgstr "Bitte geben Sie einen Namen für Ihr aktuelles SSO-Token ein."
 
 #~ msgid "SSO token changed."
-#~ msgstr ""
+#~ msgstr "SSO-Token geändert."
 
 #~ msgid ""
-#~ "If you lose access to your SSO "
-#~ "token, a re-deploy link is sent"
-#~ " to this address. Keep it under "
-#~ "an account only you control (private "
-#~ "mailbox, not your work address). Editing"
-#~ " requires re-authentication."
+#~ "If you lose access to your SSO token, a re-deploy link is sent to this "
+#~ "address. Keep it under an account only you control (private mailbox, not "
+#~ "your work address). Editing requires re-authentication."
 #~ msgstr ""
-#~ "Wenn Sie den Zugriff auf Ihren "
-#~ "SSO-Token verlieren, wird ein Link "
-#~ "zur erneuten Bereitstellung an diese "
-#~ "Adresse gesendet. Verwahren Sie ihn "
-#~ "unter einem Konto, das nur Sie "
-#~ "kontrollieren (privates Postfach, nicht Ihre"
-#~ " Arbeitsadresse). Das Bearbeiten erfordert "
-#~ "eine erneute Authentifizierung."
+#~ "Wenn Sie den Zugriff auf Ihren SSO-Token verlieren, wird ein Link zur "
+#~ "erneuten Bereitstellung an diese Adresse gesendet. Verwahren Sie ihn unter "
+#~ "einem Konto, das nur Sie kontrollieren (privates Postfach, nicht Ihre "
+#~ "Arbeitsadresse). Das Bearbeiten erfordert eine erneute Authentifizierung."
 
 #~ msgid ""
-#~ "Scan the code with the tiqr app,"
-#~ " or tap it if you are reading"
-#~ " this on your phone. Waiting for "
-#~ "your phone..."
+#~ "Scan the code with the tiqr app, or tap it if you are reading this on your "
+#~ "phone. Waiting for your phone..."
 #~ msgstr ""
+#~ "Scannen Sie den Code mit der tiqr-App oder tippen Sie darauf, wenn Sie dies "
+#~ "auf Ihrem Telefon lesen. Warten auf Ihr Telefon..."
 
 #~ msgid ""
-#~ "Scan the code with the tiqr app,"
-#~ " or tap it if you are reading"
-#~ " this on your phone. Then come "
-#~ "back here and continue."
+#~ "Scan the code with the tiqr app, or tap it if you are reading this on your "
+#~ "phone. Then come back here and continue."
 #~ msgstr ""
+#~ "Scannen Sie den Code mit der tiqr-App oder tippen Sie darauf, wenn Sie dies "
+#~ "auf Ihrem Telefon lesen. Kommen Sie dann hierher zurück und fahren Sie fort."
 
 #~ msgid "Scan this code with the tiqr app. Waiting for your phone..."
-#~ msgstr ""
-
+#~ msgstr "Scannen Sie diesen Code mit der tiqr-App. Warten auf Ihr Telefon..."

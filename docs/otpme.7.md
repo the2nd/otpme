@@ -682,6 +682,16 @@ Envelope and **From:** address of the recovery mail. The mail is sent by
 the user's home site through the **smtp_relay\_\*** parameters. No
 default: without a sender no recovery mail is sent, which leaves
 recovery off without saying so.  
+What the mail says is the info text of the **SSO** accessgroup of that
+site, one text per language (**otpme-accessgroup info --language**, see
+**otpme-accessgroup**(1)); the text written without a language is the
+administrator's own note and is never sent. The first line is the
+subject, then an empty line, then the body; **{user_name}**,
+**{minutes}** and **{reset_url}** are filled in. A site is created with
+the English text OTPme ships; a language the group has no text for falls
+back to English and then to the shipped text, translated into the user's
+language. The language is the user's (**otpme-user language**), or the
+one the browser asked for when the user has none set.  
 Object types: site, unit, node, share
 
 **admin_access_role (str)**  
@@ -838,11 +848,13 @@ Object types: site
 **device_token_roles (list)**  
 Comma separated list of roles to which device tokens registered via the
 SSO portal are added. The role's info text is displayed in the SSO
-portal settings to inform users about the purpose and scope of the role.
-Each value can be a plain role name (resolved within the current site)
-or a *site/role* path to reference a role on another site. The parameter
-is resolved per user; the most specific match wins (user overrides unit
-overrides site).  
+portal settings to inform users about the purpose and scope of the role,
+in the language of whoever is looking (**otpme-role info --language**);
+the text written without a language is the administrator's own note and
+is never shown. Each value can be a plain role name (resolved within the
+current site) or a *site/role* path to reference a role on another site.
+The parameter is resolved per user; the most specific match wins (user
+overrides unit overrides site).  
 Roles of any site may be listed, and one list serves every portal the
 user signs in at: a portal offers the roles of its own site and no
 others, so each of them shows its own slice of the list. A role of
@@ -1933,10 +1945,13 @@ Object types: site, unit, node, share
 Which backup runs to report on and how. Valid values: *all* (one e-mail
 per run), *success* (only successful runs), *error* (only failed runs),
 *summary* (one e-mail for all backup runs of the host instead of one per
-backup object, with one line per object: name, status, duration and the
-backed-up/stored size). The summary is sent as soon as the last running
-backup has finished. Objects with a different **backup_report_mail_to**
-get their own summary e-mail.  
+backup object, with one line per object: name, status, finish time,
+duration, file count and the backed-up/stored size, or the error of a
+failed run). The summary is an HTML e-mail with a table, failed runs in
+red, and carries a plain text version for mail clients that show no
+HTML. It is sent as soon as the last running backup has finished.
+Objects with a different **backup_report_mail_to** get their own summary
+e-mail.  
 Object types: site, unit, node, share
 
 **backup_report_mail_from (str)**  

@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import magic
+import base64
 from datetime import datetime
 from cryptography import x509
 from typing import List
@@ -63,6 +65,12 @@ default_callback = config.get_callback()
 
 DUMP_SCRIPTS = ['key_script.sh', 'agent_script.sh', 'login_script.sh']
 
+# The logo of the SSO portal: what it may be, and how big. It is part of
+# the site object, which every node and host of the realm syncs, so it
+# has to stay small.
+SSO_LOGO_TYPES = ['image/png', 'image/jpeg']
+SSO_LOGO_MAX_SIZE = 512 * 1024
+
 # What the profile page of the portal shows by default, in this order:
 # name first, then how to reach the user, then where and since when.
 SSO_PROFILE_ATTRIBUTES = [
@@ -117,6 +125,9 @@ read_value_acls = {
                                 "cluster_key",
                                 "fido2_ca_cert",
                                 ],
+            "dump"      : [
+                                "sso_logo",
+                                ],
         }
 
 write_value_acls = {
@@ -128,12 +139,14 @@ write_value_acls = {
                                 "trust",
                                 "sso_host",
                                 "fido2_ca_cert",
+                                "sso_logo",
                                 ],
                     "delete"    : [
                                 "unit",
                                 "trust",
                                 "sso_host",
                                 "fido2_ca_cert",
+                                "sso_logo",
                                 ],
                     "enable"    : [
                                 "auth",
@@ -774,6 +787,31 @@ commands = {
                     'method'            : 'del_trust',
                     'args'              : ['site_name'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'sso_logo'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'add_sso_logo',
+                    'args'              : ['image_data'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_sso_logo'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'dump_sso_logo',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'del_sso_logo'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'del_sso_logo',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -3029,6 +3067,9 @@ def register_hooks():
     config.register_auth_on_action_hook("site", "del_trust")
     config.register_auth_on_action_hook("site", "add_sso_host")
     config.register_auth_on_action_hook("site", "del_sso_host")
+    config.register_auth_on_action_hook("site", "add_sso_logo")
+    config.register_auth_on_action_hook("site", "del_sso_logo")
+    config.register_auth_on_action_hook("site", "dump_sso_logo")
     config.register_auth_on_action_hook("site", "enable_oidc")
     config.register_auth_on_action_hook("site", "disable_oidc")
     config.register_auth_on_action_hook("site", "change_site_cert")
@@ -3165,6 +3206,11 @@ class Site(OTPmeObject):
         self.required_votes = 0
         self.cluster_key = None
         self.fido2_ca_certs = {}
+        # The logo the SSO portal of this site shows, base64 with its
+        # media type. Without one the portal shows the OTPme logo it
+        # ships with.
+        self.sso_logo = None
+        self.sso_logo_type = None
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -3491,6 +3537,16 @@ class Site(OTPmeObject):
             'FIDO2_CA_CERTS'            : {
                                             'var_name'  : 'fido2_ca_certs',
                                             'type'      : dict,
+                                            'required'  : False,
+                                        },
+            'SSO_LOGO'                  : {
+                                            'var_name'  : 'sso_logo',
+                                            'type'      : str,
+                                            'required'  : False,
+                                        },
+            'SSO_LOGO_TYPE'             : {
+                                            'var_name'  : 'sso_logo_type',
+                                            'type'      : str,
                                             'required'  : False,
                                         },
             }
@@ -6034,6 +6090,15 @@ class Site(OTPmeObject):
                 group.enable_timeout_pass_on(force=True,
                                             verify_acls=False,
                                             callback=callback)
+                # The info of this group is the recovery mail, one text
+                # per language (see mail_templates). English is what we
+                # ship; any other language is up to the administrator.
+                from otpme.lib import mail_templates
+                group.change_info(info=mail_templates.default_recovery_mail(),
+                                language="en",
+                                force=True,
+                                verify_acls=False,
+                                callback=callback)
             if group.name == config.ldap_access_group:
                 # Set max sessions for ldap (ldaptor) accessgroup.
                 group.change_max_sessions(force=True,
@@ -6552,6 +6617,84 @@ class Site(OTPmeObject):
 
         self.fido2_ca_certs.pop(subject)
         return self._cache(callback=callback)
+
+    @check_acls(['add:sso_logo'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("add sso logo")
+    def add_sso_logo(
+        self,
+        image_data: str,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Set the logo the SSO portal of this site shows. """
+        from otpme.lib.humanize import units
+        msg = _("Add SSO logo to site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        # Check if data is base64 and decode.
+        if stuff.is_base64(image_data):
+            image_data = base64.b64decode(image_data)
+        if isinstance(image_data, str):
+            image_data = image_data.encode()
+
+        if len(image_data) > SSO_LOGO_MAX_SIZE:
+            msg = _("Logo must not be larger than {max_size}.")
+            msg = msg.format(max_size=units.int2size(SSO_LOGO_MAX_SIZE))
+            return callback.error(msg)
+
+        magic_handler = magic.Magic(mime=True, uncompress=True)
+        image_type = magic_handler.from_buffer(image_data)
+        if image_type not in SSO_LOGO_TYPES:
+            msg = _("Logo must be one of: {types}")
+            msg = msg.format(types=", ".join(SSO_LOGO_TYPES))
+            return callback.error(msg)
+
+        self.sso_logo = base64.b64encode(image_data).decode()
+        self.sso_logo_type = image_type
+        return self._cache(callback=callback)
+
+    @check_acls(['delete:sso_logo'])
+    @object_lock()
+    @audit_log()
+    @object_changelog("remove sso logo")
+    def del_sso_logo(
+        self,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove the logo, so the portal shows the default one again. """
+        if not self.sso_logo:
+            msg = _("No SSO logo set.")
+            return callback.error(msg)
+
+        msg = _("Remove SSO logo of site '{site_name}'?: ")
+        msg = msg.format(site_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
+
+        self.sso_logo = None
+        self.sso_logo_type = None
+        return self._cache(callback=callback)
+
+    @check_acls(['dump:sso_logo'])
+    @object_lock()
+    @audit_log()
+    def dump_sso_logo(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ The logo as base64. """
+        if not self.sso_logo:
+            msg = _("No SSO logo set.")
+            return callback.error(msg)
+        return callback.ok(self.sso_logo, return_value=True)
 
     @check_acls(['view:fido2_ca_cert'])
     @object_lock()

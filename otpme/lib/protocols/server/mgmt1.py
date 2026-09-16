@@ -3394,7 +3394,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Enable localization for user.
         if config.auth_user:
             try:
-                language = command_args['language']
+                language = command_args['_locale_language']
             except KeyError:
                 pass
             else:

@@ -448,6 +448,8 @@ Envelope and \fBFrom:\fR address of the recovery mail. The mail is sent by the u
 .B smtp_relay_*
 parameters. No default: without a sender no recovery mail is sent, which leaves recovery off without saying so.
 .br
+What the mail says is the info text of the \fBSSO\fR accessgroup of that site, one text per language (\fBotpme\-accessgroup info \-\-language\fR, see \fBotpme\-accessgroup\fR(1)); the text written without a language is the administrator's own note and is never sent. The first line is the subject, then an empty line, then the body; \fB{user_name}\fR, \fB{minutes}\fR and \fB{reset_url}\fR are filled in. A site is created with the English text OTPme ships; a language the group has no text for falls back to English and then to the shipped text, translated into the user's language. The language is the user's (\fBotpme\-user language\fR), or the one the browser asked for when the user has none set.
+.br
 Object types: site, unit, node, share
 .TP
 .B admin_access_role \fR(str)
@@ -573,7 +575,7 @@ Object types: site
 .SS SSO Portal
 .TP
 .B device_token_roles \fR(list)
-Comma separated list of roles to which device tokens registered via the SSO portal are added. The role's info text is displayed in the SSO portal settings to inform users about the purpose and scope of the role. Each value can be a plain role name (resolved within the current site) or a
+Comma separated list of roles to which device tokens registered via the SSO portal are added. The role's info text is displayed in the SSO portal settings to inform users about the purpose and scope of the role, in the language of whoever is looking (\fBotpme\-role info \-\-language\fR); the text written without a language is the administrator's own note and is never shown. Each value can be a plain role name (resolved within the current site) or a
 .IR site/role
 path to reference a role on another site. The parameter is resolved per user; the most specific match wins (user overrides unit overrides site).
 .br
@@ -1463,7 +1465,7 @@ Which backup runs to report on and how. Valid values:
 .IR error
 (only failed runs),
 .IR summary
-(one e\-mail for all backup runs of the host instead of one per backup object, with one line per object: name, status, duration and the backed\-up/stored size). The summary is sent as soon as the last running backup has finished. Objects with a different
+(one e\-mail for all backup runs of the host instead of one per backup object, with one line per object: name, status, finish time, duration, file count and the backed\-up/stored size, or the error of a failed run). The summary is an HTML e\-mail with a table, failed runs in red, and carries a plain text version for mail clients that show no HTML. It is sent as soon as the last running backup has finished. Objects with a different
 .B backup_report_mail_to
 get their own summary e\-mail.
 .br

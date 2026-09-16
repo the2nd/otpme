@@ -49,8 +49,14 @@ class OTPmeMgmtP1(OTPmeClient1):
             args['force'] = config.force
         if 'changelog' not in args:
             args['changelog'] = config.changelog
-        if 'language' not in args:
-            args['language'] = config.language
+        # The language the daemon talks back in. Under a name of its
+        # own: <language> is an argument commands take themselves
+        # (otpme-<type> info --language), and one we add to every
+        # command would be indistinguishable from one the user gave --
+        # an info written without --language would land in the language
+        # of whoever wrote it instead of being the note it is meant to
+        # be (see DEFAULT_INFO_LANGUAGE).
+        args['_locale_language'] = config.language
         args['job_timeout'] = config.job_timeout
         args['lock_timeout'] = config.lock_timeout
         args['lock_wait_timeout'] = config.lock_wait_timeout

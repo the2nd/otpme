@@ -657,6 +657,30 @@ cmd_help = {
                                 },
                 },
 
+    'sso_logo'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site sso_logo {site} {image_path}'),
+                    'cmd'   :   '<|object|> <file:image_data>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add SSO portal logo (png or jpeg).'),
+                                },
+                },
+
+    'dump_sso_logo'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site dump_sso_logo {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump SSO portal logo as base64.'),
+                                },
+                },
+
+    'del_sso_logo'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site del_sso_logo {site}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Delete SSO portal logo.'),
+                                },
+                },
+
     'add_sso_host'   : {
                     '_cmd_usage_help' : _('Usage: otpme-site add_sso_host {site} {host_name}'),
                     'cmd'   :   '<|object|> <host_name>',

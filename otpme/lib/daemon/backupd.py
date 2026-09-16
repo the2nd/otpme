@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import sys
+import html
 import time
 import signal
 import setproctitle
@@ -171,6 +172,8 @@ class BackupDaemon(OTPmeDaemon):
                 'status'        : status,
                 'time'          : time.time(),
                 'duration'      : result.get('duration'),
+                'file_count'    : result.get('file_count'),
+                'skipped_files' : result.get('skipped_files'),
                 'total_bytes'   : result.get('total_bytes'),
                 'stored_bytes'  : result.get('stored_bytes'),
                 }
@@ -252,7 +255,86 @@ class BackupDaemon(OTPmeDaemon):
             subject = subject.format(host_name=host_name,
                                     successful=successful_backups,
                                     failed=failed_backups)
-            self.send_report_mail(mail_settings, subject, message)
+            html_message = self.build_summary_report_html(host_name,
+                                                        x_reports,
+                                                        successful_backups,
+                                                        failed_backups)
+            self.send_report_mail(mail_settings, subject, message,
+                                html_message=html_message)
+
+    def build_summary_report_html(self, host_name, reports, successful, failed):
+        """ The summary report as HTML, failed backups in red.
+
+        Inline styles only: many mail clients drop a <style> block. The
+        plain text version goes along with it for those that show no
+        HTML at all. """
+        from otpme.lib.classes.backup import _format_size
+        red = "#c62828"
+        green = "#2e7d32"
+        cell = "padding:6px 10px;border-bottom:1px solid #e0e0e0;text-align:left;vertical-align:top;"
+        head_cell = f"{cell}background:#f5f5f5;font-weight:bold;"
+        rows = []
+        for x_report in reports:
+            if x_report['status']:
+                x_status = _("ok")
+                row_style = ""
+                status_style = f"color:{green};font-weight:bold;"
+            else:
+                x_status = _("failed")
+                row_style = "background:#fdecea;"
+                status_style = f"color:{red};font-weight:bold;"
+            x_finished = datetime.fromtimestamp(x_report['time'])
+            x_finished = x_finished.strftime("%Y-%m-%d %H:%M")
+            x_duration = x_report['duration'] or "-"
+            x_files = "-"
+            if x_report.get('file_count') is not None:
+                x_files = str(x_report['file_count'])
+                if x_report.get('skipped_files'):
+                    x_skipped = _("{skipped} skipped")
+                    x_skipped = x_skipped.format(skipped=x_report['skipped_files'])
+                    x_files = f"{x_files} ({x_skipped})"
+            x_info = x_report.get('message')
+            if x_info:
+                x_info = f'<span style="color:{red};">{html.escape(x_info)}</span>'
+            else:
+                x_total = _format_size(x_report['total_bytes'] or 0)
+                x_stored = _format_size(x_report['stored_bytes'] or 0)
+                x_info = html.escape(f"{x_total} → {x_stored}")
+            rows.append(f'<tr style="{row_style}">'
+                        f'<td style="{cell}">{html.escape(x_report["name"])}</td>'
+                        f'<td style="{cell}{status_style}">{html.escape(x_status)}</td>'
+                        f'<td style="{cell}white-space:nowrap;">{html.escape(x_finished)}</td>'
+                        f'<td style="{cell}white-space:nowrap;">{html.escape(x_duration)}</td>'
+                        f'<td style="{cell}">{html.escape(x_files)}</td>'
+                        f'<td style="{cell}">{x_info}</td>'
+                        '</tr>')
+        title = _("Backup report {host_name}")
+        title = title.format(host_name=host_name)
+        successful_text = _("{count} ok")
+        successful_text = html.escape(successful_text.format(count=successful))
+        failed_text = _("{count} failed")
+        failed_text = html.escape(failed_text.format(count=failed))
+        counts = (f'<span style="color:{green};font-weight:bold;">'
+                    f'{successful_text}</span> &middot; ')
+        if failed:
+            counts += (f'<span style="color:{red};font-weight:bold;">'
+                        f'{failed_text}</span>')
+        else:
+            counts += failed_text
+        columns = [_("Backup"), _("Status"), _("Finished"), _("Duration"),
+                    _("Files"), _("Size / Error")]
+        header = "".join(f'<th style="{head_cell}">{html.escape(x)}</th>'
+                        for x in columns)
+        return ('<!DOCTYPE html>'
+                '<html><head><meta charset="utf-8"></head>'
+                '<body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;">'
+                f'<h2 style="margin:0 0 4px 0;font-size:18px;">{html.escape(title)}</h2>'
+                f'<p style="margin:0 0 16px 0;">{counts}</p>'
+                '<table style="border-collapse:collapse;border:1px solid #e0e0e0;">'
+                f'<thead><tr>{header}</tr></thead>'
+                f'<tbody>{"".join(rows)}</tbody>'
+                '</table>'
+                '</body></html>')
 
     def get_mail_settings(self, backup_object):
         """ Get mail settings to send a backup report. """
@@ -304,13 +386,15 @@ class BackupDaemon(OTPmeDaemon):
                         }
         return mail_settings
 
-    def send_report_mail(self, mail_settings, subject, message):
+    def send_report_mail(self, mail_settings, subject, message,
+        html_message=None):
         """ Send backup report mail. """
         try:
             send_mail(mail_from=mail_settings['mail_from'],
                     mail_to=mail_settings['mail_to'],
                     subject=subject,
                     message=message,
+                    html_message=html_message,
                     server=mail_settings['server'],
                     port=mail_settings['port'],
                     starttls=mail_settings['starttls'],

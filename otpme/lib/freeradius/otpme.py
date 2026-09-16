@@ -136,6 +136,19 @@ def get_client(nasid, client_ip):
         client_cache[client_key]['timeout'] = 120
     return auth_client
 
+def get_auth_message(auth_response):
+    """ The message of an authd response.
+
+    A successful one is a dict; a failed one may be the message alone
+    (e.g. "Authentication failed." when the client of the request is
+    unknown). Reading it as a dict then raised a TypeError and the
+    module answered RLM_MODULE_FAIL instead of rejecting the request. """
+    if isinstance(auth_response, dict):
+        return auth_response.get('message')
+    if auth_response:
+        return str(auth_response)
+    return None
+
 def get_conn():
     # Connection kwargs.
     conn_kwargs = {}
@@ -430,12 +443,12 @@ def authenticate(authData):
                         return radiusd.RLM_MODULE_REJECT
                 finally:
                     daemon_conn.close()
-                auth_message = auth_response['message']
+                auth_message = get_auth_message(auth_response)
 
             # Check if user was authenticated successful.
             if auth_status:
                 session_uuid = None
-                if auth_response:
+                if isinstance(auth_response, dict):
                     try:
                         session_uuid = auth_response['session']
                     except KeyError:
@@ -540,9 +553,18 @@ def authenticate(authData):
                 daemon_conn.close()
 
             # Get auth message.
-            auth_message = auth_response['message']
+            auth_message = get_auth_message(auth_response)
 
             # Check if user authenticated successful.
+            if auth_status and not isinstance(auth_response, dict):
+                # Nothing to build an answer from: the keys below are
+                # all in the response. Reject rather than crash.
+                log_msg = _("Got invalid authd response: {auth_response}", log=True)[1]
+                log_msg = log_msg.format(auth_response=auth_response)
+                logger.warning(log_msg)
+                auth_status = False
+                auth_message = _("Authentication failed.")
+
             if auth_status:
                 # Get password hash.
                 nt_key = auth_response['nt_key']

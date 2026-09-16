@@ -135,7 +135,8 @@
     <div class="status-msg" id="fido2Status"></div>
     <div class="error-msg" id="fido2Error"></div>
     <div class="logo-container">
-      <img src="{{ url_for('static', filename='otpme.png') }}" alt="OTPme Logo" class="logo">
+      {# The site's own logo when it has one, else the OTPme one. #}
+      <img src="{{ url_for('sso_logo', _external=True, _scheme='https') }}" alt="{{ gettext('Logo') }}" class="logo">
     </div>
   </div>
 </div>

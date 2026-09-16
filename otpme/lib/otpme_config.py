@@ -31,6 +31,9 @@ from otpme.lib.messages import error_message
 
 from otpme.lib.exceptions import *
 
+# The translation functions get_translation() hands out, by language.
+TRANSLATIONS = {}
+
 class OTPmeConfig(object):
     def __init__(self, tool_name="otpme", use_syslog=False,
         use_systemd_log=False, auto_load=True, quiet=False):
@@ -1116,6 +1119,29 @@ class OTPmeConfig(object):
 
         import builtins
         builtins._ = get_locales
+
+    def get_translation(self, language):
+        """ A translation function for the given language.
+
+        _() translates into the language of the running process, which
+        is the wrong one whenever we write to a user rather than to the
+        log -- the recovery mail, for one. Mark those strings with a
+        keyword of their own (see update_locale.sh) and translate them
+        through this:
+
+            _l = config.get_translation(user_language)
+            subject = _l("Account recovery")
+        """
+        try:
+            return TRANSLATIONS[language]
+        except KeyError:
+            pass
+        translation = gettext.translation('otpme',
+                                        self.locale_dir,
+                                        languages=[language],
+                                        fallback=True)
+        TRANSLATIONS[language] = translation.gettext
+        return translation.gettext
 
     def load(self, command=None, quiet=False, configure_logger=None):
         """ Load config. """

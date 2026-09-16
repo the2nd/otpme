@@ -15,6 +15,7 @@ from flask import request
 from flask import redirect
 from flask import make_response
 from flask import render_template
+from flask import send_from_directory
 from flask_login import UserMixin
 from flask_login import login_user
 from flask_login import logout_user
@@ -291,6 +292,43 @@ def _settings_user_key():
     from otpme.web.app import _ratelimit_key
     return _ratelimit_key()
 
+
+@app.route('/logo')
+def sso_logo():
+    """ The logo of the login and recovery pages: the one of the site
+    when it has one (otpme-site add_sso_logo), else the one the portal
+    ships with. Public like the pages that show it, and asked for
+    without a session. """
+    import base64
+    logo = None
+    logo_type = None
+    try:
+        response, error = _send_ssod_command_unauth(
+                command="sso_logo",
+                extra_args={'username': ''})
+        if not error and isinstance(response, dict):
+            logo = response.get('logo')
+            logo_type = response.get('logo_type')
+    except Exception as e:
+        # A site logo is not worth a broken login page.
+        log_msg = _("Failed to get SSO logo: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
+    if logo:
+        try:
+            logo_bytes = base64.b64decode(logo)
+        except Exception:
+            logo_bytes = None
+        if logo_bytes:
+            if logo_type not in ('image/png', 'image/jpeg'):
+                logo_type = 'image/png'
+            resp = make_response(logo_bytes, 200)
+            resp.headers['Content-Type'] = logo_type
+            # Short: a logo that was just changed should not stay in the
+            # browser for the rest of the day.
+            resp.headers['Cache-Control'] = 'public, max-age=300'
+            return resp
+    return send_from_directory(app.static_folder, 'otpme.png', max_age=300)
 
 @app.route('/settings')
 @login_required
@@ -2539,9 +2577,15 @@ def recover_request():
     username = (data.get('username') or '').strip()
     if not username:
         return jsonify({"status": "ok"})
+    # The mail is written in the user's language; the browser's is the
+    # fallback for an account that has none set.
+    extra_args = {'username': username}
+    accept_language = _browser_preferred_language()
+    if accept_language:
+        extra_args['accept_language'] = accept_language
     response, error = _send_ssod_command_unauth(
             command="request_sso_token_recovery",
-            extra_args={'username': username},
+            extra_args=extra_args,
             default_error=gettext("Recovery request failed."))
     if error:
         # ssod returns generic-OK for all logic-level failures, so an

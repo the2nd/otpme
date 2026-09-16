@@ -28,6 +28,7 @@ from otpme.lib.cache import assigned_token_cache
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import name_len_setter
+from otpme.lib.classes.otpme_object import DEFAULT_INFO_LANGUAGE
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -1705,6 +1706,30 @@ class AccessGroup(OTPmeObject):
         self.del_index("child_session", group.uuid)
 
         return self._cache(callback=callback)
+
+    def change_info(self, info: str=None,
+        language: str=DEFAULT_INFO_LANGUAGE,
+        callback=default_callback, **kwargs):
+        """ Change object info.
+
+        The info of the SSO accessgroup in a language is the recovery
+        mail of that language (see mail_templates). A placeholder we
+        cannot fill in would only show when somebody needs that mail, so
+        it is refused here. The text without a language is the
+        administrator's own note and goes in as it is. """
+        if info is not None \
+        and language != DEFAULT_INFO_LANGUAGE \
+        and self.name == config.sso_access_group:
+            from otpme.lib import mail_templates
+            try:
+                mail_templates.check_placeholders(info,
+                            mail_templates.RECOVERY_MAIL_PLACEHOLDERS)
+            except OTPmeException as e:
+                return callback.error(str(e))
+        return super().change_info(info=info,
+                                language=language,
+                                callback=callback,
+                                **kwargs)
 
     @check_acls(['edit:max_sessions'])
     @object_lock()

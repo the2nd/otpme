@@ -43,6 +43,7 @@ from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.daemon.clusterd import add_cluster_state
 from otpme.lib.daemon.clusterd import cluster_sync_state_delete
 from otpme.lib.token.tiqr import tiqr as tiqr_token
+from otpme.lib.classes.otpme_object import DEFAULT_INFO_LANGUAGE
 from otpme.lib.classes.data_objects.photo import read_photo
 from otpme.lib.classes.data_objects.photo import resize_image
 from otpme.lib.classes.data_objects.photo import get_dimensions
@@ -2679,7 +2680,9 @@ class OTPmeSsoP1(OTPmeServer1):
                     # tiqr_helpers.canonical_service_identifier().
                     'displayName'       : service_display_name,
                     'identifier'        : service_identifier,
-                    'logoUrl'           : f"{base_url}/static/otpme.png",
+                    # The site's own logo when it has one, else the
+                    # OTPme one -- /logo hands out whichever it is.
+                    'logoUrl'           : f"{base_url}/logo",
                     'infoUrl'           : base_url,
                     'authenticationUrl' : f"{base_url}/tiqr/auth",
                     'ocraSuite'         : user.get_config_parameter("tiqr_ocra_suite"),
@@ -5421,11 +5424,12 @@ class OTPmeSsoP1(OTPmeServer1):
         ttl = user.get_config_parameter("sso_recovery_link_ttl", apply_getter=False) or 900
         reset_url = (f"https://{link_host}/recover/complete"
                      f"?t={raw_token}&u={user.name}")
-        subject = _("SSO token recovery")
-        body_template = _("Hello,\n\nwe received a request to recover the SSO token for the account '{user_name}'.\n\nTo set up a fresh SSO token, open the following link within the next {minutes} minutes:\n\n{reset_url}\n\nIf you did not request this, you can ignore this message -- your existing token stays untouched.\n")
-        body = body_template.format(user_name=user.name,
-                                    minutes=max(1, ttl // 60),
-                                    reset_url=reset_url)
+        language = self._resolve_language(user, command_args)
+        subject, body = self._recovery_mail_text(user,
+                                                language,
+                                                user_name=user.name,
+                                                minutes=max(1, ttl // 60),
+                                                reset_url=reset_url)
         try:
             from otpme.lib.mail import send_mail
             send_mail(mail_from=mail_from,
@@ -5449,6 +5453,44 @@ class OTPmeSsoP1(OTPmeServer1):
         log_msg = log_msg.format(u=user.name)
         self.logger.info(log_msg)
         return self._recovery_generic_ok()
+
+    def _recovery_mail_text(self, user, language, **values):
+        """ Subject and body of the recovery mail, in the user's
+        language.
+
+        The text lives in the info of the SSO accessgroup of this site,
+        one per language, so an administrator can write their own
+        without touching the code (see mail_templates). Whatever is
+        missing there -- no group, no text for the language, or a text
+        we cannot fill in -- falls back to the one we ship, translated
+        into the user's language. """
+        from otpme.lib import mail_templates
+        placeholders = mail_templates.RECOVERY_MAIL_PLACEHOLDERS
+        text = None
+        sso_group = backend.get_object(object_type="accessgroup",
+                                    name=config.sso_access_group,
+                                    realm=config.realm,
+                                    site=config.site)
+        if sso_group is not None:
+            text = self._localized_info(sso_group, language)
+        if text:
+            try:
+                subject, body = mail_templates.render_mail_text(text,
+                                                            placeholders,
+                                                            **values)
+            except Exception as e:
+                log_msg = _("SSO-token recovery: cannot use the mail text of accessgroup '{group}': {e}", log=True)[1]
+                log_msg = log_msg.format(group=config.sso_access_group, e=e)
+                self.logger.warning(log_msg)
+            else:
+                if subject:
+                    return subject, body
+                # A text without a subject line of its own.
+                default = mail_templates.default_recovery_mail(language)
+                subject = mail_templates.split_mail_text(default)[0]
+                return subject, body
+        default = mail_templates.default_recovery_mail(language)
+        return mail_templates.render_mail_text(default, placeholders, **values)
 
     def get_sso_token_recovery_info(self, username, sso_jwt, command_args):
         """ Unauth: validate a raw recovery token against the stored
@@ -6377,7 +6419,11 @@ class OTPmeSsoP1(OTPmeServer1):
         """ Read an object's localized info field. OTPmeObject.info is a
         dict keyed by language code; pick the requested language, fall
         back to the configured fallback locale, then to any remaining
-        entry, and finally to an empty string. """
+        entry, and finally to an empty string.
+
+        Never the text written without a language: that one is the
+        administrator's own note (DEFAULT_INFO_LANGUAGE), not something
+        a user is meant to read. """
         info = obj.info
         if not info:
             return ""
@@ -6389,10 +6435,13 @@ class OTPmeSsoP1(OTPmeServer1):
             return info[fallback]
         except KeyError:
             pass
-        for v in info.values():
-            if not v:
+        for x_language in info:
+            if x_language == DEFAULT_INFO_LANGUAGE:
                 continue
-            return v
+            value = info[x_language]
+            if not value:
+                continue
+            return value
         return ""
 
     def _fetch_home_language(self, user, command_args):
@@ -9955,6 +10004,22 @@ class OTPmeSsoP1(OTPmeServer1):
             })
         return self.build_response(True, {'photo': photo})
 
+    def sso_logo(self, command_args):
+        """ The logo of this site's portal (base64) with its media type.
+
+        Public and unauthenticated: it sits on the login page, which
+        nobody has signed in to yet. A site without one answers
+        not_found and the portal shows the logo it ships with. """
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        if site is None or not site.sso_logo:
+            return self.build_response(False, {
+                'error': 'not_found',
+            })
+        return self.build_response(True, {
+                'logo':         site.sso_logo,
+                'logo_type':    site.sso_logo_type,
+            })
+
     def oidc_prompt_none_no_session(self, command_args):
         """ Validate that ``redirect_uri`` is registered for
         ``client_id`` so the web layer can safely redirect a
@@ -10219,6 +10284,7 @@ class OTPmeSsoP1(OTPmeServer1):
                             "oidc_discovery",
                             "oidc_jwks",
                             "oidc_avatar",
+                            "sso_logo",
                             "oidc_prompt_none_no_session",
                             "oidc_authorize_validate",
                             "list_oidc_consents",
@@ -10290,6 +10356,14 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.oidc_avatar(command_args)
             if command == "oidc_prompt_none_no_session":
                 return self.oidc_prompt_none_no_session(command_args)
+
+        # The logo of the portal: asked for by the login page, which
+        # nobody has signed in to yet, so it bypasses the
+        # username/sso_jwt envelope the same way.
+        if command == "sso_logo":
+            log_msg = _("Processing command sso_logo.", log=True)[1]
+            self.logger.debug(log_msg)
+            return self.sso_logo(command_args)
 
         # SSO-token recovery commands are unauth by design ("forgot my
         # token" flow): the caller cannot present an SSO JWT because

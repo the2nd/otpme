@@ -291,7 +291,15 @@ Set access group description.
 
 **info \[**--language** *LANG*\] *accessgroup* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
-opened in the editor specified by the **EDITOR** environment variable.
+opened in the editor specified by the **EDITOR** environment variable.  
+Without **--language** the text is the administrator's own note about
+the object, which no user is ever shown. A text written with a language
+is one for the users of that language.  
+For the **SSO** accessgroup such a text is the recovery mail: first line
+the subject, then an empty line, then the body, with **{user_name}**,
+**{minutes}** (how long the link is valid) and **{reset_url}** filled
+in. Any other placeholder is refused. Which one is sent follows the
+user's language, see **otpme**(7).
 
 **dump_info \[**--language** *LANG*\] *accessgroup***  
 Dump the info text to stdout.

@@ -68,6 +68,13 @@ OBJECT_LOCK_TYPE = "object"
 # the portal's SSO token (see OTPmeObject._get_portal_tokens()).
 PORTAL_TOKEN_TYPES = ("fido2", "passkey", "tiqr", "totp")
 
+# An info is one text per language, and this is the one written without
+# naming a language: the administrator's own note about the object. The
+# languages next to it hold what users are shown -- the recovery mail of
+# the SSO accessgroup, the text of a device token role -- and nothing
+# that reads those ever falls back to this one.
+DEFAULT_INFO_LANGUAGE = "info"
+
 logger = config.logger
 default_callback = config.get_callback()
 
@@ -9660,7 +9667,7 @@ class OTPmeObject(OTPmeBaseObject):
     def change_info(
         self,
         info: str=None,
-        language: str="en",
+        language: str=DEFAULT_INFO_LANGUAGE,
         force: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -9668,7 +9675,8 @@ class OTPmeObject(OTPmeBaseObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Change object info. """
+        """ Change object info. Without a language the administrator's
+        own note, see DEFAULT_INFO_LANGUAGE. """
         msg = _("Change info of {object_type} '{object_name}'?: ")
         msg = msg.format(object_type=self.type, object_name=self.name)
         if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -9714,14 +9722,15 @@ class OTPmeObject(OTPmeBaseObject):
     @audit_log()
     def dump_info(
         self,
-        language: str="en",
+        language: str=DEFAULT_INFO_LANGUAGE,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         verbose_level: int=0,
         _caller: str="API",
         **kwargs,
         ):
-        """ Dump object info. """
+        """ Dump object info. Without a language the administrator's
+        own note, see DEFAULT_INFO_LANGUAGE. """
         try:
             info = self.info[language]
         except Exception:

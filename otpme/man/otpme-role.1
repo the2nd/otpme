@@ -262,6 +262,12 @@ Set role description.
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note about the object, which no user is ever shown. A text written with a language is one for the users of that language: a role named in
+.B device_token_roles
+shows it on the SSO portal, in the language of whoever is looking, see \fBotpme\fR(7).
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR
 Dump the info text to stdout.

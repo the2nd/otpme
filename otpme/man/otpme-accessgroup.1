@@ -221,6 +221,12 @@ Set access group description.
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fIaccessgroup\fR \fR[\fIinfo\fR]
 Set free-form info text. If \fIinfo\fR is omitted, the current info text is
 opened in the editor specified by the \fBEDITOR\fR environment variable.
+.br
+Without
+.B \-\-language
+the text is the administrator's own note about the object, which no user is ever shown. A text written with a language is one for the users of that language.
+.br
+For the \fBSSO\fR accessgroup such a text is the recovery mail: first line the subject, then an empty line, then the body, with \fB{user_name}\fR, \fB{minutes}\fR (how long the link is valid) and \fB{reset_url}\fR filled in. Any other placeholder is refused. Which one is sent follows the user's language, see \fBotpme\fR(7).
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIaccessgroup\fR
 Dump the info text to stdout.

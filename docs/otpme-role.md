@@ -278,7 +278,12 @@ Set role description.
 
 **info \[**--language** *LANG*\] *role* \[*info*\]**  
 Set free-form info text. If *info* is omitted, the current info text is
-opened in the editor specified by the **EDITOR** environment variable.
+opened in the editor specified by the **EDITOR** environment variable.  
+Without **--language** the text is the administrator's own note about
+the object, which no user is ever shown. A text written with a language
+is one for the users of that language: a role named in
+**device_token_roles** shows it on the SSO portal, in the language of
+whoever is looking, see **otpme**(7).
 
 **dump_info \[**--language** *LANG*\] *role***  
 Dump the info text to stdout.

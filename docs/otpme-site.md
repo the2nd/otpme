@@ -188,6 +188,20 @@ in */etc/otpme/otpme.conf*. See **otpme.conf**(5).
 Remove the SSO host role from a host. The SSO data will no longer be
 synchronized to this host.
 
+**sso_logo *site* *image_path***  
+Set the logo the SSO portal of this site shows on its login and recovery
+pages. PNG or JPEG, at most 512 KiB — it is part of the site object,
+which every node and host of the realm synchronizes. A site without a
+logo shows the OTPme logo the portal ships with. The tiqr app shows the
+same logo for the accounts enrolled here.
+
+**dump_sso_logo *site***  
+Dump the site's SSO portal logo as base64 to stdout.
+
+**del_sso_logo *site***  
+Remove the site's SSO portal logo, so the portal shows the default one
+again.
+
 ## OIDC OpenID Connect Provider
 
 OTPme can act as an OpenID Connect Provider (OP) per site. The OP is
