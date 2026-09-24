@@ -55,6 +55,12 @@ read_value_acls = {
                                 "tokens",
                                 "hosts",
                                 ],
+                    # The other direction: not what this group holds,
+                    # but who holds this group.
+                    "find"      : [
+                                "scopes",
+                                "shares",
+                                ],
             }
 
 write_value_acls = {
@@ -393,6 +399,26 @@ commands = {
                     },
                 },
             },
+    'find_scopes'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'scope', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_shares'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'share', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'list_tokens'   : {
             'default'    : {
                 'exists'    : {
@@ -622,10 +648,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -805,7 +831,18 @@ def register_backend():
                             cache_region="tree_object",
                             backup_attributes=['realm', 'name'])
     # Register index attributes.
-    config.register_index_attribute('user')
+    # Who is in this group. A host works out who may log in from it.
+    group_types = ["group"]
+    config.register_index_attribute('user', sync=True,
+                                    object_types=group_types)
+    # Which host is in this group. Asked where the login is answered,
+    # which is a node of the site that owns the group.
+    config.register_index_attribute('host', sync=[],
+                                    object_types=group_types)
+    # Whose home directory a host of this group syncs. The role and the
+    # host name sync users as well, see there.
+    config.register_index_attribute('sync_user', sync=["node:untrusted"],
+                                    object_types=group_types)
     # Register object to backend.
     class_getter = lambda: Group
     backend.register_object_type(object_type="group",
@@ -865,14 +902,16 @@ class Group(OTPmeObject):
                         'trusted'  : [
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
-                            "EXTENSION_ATTRIBUTES",
+                            # Only the LDIF is built from them, and a
+                            # host has no LDIF, see _base_sync_fields.
+                            # nsscache reads memberUid off the index.
+                            #"EXTENSION_ATTRIBUTES",
                             "ROLES",
                             "TOKENS",
                             "SYNC_USERS",
                             "DEFAULT_GROUP_USERS",
                             "HOSTS",
                             "NODES",
-                            "gidNumber",
                             ]
                         },
 
@@ -887,7 +926,6 @@ class Group(OTPmeObject):
                             "DEFAULT_GROUP_USERS",
                             "HOSTS",
                             "NODES",
-                            "gidNumber",
                             ]
                         },
                     }

@@ -281,7 +281,10 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                                         recursive=True,
                                         return_type="uuid")
                 for x in role_roles:
-                    if x in token_roles:
+                    # Against all_token_roles, not token_roles: a role
+                    # above several of the tokens roles is reached once
+                    # per path and was listed that often.
+                    if x in all_token_roles:
                         continue
                     all_token_roles.append(x)
             if all_token_roles:
@@ -310,8 +313,11 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
             for role_uuid in all_token_roles:
                 role_name = roles_result[role_uuid]['name']
                 role_site = roles_result[role_uuid]['site']
+                # "<name> (<site>)" like every other show table. The
+                # "<site>/<name>" this used to print reads like an
+                # identifier, and one it is not.
                 if role_site != config.site:
-                    role_path = f"{role_site}/{role_name}"
+                    role_path = f"{role_name} ({role_site})"
                 else:
                     role_path = role_name
                 if role_uuid not in token_roles:
@@ -330,7 +336,13 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
 
         # Accessgroups.
         if show_accessgroups:
-            all_ags = list(accessgroups_result) + list(role_ags_result)
+            # A group the token has directly and through a role is in
+            # both results. Direct ones first, so the brackets come last.
+            all_ags = list(accessgroups_result)
+            for group_uuid in role_ags_result:
+                if group_uuid in all_ags:
+                    continue
+                all_ags.append(group_uuid)
             group_strings = []
             for group_uuid in all_ags:
                 if group_uuid in role_ags_result:
@@ -359,7 +371,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 if group_site == config.site:
                     group_string = group_name
                 else:
-                    group_string = f"{group_site}/{group_name}"
+                    group_string = f"{group_name} ({group_site})"
 
                 if group_status_string:
                     group_string = f"{group_string} {group_status_string}"
@@ -388,7 +400,11 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                                                 values=list(roles_result),
                                                 return_attributes=return_attributes)
                 group_strings = []
-                all_groups = list(groups_result) + list(role_groups_result)
+                all_groups = list(groups_result)
+                for group_uuid in role_groups_result:
+                    if group_uuid in all_groups:
+                        continue
+                    all_groups.append(group_uuid)
                 for group_uuid in all_groups:
                     if group_uuid in groups_result:
                         group_data = groups_result
@@ -402,13 +418,16 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                     else:
                         group_status_string = ""
 
-                    if group_uuid in role_groups_result:
-                        if group_site != config.site:
-                            group_string = f"({group_site}/{group_name}) {group_status_string}"
-                        else:
-                            group_string = f"({group_name}) {group_status_string}"
+                    # The direct branch used to drop the site entirely,
+                    # so a group of another site was shown as if it were
+                    # ours.
+                    if group_site != config.site:
+                        group_string = f"{group_name} ({group_site})"
                     else:
-                        group_string = f"{group_name}{group_status_string}"
+                        group_string = group_name
+                    group_string = f"{group_string}{group_status_string}"
+                    if group_uuid in role_groups_result:
+                        group_string = f"({group_string})"
                     group_strings.append(group_string)
                 row.append("\n".join(group_strings))
             else:
@@ -428,7 +447,14 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                                                 values=list(roles_result),
                                                 return_attributes=return_attributes)
                 scope_strings = []
-                all_scopes = set(list(scopes_result) + list(role_scopes_result))
+                # A set() would drop the duplicates too, but it also
+                # drops the order: the column came out differently
+                # sorted from one mgmtd to the next.
+                all_scopes = list(scopes_result)
+                for scope_uuid in role_scopes_result:
+                    if scope_uuid in all_scopes:
+                        continue
+                    all_scopes.append(scope_uuid)
                 scopes_count = len(all_scopes)
                 for scope_uuid in all_scopes:
                     if scope_uuid in scopes_result:
@@ -443,13 +469,15 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                     else:
                         scope_status_string = ""
 
-                    if scope_uuid in role_scopes_result:
-                        if scope_site != config.site:
-                            scope_string = f"({scope_site}/{scope_name}) {scope_status_string}"
-                        else:
-                            scope_string = f"({scope_name}) {scope_status_string}"
+                    # Same as the groups above: the direct branch used
+                    # to drop the site.
+                    if scope_site != config.site:
+                        scope_string = f"{scope_name} ({scope_site})"
                     else:
-                        scope_string = f"{scope_name}{scope_status_string}"
+                        scope_string = scope_name
+                    scope_string = f"{scope_string}{scope_status_string}"
+                    if scope_uuid in role_scopes_result:
+                        scope_string = f"({scope_string})"
                     processed_scopes = len(scope_strings)
                     if processed_scopes >= max_scopes:
                         msg = _("({processed_scopes} of {scopes_count} scopes total)")

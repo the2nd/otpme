@@ -36,10 +36,11 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list [regex]'),
-                    'cmd'   :   '[search_regex]',
+                    '_cmd_usage_help' : _('Usage: otpme-token list [-a] [regex]'),
+                    'cmd'   :   '-a :show_all=True: [search_regex]',
                     '_help' :   {
                                     'cmd'                   : _('List tokens.'),
+                                    '-a'                    : _('Show all tokens.'),
                                 },
                 },
 
@@ -204,7 +205,7 @@ cmd_help = {
 
     'show_config'      : {
                     '_cmd_usage_help' : _('Usage: otpme-token show_config {token} [parameter]'),
-                    'cmd'   :   '[|object|] [parameter]',
+                    'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show token config parameters.'),
                                 },
@@ -282,11 +283,11 @@ cmd_help = {
                                 },
                 },
 
-    'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token show_acls {token}'),
+    'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token list_acls {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of token.'),
+                                    'cmd'                   : _('List ACLs set on this token.'),
                                 },
                 },
 
@@ -308,11 +309,11 @@ cmd_help = {
                                 },
                 },
 
-     'list_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_acls {token}'),
+     'find_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_acls {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show assigend ACLs of token'),
+                                    'cmd'                   : _('Find ACLs this token holds on other objects.'),
                                 },
                 },
 
@@ -416,8 +417,8 @@ cmd_help = {
 
 
     'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_policies {token}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token list_policies [--return-type <return_type>] [--policy-types <type1,type2>] {token}'),
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -428,95 +429,99 @@ cmd_help = {
                                 },
                 },
 
-    'list_hosts'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_hosts {token}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+    'find_hosts'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_hosts [--return-type <return_type>] {token}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List hosts this token is assigned to.'),
+                                    'cmd'                   : _('Find hosts this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
 
-    'list_nodes'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_nodes {token}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+    'find_nodes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_nodes [--return-type <return_type>] {token}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List nodes this token is assigned to.'),
+                                    'cmd'                   : _('Find nodes this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
 
-    'list_groups'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_groups {token}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+    'find_groups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_groups [--return-type <return_type>] [--include-roles] {token}'),
+                    'cmd'   :   '--return-type :return_type: --include-roles :include_roles=True: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List groups this token is assigned to.'),
+                                    'cmd'                   : _('Find groups this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
+                                    '--include-roles'       : _('Also list groups the token is in via its roles.'),
                                 },
                 },
 
-    'list_accessgroups'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_accessgroups {token}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+    'find_accessgroups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_accessgroups [--return-type <return_type>] [--include-roles] {token}'),
+                    'cmd'   :   '--return-type :return_type: --include-roles :include_roles=True: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List accessgroups this token is assigned to.'),
+                                    'cmd'                   : _('Find accessgroups this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
+                                    '--include-roles'       : _('Also list accessgroups the token is in via its roles.'),
                                 },
                 },
 
-    'list_roles'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_roles [--return-type <return_type>] [-r] {token}'),
-                    'cmd'   :   '--return-type :return_type: -r :recursive=True: [|object|]',
+    'find_roles'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_roles [--return-type <return_type>] [-r] {token}'),
+                    'cmd'   :   '--return-type :return_type: -r :recursive=True: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List assigned roles.'),
+                                    'cmd'                   : _('Find roles this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
                                     '-r'                    : _('List roles recursive.'),
                                 },
                 },
 
     'list_dynamic_groups'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_dynamic_groups {token}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-token list_dynamic_groups [--include-roles] {token}'),
+                    'cmd'   :   '--include-roles :include_roles=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List dynamic groups of token.'),
+                                    '--include-roles'       : _('Also list dynamic groups of the tokens roles.'),
                                 },
                 },
 
-    'list_scopes'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_scopes [--return-type <return_type>] {token}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+    'find_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_scopes [--return-type <return_type>] [--include-roles] {token}'),
+                    'cmd'   :   '--return-type :return_type: --include-roles :include_roles=True: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List scopes the token is assigned to.'),
+                                    'cmd'                   : _('Find scopes this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
+                                    '--include-roles'       : _('Also list scopes the token is in via its roles.'),
                                 },
                 },
 
-    'list_shares'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-token list_shares {token}'),
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+    'find_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-token find_shares [--return-type <return_type>] {token}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
                     'ovals' :   {
-                                'return_type'   : ['path', 'read_oid', 'full_oid', 'uuid'],
+                                'return_type'   : ['name', 'path', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List shares this token has access to.'),
+                                    'cmd'                   : _('Find shares this token is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
@@ -603,10 +608,15 @@ cmd_help = {
 
 
     'test'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token test {token} [otp|password]'),
-                    'cmd'   :   '<|object|> [password]',
+                    # No password on the command line: it would end up in
+                    # the shell history and in ps, and the test command
+                    # takes no arguments anyway (see token.py commands),
+                    # so anything given here was dropped before it
+                    # reached the method, which then asked for it.
+                    '_cmd_usage_help' : _('Usage: otpme-token test {token}'),
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Test if given OTP/password can be verified by the token.'),
+                                    'cmd'                   : _('Test if the token verifies an OTP/password (asks for it).'),
                                 },
                 },
 

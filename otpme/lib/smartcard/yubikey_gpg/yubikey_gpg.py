@@ -99,6 +99,23 @@ class YubikeygpgClientHandler(object):
             except Exception:
                 gpg_restore_file = None
 
+            try:
+                key_len = local_command_args['key_len']
+            except Exception:
+                key_len = 3072
+            # The command line hands us a string.
+            try:
+                key_len = int(key_len)
+            except (TypeError, ValueError):
+                msg = _("Invalid key len: {key_len}")
+                msg = msg.format(key_len=key_len)
+                raise OTPmeException(msg) from None
+            # The GPG applet takes these three RSA key lengths.
+            if key_len not in [2048, 3072, 4096]:
+                msg = _("Invalid key len: {key_len}")
+                msg = msg.format(key_len=key_len)
+                raise OTPmeException(msg)
+
             if gpg_restore_file and not os.path.exists(gpg_restore_file):
                 msg = _("Restore file does not exist: {file}")
                 msg = msg.format(file=gpg_restore_file)
@@ -112,7 +129,8 @@ class YubikeygpgClientHandler(object):
 
             # Start yubikey deploy.
             ssh_public_key = deploy.gpg_applet(gpg_backup_file,
-                                                gpg_restore_file)
+                                                gpg_restore_file,
+                                                key_len=key_len)
 
         # Without public key we cannot continue.
         if not ssh_public_key:

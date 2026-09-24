@@ -27,8 +27,8 @@ cmd_help = {
                 },
 
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_piv deploy -d -r -n --key-len <key_len> --sign-algo <algo> --encrypt-algo <algo> --backup <backup_file> --restore <restore_file> --restore-from-server --add-user-key [token]'),
-                    'cmd'   :   '-n :no_token_write=True: --key-len :key_len: --sign-algo :sign_algo: --encrypt-algo :encrypt_algo: -r :replace=True: --backup :backup_file: --restore :restore_file: -d :debug=True: --restore-from-server :restore_from_server=True: --backup-key-file :backup_key_file: --add-user-key :add_user_key=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_piv deploy -d -r -n --key-len <key_len> --sign-algo <algo> --encrypt-algo <algo> --backup <backup_file> --restore <restore_file> --restore-from-server --backup-key-file <key_file> --add-user-key {token}'),
+                    'cmd'   :   '-n :no_token_write=True: --key-len :key_len: --sign-algo :sign_algo: --encrypt-algo :encrypt_algo: -r :replace=True: --backup :backup_file: --restore :restore_file: -d :debug=True: --restore-from-server :restore_from_server=True: --backup-key-file :backup_key_file: --add-user-key :add_user_key=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Initialize yubikey PIV applet.'),
                                     '-r'                    : _('Replace existing token.'),
@@ -36,10 +36,10 @@ cmd_help = {
                                     '--key-len <key_len>'   : _('RSA key length in bits (only used when an algo is rsa).'),
                                     '--sign-algo <algo>'    : _('Algorithm for sign slot 9A: rsa|ed25519, default rsa. Ed25519 needs YubiKey FW 5.7+.'),
                                     '--encrypt-algo <algo>' : _('Algorithm for encrypt slot 9D: rsa|x25519, default rsa. X25519 needs YubiKey FW 5.7+.'),
-                                    '--backup <file>'       : _('Write backup to file (default /dev/shm/username_token.pem).'),
+                                    '--backup <file>'       : _('Write backup to file (default /dev/shm/username_token.json).'),
                                     '--restore <file>'      : _('Restore key from backup file.'),
                                     '--restore-from-server' : _('Restore key from existing token on server (requires --backup-key-file).'),
-                                    '--backup-key-file'     : _('Backup key to decrypt private key backup (--restore-from-server).'),
+                                    '--backup-key-file <file>' : _('Backup key to decrypt private key backup (--restore-from-server).'),
                                     '--add-user-key'        : _('Add token public keys as users sign+encrypt public keys.'),
                                     '-d'                    : _('Enable token related debug output.'),
                                 },

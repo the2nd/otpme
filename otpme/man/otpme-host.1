@@ -36,7 +36,11 @@ Move host to a different unit.
 Re-index the object to fix potential index problems.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fIhost\fR \fItime\fR
-Set auto-disable value (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable the object if it was unused for the given time.
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+Use \fB\-u\fR to disable the object if it was unused for the given time.
 .TP
 .B mac \fIhost\fR \fImac_address\fR
 Set the host's MAC address. Used for MAB port authentication (see the VLAN Assignment section below).
@@ -177,29 +181,65 @@ Set or display the host's public key.
 .B get_ssh_authorized_keys \fIhost\fR \fR[\fIuser\fR]
 Get SSH authorized keys for the host, optionally for a specific user.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIhost\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the host.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fIhost\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fIhost\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fIhost\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fIhost\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIhost\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the host.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIhost\fR \fIpolicy\fR
 Attach a policy to the host.
+.br
+A policy has a list of object types it is for; one that does not name \fBhost\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIhost\fR \fIpolicy\fR
 Remove a policy from the host.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIhost\fR
-List policies attached to the host.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to limit the listing to the given policy types.
+List the policies attached to the host.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS ACL Management
 .TP
 .B add_acl \fIhost\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -208,7 +248,7 @@ Add an access control entry.
 .B del_acl \fIhost\fR \fIacl\fR
 Remove an access control entry.
 .TP
-.B show_acls \fIhost\fR
+.B list_acls \fIhost\fR
 Display all ACLs for the host.
 .TP
 .B enable_acl_inheritance \fIhost\fR

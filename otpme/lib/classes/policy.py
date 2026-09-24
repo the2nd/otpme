@@ -361,10 +361,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -523,8 +523,15 @@ def register_backend():
                             cache_region="tree_object",
                             backup_attributes=['realm', 'site', 'name'])
     # Register index attributes.
-    config.register_index_attribute('policy_type')
-    config.register_index_attribute('policy_uuid')
+    # Which kind of policy this is, and which policy an assignment
+    # names. A policy is applied wherever the object it guards is used,
+    # a host included.
+    config.register_index_attribute('policy_type', sync=True,
+                                    object_types=["policy"])
+    # Never lands in an object's index; it is a name to search by, like
+    # acl and object_uuid, see otpme_object.py.
+    config.register_index_attribute('policy_uuid', sync=True,
+                                    object_types="all")
     # Register object to backend.
     class_getter = policy.get_class
     class_getter_args = {'POLICY_TYPE' : 'policy_type'}

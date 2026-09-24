@@ -141,9 +141,6 @@ def print_timing_result(sort_by="time", print_status=False):
             if sort_by == "time":
                 if float(timer_sum) < config.debug_timing_limit:
                     continue
-            else:
-                if counts < config.debug_counter_limit:
-                    continue
             msg = _("DEBUG: {counts} calls of {method} took {timer_sum:.2f} seconds")
             msg = msg.format(counts=counts, method=method, timer_sum=timer_sum)
             result[thread_id]['lines'].append(msg)

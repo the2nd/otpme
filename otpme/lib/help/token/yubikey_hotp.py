@@ -18,8 +18,8 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] [-s <slot>] [token]'),
-                    'cmd'   :   '-s :slot: -r :replace=True: -d :debug=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] [-s <slot>] {token}'),
+                    'cmd'   :   '-s :slot: -r :replace=True: -d :debug=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Write OATH HOTP config to given yubikey slot.'),
                                     '-s <slot>'             : _('Write new config to given slot.'),

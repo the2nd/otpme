@@ -248,11 +248,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-scope show_acls {scope}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-scope list_acls {scope}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of scope'),
+                                    'cmd'                   : _('List ACLs set on this scope.'),
                                 },
                 },
 
@@ -393,7 +393,7 @@ cmd_help = {
                 },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-scope list_policies {scope}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

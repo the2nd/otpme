@@ -1126,7 +1126,13 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     #from sqlalchemy import and_
     from sqlalchemy import cast
     from sqlalchemy import desc
-    from sqlalchemy import Integer
+    # BigInteger and not Integer: a value is compared by casting it, and
+    # postgres INTEGER stops at 2147483647. A size in bytes is past that
+    # before the disk is 3 GB, and the query does not come back short --
+    # it raises NumericValueOutOfRange. Every number the index holds
+    # fits in a bigint, and the ones that fitted before are none the
+    # worse for being compared as one.
+    from sqlalchemy import BigInteger
     from sqlalchemy.orm import aliased
     from sqlalchemy.orm import contains_eager
     if size_limit is None:
@@ -1790,9 +1796,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     q = q.filter(get_equal_filter(getattr(IndexObject, attr),
                                                 value, case_sensitive))
             elif less_than is not None:
-                q = q.filter(cast(getattr(IndexObject, attr), Integer) < less_than)
+                q = q.filter(cast(getattr(IndexObject, attr), BigInteger) < less_than)
             elif greater_than is not None:
-                q = q.filter(cast(getattr(IndexObject, attr), Integer) > greater_than)
+                q = q.filter(cast(getattr(IndexObject, attr), BigInteger) > greater_than)
         # Search by LDIF attributes (e.g. uidNumber).
         else:
             if isinstance(value, bool):
@@ -1808,11 +1814,11 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         for val in or_values:
                             if isinstance(val, dict):
                                 if "less_than" in val:
-                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = cast(IndexObjectAttribute.value, BigInteger)
                                     int_filter = IndexObject.attributes.any(int_filter < val['less_than'], name=attr)
                                     or_filters.append(int_filter)
                                 elif "greater_than" in val:
-                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = cast(IndexObjectAttribute.value, BigInteger)
                                     int_filter = IndexObject.attributes.any(int_filter > val['greater_than'], name=attr)
                                     or_filters.append(int_filter)
                                 else:
@@ -1854,11 +1860,11 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         for val in values:
                             if isinstance(val, dict):
                                 if "less_than" in val:
-                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = cast(IndexObjectAttribute.value, BigInteger)
                                     int_filter = IndexObject.attributes.any(int_filter < val['less_than'], name=attr)
                                     q = q.filter(int_filter)
                                 elif "greater_than" in val:
-                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = cast(IndexObjectAttribute.value, BigInteger)
                                     int_filter = IndexObject.attributes.any(int_filter > val['greater_than'], name=attr)
                                     q = q.filter(int_filter)
                                 else:
@@ -1943,11 +1949,11 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     else:
                         q = q.filter(value_filter)
             if less_than is not None:
-                int_filter = cast(IndexObjectAttribute.value, Integer)
+                int_filter = cast(IndexObjectAttribute.value, BigInteger)
                 int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)
                 q = q.filter(int_filter)
             if greater_than is not None:
-                int_filter = cast(IndexObjectAttribute.value, Integer)
+                int_filter = cast(IndexObjectAttribute.value, BigInteger)
                 int_filter = IndexObject.attributes.any(int_filter > greater_than, name=attr)
                 q = q.filter(int_filter)
 
@@ -2668,6 +2674,21 @@ def index_add(object_id, object_paths=None, object_config=None,
             msg = _("Unable to update object index: {object_id}: Missing 'INDEX'")
             msg = msg.format(object_id=object_id)
             raise OTPmeException(msg) from err
+
+        # The checksum of each view of the object, as a searchable
+        # attribute: building a sync list means asking the index for the
+        # checksum of one view of many objects at once. They are kept
+        # out of INDEX itself because INDEX travels whole, and a peer is
+        # only given the checksum of its own view.
+        try:
+            sync_checksums = object_config['SYNC_CHECKSUMS']
+        except KeyError:
+            sync_checksums = {}
+        if sync_checksums:
+            object_index = dict(object_index)
+            for audience in sync_checksums:
+                index_attribute = f"sync_checksum:{audience}"
+                object_index[index_attribute] = [sync_checksums[audience]]
 
         if index_object:
             existing_pairs = session.query(IndexObjectAttribute.name, IndexObjectAttribute.value)

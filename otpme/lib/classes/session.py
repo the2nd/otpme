@@ -42,6 +42,7 @@ from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.classes.otpme_object import OTPmeLockObject
+from otpme.lib.classes.otpme_object import check_index_attribute
 
 from otpme.lib.exceptions import *
 
@@ -176,12 +177,45 @@ def register_backend():
                             cache_region="session",
                             backup_attributes=['realm', 'site', 'name'])
     # Register index attributes.
-    config.register_index_attribute('client')
-    config.register_index_attribute('session_id')
-    config.register_index_attribute('session_type')
+    # The client a session belongs to. A client object is held only by
+    # the site that owns it, see OTPmeHost.get_sync_parameters().
+    session_types = ["session"]
+    config.register_index_attribute('client', sync=[],
+                                    object_types=session_types)
+    # A session does not travel by sync list at all -- the cluster
+    # carries it -- so it has no reduced view to be part of.
+    # The access group it was opened for, the session it belongs to,
+    # and who opened it. Each of those attributes is registered by the
+    # other object types that set it as well.
+    config.register_index_attribute('accessgroup', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('child_session', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('user_uuid', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('token_uuid', sync=[],
+                                    object_types=session_types)
+    # Which node the session was opened on. Every object says where it
+    # came from, see otpme_object.py; a session says it and stays where
+    # it was said.
+    config.register_index_attribute('origin', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('client_ip', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('temp_pass', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('timeout', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('unused_timeout', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('session_id', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('session_type', sync=[],
+                                    object_types=session_types)
     # Already registerd by accessgroup.
     #config.register_index_attribute('child_session')
-    config.register_index_attribute('creation_time')
+    config.register_index_attribute('creation_time', sync=[],
+                                    object_types=session_types)
     def oid_getter(session_file):
         session_name = ".".join(session_file.split(".")[:-1])
         session_oid = oid.OTPmeOid(object_type="session",
@@ -454,7 +488,13 @@ class Session(OTPmeLockObject):
         key: Union[str,int,float],
         value: Union[str,int,float,None],
         ):
-        """ Add attribute to session index. """
+        """ Add attribute to session index.
+
+        A session keeps its index itself, without the journal an
+        OTPmeObject writes, but what may go in it is the same question
+        -- see OTPmeObject.add_index().
+        """
+        check_index_attribute(key, self.type)
         try:
             values = self.index[key]
         except KeyError:

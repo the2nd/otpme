@@ -151,11 +151,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-pool show_acls {pool}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-pool list_acls {pool}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of pool.'),
+                                    'cmd'                   : _('List ACLs set on this pool.'),
                                 },
                 },
 
@@ -291,7 +291,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-pool list_policies {pool}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

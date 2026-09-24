@@ -17,6 +17,7 @@ from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.audit import emit_audit
+from otpme.lib.cache import decode_acl_cache
 
 from otpme.lib.exceptions import *
 
@@ -57,12 +58,8 @@ def check_acls(acls, need_exact_acl=False):
             if verify_acls:
                 access_granted = False
                 for acl in acls:
-                    # Only pass the kwarg when it is set: some classes
-                    # override verify_acl() with a fixed signature.
-                    if need_exact_acl:
-                        acl_status = self.verify_acl(acl, need_exact_acl=True)
-                    else:
-                        acl_status = self.verify_acl(acl)
+                    acl_status = self.verify_acl(acl,
+                                    need_exact_acl=need_exact_acl)
                     if not acl_status:
                         continue
                     access_granted = True
@@ -118,6 +115,7 @@ def check_special_user():
         return wrapped
     return wrapper
 
+@decode_acl_cache.cache_function()
 def decode(acl):
     """ Decode ACL string. """
     default = False

@@ -20,7 +20,7 @@ from otpme.lib.exceptions import *
 def run(script_uuid, options, auth_type, auth_user, auth_token, auth_group=None,
     auth_client=None, auth_client_ip=None, auth_pass=None, auth_otp=None,
     auth_challenge=None, auth_response=None, auth_nt_key=None,
-    auth_trust_pass=None, auth_trust_pass_otp=None, script_type="auth_script",
+    script_type="auth_script",
     user=None, group=None, groups=None, **kwargs):
     """ Run auth script. """
     # Create dictionary with variables that will be passed to auth script.
@@ -36,8 +36,6 @@ def run(script_uuid, options, auth_type, auth_user, auth_token, auth_group=None,
     variables["auth_challenge"] = auth_challenge
     variables["auth_response"] = auth_response
     variables["auth_nt_key"] = auth_nt_key
-    variables["auth_trust_pass"] = auth_trust_pass
-    variables["auth_trust_pass_otp"] = auth_trust_pass_otp
 
     result = backend.search(object_type="script",
                             attribute="uuid",

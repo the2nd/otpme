@@ -413,9 +413,6 @@ LOG_EXC_INFO="False"
 # Show job title in process name.
 SHOW_JOB_TITLE="False"
 
-# Cache objects in memory while syncing?
-SYNC_MEM_CACHE="True"
-
 # Interval in seconds we will try to sync with (master) node.
 SYNC_INTERVAL="180"
 # Retry interval if sync failed (e.g. network problems) in seconds.

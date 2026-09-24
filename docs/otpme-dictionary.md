@@ -62,33 +62,66 @@ Remove all words from the dictionary.
 
 ## Object Changelog
 
+Every change to the object writes an entry: who made it, when, and what
+was done. A change can carry a comment of its own, through the global
+option **--changelog**.
+
+An *entry_id* is the number the listing shows in front of an entry,
+counted from 0.
+
+Only the comment of an entry can be changed or removed. What was done
+and by whom stays as it is.
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
 **changelog *dictionary***  
-Show the object's changelog (chronological list of changes with author,
-timestamp and optional custom text passed via **--changelog**).
+Show the changelog of the dictionary. Needs the ACL **view:changelog**.
 
-**edit_changelog *dictionary* *changelog_id***  
-Open the given changelog entry in the editor named by **EDITOR** to edit
-its custom text.
+**edit_changelog *dictionary* *entry_id* *comment***  
+Set the comment of that entry, or replace the one it has. Needs the ACL
+**edit:changelog**.
 
-**del_changelog *dictionary* *changelog_id***  
-Remove a single entry from the object's changelog.
+**del_changelog *dictionary* *entry_id***  
+Remove the comment of that entry. The entry itself stays, and an entry
+without a comment is refused. Needs the ACL **edit:changelog**.
 
 **clear_changelog *dictionary***  
-Clear the object's entire changelog.
+Remove every entry of the changelog.  
+This needs more than the ACL **clear:changelog**: the config parameter
+**allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
+true by default, but where no value is found at all, clearing is
+refused. OTPme asks the token you are signed in with first, then the
+object.
 
 ## Policy Management
 
+A *policy* is the name of a policy, not a path. It is looked for in the
+site of the dictionary. Which policies there are, and what each of them
+does, is in **otpme-policy**(1).
+
+Attaching and detaching ask before they change anything; the global
+option **-f** skips the question.
+
 **add_policy *dictionary* *policy***  
-Attach a policy to the dictionary.
+Attach a policy to the dictionary.  
+A policy has a list of object types it is for; one that does not name
+**dictionary** is refused. So is a second policy of a type that allows
+only one per object.  
+Needs the ACL **assign:policy**.
 
 **remove_policy *dictionary* *policy***  
-Remove a policy from the dictionary.
+Remove a policy from the dictionary.  
+Needs the ACL **remove:policy**, and that one verbatim: a plain
+**remove** does not cover it. Detaching a policy takes away what it
+enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *dictionary***  
-List policies attached to the dictionary. Use **--return-type** to
+List the policies attached to the dictionary. Use **--return-type** to
 select the attribute returned (**name**, **read_oid**, **full_oid**,
-**uuid**) and **--policy-types** to limit the listing to the given
-policy types.
+**uuid**). Use **--policy-types** to list only policies of the given
+types; these are policy types, not policy names.  
+Needs the ACL **view:policies**.
 
 ## ACL Management
 
@@ -98,7 +131,7 @@ Add an access control entry.
 **del_acl *dictionary* *acl***  
 Remove an access control entry.
 
-**show_acls *dictionary***  
+**list_acls *dictionary***  
 Display all ACLs for the dictionary.
 
 **enable_acl_inheritance *dictionary***  

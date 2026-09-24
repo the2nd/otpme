@@ -27,6 +27,7 @@ from otpme.lib.cache import ldif_cache
 #from otpme.lib.locking import oid_lock
 from otpme.lib.cache import search_cache
 from otpme.lib.typing import match_typing
+from otpme.lib.cache import decode_acl_cache
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.cache import index_search_cache
 from otpme.lib.job.callback import JobCallback
@@ -420,6 +421,8 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     # Clear OID from cache. Cache type None just clears
     # the checksum cache.
     cache.clear(object_id, cache_type=cache_type)
+    # Clear ACL decode cache.
+    decode_acl_cache.invalidate()
     # Clear search cache.
     search_cache.invalidate(object_type=object_type)
     index_search_cache.invalidate(object_type=object_type)
@@ -906,6 +909,23 @@ def clear_sync_map(realm: str, site: str, object_types: Union[List,None]=None):
                     multiprocessing.sync_map[x] = map_entry
 
 @match_typing
+def get_list_checksum(object_data, checksum_attribute):
+    """ The checksum of one object for a sync list.
+
+    A base attribute of the index (sync_checksum) comes back as a value,
+    a registered one (sync_checksum:<view>) as a list of them. An object
+    that has none yet answers with nothing, and the peer will ask for it.
+    """
+    try:
+        checksum = object_data[checksum_attribute]
+    except KeyError:
+        return None
+    if isinstance(checksum, list):
+        if not checksum:
+            return None
+        return checksum[0]
+    return checksum
+
 def get_sync_list(
     realm: str,
     site: str,
@@ -916,12 +936,52 @@ def get_sync_list(
     include_uuids: dict=None,
     checksum_only_types: Union[List,None]=None,
     include_templates: bool=False,
+    peer: object=None,
     quiet: bool=False
     ):
-    """ Get sync list. """
+    """ Get sync list.
+
+    With a <peer> this is the serving side: every object is listed with
+    the checksum of the view that peer gets, so a field the peer never
+    receives does not make it ask for the object again.
+
+    Without one this is the asking side, comparing what it holds. What
+    it holds is SYNC_CHECKSUM, which is the checksum of its own view --
+    the serving side put it there when it handed the object over (see
+    OTPmeObject.get_sync_config()).
+    """
     sync_list = {}
     # Get logger.
     logger = config.logger
+
+    # The view is resolved per object type. It used to be resolved once
+    # for the whole site, and for most peers that is still the same
+    # answer for every type -- but a node of a site we trust is given
+    # our users and their tokens whole and everything else reduced, so
+    # one answer for all of them would list an object under a checksum
+    # it was never handed, and the peer would ask for it again on every
+    # run, for good.
+    #
+    # The full view is the whole object, so what it is listed with is
+    # the checksum of the whole object -- sync_checksum, which the index
+    # keeps for every object anyway. Only the reduced views have a
+    # checksum of their own.
+    peer_site_uuid = None
+    if peer is not None:
+        site_oid = oid.get(object_type="site", realm=realm, name=site)
+        peer_site_uuid = get_uuid(site_oid)
+
+    def get_checksum_attribute(object_type):
+        """ The index column holding the checksum of the peers view. """
+        if peer is None:
+            return "sync_checksum"
+        from otpme.lib.classes.otpme_object import get_sync_audience
+        audience = get_sync_audience(peer=peer,
+                                    object_site_uuid=peer_site_uuid,
+                                    object_type=object_type)
+        if audience == "full":
+            return "sync_checksum"
+        return f"sync_checksum:{audience}"
 
     if not object_types:
         # FIXME: get objects from config.tree_object_types and flat_object_types?
@@ -1026,6 +1086,7 @@ def get_sync_list(
             except KeyError:
                 pass
 
+        checksum_attribute = get_checksum_attribute(t)
         # Get object checksums from index.
         object_checksums = search(object_type=t,
                                 #attribute="uuid",
@@ -1033,12 +1094,12 @@ def get_sync_list(
                                 attributes=search_attrs,
                                 realm=realm,
                                 site=site,
-                                return_attributes=['full_oid', 'sync_checksum'])
+                                return_attributes=['full_oid', checksum_attribute])
         # Add checksums to sync list.
         for x in object_checksums:
             x_data = object_checksums[x]
             x_oid = x_data['full_oid']
-            x_checksum = x_data['sync_checksum']
+            x_checksum = get_list_checksum(x_data, checksum_attribute)
             if x_oid in _skip_list:
                 continue
             sync_list[x_oid] = x_checksum
@@ -1055,6 +1116,7 @@ def get_sync_list(
             uuids = include_uuids[t]
             x_search_attrs['uuid'] = {}
             x_search_attrs['uuid']['values'] = uuids
+            checksum_attribute = get_checksum_attribute(t)
             # Get object checksums from index.
             object_checksums = search(object_type=t,
                                     #attribute="uuid",
@@ -1062,33 +1124,79 @@ def get_sync_list(
                                     attributes=x_search_attrs,
                                     realm=realm,
                                     site=site,
-                                    return_attributes=['full_oid', 'sync_checksum'])
+                                    return_attributes=['full_oid', checksum_attribute])
             # Add checksums to sync list.
             for x in object_checksums:
                 x_data = object_checksums[x]
                 x_oid = x_data['full_oid']
-                x_checksum = x_data['sync_checksum']
+                x_checksum = get_list_checksum(x_data, checksum_attribute)
                 if x_oid in _skip_list:
                     continue
                 sync_list[x_oid] = x_checksum
 
-    if checksum_only_types:
+    # One type at a time, like the loop above, because the column the
+    # checksum is read from is the one of that type's view. The search
+    # attributes are built here as well: taking the ones the loop above
+    # happened to leave behind means taking whatever its last type
+    # needed, and with no type before it, nothing at all.
+    for t in (checksum_only_types or []):
+        c_search_attrs = {
+                        'uuid'      : {
+                                    'value'     : '*',
+                                    },
+                        'template'  : {
+                                    'value'     : False,
+                                    },
+                        }
+        if include_templates or t not in config.tree_object_types:
+            c_search_attrs.pop('template')
+        checksum_attribute = get_checksum_attribute(t)
         # Get object checksums from index.
-        object_checksums = search(object_types=checksum_only_types,
+        object_checksums = search(object_type=t,
                                 #attribute="uuid",
                                 #value="*",
-                                attributes=search_attrs,
+                                attributes=c_search_attrs,
                                 realm=realm,
                                 site=site,
-                                return_attributes=['full_oid', 'sync_checksum'])
+                                return_attributes=['full_oid', checksum_attribute])
         # Add checksums to sync list.
         for x in object_checksums:
             x_data = object_checksums[x]
             x_oid = x_data['full_oid']
-            x_checksum = x_data['sync_checksum']
+            x_checksum = get_list_checksum(x_data, checksum_attribute)
             if x_oid in _skip_list:
                 continue
             sync_list[x_oid] = x_checksum
+
+    # A host gets more about itself than about any other host, so its own
+    # object is the one entry of the list that is not of the view the
+    # rest is (see otpme_object.get_sync_audience()). Without this the
+    # host would compare the wrong checksum against its own object and
+    # download it again on every single sync.
+    #
+    # full_oid is asked for although the OID could be worked out: a
+    # search for a single attribute answers with a plain list instead of
+    # one entry per object, and then there would be nothing to read the
+    # checksum from.
+    if peer is not None and peer.type == "host":
+        from otpme.lib.classes.otpme_object import peer_is_sso_host
+        self_audience = "host:self"
+        if peer_is_sso_host(peer):
+            self_audience = f"{self_audience}:sso"
+        self_attribute = f"sync_checksum:{self_audience}"
+        own_data = search(object_type=peer.type,
+                        attribute="uuid",
+                        value=peer.uuid,
+                        return_attributes=['full_oid', self_attribute])
+        try:
+            own_entry = own_data[peer.uuid]
+        except KeyError:
+            own_entry = None
+        if own_entry:
+            own_oid = own_entry['full_oid']
+            if own_oid in sync_list:
+                sync_list[own_oid] = get_list_checksum(own_entry,
+                                                    self_attribute)
 
     # NOTE: Its important to use the same JSON module on each host
     #       so we do not use otpme.lib.json.
@@ -1101,9 +1209,17 @@ def get_sync_list(
 @match_typing
 def get_instance_from_oid(
     object_id: oid.OTPmeOid,
-    object_config: Union[dict,ObjectConfig]=None
+    object_config: Union[dict,ObjectConfig]=None,
+    load: bool=True
     ):
-    """ Load instance from oid. """
+    """ Load instance from oid.
+
+    With <load> False the instance is built but not filled: the class is
+    resolved and its __init__ has run, and nothing has been read,
+    decrypted or turned into variables. That is enough for whoever only
+    needs to know what kind of object this is -- which fields of it go
+    to which peer, for one (see OTPmeObject.get_sync_config()).
+    """
     # Get logger.
     logger = config.logger
     # Get object type.
@@ -1152,6 +1268,26 @@ def get_instance_from_oid(
         config.raise_exception()
         raise OTPmeException(msg) from e
 
+    if not load:
+        # Unloaded, but not anonymous. The realm, the site and the unit
+        # are written to the config as UUIDs, so who this object is and
+        # where it sits costs four assignments instead of reading and
+        # decrypting the whole thing. With them the instance answers
+        # get_sync_config() and get_parent_object() as any other would.
+        identity_attributes = {
+                            'UUID'  : "uuid",
+                            'REALM' : "realm_uuid",
+                            'SITE'  : "site_uuid",
+                            'UNIT'  : "unit_uuid",
+                            }
+        for config_attribute in identity_attributes:
+            try:
+                value = object_config[config_attribute]
+            except KeyError:
+                continue
+            setattr(instance, identity_attributes[config_attribute], value)
+        return instance
+
     # Try to load instance.
     try:
         instance._load()
@@ -1179,9 +1315,16 @@ def get_object(
     run_policies: bool=False,
     log_exists: bool=True,
     use_cache: bool=True,
+    add_to_cache: bool=True,
     **kwargs
     ):
-    """ Get object from backend. """
+    """ Get object from backend.
+
+    <use_cache> is about reading, <add_to_cache> about writing. A caller
+    that walks every object once -- a sync, for one -- gets nothing back
+    from the cache and leaves an instance of every object it touched in
+    it, which for a site of any size is what fills the memory.
+    """
     instance = None
     # Get logger.
     logger = config.logger
@@ -1283,7 +1426,7 @@ def get_object(
             instance = None
 
     # Add instance to cache if it exists.
-    if instance:
+    if instance and add_to_cache:
         cache.add_instance(instance, invalidate=False)
 
     return instance

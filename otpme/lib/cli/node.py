@@ -10,6 +10,7 @@ try:
 except Exception:
     pass
 
+from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
@@ -142,7 +143,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 get_roles = True
         if get_roles:
             member_roles = []
-            return_attrs = ['rel_path', 'enabled', 'site']
+            return_attrs = ['name', 'enabled', 'site']
             roles_count, roles_result = backend.search(object_type="role",
                                                 attribute="uuid",
                                                 value="*",
@@ -150,18 +151,21 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                                                 join_search_attr="uuid",
                                                 join_search_val=host_uuid,
                                                 join_attribute="role",
-                                                order_by="rel_path",
+                                                order_by="name",
                                                 max_results=max_roles,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs)
             for role_uuid in roles_result:
                 role_site = roles_result[role_uuid]['site']
-                role_rel_path = roles_result[role_uuid]['rel_path']
+                role_name = roles_result[role_uuid]['name']
                 role_enabled = roles_result[role_uuid]['enabled'][0]
                 role_status_string = ""
                 if not role_enabled:
                     role_status_string = " (D)"
-                role_string = f"{role_rel_path} ({role_site}) {role_status_string}"
+                if role_site == config.site:
+                    role_string = f"{role_name}{role_status_string}"
+                else:
+                    role_string = f"{role_name} ({role_site}){role_status_string}"
                 member_roles.append(role_string)
 
                 processed_roles = len(member_roles)

@@ -122,17 +122,33 @@ Dump the info text to stdout.
 
 ## Policy Assignment
 
-Policies can be assigned to other policies (policy chaining):
+A policy can carry policies of its own (policy chaining).
+
+A *child_policy* is the name of a policy, not a path. It is looked for
+in the site of the policy it is attached to.
+
+Attaching and detaching ask before they change anything; the global
+option **-f** skips the question.
 
 **add_policy *policy* *child_policy***  
-Add a policy to this policy.
+Attach a policy to this policy.  
+A policy has a list of object types it is for; one that does not name
+**policy** is refused. So is a second policy of a type that allows only
+one per object.  
+Needs the ACL **assign:policy**.
 
 **remove_policy *policy* *child_policy***  
-Remove a policy from this policy.
+Remove a policy from this policy.  
+Needs the ACL **remove:policy**, and that one verbatim: a plain
+**remove** does not cover it. Detaching a policy takes away what it
+enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *policy***  
-List policies assigned to this policy. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+List the policies attached to this policy. Use **--return-type** to
+select the attribute returned (**name**, **read_oid**, **full_oid**,
+**uuid**). Use **--policy-types** to list only policies of the given
+types; these are policy types, not policy names.  
+Needs the ACL **view:policies**.
 
 ## ACL Management
 
@@ -142,7 +158,7 @@ Add an access control entry. Owner type can be 'role' or 'token'.
 **del_acl *policy* *acl***  
 Remove an access control entry.
 
-**show_acls *policy***  
+**list_acls *policy***  
 Display all ACLs for the policy.
 
 **enable_acl_inheritance *policy***  
@@ -153,19 +169,37 @@ Disable ACL inheritance.
 
 ## Object Changelog
 
+Every change to the object writes an entry: who made it, when, and what
+was done. A change can carry a comment of its own, through the global
+option **--changelog**.
+
+An *entry_id* is the number the listing shows in front of an entry,
+counted from 0.
+
+Only the comment of an entry can be changed or removed. What was done
+and by whom stays as it is.
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
 **changelog *policy***  
-Show the object's changelog (chronological list of changes with author,
-timestamp and optional custom text passed via **--changelog**).
+Show the changelog of the policy. Needs the ACL **view:changelog**.
 
-**edit_changelog *policy* *changelog_id***  
-Open the given changelog entry in the editor named by **EDITOR** to edit
-its custom text.
+**edit_changelog *policy* *entry_id* *comment***  
+Set the comment of that entry, or replace the one it has. Needs the ACL
+**edit:changelog**.
 
-**del_changelog *policy* *changelog_id***  
-Remove a single entry from the object's changelog.
+**del_changelog *policy* *entry_id***  
+Remove the comment of that entry. The entry itself stays, and an entry
+without a comment is refused. Needs the ACL **edit:changelog**.
 
 **clear_changelog *policy***  
-Clear the object's entire changelog.
+Remove every entry of the changelog.  
+This needs more than the ACL **clear:changelog**: the config parameter
+**allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
+true by default, but where no value is found at all, clearing is
+refused. OTPme asks the token you are signed in with first, then the
+object.
 
 ## Import/Export
 
@@ -245,9 +279,11 @@ Automatically disables accounts or tokens based on time or usage.
 Commands:
 
 > **auto_disable *policy* *time***  
-> Set disable time. Can be an absolute time (e.g. "09:53 13.06.2023") or
-> a relative duration (e.g. "1d" for 1 day). Use **-u** to disable after
-> the object has been unused for the given time.
+> Set the disable time. It is either a relative time with a leading
+> **+**, e.g. **+30D** for 30 days, or an absolute one, e.g. **"09:53
+> 13.06.2023"**. The units are **s**, **m**, **h**, **D**, **W**, **M**
+> and **Y**, see **otpme**(7). Use **-u** to disable the object after it
+> has been unused for the given time.
 
 ## Force Token Policy
 
@@ -486,10 +522,10 @@ Apply to contractors group
 **otpme-policy --type autodisable add temp_access**  
 Create auto-disable policy
 
-**otpme-policy auto_disable temp_access 90d**  
+**otpme-policy auto_disable temp_access +90D**  
 Auto-disable after 90 days
 
-**otpme-policy auto_disable -u temp_access 30d**  
+**otpme-policy auto_disable -u temp_access +30D**  
 Auto-disable after 30 days of inactivity
 
 **otpme-user add_policy temp_contractor temp_access**  

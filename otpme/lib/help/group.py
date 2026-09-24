@@ -234,11 +234,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-group show_acls {group}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-group list_acls {group}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of group'),
+                                    'cmd'                   : _('List ACLs set on this group.'),
                                 },
                 },
 
@@ -351,6 +351,28 @@ cmd_help = {
                                     '-r'                    : _('List roles recursive.'),
                                 },
                 },
+    'find_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-group find_scopes [--return-type <return_type>] {group}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find scopes this group is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-group find_shares [--return-type <return_type>] {group}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find shares this group is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
 
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
@@ -411,7 +433,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-group list_policies {group}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

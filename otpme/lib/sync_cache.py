@@ -30,13 +30,18 @@ from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.exceptions import *
 
 class SyncCache(dict):
-    """ Handle sync cache files. """
-    def __init__(self, realm, site, protocol=None, mem_cache=True):
+    """ Handle sync cache files.
+
+    The cache is the files, nothing is kept in memory. A sync adds
+    every object of the site and reads a few of them back, so holding
+    what is written costs the whole site a second time -- for twenty
+    eight thousand objects, six hundred megabytes, in a process that
+    then forks a worker per CPU.
+    """
+    def __init__(self, realm, site, protocol=None):
         self.realm = realm
         self.site = site
         self.object_ids = {}
-        self._cache = {}
-        self.mem_cache = mem_cache
         # Get logger.
         self.logger = config.logger
         # Temp directory we will use to spool sync objects.
@@ -52,9 +57,16 @@ class SyncCache(dict):
         self.local_sync_list_file = os.path.join(self.cache_dir, "local_sync_list.json")
         self.remote_sync_list_file = os.path.join(self.cache_dir, "remote_sync_list.json")
         self.sync_list_files = {
-                    'local'     : self.remote_sync_list_file,
-                    'remote'    : self.local_sync_list_file,
+                    'local'     : self.local_sync_list_file,
+                    'remote'    : self.remote_sync_list_file,
                     }
+        # Everything in the cache dir that is not an object. load()
+        # takes every other .json for one.
+        self.meta_files = [
+                    self.sync_params_file,
+                    self.local_sync_list_file,
+                    self.remote_sync_list_file,
+                    ]
 
     def __setitem__(self, key, item):
         self.add(key, item)
@@ -271,27 +283,12 @@ class SyncCache(dict):
         self.object_ids[object_id] = cache_file
         # Write data.
         self.write_object(object_id, data)
-        # Cache object.
-        if self.mem_cache:
-            self._cache[object_id] = data
 
     def get(self, object_id):
         """ Get job cache. """
         if not object_id in self.object_ids:
             return
-        # Get object from cache.
-        if self.mem_cache:
-            try:
-                data = self._cache[object_id]
-            except Exception:
-                data = None
-            if data is not None:
-                return data
-        data = self.read_object(object_id)
-        # Cache object.
-        if self.mem_cache:
-            self._cache[object_id] = data
-        return data
+        return self.read_object(object_id)
 
     def delete(self, object_id):
         """ Del object from job cache. """
@@ -335,6 +332,10 @@ class SyncCache(dict):
         log_msg = log_msg.format(cache_dir=self.cache_dir)
         self.logger.info(log_msg)
         for cache_file in cache_files:
+            # The sync lists and the sync parameters live here too and
+            # are not objects.
+            if cache_file in self.meta_files:
+                continue
             cache_file_name = os.path.basename(cache_file)
             object_id = cache_file_name.replace(":", "/")
             object_id = re.sub('.json$', '', object_id)

@@ -378,10 +378,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -472,6 +472,14 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("dictionary", commands)
+    # Shown by the management interface, searched by nothing else. The
+    # password policy reads the type off the object.
+    dict_types = ["dictionary"]
+    config.register_index_attribute("dict_size", sync=["node:untrusted"],
+                                    object_types=dict_types)
+    config.register_index_attribute("dictionary_type",
+                                    sync=["node:untrusted"],
+                                    object_types=dict_types)
     config.register_recursive_default_acl("site", "+dictionary")
     config.register_default_acl("unit", "+dictionary")
     config.register_recursive_default_acl("unit", "+dictionary")

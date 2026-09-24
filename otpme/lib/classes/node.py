@@ -52,7 +52,15 @@ write_acls =  [
 read_value_acls = {
                 "view"      : [
                                 "vote_script",
+                                "roles",
+                                "tokens",
                                 "dynamic_groups",
+                            ],
+                # The other direction: not what this node holds, but
+                # who holds this node.
+                "find"      : [
+                                "shares",
+                                "pools",
                             ],
             }
 
@@ -521,6 +529,26 @@ commands = {
                     },
                 },
             },
+    'find_shares'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'share', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_pools'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'pool', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_extension'   : {
             'default'    : {
                 'exists'    : {
@@ -701,10 +729,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -838,7 +866,27 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("node", commands)
-    config.register_index_attribute("node")
+    node_types = ["node"]
+    # Which node a pool or a share names is registered where it is set,
+    # see pool.py and share.py.
+    # The script that decides this node's vote. Only the nodes of its
+    # own site hold a vote about it.
+    config.register_index_attribute("vote_script", sync=[],
+                                    object_types=node_types)
+    # The system a node runs, as its confd reports it. Written by
+    # OTPmeHost.update_os(), which a host runs as well, see host.py.
+    config.register_index_attribute("os", sync=[],
+                                    object_types=node_types)
+    config.register_index_attribute("os_version", sync=[],
+                                    object_types=node_types)
+    # Written by OTPmeClientObject, which the client and the host stand
+    # behind as well.
+    config.register_index_attribute("logins_limited", sync=True,
+                                    object_types=node_types)
+    # Stamped by every backup run of this node, read by backupd on the
+    # node itself. A share is backed up too, see share.py.
+    config.register_index_attribute("last_backup", sync=[],
+                                    object_types=node_types)
     config.register_recursive_default_acl("site", "+node")
     config.register_default_acl("unit", "+node")
     config.register_recursive_default_acl("unit", "+node")
@@ -984,7 +1032,6 @@ class Node(OTPmeHost):
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "PUBLIC_KEY",
-                            "CLUSTER_VOTES",
                             "DYNAMIC_GROUPS",
                             ]
                         },

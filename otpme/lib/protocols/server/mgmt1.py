@@ -53,6 +53,8 @@ valid_commands = [
                 'job',
                 'tool',
                 'trash',
+                'deploy',
+                'inventory',
                 'backend',
                 'stop_job',
                 'move_object',
@@ -391,18 +393,10 @@ class OTPmeMgmtP1(OTPmeServer1):
             return job_status, job_response
         # Get lock args.
         try:
-            lock_timeout = command_args['lock_timeout']
             lock_wait_timeout = command_args['lock_wait_timeout']
         except Exception:
             job_status = False
             job_response = "Job request missing lock parameters."
-            return job_status, job_response
-        # Get object auto-reload arg.
-        try:
-            reload_on_change = command_args['lock_reload_on_change']
-        except Exception:
-            job_status = False
-            job_response = "Job request missing auto-reload parameter."
             return job_status, job_response
 
         if config.use_api:
@@ -423,8 +417,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     thread=thread,
                     process=process,
                     timeout=job_timeout,
-                    lock_timeout=lock_timeout,
-                    reload_objects_on_change=reload_on_change,
                     lock_wait_timeout=lock_wait_timeout,
                     _caller=_caller)
 
@@ -894,10 +886,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                             site = backend.get_object(object_type="site", uuid=config.site_uuid)
                             policies = site.get_policies(policy_type="idrange",
                                                         return_type="instance")
-                        if not policies:
-                            realm = backend.get_object(object_type="realm", uuid=config.realm_uuid)
-                            policies = realm.get_policies(policy_type="idrange",
-                                                        return_type="instance")
+                        # The realm was asked after the site and cannot
+                        # be: it carries no policy but auth on action
+                        # (see Realm.add_policy()).
                         if not policies:
                             msg = _("No IDRange policy found for {type} {name}.")
                             msg = msg.format(type=object_type, name=object_name)
@@ -934,10 +925,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                             site = backend.get_object(object_type="site", uuid=config.site_uuid)
                             policies = site.get_policies(policy_type="idrange",
                                                         return_type="instance")
-                        if not policies:
-                            realm = backend.get_object(object_type="realm", uuid=config.realm_uuid)
-                            policies = realm.get_policies(policy_type="idrange",
-                                                        return_type="instance")
+                        # The realm was asked after the site and cannot
+                        # be: it carries no policy but auth on action
+                        # (see Realm.add_policy()).
                         if not policies:
                             msg = _("No IDRange policy found for {type} {name}.")
                             msg = msg.format(type=object_type, name=object_name)
@@ -2103,6 +2093,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         valid_tool_commands = [
                                 "dump_object",
                                 "dump_index",
+                                "force_sync",
                             ]
 
         if len(tool_command) < 2:
@@ -2123,6 +2114,9 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         if tool_command == "dump_index":
             return self.dump_index(tool_command, command_args)
+
+        if tool_command == "force_sync":
+            return self.force_sync(tool_command, command_args)
 
     def handle_backend_commands(self, backend_command, command_args):
         """ Handle 'backend' commands. """
@@ -2307,7 +2301,9 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             for p in search_command:
                 try:
-                    n, v = p.split("=")
+                    # Only at the first "=": a value may contain one
+                    # itself (value=openssl=*).
+                    n, v = p.split("=", 1)
                     # replace leading whitespace (allow ", " as delemiter on command line)
                     n = re.sub('^[ ]*', r'', n)
                     if n == "object_type":
@@ -2378,6 +2374,100 @@ class OTPmeMgmtP1(OTPmeServer1):
                 log_msg = log_msg.format(error=e)
                 logger.critical(log_msg)
 
+        return self.build_response(status, response)
+
+    def handle_deploy_commands(self, deploy_command, command_args):
+        """ Handle 'deploy' commands: the configuration management of
+        hosts, see lib/deploy.py. """
+        from otpme.lib import deploy
+        valid_deploy_commands = {
+                        'add'       : deploy.add_job,
+                        'list'      : deploy.list_jobs,
+                        'show'      : deploy.show_job,
+                        'results'   : deploy.show_results,
+                        'ack'       : deploy.ack_job,
+                        'cancel'    : deploy.cancel_job,
+                        }
+        if not deploy_command:
+            message = _("Missing deploy sub command.")
+            return self.build_response(False, message)
+        try:
+            target_method = valid_deploy_commands[deploy_command]
+        except KeyError:
+            message = _("Unknown command: {command}")
+            message = message.format(command=deploy_command)
+            return self.build_response(False, message)
+
+        try:
+            _args = command_map['deploy']['exists'][deploy_command]['args']
+        except KeyError:
+            _args = []
+
+        try:
+            _opt_args = command_map['deploy']['exists'][deploy_command]['oargs']
+        except KeyError:
+            _opt_args = []
+
+        try:
+            status, \
+            response = self.start_job(name=f"deploy_{deploy_command}",
+                                target_method=target_method,
+                                args={}, _args=_args,
+                                _opt_args=_opt_args,
+                                command_args=command_args,
+                                process=False,
+                                thread=True)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = _("Error running command: {command}: {error}")
+            response = response.format(command=deploy_command, error=e)
+        return self.build_response(status, response)
+
+    def handle_inventory_commands(self, inventory_command, command_args):
+        """ Handle 'inventory' commands: the system and the packages of
+        hosts, see lib/inventory.py. """
+        from otpme.lib import inventory
+        valid_inventory_commands = {
+                        'show'      : inventory.show_inventory,
+                        'packages'  : inventory.list_packages,
+                        'hardware'  : inventory.show_hardware,
+                        'search'    : inventory.search_inventory,
+                        }
+        if not inventory_command:
+            message = _("Missing inventory sub command.")
+            return self.build_response(False, message)
+        try:
+            target_method = valid_inventory_commands[inventory_command]
+        except KeyError:
+            message = _("Unknown command: {command}")
+            message = message.format(command=inventory_command)
+            return self.build_response(False, message)
+
+        try:
+            _args = command_map['inventory']['exists'][inventory_command]['args']
+        except KeyError:
+            _args = []
+
+        try:
+            _opt_args = command_map['inventory']['exists'][inventory_command]['oargs']
+        except KeyError:
+            _opt_args = []
+
+        try:
+            status, \
+            response = self.start_job(name=f"inventory_{inventory_command}",
+                                target_method=target_method,
+                                args={}, _args=_args,
+                                _opt_args=_opt_args,
+                                command_args=command_args,
+                                process=False,
+                                thread=True)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = _("Error running command: {command}: {error}")
+            response = response.format(command=inventory_command, error=e)
         return self.build_response(status, response)
 
     def handle_trash_commands(self, trash_command, command_args):
@@ -2614,6 +2704,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         shares = {
             share_id: {
                 'name':      share.name,
+                'realm':     share.realm,
                 'site':      share.site,
                 'nodes':     node_fqdns,
                 'encrypted': share.encrypted,
@@ -2713,6 +2804,12 @@ class OTPmeMgmtP1(OTPmeServer1):
 
     def _cmd_trash(self, subcommand, command_args):
         return self.handle_trash_commands(subcommand, command_args)
+
+    def _cmd_deploy(self, subcommand, command_args):
+        return self.handle_deploy_commands(subcommand, command_args)
+
+    def _cmd_inventory(self, subcommand, command_args):
+        return self.handle_inventory_commands(subcommand, command_args)
 
     def _cmd_tool(self, subcommand, command_args):
         return self.handle_tool_commands(subcommand, command_args)
@@ -2877,6 +2974,60 @@ class OTPmeMgmtP1(OTPmeServer1):
             return self.build_response(False, str(e))
         return self.build_response(True, response)
 
+    def force_sync(self, subcommand, command_args):
+        """ Write an object whole, so a peer gets it again.
+
+        What OTPmeObject.touch() does, said by OID. The index, the ACLs
+        and the LDIF are built out of the object config instead of being
+        carried forward by their journals, so a row a journal never got
+        around to removing goes.
+
+        By OID, because touch() is a command only tree objects have,
+        while the method behind it sits on OTPmeBaseObject and every
+        data object inherits it -- a host inventory, a used OTP, a token
+        counter. Those are reachable this way and no other.
+
+        The config file is written the usual way, read back and merged.
+        Writing it whole would say nothing here: what is put right is
+        the index, and the cluster hands the object to the other nodes
+        with full_data_update of its own anyway, reading the config off
+        disk to send it (ClusterDaemon).
+        """
+        if not self.is_admin:
+            return self.build_response(False, _("Permission denied."))
+        try:
+            object_id = command_args['object_id']
+            object_id = oid.get(object_id=object_id)
+        except Exception as e:
+            return self.build_response(False, str(e) if str(e) else "Need OID.")
+        o = backend.get_object(object_id)
+        if not o:
+            message = _("Unknown object: {object_id}")
+            message = message.format(object_id=object_id)
+            return self.build_response(False, message)
+        # A session is not written this way at all: it has no _write()
+        # of its own kind, it is carried by the cluster and never
+        # travels by sync list.
+        if not hasattr(o, "_write"):
+            message = _("Object type cannot be written this way: {object_type}")
+            message = message.format(object_type=object_id.object_type)
+            return self.build_response(False, message)
+        try:
+            o._write(update_last_modified_by=False,
+                    use_index_journal=False,
+                    full_index_update=True,
+                    use_acl_journal=False,
+                    full_acl_update=True,
+                    full_ldif_update=True)
+        except Exception as e:
+            log_msg = _("Failed to write object: {object_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id, error=e)
+            self.logger.warning(log_msg)
+            return self.build_response(False, str(e))
+        message = _("Object written: {object_id}")
+        message = message.format(object_id=o.oid)
+        return self.build_response(True, message)
+
     def _handle_tree_object_command(self, command, subcommand,
         command_args, object_type):
         """ Generic dispatch for tree-object commands (user, group,
@@ -2933,16 +3084,24 @@ class OTPmeMgmtP1(OTPmeServer1):
 
                     # Resolv object path (e.g. user/token)
                     object_rel_path = None
+                    # Whether the caller named a unit. The add below sets
+                    # object_unit from the default unit, which is not the
+                    # same thing and must not narrow the lookup.
+                    unit_given = False
                     if "/" in object_identifier:
                         x = oid.resolve_path(object_identifier,
                                             object_type=object_type)
                         object_name = x['name']
                         object_unit = x['unit']
+                        unit_given = bool(object_unit)
+                        # For a relative path this is the identifier
+                        # itself. An absolute one left it at None, and
+                        # the types that look themselves up by rel_path
+                        # (token, script, unit) then searched for None.
+                        object_rel_path = x['rel_path']
 
                         if object_identifier.startswith("/"):
                             object_path = object_identifier
-                        else:
-                            object_rel_path = object_identifier
                     else:
                         object_name = object_identifier
                         object_rel_path = object_identifier
@@ -2968,16 +3127,15 @@ class OTPmeMgmtP1(OTPmeServer1):
                         attribute = "name"
                         search_value = object_name
 
-                        # We need to search for existing tokens by rel_path.
-                        if object_type == "token":
+                        # Tokens, scripts and units are always addressed
+                        # by their relative path.
+                        if object_type in ["token", "script", "unit"]:
                             attribute = "rel_path"
                             search_value = object_rel_path
-                        # We need to search for existing scripts by rel_path.
-                        if object_type == "script":
-                            attribute = "rel_path"
-                            search_value = object_rel_path
-                        # We need to search for existing units by rel_path.
-                        if object_type == "unit":
+                        elif unit_given:
+                            # A unit was named, so it has to match. It
+                            # used to be parsed and then dropped, and
+                            # "anyunit/rolename" found the role anyway.
                             attribute = "rel_path"
                             search_value = object_rel_path
 

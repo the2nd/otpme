@@ -45,6 +45,8 @@ modules = [
 	'otpme.lib.host',
 	'otpme.lib.sotp',
 	'otpme.lib.trash',
+	'otpme.lib.deploy',
+	'otpme.lib.inventory',
 	'otpme.lib.classes.data_objects',
     ]
 

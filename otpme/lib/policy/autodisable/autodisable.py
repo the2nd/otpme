@@ -230,6 +230,7 @@ class AutodisablePolicy(Policy):
                             'enable',
                             ],
                     }
+        # No realm, see Realm.add_policy().
         self.object_types = [
                             'role',
                             'user',
@@ -238,7 +239,6 @@ class AutodisablePolicy(Policy):
                             'node',
                             'unit',
                             'site',
-                            'realm',
                             'group',
                             'client',
                             'policy',

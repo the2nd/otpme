@@ -596,10 +596,10 @@ commands = {
     #                },
     #            },
     #        },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -703,8 +703,23 @@ def register():
     config.register_recursive_default_acl("site", "+scope")
     config.register_default_acl("unit", "+scope")
     config.register_recursive_default_acl("unit", "+scope")
-    config.register_index_attribute("scope_id")
-    config.register_index_attribute("auto_member")
+    # OIDC does not cross a site boundary, so a scope is only ever
+    # looked up on the site that owns it.
+    scope_types = ["scope"]
+    config.register_index_attribute("scope_id", sync=[],
+                                    object_types=scope_types)
+    # The OIDC client this scope is for. OIDC does not cross a site
+    # boundary, so it is read on the site that owns the scope. A
+    # session names its client too, see session.py.
+    config.register_index_attribute("client", sync=[],
+                                    object_types=scope_types)
+    # Which group this scope is handed to. Applied by the SSO server of
+    # its own site. The share and the user name groups too, see there.
+    config.register_index_attribute("group", sync=[],
+                                    object_types=scope_types)
+    # An OIDC scope is applied by the SSO server of its own site.
+    config.register_index_attribute("auto_member", sync=[],
+                                    object_types=scope_types)
     for scope in BASE_SCOPE_DEFAULTS:
         config.register_base_object("scope", scope)
 

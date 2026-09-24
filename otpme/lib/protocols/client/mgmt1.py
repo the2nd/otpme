@@ -58,9 +58,7 @@ class OTPmeMgmtP1(OTPmeClient1):
         # be (see DEFAULT_INFO_LANGUAGE).
         args['_locale_language'] = config.language
         args['job_timeout'] = config.job_timeout
-        args['lock_timeout'] = config.lock_timeout
         args['lock_wait_timeout'] = config.lock_wait_timeout
-        args['lock_reload_on_change'] = config.ignore_changed_objects
 
         if client_type == "CLIENT":
             self.print_messages = True
@@ -290,6 +288,15 @@ class OTPmeMgmtP1(OTPmeClient1):
             msg = _("Unable to get script: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg) from e
+        # A connection that prints nothing collects what the server said
+        # and answers with the list of it, and the result is the last of
+        # them (OTPmeClientBase._handle_response(), and the same two
+        # lines in get_script_signatures() below). That is what we are
+        # on an otpme-agent, which is where a key script is fetched when
+        # it does not come from the offline tokens -- and the script
+        # then went to filetools.create_file() as a list.
+        if isinstance(script, list):
+            script = script[-1]
         return script
 
     def get_script_signatures(self, script_path, username=None, user_uuid=None):

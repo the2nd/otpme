@@ -145,7 +145,8 @@ case $COMMAND in
 		else
 			if [ "$SSH_AGENT_NAME" == "gpg-agent" ] ; then
 				AGENT_OUT="$(gpg-agent --daemon --enable-ssh-support --log-file ~/.gnupg/gpg-agent.log --pinentry-program $PINENTRY_BIN)"
-				AGENT_PID="$(pgrep -u "$USER" -f "$SSH_AGENT_NAME")"
+				AGENT_PID="$(pgrep -u "$USER" -f "^$SSH_AGENT_NAME")"
+				echo $AGENT_PID > /tmp/log
 				AGENT_OUT="$AGENT_OUT\nSSH_AGENT_PID=$AGENT_PID;export SSH_AGENT_PID"
 			else
 				#export SSH_ASKPASS=/usr/bin/ssh-askpass

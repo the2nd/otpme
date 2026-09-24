@@ -62,6 +62,12 @@ def register():
     register_backend()
     register_sync_settings()
     register_config_params()
+    # Register index attributes.
+    # Whose photo this is. Looked up where the user's LDIF is built,
+    # which is the site that holds the photo. The used hashes and a
+    # session name their user as well, see there.
+    config.register_index_attribute('user_uuid', sync=[],
+                                    object_types=["photo"])
 
 def register_config_params():
     """ Register config parameters. """

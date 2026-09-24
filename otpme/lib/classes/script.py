@@ -438,10 +438,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -567,7 +567,6 @@ def register_hooks():
     config.register_auth_on_action_hook("script", "sign")
     config.register_auth_on_action_hook("script", "add_sign")
     config.register_auth_on_action_hook("script", "del_sign")
-    config.register_auth_on_action_hook("script", "dump")
     config.register_auth_on_action_hook("script", "show_config_parameters")
     config.register_auth_on_action_hook("script", "set_config_parameter")
 
@@ -713,7 +712,7 @@ class Script(OTPmeObject):
                 return True
         return False
 
-    def verify_acl(self, action: str):
+    def verify_acl(self, action: str, **kwargs):
         """ Verify ACLs required to allow <action>. """
         # Parent class cannot know the ACL to allow verification of signatures
         # e.g. "view:script" for script objects and "view_public_key" for SSH
@@ -729,8 +728,9 @@ class Script(OTPmeObject):
             or self.verify_acl("view:script"):
                 return True
 
-        # Finally try to verify ACL via parent class method.
-        if self._verify_acl(action):
+        # Finally try to verify ACL via parent class method. The kwargs
+        # go only here: the ACLs above are other ones than the action.
+        if self._verify_acl(action, **kwargs):
             return True
 
         return  False

@@ -54,10 +54,15 @@ write_acls = []
 read_value_acls = {
                     "view"      : [
                                     "mac_address",
-                                    "policy",
                                     "roles",
                                     "accessgroups",
                                     "auto_disable",
+                                ],
+                    # The other direction: not what this device holds,
+                    # but who holds this device.
+                    "find"      : [
+                                    "roles",
+                                    "accessgroups",
                                 ],
             }
 
@@ -273,6 +278,26 @@ commands = {
                     },
                 },
             },
+    'find_roles'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'role', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_accessgroups'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'accessgroup', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_acl'   : {
             'default'    : {
                 'exists'    : {
@@ -401,10 +426,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -534,6 +559,12 @@ def register_backend():
                 'client',
                 ]
         return backend.rebuild_object_index("device", objects, after)
+    # Register index attributes.
+    # Looked up when a device is recognised by its address, which
+    # happens where the login is answered. A host has one too, see
+    # host.py; both write it through OTPmeDevice.change_mac().
+    config.register_index_attribute("mac_address", sync=["node:untrusted"],
+                                    object_types=["device"])
     # Register object to config.
     config.register_object_type(object_type="device",
                             tree_object=True,

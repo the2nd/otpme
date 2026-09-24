@@ -201,6 +201,11 @@ def register():
     register_hooks()
     register_token_type()
     register_config_params()
+    # The script that pushes the OTP out. Run where the login is
+    # answered, which is the home site of the user, and read off the
+    # token rather than searched for.
+    config.register_index_attribute('push_script', sync=[],
+                                    object_types=["token"])
     register_commands("token",
                     commands,
                     sub_type="otp_push",
@@ -230,7 +235,6 @@ def register_config_params():
                                     object_types=object_types)
     # Default push script to add to new users.
     object_types = [
-                    'realm',
                     'site',
                     'unit',
                 ]

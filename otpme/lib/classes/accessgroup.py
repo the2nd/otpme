@@ -789,10 +789,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -884,18 +884,54 @@ def register():
     register_sync_settings()
     register_commands("accessgroup", commands)
     # Register index attributes.
-    config.register_index_attribute("host")
-    config.register_index_attribute("device")
-    config.register_index_attribute("child_group")
-    config.register_index_attribute("child_session")
-    config.register_index_attribute("max_fail")
-    config.register_index_attribute("max_fail_reset")
-    config.register_index_attribute("max_sessions")
-    config.register_index_attribute("session_timeout")
-    config.register_index_attribute("timeout_pass_on")
-    config.register_index_attribute("sessions_enabled")
-    config.register_index_attribute("relogin_timeout")
-    config.register_index_attribute("unused_session_timeout")
+    ag_types = ["accessgroup"]
+    # Which host or device is in this access group is asked when
+    # somebody logs in, and that question is answered by a node of the
+    # site that owns the group. The one group a host holds is the REALM
+    # group, and what it reads off it is the login interfaces, not the
+    # membership -- see Host.get_sync_parameters().
+    #
+    # Written by OTPmeObject.add_host() and add_device(), which every
+    # object type offering them runs; each registers the attribute for
+    # itself, see group.py, role.py, share.py and vlan.py.
+    config.register_index_attribute("host", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("device", sync=[],
+                                    object_types=ag_types)
+    # A session of this group. Sessions live where the login happens,
+    # see session.py, which registers the attribute for its own side.
+    config.register_index_attribute("child_session", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("child_group", sync=[],
+                                    object_types=ag_types)
+    # Only the nodes of the site the access group belongs to do
+    # anything with it. A share carries its own value and is read off
+    # the object (stuff.get_shares()), so the share does not need the
+    # index either; it registers sotp_signing for itself.
+    config.register_index_attribute("force_sotp_signing", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("sotp_signing", sync=[],
+                                    object_types=ag_types)
+    # Counted where the login is answered, which is the home site.
+    config.register_index_attribute("max_fail", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("max_fail_reset", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("max_sessions", sync=[],
+                                    object_types=ag_types)
+    # How sessions behave in this group. Sessions are kept where the
+    # login happens, and no session of this group is ever held on a node
+    # of another site.
+    config.register_index_attribute("session_timeout", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("timeout_pass_on", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("sessions_enabled", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("relogin_timeout", sync=[],
+                                    object_types=ag_types)
+    config.register_index_attribute("unused_session_timeout", sync=[],
+                                    object_types=ag_types)
     config.register_recursive_default_acl("site", "+accessgroup")
     config.register_default_acl("unit", "+accessgroup")
     config.register_recursive_default_acl("unit", "+accessgroup")
@@ -1057,9 +1093,14 @@ class AccessGroup(OTPmeObject):
                         'trusted'  : [
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
-                            "EXTENSION_ATTRIBUTES",
+                            # Only the LDIF is built from them, and a
+                            # host has no LDIF, see _base_sync_fields.
+                            #"EXTENSION_ATTRIBUTES",
                             "ROLES",
                             "TOKENS",
+                            # Read by authorize_token() on every login,
+                            # which on a host is answered by the host.
+                            "TOKEN_LOGIN_INTERFACES",
                             ]
                         },
 
@@ -1073,6 +1114,7 @@ class AccessGroup(OTPmeObject):
                             "SIGN_PUBLIC_KEYS",
                             "ROLES",
                             "TOKENS",
+                            "TOKEN_LOGIN_INTERFACES",
                             ]
                         },
                     }

@@ -1031,7 +1031,10 @@ class OTPmeSsoP1(OTPmeServer1):
                                 verify_acls=False,
                                 run_policies=True,
                                 callback=callback)
-                user._write(callback=callback)
+                # Not just the user: replacing a token copies the ACLs
+                # of the old one onto the new one and leaves it for the
+                # callback to write (User.add_token()).
+                callback.write_modified_objects()
             except Exception as e:
                 log_msg = _("SSO deploy password set failed for user '{user_name}': {e}", log=True)[1]
                 log_msg = log_msg.format(user_name=user.name, e=e)
@@ -1079,13 +1082,18 @@ class OTPmeSsoP1(OTPmeServer1):
                 return self.build_response(False, response)
         # Credential verified - move sso-deploy token to replace the login token.
         target_path = f"{user.name}/{login_token_name}"
+        callback = self.get_callback()
         try:
             deploy_token.move(target_path,
                             replace=True,
                             force=True,
                             verify_acls=False,
                             run_policies=False,
-                            callback=self.get_callback())
+                            callback=callback)
+            # move() writes the token itself, but it also takes it off
+            # its old owner and hands it to the new one, and those two
+            # it leaves for the callback (Token.move()).
+            callback.write_modified_objects()
         except Exception as e:
             config.raise_exception()
             log_msg = _("SSO deploy token move failed for user '{user_name}': {e}", log=True)[1]
@@ -4600,7 +4608,7 @@ class OTPmeSsoP1(OTPmeServer1):
             self.logger.warning(log_msg)
             return self.build_response(False,
                             {'message': str(e), 'status': False})
-        user._write(callback=callback)
+        callback.write_modified_objects()
         return self.build_response(True, {'enabled': enabled, 'status': True})
 
     def _step_up_max_age(self, user):
@@ -5954,7 +5962,10 @@ class OTPmeSsoP1(OTPmeServer1):
                                 verify_acls=False,
                                 run_policies=True,
                                 callback=callback)
-                user._write(callback=callback)
+                # Not just the user: replacing a token copies the ACLs
+                # of the old one onto the new one and leaves it for the
+                # callback to write (User.add_token()).
+                callback.write_modified_objects()
             except Exception as e:
                 log_msg = _("Recovery deploy: password set failed for '{u}': {e}", log=True)[1]
                 log_msg = log_msg.format(u=user.name, e=e)
@@ -6010,6 +6021,10 @@ class OTPmeSsoP1(OTPmeServer1):
                                 verify_acls=False,
                                 run_policies=False,
                                 callback=callback)
+                # move() writes the token itself, but it also takes it
+                # off its old owner and hands it to the new one, and
+                # those two it leaves for the callback (Token.move()).
+                callback.write_modified_objects()
             except Exception as e:
                 log_msg = _("Recovery deploy: token move failed for '{u}': {e}", log=True)[1]
                 log_msg = log_msg.format(u=user.name, e=e)

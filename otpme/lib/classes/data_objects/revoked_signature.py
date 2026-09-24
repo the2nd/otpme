@@ -152,9 +152,18 @@ def register_backend():
                                                 'signer_uuid',
                                                 'signature_hash'])
     # Register index attributes.
-    config.register_index_attribute('sign_ref')
-    config.register_index_attribute('signer_uuid')
-    config.register_index_attribute('revoked_object')
+    # A revoked signature is checked wherever the signature it revokes
+    # is checked, which includes a host of another site verifying a
+    # script or an ssh token.
+    revoked_types = ["revoked_signature"]
+    config.register_index_attribute('sign_ref', sync=True,
+                                    object_types=revoked_types)
+    # A config job is signed too and names its signer, but that one is
+    # read on the site that runs it, see conf_job.py.
+    config.register_index_attribute('signer_uuid', sync=True,
+                                    object_types=revoked_types)
+    config.register_index_attribute('revoked_object', sync=True,
+                                    object_types=revoked_types)
     # Register object to backend.
     class_getter = lambda: RevokedSignature
     backend.register_object_type(object_type="revoked_signature",

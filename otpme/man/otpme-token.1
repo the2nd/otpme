@@ -12,36 +12,63 @@ manages authentication tokens in the OTPme system. Tokens are credentials assign
 .IR user / token_name
 (e.g. alice/login).
 .SH TOKEN TYPES
-.TP
-.B hotp
-HMAC-based One-Time Password (RFC 4226).
-.TP
-.B totp
-Time-based One-Time Password (RFC 6238).
+The type of a token is chosen when it is added and never changes:
+.PP
+.RS
+.B otpme\-token \-\-type \fItype\fB add \fIuser\fB/\fIname\fR
+.RE
+.PP
+It is not the same as the smartcard type further down: the token type says how OTPme checks a login, the smartcard type says which device a token is deployed to.
 .TP
 .B password
-Static password authentication.
+A static password.
 .TP
-.B ssh
-SSH public key authentication.
+.B hotp
+One\-time password by counter (RFC 4226).
 .TP
-.B fido2
-FIDO2/WebAuthn hardware authentication.
-.TP
-.B u2f
-U2F hardware authentication.
-.TP
-.B yubikey_hmac
-YubiKey HMAC-SHA1 challenge-response authentication.
-.TP
-.B yubikey_hotp
-YubiKey OATH HOTP authentication.
-.TP
-.B yubikey_gpg
-YubiKey GPG applet authentication.
+.B totp
+One\-time password by time (RFC 6238), what the authenticator apps use.
 .TP
 .B motp
-Mobile OTP (mOTP).
+Mobile OTP, an older scheme for phones without an app store.
+.TP
+.B ssh
+An SSH public key.
+.TP
+.B fido2
+A hardware security key, e.g. a YubiKey or a Nitrokey.
+It signs a challenge, so nothing that can be typed is enough to sign in, and the signature is bound to the site that asked \(em which is what makes it phishing resistant.
+.br
+Next to
+.B passkey
+this is the type where OTPme keeps the credential and hands it to the key at every login, and where the key is not asked to verify the user.
+The login itself looks the same: name first, then the key.
+.TP
+.B passkey
+The same thing without the extra piece of hardware: the device the user already has keeps the credential.
+That is usually a phone or a notebook, where the fingerprint sensor or the face camera does the checking, and where the credential can be synced to the other devices of that user.
+A hardware key can hold one as well.
+.br
+The credential is kept by the authenticator, together with who it belongs to, and the authenticator always asks for the finger, the face or the PIN before it signs.
+So a passkey carries both factors in one step.
+.br
+The user name is still typed first: the login asks OTPme which credentials that user has and offers only those.
+What a passkey saves is the password, not the name.
+.br
+Registered from the SSO portal, see
+.BR otpme (7).
+.TP
+.B u2f
+The predecessor of FIDO2, for keys that speak nothing newer.
+.TP
+.B yubikey_hmac
+A YubiKey that answers a challenge with HMAC\-SHA1.
+It works offline, which is what a notebook needs that is away from the realm.
+.TP
+.B yubikey_piv
+A YubiKey PIV applet that holds the user's sign and encrypt keys.
+This is the type OTPme recommends: the keys are made on the token and stay there, which is what encrypted shares, script and token signing, and 802.1X port authentication build on, see
+.BR otpme (7).
 .TP
 .B tiqr
 Smartphone challenge-response via the tiqr app (OCRA, RFC 6287). The
@@ -62,21 +89,63 @@ the browser that asked, so a relayed challenge yields the attacker a
 session. Use FIDO2 where that matters.
 .TP
 .B otp_push
-Push notification-based OTP.
+A one\-time password OTPme makes and pushes to the user, e.g. by mail or SMS.
+The script that delivers it is
+.B default_otp_push_script
+in
+.BR otpme (7).
+.br
+Not finished: where the push is sent to is still a value on the token, not the phone number of the user.
+.TP
+.B script_otp
+A one\-time password that a script of yours checks, not OTPme.
+.TP
+.B script_static
+The same for a static password.
 .TP
 .B link
-Link to another user's token.
+A token that points at another token, named as \fIuser\fB/\fIname\fR.
+Whoever signs in with it uses the credential of that token, which is how one person's key or password works for a second account.
+.br
+Not every type may be the destination: \fBpassword\fR, \fBhotp\fR, \fBtotp\fR, \fBmotp\fR, \fBssh\fR, \fBfido2\fR, \fByubikey_hmac\fR, \fByubikey_piv\fR, \fBscript_otp\fR and \fBscript_static\fR may, the others may not.
+A \fBpasskey\fR, a \fBu2f\fR token and a \fBtiqr\fR phone are bound to their owner when they are registered, and a link to a link would only chain.
+.SS Smartcard Types
+These say which device a token is deployed to, and they are what the
+.B deploy
+command works with: \fBfido2\fR, \fBu2f\fR, \fByubikey_hmac\fR, \fByubikey_hotp\fR, \fByubikey_gpg\fR and \fByubikey_piv\fR.
+.PP
+Three of them share a name with a token type, and two do not:
+.B yubikey_hotp
+deploys a \fBhotp\fR token to the OATH applet of a YubiKey, and
+.B yubikey_gpg
+deploys an \fBssh\fR token to its GPG applet.
+Neither is a value for \fB\-\-type\fR.
 .SH COMMANDS
 .SS Token Management
 .TP
-.B add \fR[\fB\-r\fR] \fItoken\fR
-Add a new token. Requires \fB\-\-type\fR before the command.
+.B \-\-type \fItype\fB add \fR[\fB\-r\fR] \fIuser\fB/\fIname\fR
+Add a token to a user.
+.br
+\fB\-\-type\fR comes before the command, and it has to: the type decides which arguments and options \fBadd\fR takes, and OTPme reads it before it parses the rest of the line.
+\fB\-r\fR replaces a token of that name and keeps its UUID, which is what a setup run does when it runs again.
+.br
+What each type adds to the line:
+.RS
+.TP
+.B link
+\fBadd \fIuser\fB/\fIname\fB \fIdest_user\fB/\fIdest_name\fR \(em the token it points at.
+.TP
+.B ssh
+\fBadd \fIuser\fB/\fIname\fR [\fIpublic_key\fR] \(em without a key the token is added and the key set later.
+.TP
+.B password
+\fB\-\-password\fR \fIpassword\fR sets it right away, \fB\-\-weak\-password\fR takes one the password policy would refuse, and \fB\-\-enable\-mschap\fR keeps the NT hash on the server so that MSCHAP logins work.
+.TP
+.BR hotp " and " totp
+\fB\-\-mode\fR \fImode\fR and \fB\-\-no\-qrcode\fR, see below.
+.RE
 .IP
-For
-.B hotp
-and
-.B totp
-tokens the following extra options are available:
+The other types take nothing beyond the token path.
 .RS
 .IP "\fB\-\-mode\fR \fImode\fR"
 Token mode. Defaults to
@@ -95,14 +164,23 @@ require redeployment.
 Do not display the QR code on token creation.
 .RE
 .TP
-.B del \fItoken\fR
+.B del \fR[\fB\-\-no\-trash\fR] \fItoken\fR
 Delete a token.
+It goes to the trash, from where
+.BR otpme\-trash (1)
+can bring it back; \fB\-\-no\-trash\fR deletes it right away.
 .TP
-.B show \fR[\fItoken\fR]
-Display token information.
+.B show \fR[\fB\-a\fR] [\fB\-z\fR \fIN\fR] [\fB\-\-fields\fR \fIF1,F2\fR] [\fB\-\-limit\fR \fIN\fR] [\fB\-\-policy\-limit\fR \fIN\fR] [\fB\-\-role\-limit\fR \fIN\fR] [\fB\-\-scope\-limit\fR \fIN\fR] \fR[\fItoken\fR]
+Show the tokens, with their roles, scopes and policies.
+.br
+Without a token you get your own, i.e. the tokens of the user you are signed in as.
+\fB\-a\fR shows every token you may look at.
+The other options are under \fBDisplay Options\fR below.
 .TP
-.B list \fR[\fIregex\fR]
-List tokens, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] \fR[\fIregex\fR]
+List the token paths, and with a regex only those that match it, e.g. \fBalice/*\fR for the tokens of one user.
+.br
+You get the tokens you may change; \fB\-a\fR adds those you may only look at.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fItoken\fR
 Enable a disabled token.
@@ -134,52 +212,116 @@ Keep persisted share mounts on hosts (transient unmount only).
 .TP
 .B rename \fItoken\fR \fInew_name\fR
 Rename a token.
+.br
+The default token of a user is only renamed where the config parameter
+.B allow_default_token_rename
+says so, see
+.BR otpme (7).
 .TP
-.B move \fR[\fB\-r\fR] \fItoken\fR \fInew_token_path\fR
-Move token to another user. Use \fB\-r\fR to replace existing token keeping its UUID.
+.B move \fR[\fB\-r\fR] \fItoken\fR \fIdst_user\fR[\fB/\fIname\fR]
+Move a token to another user.
+The user has to be on the same site; moving a token to another site does not work.
+.br
+\fB\-r\fR replaces a token of that name at the destination and keeps its UUID.
+Without it OTPme asks, and it says so when the token it would replace is the default token of that user.
+.br
+Moving into the
+.B TOKENSTORE
+gives the token a name of its own, \fIold_owner\fB:\fIname\fR, with a number appended where that is taken already.
+A name of your own is refused there.
+Moving it back out again takes the part behind the \fB:\fR as the name, unless you give one.
 .TP
 .B touch \fItoken\fR
 Re-index the object to fix potential index problems.
 .SS Token Configuration
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fItoken\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a configuration parameter on the token.
+\fB\-a\fR appends the value to a parameter that holds a list.
+.br
+\fB\-d\fR removes the parameter from the token, or with a value only that one value from a list.
+What the token gets afterwards is whatever the user, the unit or the site say.
+See \fBCONFIG PARAMETERS\fR in
+.BR otpme (7).
 .TP
 .B show_config \fItoken\fR [\fIparameter\fR]
-Show all configuration parameters.
+Show the parameters set on the token itself, or only the given one.
 .TP
 .B get_config \fItoken\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+Show the value of one parameter the way OTPme reads it, i.e. after looking at the token, the user, the unit and the site.
+So this answers what applies, while
+.B show_config
+answers what was set here.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fItoken\fR \fItime\fR
-Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable if unused for the given time.
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+Use \fB\-u\fR to disable the token if it was unused for the given time.
 .TP
 .B description \fItoken\fR \fR[\fIdescription\fR]
-Set token description.
+Set the description of the token.
+Without one OTPme asks and offers the current text for editing.
+.TP
+.B device_name \fItoken\fR \fR[\fIdevice_name\fR]
+Set the name of the device this token lives on, e.g. the phone or the security key it was registered with.
+.br
+The SSO portal asks the user for it when they add a token there and shows it in the list, so that somebody with three security keys can tell them apart.
 .TP
 .B info \fR[\fB\-\-language\fR \fILANG\fR] \fItoken\fR \fR[\fIinfo\fR]
-Set free-form info text. If \fIinfo\fR is omitted, the current info text is
-opened in the editor specified by the \fBEDITOR\fR environment variable.
+Set the info text of the token.
+Without a text OTPme opens the current one in the editor named by
+.BR EDITOR .
+.br
+An info text is kept per language.
+\fB\-\-language\fR says which one; without it the text is stored under \fBinfo\fR, which is the note of the administrator.
 .TP
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fItoken\fR
-Dump the info text to stdout.
+Write the info text of that language to stdout.
 .TP
-.B test \fItoken\fR \fR[\fIotp|password\fR]
-Test if given OTP/password can be verified by the token.
+.B test \fItoken\fR
+Check whether the token verifies.
+OTPme asks for the OTP or the password; it is never given on the command line.
+.br
+It is the real verification, not a dry run: an OTP tested here is spent, and the counter of a
+.B hotp
+token moves on.
+.br
+Almost every type has it.
+.B passkey
+and
+.B tiqr
+do not: both need a browser and a device that answers it, which a command line cannot stand in for.
 .TP
 .B temp_password \fR[\fB\-\-generate\fR] [\fB\-\-duration\fR \fItime\fR] [\fB\-\-remove\fR] [\fB\-\-weak\-password\fR] \fItoken\fR \fR[\fIpassword\fR]
-Set, generate or remove a temporary password. With \fB\-\-weak\-password\fR a password the password policy rejects is accepted, which needs the \fIforce_password\fR ACL. This is not the same as \fB\-f\fR, which only skips the confirmation.
+Give the token a second password that works for a while, next to the one it has.
+It is meant for an administrator or the IT support who has to work as that user for a time, e.g. to set up a notebook.
+.br
+\fB\-\-generate\fR makes one up, \fB\-\-duration\fR says how long it lives (\fB1h\fR without it, time units as in \fBotpme\fR(7)), and \fB\-\-remove\fR takes it away again.
+.br
+Setting one needs the config parameter
+.B allow_temp_passwords
+and the ACL \fBset_temp_password\fR, on the token or on the user above it.
+Removing one always works.
+On a \fBlink\fR token the password is set on the token it points at.
+.br
+\fB\-\-weak\-password\fR accepts a password the password policy rejects, which needs the \fBforce_password\fR ACL.
+This is not the same as \fB\-f\fR, which only skips the confirmation.
 .SS VLAN Assignment
-A token is not assigned a VLAN with a command of its own. Either the VLAN
-names the token, so that the assignment belongs to the site that runs the
-network (see
-.BR otpme-vlan (1)):
+A token has no VLAN command of its own.
+The way to give it one is to put it, or a role it is in, into the VLAN:
 .PP
 .RS
 .B otpme-vlan add_token \fIvlan\fR \fIuser\fB/\fItoken\fR
 .RE
 .PP
-or the token names the VLAN through its
+That is the assignment that counts.
+A VLAN of the site answering the RADIUS request that names the token, or a role the token is in, decides the answer, and nothing below is asked any more.
+The nearer assignment wins: a VLAN naming the token itself beats one naming its role, see
+.BR otpme\-vlan (1).
+.PP
+Only where no such VLAN names the token does OTPme ask the
 .B vlans
 config parameter (see
 .BR otpme (7)):
@@ -188,56 +330,94 @@ config parameter (see
 .B otpme-token config \fIuser\fB/\fItoken\fR vlans \fIvlan\fR
 .RE
 .PP
-The VLAN is returned during 802.1x port authentication. Membership wins: the
-.B vlans
-parameter is only looked at when no VLAN of the site answering the RADIUS
-request names the token or a role it is in. The more specific assignment
-wins, so a VLAN naming the token itself overrides the VLAN of its role.
+It is read along the cascade of the token: first on the token, then on the user, then on the unit, then on the site.
+.PP
+The VLAN goes out with the answer of an 802.1X port authentication.
 .SS Offline Configuration
+A host may keep a copy of a token so that the user can still log in while the realm cannot be reached \(em the notebook on the road.
+The copy is encrypted on the host.
+.PP
+Where the key for it comes from depends on the token.
+A password or OTP token derives it from what the user types, with the hash of
+.B offline_token_hash_type
+and the options of
+.BR pam_otpme (8).
+A smartcard derives it on the card: the host sends a stored challenge plus the password to the card, and the answer of the card is the key.
+So a copy of a smartcard token is worth nothing without the card.
 .TP
 .B enable_offline \fItoken\fR
-Enable offline usage (caching) of token.
+Allow the hosts to keep this token.
+.br
+Not every type can: \fBotp_push\fR, \fBlink\fR, \fBscript_otp\fR and \fBscript_static\fR answer "Offline usage not supported by this token".
+All the others can, and start with it switched off.
 .TP
 .B disable_offline \fItoken\fR
-Disable offline usage (caching) of token.
+Do not keep it any more.
 .TP
-.B offline_expiry \fItoken\fR \fIexpiry\fR
-Set offline expiry timeout.
+.B offline_expiry \fItoken\fR \fItime\fR
+How long a copy is good for, counted from the last login that reached the realm.
+.br
+\fB0\fR, the value a token starts with, means it never expires.
+Time units as in
+.BR otpme (7).
 .TP
-.B offline_unused_expiry \fItoken\fR \fIexpiry\fR
-Set offline unused expiry timeout.
+.B offline_unused_expiry \fItoken\fR \fItime\fR
+The same, counted from the last time the copy was used.
+\fB0\fR again means never.
+.br
+Both are checked on the host, and only while nobody of that user is logged in; what is past its time is deleted.
 .SS Session
 .TP
 .B enable_session_keep \fItoken\fR
-Enable keeping of login session (e.g. on shutdown).
+Keep the login session of this token over a reboot.
+.br
+The host writes the session key into the offline copy of the token, so the session is taken up again instead of the user logging in anew.
+It needs the offline copy, see \fBOffline Configuration\fR above.
+.br
+\fBotp_push\fR, \fBscript_otp\fR and \fBscript_static\fR cannot do it and answer "Session keeping not supported by this token".
+The other types can, and start with it switched off.
 .TP
 .B disable_session_keep \fItoken\fR
-Disable keeping of login session.
+Do not keep the session any more.
 .SS Auth Script
 .TP
-.B auth_script \fItoken\fR \fIscript\fR
-Change token authorization script.
+.B auth_script \fItoken\fR \fIscript\fR \fB\-\-\fR \fR[\fIscript_options\fR]
+Set the authorization script of the token.
+.br
+The script runs at every login with this token, after the credential was checked, and it can still refuse the login.
+How it gets its values is the same as for the user scripts, see \fBUser Scripts\fR in
+.BR otpme\-user (1).
 .TP
 .B enable_auth_script \fItoken\fR
-Enable token authorization script.
+Run that script.
 .TP
 .B disable_auth_script \fItoken\fR
-Disable token authorization script.
+Do not run it.
+.br
+The three commands do nothing for a \fBscript_otp\fR or \fBscript_static\fR token: there the script \fIis\fR the check, and there is nothing to switch on top of it.
 .SS Deploy
-Hardware tokens must be deployed before use. Deployment configures the physical device and registers the token in OTPme. Use \fB\-\-type\fR before the command to specify the token type.
+A hardware token must be deployed before it can be used. Deploy sets up the device and creates the matching OTPme token. Name the smartcard type with \fB\-\-type\fR before the command:
+.PP
+.RS 4
+otpme\-token \-\-type yubikey_piv deploy john/piv
+.RE
+.PP
+The type decides which options the command takes, so the options differ per type. The token name is always needed and is always \fIuser/token\fR.
 .TP
 .B deploy \fB\-\-list\-token\-types\fR
-List deployable token types.
-.SS Deploy \- FIDO2 and U2F
+List the smartcard types that can be deployed. See
+.B Smartcard Types
+above for the token type each one creates.
+.SS Deploy \- FIDO2
 .TP
 .B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-\-no\-pin\fR] [\fB\-\-uv\fR \fIuv\fR] \fItoken\fR
-Register a FIDO2 or U2F hardware key. The device must be connected and will prompt for a touch.
+Register a FIDO2 key. The key must be plugged in and asks for a touch.
 .TP
 .B \-\-no\-pin
-Do not set a PIN on the FIDO2 authenticator during deploy.
+Do not set a PIN on the key. This only matters when the key supports a PIN but has none yet. Then deploy would ask for a new one. A PIN that is already set is never changed.
 .TP
 .B \-\-uv \fIuv\fR
-Set the FIDO2 user verification requirement (\fBdiscouraged\fR, \fBpreferred\fR, \fBrequired\fR). See also the
+User verification: \fBdiscouraged\fR, \fBpreferred\fR or \fBrequired\fR. Without this option OTPme asks the key. It takes \fBrequired\fR when the key supports a PIN, \fBpreferred\fR when the key does user verification or biometrics, else \fBdiscouraged\fR. See also the
 .B uv
 command below.
 .TP
@@ -246,16 +426,26 @@ Replace existing token (keep UUID).
 .TP
 .B \-d
 Enable debug output.
+.SS Deploy \- U2F
+.TP
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] \fItoken\fR
+Register a U2F key. The key must be plugged in and asks for a touch. U2F knows no PIN and no user verification, so \fB\-\-no\-pin\fR and \fB\-\-uv\fR do not exist here.
+.TP
+.B \-r
+Replace existing token (keep UUID).
+.TP
+.B \-d
+Enable debug output.
 .SS Deploy \- YubiKey HMAC\-SHA1
 .TP
-.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-s\fR \fIslot\fR] [\fItoken\fR]
-Write HMAC\-SHA1 configuration to a YubiKey slot.
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-s\fR \fIslot\fR] \fItoken\fR
+Write an HMAC\-SHA1 secret to a YubiKey slot. Deploy asks for a token password. The token secret is the card's answer to a challenge, so the secret of the card itself never leaves it. Whatever was in the slot is lost. Deploy asks before it writes, unless you use the global \fB\-f\fR.
 .TP
 .B \-s \fIslot\fR
-Write configuration to the given YubiKey slot.
+Slot to use. Default is slot 2.
 .TP
 .B \-n
-Do not reconfigure the YubiKey hardware — only register token data in OTPme.
+Do not write to the YubiKey. Use the secret that is already in the slot. This works because OTPme only needs the answer to a challenge, not the secret. Use it for a card that is already set up, or to give a second OTPme token the same card.
 .TP
 .B \-r
 Replace existing token (keep UUID).
@@ -264,30 +454,43 @@ Replace existing token (keep UUID).
 Enable debug output.
 .SS Deploy \- YubiKey OATH HOTP
 .TP
-.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-s\fR \fIslot\fR] [\fItoken\fR]
-Write OATH HOTP configuration to a YubiKey slot.
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-s\fR \fIslot\fR] \fItoken\fR
+Write an OATH HOTP secret to a YubiKey slot. Deploy asks for a token PIN. The PIN and a server secret together make the secret on the card, so the user types the PIN before the OTP. Whatever was in the slot is lost. Deploy asks before it writes, unless you use the global \fB\-f\fR. Re\-plug the card when deploy asks for it.
 .TP
 .B \-s \fIslot\fR
-Write configuration to the given YubiKey slot.
+Slot to use. Default is slot 1.
 .TP
 .B \-r
 Replace existing token (keep UUID).
 .TP
 .B \-d
 Enable debug output.
+.PP
+There is no \fB\-n\fR here. The secret cannot be read back from the card, so OTPme can only register a card it wrote itself.
 .SS Deploy \- YubiKey GPG Applet
 .TP
-.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fItoken\fR]
-Initialize the GPG applet on a YubiKey and generate RSA keys. Prompts for real name, email, PIN and Admin PIN. Default backup path: \fI/dev/shm/<username>.gpg\fR.
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-key\-len\fR \fIbits\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] \fItoken\fR
+Set up the GPG applet of a YubiKey and create an \fBssh\fR token from it. This resets the applet, so every GPG key on the card is lost.
+.PP
+Deploy asks for your real name, your mail address and one token password of at least 8 characters. That password becomes the user PIN and the Admin PIN of the card.
+.PP
+Deploy creates an RSA master key and three subkeys, one per card slot: signature, encryption and authentication. The master key stays in the backup file, the three subkeys go to the card. The SSH public key of the token is the authentication key.
+.PP
+Before the keys go to the card, deploy writes a backup of them. Default path: \fI/dev/shm/<real_name>.gpg\fR, with spaces replaced by underscores. Keep that file. Without it the keys are gone when the card breaks.
+.PP
+Deploy refuses to start when a gpg\-agent is running or when \fI~/.gnupg\fR exists. It needs its own GPG home directory.
+.TP
+.B \-\-key\-len \fIbits\fR
+RSA key length of the master key and of all three subkeys. Allowed: 2048, 3072 (default) and 4096. The keys are created on the host and then moved to the card, so the card has to accept the length. Old YubiKeys only take 2048.
 .TP
 .B \-\-backup \fIfile\fR
-Write GPG backup to \fIfile\fR.
+Write the key backup to \fIfile\fR instead of the default path.
 .TP
 .B \-\-restore \fIfile\fR
-Restore GPG configuration from backup \fIfile\fR.
+Take the keys from a backup \fIfile\fR instead of creating new ones. Use this to move a token to a new card. \fB\-\-key\-len\fR does nothing here, the keys come from the file. Deploy then asks for the passphrase of the backup file and for a new token password. Cannot be used together with \fB\-\-backup\fR.
 .TP
 .B \-n
-Do not initialize the GPG applet — only register token data in OTPme.
+Do not touch the card. Read the SSH public key from a card whose GPG applet is already set up and only register the token in OTPme.
 .TP
 .B \-r
 Replace existing token (keep UUID).
@@ -296,35 +499,44 @@ Replace existing token (keep UUID).
 Enable debug output.
 .SS Deploy \- YubiKey PIV Applet
 .TP
-.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-key\-len\fR \fIbits\fR] [\fB\-\-sign\-algo\fR \fIalgo\fR] [\fB\-\-encrypt\-algo\fR \fIalgo\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fB\-\-restore\-from\-server\fR] [\fB\-\-backup\-key\-file\fR \fIfile\fR] [\fB\-\-add\-user\-key\fR] [\fItoken\fR]
-Initialize the PIV applet on a YubiKey and generate the sign and encrypt keys. Default backup path: \fI/dev/shm/<username>_<token>.pem\fR.
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-key\-len\fR \fIbits\fR] [\fB\-\-sign\-algo\fR \fIalgo\fR] [\fB\-\-encrypt\-algo\fR \fIalgo\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fB\-\-restore\-from\-server\fR] [\fB\-\-backup\-key\-file\fR \fIfile\fR] [\fB\-\-add\-user\-key\fR] \fItoken\fR
+Set up the PIV applet of a YubiKey. Deploy creates two keys: a sign key in slot 9A and an encrypt key in slot 9D. It asks for a smartcard password of at least 8 characters.
+.PP
+Where the key backup goes depends on the config parameter \fBprivate_key_backup_key\fR of the site or unit:
+.RS 4
+.IP \(bu 2
+Not set: deploy writes a local backup file. Default path: \fI/dev/shm/<user>_<token>.json\fR. The file holds both private keys as PEM in a JSON file. Both are encrypted, with the token password or with a second password deploy asks for.
+.IP \(bu 2
+Set: deploy sends the backup to the server, encrypted with that public key. No local file is written and \fB\-\-backup\fR does nothing. Get the keys back with \fB\-\-restore\-from\-server\fR.
+.RE
 .TP
 .B \-\-key\-len \fIbits\fR
-Generate RSA key with the given key length in bits (only when the chosen algo is RSA).
+RSA key length. Allowed: 2048 (default), 3072 and 4096. A YubiKey needs firmware 5.7 or newer for 3072 and 4096. Only used when the algorithm is RSA.
 .TP
 .B \-\-sign\-algo \fIalgo\fR
-Algorithm for the sign slot 9A: \fBrsa\fR (default) or \fBed25519\fR (needs YubiKey FW 5.7+).
+Algorithm for the sign slot 9A: \fBrsa\fR (default) or \fBed25519\fR. Ed25519 needs YubiKey firmware 5.7 or newer.
 .TP
 .B \-\-encrypt\-algo \fIalgo\fR
-Algorithm for the encrypt slot 9D: \fBrsa\fR (default) or \fBx25519\fR (needs YubiKey FW 5.7+).
+Algorithm for the encrypt slot 9D: \fBrsa\fR (default) or \fBx25519\fR. X25519 needs YubiKey firmware 5.7 or newer.
 .TP
 .B \-\-backup \fIfile\fR
-Write key backup to \fIfile\fR.
+Write the key backup to \fIfile\fR instead of the default path.
 .TP
 .B \-\-restore \fIfile\fR
-Restore key from backup \fIfile\fR.
+Take the keys from a backup \fIfile\fR instead of creating new ones. Cannot be used together with \fB\-\-backup\fR.
 .TP
 .B \-\-restore\-from\-server
-Restore key from an existing token on the server. Requires \fB\-\-backup\-key\-file\fR.
+Take the keys from the server backup of an existing token. Needs \fB\-\-backup\-key\-file\fR. Cannot be used together with \fB\-n\fR.
 .TP
 .B \-\-backup\-key\-file \fIfile\fR
-Backup key file used to decrypt the private key backup when restoring from server.
+Private key that decrypts the server backup. This is the key file the client wrote when \fBprivate_key_backup_key\fR was set on the site or unit.
 .TP
 .B \-\-add\-user\-key
-Register the token's RSA public key as the user's public key.
+Use the token keys as the user's keys. This sets the sign and the encrypt public key of the user and makes this token the key token of the user. See
+.BR otpme\-user (1).
 .TP
 .B \-n
-Do not initialize the PIV applet — only register token data in OTPme.
+Do not touch the card. Read both public keys from a card whose PIV applet is already set up and only register the token in OTPme.
 .TP
 .B \-r
 Replace existing token (keep UUID).
@@ -332,79 +544,169 @@ Replace existing token (keep UUID).
 .B \-d
 Enable debug output.
 .SS Dynamic Groups
+A dynamic group is a local group on the host, not an OTPme group. At login pam_otpme puts the user into it for that session. See
+.BR otpme (7)
+for the whole picture.
+.PP
+Who logs in with this token gets these groups. You can also set dynamic groups on a role, then every token of the role gets them.
 .TP
 .B add_dynamic_group \fItoken\fR \fIgroup\fR
-Add a dynamic group to the token.
+Add a dynamic group to the token. The name must not be an OTPme group. Needs the ACL \fBadd:dynamic_group\fR. Asks before it changes anything, the global \fB\-f\fR skips the question.
 .TP
 .B remove_dynamic_group \fItoken\fR \fIgroup\fR
-Remove a dynamic group from the token.
+Remove a dynamic group from the token. Needs the ACL \fBremove:dynamic_group\fR.
 .TP
-.B list_dynamic_groups \fItoken\fR
-List dynamic groups of the token.
+.B list_dynamic_groups \fR[\fB\-\-include\-roles\fR] \fItoken\fR
+List the dynamic groups of the token. Needs the ACL \fBview:dynamic_groups\fR.
+.TP
+.B \-\-include\-roles
+Also list the dynamic groups of the roles of the token. This is the list a login gets, minus the groups of the host.
 .SS Listing
+A command that starts with \fBlist_\fR answers what is assigned to the token. One that starts with \fBfind_\fR answers the other question: where is this token used. Nothing is assigned to a token except its policies and its dynamic groups, so almost everything here is a \fBfind_\fR.
+.PP
+\fB\-\-return\-type\fR picks what they print: \fBname\fR (default), \fBread_oid\fR, \fBfull_oid\fR or \fBuuid\fR. A name from another site is printed as \fIsite/name\fR.
+.PP
+A token reaches most of what it has through its roles. These commands show what the token itself is assigned to. Where there is a \fB\-\-include\-roles\fR, that is how you ask for the rest.
 .TP
-.B list_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-r\fR] \fItoken\fR
-List roles assigned to the token. Use \fB\-r\fR for recursive listing. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-r\fR] \fItoken\fR
+Find the roles of the token. With \fB\-r\fR also the roles those roles are in. Needs the ACL \fBfind:roles\fR.
 .TP
-.B list_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
-List hosts this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-include\-roles\fR] \fItoken\fR
+Find the groups of the token. With \fB\-\-include\-roles\fR also the groups the token is in through its roles. Needs the ACL \fBfind:groups\fR.
 .TP
-.B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
-List nodes this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_accessgroups \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-include\-roles\fR] \fItoken\fR
+Find the access groups of the token. With \fB\-\-include\-roles\fR also the ones it reaches through its roles. Needs the ACL \fBfind:accessgroups\fR.
 .TP
-.B list_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
-List groups this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-include\-roles\fR] \fItoken\fR
+Find the OIDC scopes of the token. With \fB\-\-include\-roles\fR also the ones it reaches through its roles. Needs the ACL \fBfind:scopes\fR.
 .TP
-.B list_accessgroups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
-List access groups this token is assigned to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+Find the shares the token may use. The roles of the token are always included here, there is nothing to switch. \fB\-\-return\-type\fR also takes \fBpath\fR, which is the share name with its site in front. Needs the ACL \fBfind:shares\fR.
 .TP
-.B list_acls \fItoken\fR
-Show ACLs assigned to the token.
+.B find_hosts \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+Find the hosts the token is assigned to. Only direct assignments, the roles are not followed. Needs the ACL \fBfind:hosts\fR.
 .TP
-.B list_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
-List OIDC scopes the token is assigned to.
+.B find_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
+Find the nodes the token is assigned to. Only direct assignments, the roles are not followed. Needs the ACL \fBfind:nodes\fR.
 .TP
-.B list_shares \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fItoken\fR
-List shares the token has access to.
+.B find_acls \fItoken\fR
+Find the ACLs this token holds on other objects. Not the ACLs set on the token, those are
+.BR list_acls .
+Only an admin may run this.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fItoken\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the token.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fItoken\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fItoken\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fItoken\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fItoken\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fItoken\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the token.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fItoken\fR \fIpolicy\fR
 Attach a policy to the token.
+.br
+A policy has a list of object types it is for; one that does not name \fBtoken\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fItoken\fR \fIpolicy\fR
 Remove a policy from the token.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fItoken\fR
-List policies attached to the token. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
+List the policies attached to the token.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this token.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
-.B add_acl \fItoken\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fItoken\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR]
+Give a role or a token an ACL on this token.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:token_type\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
 .B del_acl \fItoken\fR \fIacl\fR
-Remove an access control entry.
+Take that ACL away again.
+.br
+Here the \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:set_temp_password\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
-.B show_acls \fItoken\fR
-Display all ACLs for the token.
+.B list_acls \fItoken\fR
+Show the ACLs that lie on this token, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
+.TP
+.B find_acls \fItoken\fR
+The other direction: the ACLs this token holds on other objects.
+.br
+Admin only. This one cannot be given away.
 .TP
 .B enable_acl_inheritance \fItoken\fR
-Enable ACL inheritance from parent objects.
+Let the token take the ACLs that reach it from elsewhere. It does by default.
+.RS
+.PP
+Two things reach it: a default ACL of the unit the token sits in, and an ACL added to its user with \fB\-r\fR (see
+.BR otpme\-user (1)).
+A token that does not inherit is passed over by both.
+.PP
+Only default ACLs are inherited. An ordinary ACL on the unit never is.
+.PP
+Moving a token into another unit is the one place that asks something else as well: an admin token gets neither the default ACLs of the new unit nor loses those of the old one.
+That is the admin token of the site and every token in the site admin role \fBSITE_ADMIN\fR.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fItoken\fR
-Disable ACL inheritance.
+Stop that.
+Only the ACLs on the token itself count from then on.
+.br
+Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Import/Export
 .TP
 .B export \fItoken\fR

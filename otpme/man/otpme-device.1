@@ -47,7 +47,11 @@ Re-index the device to fix potential index problems.
 Move device to a different unit.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fIdevice\fR \fItime\fR
-Set auto-disable value (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable the object if it was unused for the given time.
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+Use \fB\-u\fR to disable the object if it was unused for the given time.
 .SS MAC Address
 .TP
 .B mac \fIdevice\fR \fImac_address\fR
@@ -99,29 +103,65 @@ opened in the editor specified by the \fBEDITOR\fR environment variable.
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIdevice\fR
 Dump the info text to stdout.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIdevice\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the device.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fIdevice\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fIdevice\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fIdevice\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fIdevice\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIdevice\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the device.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIdevice\fR \fIpolicy\fR
 Attach a policy to the device.
+.br
+A policy has a list of object types it is for; one that does not name \fBdevice\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIdevice\fR \fIpolicy\fR
 Remove a policy from the device.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIdevice\fR
-List policies attached to the device.
-Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to limit the listing to the given policy types.
+List the policies attached to the device.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS ACL Management
 .TP
 .B add_acl \fIdevice\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -130,7 +170,7 @@ Add an access control entry.
 .B del_acl \fIdevice\fR \fIacl\fR
 Remove an access control entry.
 .TP
-.B show_acls \fIdevice\fR
+.B list_acls \fIdevice\fR
 Display all ACLs for the device.
 .TP
 .B enable_acl_inheritance \fIdevice\fR

@@ -111,6 +111,13 @@ read_value_acls = {
                         "encrypt_public_key",
                         "encrypt_private_key",
                         ],
+            # The other direction: not what this user holds, but who
+            # holds the tokens of this user.
+            "find"      : [
+                        "roles",
+                        "groups",
+                        "signatures",
+                        ],
         }
 
 write_value_acls = {
@@ -777,10 +784,10 @@ commands = {
                     },
                 },
             },
-    'list_groups'   : {
+    'find_groups'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_groups',
+                    'method'            : 'find_groups',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
@@ -797,13 +804,23 @@ commands = {
                     },
                 },
             },
-    'list_roles'   : {
+    'find_roles'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_roles',
+                    'method'            : 'find_roles',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
+                    },
+                },
+            },
+    'find_signatures'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_signatures',
+                    'job_type'          : 'thread',
+                    'oargs'             : ['return_type', 'object_types'],
+                    'dargs'             : {'return_type':'full_oid'},
                     },
                 },
             },
@@ -1039,10 +1056,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1130,8 +1147,8 @@ def get_recursive_default_acls(**kwargs):
     return acls
 
 VALID_USER_KEY_LENS = [
-                        1024,
                         2048,
+                        3072,
                         4096,
                         8192,
                     ]
@@ -1184,6 +1201,33 @@ def register():
     register_config_properties()
     register_config_parameters()
     register_commands("user", commands)
+    # The default token is looked up when a node builds the sync
+    # parameters for a host it serves (OTPmeHost.get_sync_parameters()),
+    # so a node holding users of another site needs it. Admin access is
+    # asked for by the management interface and by nothing else.
+    user_types = ["user"]
+    # The primary group of the user. A host builds its nsscache out of
+    # it. The scope and the share name groups as well, see there.
+    config.register_index_attribute("group", sync=True,
+                                    object_types=user_types)
+    config.register_index_attribute("default_token", sync=["node:untrusted"],
+                                    object_types=user_types)
+    config.register_index_attribute("admin_access_enabled", sync=[],
+                                    object_types=user_types)
+    # Which script runs on login, for the agent, and to make keys. What
+    # runs them reads the uuid off the user; nothing searches by it.
+    # A token carries an authorization script as well, see token.py.
+    user_script_sync = ["node:untrusted"]
+    config.register_index_attribute("auth_script", sync=user_script_sync,
+                                    object_types=user_types)
+    config.register_index_attribute("auth_script_enabled", sync=[],
+                                    object_types=user_types)
+    config.register_index_attribute("key_script", sync=user_script_sync,
+                                    object_types=user_types)
+    config.register_index_attribute("agent_script", sync=user_script_sync,
+                                    object_types=user_types)
+    config.register_index_attribute("login_script", sync=user_script_sync,
+                                    object_types=user_types)
     register_module("otpme.lib.classes.session")
     register_module("otpme.lib.classes.data_objects.used_sotp")
     register_module("otpme.lib.classes.data_objects.failed_pass")
@@ -1472,6 +1516,7 @@ def register_config_parameters():
         return token_types
     config.register_config_parameter(name="allow_sso_token_recovery",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     default_value=[],
                                     setter=allow_sso_token_recovery_setter,
                                     object_types=object_types)
@@ -1511,13 +1556,15 @@ def register_config_parameters():
                                     object_types=object_types)
     # Length for user RSA keys.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',
                     ]
     def user_key_len_setter(key_len, **kwargs):
-        valid_key_lens = [2048, 4096]
+        # The same list the key generation checks against (see
+        # User.gen_keys()), so a value that is accepted here also works
+        # when the keys are made.
+        valid_key_lens = VALID_USER_KEY_LENS
         if key_len not in valid_key_lens:
             msg = "Invalid key len: {key_len}"
             msg = msg.format(key_len=key_len)
@@ -1525,7 +1572,7 @@ def register_config_parameters():
         return key_len
     config.register_config_parameter(name="user_key_len",
                                     ctype=int,
-                                    default_value=2048,
+                                    default_value=3072,
                                     setter=user_key_len_setter,
                                     valid_values=VALID_USER_KEY_LENS,
                                     object_types=object_types)
@@ -1558,6 +1605,7 @@ def register_oid():
                             full_schema=full_oid_schema,
                             read_schema=read_oid_schema,
                             name_regex=user_name_re,
+                            oid_name_regex=user_oid_name_re,
                             path_regex=user_path_re,
                             oid_regex=user_oid_re)
     rel_path_getter = lambda x: x[2:]
@@ -1881,17 +1929,16 @@ class User(OTPmeObject):
                             "ENCRYPT_KEY_TYPE",
                             "DEFAULT_TOKEN",
                             "EXTENSIONS",
-                            "EXTENSION_ATTRIBUTES",
+                            # Only the LDIF is built from them, and a
+                            # host has no LDIF, see _base_sync_fields.
+                            # What nsscache builds a passwd entry from
+                            # it reads off the index.
+                            #"EXTENSION_ATTRIBUTES",
                             "AUTOSIGN_ENABLED",
                             "ALLOW_DISABLED_LOGIN",
                             "AUTO_MOUNT",
                             "KEY_CACHE_TIME",
                             "OBJECT_CLASSES",
-                            "homeDirectory",
-                            "loginShell",
-                            "uidNumber",
-                            "givenName",
-                            "sn",
                             ]
                         },
 
@@ -1913,11 +1960,6 @@ class User(OTPmeObject):
                             "USED_PASS_SALT",
                             "ACLS",
                             "ACL_INHERITANCE_ENABLED",
-                            "homeDirectory",
-                            "loginShell",
-                            "uidNumber",
-                            "givenName",
-                            "sn",
                             "CONFIG_PARAMS:allow_temp_passwords",
                             # Which device token roles this user may
                             # carry. Roles of any site may be named, so
@@ -3133,10 +3175,12 @@ class User(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        if config.auth_user.uuid != self.uuid:
+        """ Set users sign private key (used for signing data). """
+        # Only the user themselves, and told apart by the owner of the
+        # auth token, the way the public key methods below do it.
+        if not config.auth_token or config.auth_token.owner_uuid != self.uuid:
             msg = _("Permission denied.")
             return callback.error(msg)
-        """ Set users sign private key (used for signing data). """
         return self._change_private_key("sign", private_key, force,
                                         run_policies, callback, _caller)
 
@@ -3154,7 +3198,8 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """ Set users encrypt private key (used for decrypting secrets). """
-        if config.auth_user.uuid != self.uuid:
+        # Only the user themselves, see change_sign_private_key().
+        if not config.auth_token or config.auth_token.owner_uuid != self.uuid:
             msg = _("Permission denied.")
             return callback.error(msg)
         return self._change_private_key("encrypt", private_key, force,
@@ -3450,7 +3495,6 @@ class User(OTPmeObject):
         key_len: Union[int,None]=None,
         sign_algo: str="rsa",
         encrypt_algo: str="rsa",
-        pass_hash_type: str="PBKDF2",
         force: bool=False,
         run_policies: bool=True,
         stdin_pass: bool=False,
@@ -3587,10 +3631,8 @@ class User(OTPmeObject):
 
         try:
             if aes_key:
-                sign_encrypted = sign_key.encrypt_key(aes_key=aes_key,
-                                            hash_type=pass_hash_type)
-                enc_encrypted = enc_key_obj.encrypt_key(aes_key=aes_key,
-                                            hash_type=pass_hash_type)
+                sign_encrypted = sign_key.encrypt_key(aes_key=aes_key)
+                enc_encrypted = enc_key_obj.encrypt_key(aes_key=aes_key)
                 self._set_key("sign", aes_key_enc, sign_encrypted, encrypted=True)
                 self._set_key("encrypt", aes_key_enc, enc_encrypted, encrypted=True)
             else:
@@ -3680,7 +3722,6 @@ class User(OTPmeObject):
         encrypt_key: bool,
         aes_key: Union[str,None],
         aes_key_enc: Union[str,None],
-        pass_hash_type: str,
         force: bool,
         run_policies: bool,
         callback: JobCallback,
@@ -3734,8 +3775,7 @@ class User(OTPmeObject):
 
         if aes_key:
             try:
-                key_encrypted = key.encrypt_key(aes_key=aes_key,
-                                            hash_type=pass_hash_type)
+                key_encrypted = key.encrypt_key(aes_key=aes_key)
                 self._set_key(key_role, aes_key_enc, key_encrypted, encrypted=True)
             except Exception as e:
                 msg = _("Error encrypting private key: {e}")
@@ -3759,7 +3799,6 @@ class User(OTPmeObject):
         encrypt_key: bool=True,
         aes_key: Union[str,None]=None,
         aes_key_enc: Union[str,None]=None,
-        pass_hash_type: str="PBKDF2",
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -3780,7 +3819,7 @@ class User(OTPmeObject):
                 msg = _("Permission denied.")
                 return callback.error(msg)
         return self._import_key("sign", private_key, encrypt_key, aes_key,
-                                aes_key_enc, pass_hash_type, force,
+                                aes_key_enc, force,
                                 run_policies, callback, _caller)
 
     @check_acls(['import_encrypt_key'])
@@ -3794,7 +3833,6 @@ class User(OTPmeObject):
         encrypt_key: bool=True,
         aes_key: Union[str,None]=None,
         aes_key_enc: Union[str,None]=None,
-        pass_hash_type: str="PBKDF2",
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -3815,7 +3853,7 @@ class User(OTPmeObject):
                 msg = _("Permission denied.")
                 return callback.error(msg)
         return self._import_key("encrypt", private_key, encrypt_key, aes_key,
-                                aes_key_enc, pass_hash_type, force,
+                                aes_key_enc, force,
                                 run_policies, callback, _caller)
 
     def get_private_key(
@@ -4307,6 +4345,7 @@ class User(OTPmeObject):
         pass_types: Union[List,None]=None,
         support_dot1x: bool=False,
         skip_disabled: bool=True,
+        resolve_destination_token: bool=True,
         quiet: bool=True,
         return_type: str="uuid",
         callback: JobCallback=default_callback,
@@ -4374,7 +4413,7 @@ class User(OTPmeObject):
             except KeyError:
                 destination_token = None
             credential_uuid = uuid
-            if destination_token:
+            if destination_token and resolve_destination_token:
                 dst_token_result = backend.search(object_type="token",
                                         attribute="uuid",
                                         value=destination_token,
@@ -4477,8 +4516,8 @@ class User(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:roles'])
-    def list_roles(
+    @check_acls(acls=['find:roles'])
+    def find_roles(
         self,
         **kwargs,
         ):
@@ -4508,8 +4547,8 @@ class User(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:groups'])
-    def list_groups(
+    @check_acls(acls=['find:groups'])
+    def find_groups(
         self,
         **kwargs,
         ):
@@ -4535,6 +4574,57 @@ class User(OTPmeObject):
                 if g in result:
                     continue
                 result.append(g)
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+
+        return callback.ok(result)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['find:signatures'])
+    def find_signatures(
+        self,
+        object_types: Union[List,None]=None,
+        return_type: str="full_oid",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all objects this user has signed.
+
+        add_sign() indexes the signer UUID under "signature", so the
+        objects a user signed can be found without reading them. A
+        signature is made by a user, never by a role, so this is the
+        only place that asks the question.
+        """
+        # A signature can sit on any object type, so a name alone would
+        # not say what was found. The default names the type.
+        search_attributes = {
+                        'signature' : {'value':self.uuid},
+                        }
+        return_attributes = ['uuid', return_type]
+        # The ACL above says who may ask about this user, not which
+        # objects the asker may see. Those are of any type, so we ask
+        # the index for the one ACL every type has.
+        verify_acls = ['view']
+        if config.auth_token and config.auth_token.is_admin():
+            verify_acls = None
+        if config.use_api and not config.auth_token:
+            verify_acls = None
+        search_result = backend.search(object_types=object_types,
+                                    attributes=search_attributes,
+                                    verify_acls=verify_acls,
+                                    return_attributes=return_attributes)
+        result = []
+        for uuid in search_result:
+            x_result = search_result[uuid][return_type]
+            if x_result in result:
+                continue
+            result.append(x_result)
+
+        result.sort()
 
         if _caller == "RAPI":
             result = ",".join(result)
@@ -5547,6 +5637,51 @@ class User(OTPmeObject):
             return None, msg
         return result[0], None
 
+    def _admin_access_tokens(self):
+        """ The tokens admin access is granted on.
+
+        The default token, which is the one the auth handler tries
+        first, and the SSO token of every site that has one for this
+        user. Those are the tokens somebody locked out signs in with,
+        and the rest of their tokens are no part of the bargain: a
+        temporary password set on a hardware key or on a linked token
+        would hand out more than was asked for.
+
+        The SSO names are read off each site rather than off the user,
+        because get_config_parameter() walks the user's parents and
+        would always end at the user's home site, while every portal
+        deploys a token of its own -- see OTPmeSsoP1._sso_token_name().
+        """
+        token_names = []
+        try:
+            default_token_name = self.get_config_parameter("default_token_name")
+        except Exception:
+            default_token_name = None
+        if default_token_name:
+            token_names.append(default_token_name)
+        all_sites = backend.search(object_type="site",
+                                attribute="uuid",
+                                value="*",
+                                realm=config.realm,
+                                return_type="instance")
+        for x_site in all_sites:
+            try:
+                sso_token_name = x_site.get_config_parameter("default_sso_token_name")
+            except Exception:
+                sso_token_name = None
+            if not sso_token_name:
+                continue
+            if sso_token_name in token_names:
+                continue
+            token_names.append(sso_token_name)
+        tokens = []
+        for token_name in token_names:
+            token = self.token(token_name)
+            if not token:
+                continue
+            tokens.append(token)
+        return tokens
+
     # Granting admin access hands the admin-access role the
     # set_temp_password ACL on this user, which is enough to log in as
     # them. Doing it on someone's behalf is fine, but it has to be meant:
@@ -5596,19 +5731,29 @@ class User(OTPmeObject):
         if role is None:
             return callback.error(err)
 
+        tokens = self._admin_access_tokens()
+        if not tokens:
+            msg = _("User has none of the tokens admin access is granted on.")
+            return callback.error(msg)
+
         self.set_config_param("allow_temp_passwords", True,
                               force=True,
                               verify_acls=False,
                               run_policies=False,
                               callback=callback)
+        # On the tokens, and not on the user: Token.set_temp_password()
+        # falls back to the ACL of the parent object, so one on the user
+        # would cover every token they have and make naming the tokens
+        # here mean nothing.
         acl = f"role:{role.uuid}:set_temp_password"
-        self.add_acl(acl=acl,
-                     force=True,
-                     recursive_acls=False,
-                     apply_default_acls=False,
-                     verify_acls=False,
-                     run_policies=False,
-                     callback=callback)
+        for token in tokens:
+            token.add_acl(acl=acl,
+                        force=True,
+                        recursive_acls=False,
+                        apply_default_acls=False,
+                        verify_acls=False,
+                        run_policies=False,
+                        callback=callback)
         # Mirror to the object index so ``otpme-user show`` can pull
         # the flag via one indexed backend.search instead of loading
         # every user to walk CONFIG_PARAMS. ``allow_temp_passwords``
@@ -5682,14 +5827,18 @@ class User(OTPmeObject):
                               verify_acls=False,
                               run_policies=False,
                               callback=callback)
+
+        tokens = self._admin_access_tokens()
         acl = f"role:{role.uuid}:set_temp_password"
-        self.del_acl(acl=acl,
-                     force=True,
-                     recursive_acls=False,
-                     apply_default_acls=False,
-                     verify_acls=False,
-                     run_policies=False,
-                     callback=callback)
+        for token in tokens:
+            token.del_acl(acl=acl,
+                        force=True,
+                        recursive_acls=False,
+                        apply_default_acls=False,
+                        verify_acls=False,
+                        run_policies=False,
+                        callback=callback)
+
         for token in self.get_tokens(return_type="instance"):
             if not token._temp_password_hash:
                 continue
@@ -6267,6 +6416,7 @@ class User(OTPmeObject):
             share_id = share.share_id
             shares_data[share_id] = {
                 'name': share.name,
+                'realm': share.realm,
                 'site': share.site,
                 'nodes': node_fqdns,
                 'limit_hosts': share.limit_by_hosts,
@@ -7114,7 +7264,9 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        token_list = self.get_tokens(return_type="instance")
+        token_list = self.get_tokens(return_type="instance",
+                                    skip_disabled=False,
+                                    resolve_destination_token=False)
         token_list_names = [i.name for i in token_list]
 
         exception = None

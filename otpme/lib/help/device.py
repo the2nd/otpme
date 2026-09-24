@@ -129,7 +129,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-device auto_disable -u {device} {time}'),
                     'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
                     '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "1d" or "09:53 13.06.2023").'),
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023").'),
                                     '-u'                    : _('Disable object if it was unused for the given time.'),
                                 },
                 },
@@ -233,11 +233,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-device show_acls {device}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-device list_acls {device}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of device'),
+                                    'cmd'                   : _('List ACLs set on this device.'),
                                 },
                 },
 
@@ -364,7 +364,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-device list_policies {device}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -372,6 +372,28 @@ cmd_help = {
                                     'cmd'                           : _('List assigned policies.'),
                                     '--return-type'                 : _('Attribute to return.'),
                                     '--policy-types <type1,type2>'  : _('Policy types to list.'),
+                                },
+                },
+    'find_roles'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-device find_roles [--return-type <return_type>] {device}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find roles this device is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_accessgroups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-device find_accessgroups [--return-type <return_type>] {device}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find accessgroups this device is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
                                 },
                 },
     }

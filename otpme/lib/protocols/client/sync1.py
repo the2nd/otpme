@@ -14,7 +14,6 @@ except Exception:
     pass
 
 from otpme.lib import oid
-from otpme.lib import cache
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -366,7 +365,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def sync_objects(self, realm, site, resync=False, max_tries=5,
         skip_object_deletion=True, sync_last_used=False,
-        sync_older_objects=False, ignore_changed_objects=False):
+        sync_older_objects=False, ignore_changed_objects=False,
+        remove_orphan_objects=False):
         # Acquire sync lock.
         lock_id = f"sync_objects:{realm}/{site}"
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
@@ -375,6 +375,7 @@ class OTPmeSyncP1(OTPmeClient1):
                                 resync=resync, max_tries=max_tries,
                                 sync_older_objects=sync_older_objects,
                                 skip_object_deletion=skip_object_deletion,
+                                remove_orphan_objects=remove_orphan_objects,
                                 ignore_changed_objects=ignore_changed_objects)
         finally:
             sync_lock.release_lock()
@@ -393,7 +394,7 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def _sync_objects(self, realm, site, resync=False, max_tries=5,
         sync_older_objects=False, ignore_changed_objects=False,
-        skip_object_deletion=True):
+        skip_object_deletion=True, remove_orphan_objects=False):
         """ Sync objects with peer. """
         exit_status = True
         received_objects = 0
@@ -414,8 +415,7 @@ class OTPmeSyncP1(OTPmeClient1):
 
         # Our on-disk sync cache (e.g. from last failed sync).
         self.sync_cache = SyncCache(realm=realm, site=site,
-                                    protocol=self.name,
-                                    mem_cache=config.sync_mem_cache)
+                                    protocol=self.name)
         # Load sync cache
         self.sync_cache.load()
 
@@ -430,10 +430,12 @@ class OTPmeSyncP1(OTPmeClient1):
                                     site=site,
                                     sync_type="objects",
                                     object_count=remote_object_count)
-            self.merge_sync_cache(realm, site,
+            merge_success = self.merge_sync_cache(realm, site,
                     sync_older_objects=sync_older_objects,
                     skip_object_deletion=skip_object_deletion)
-            self.sync_cache.clear()
+            # A merge that did not get everything in keeps its cache.
+            if merge_success:
+                self.sync_cache.clear()
             return
 
         # Get data to build sync list.
@@ -548,6 +550,31 @@ class OTPmeSyncP1(OTPmeClient1):
                 config.raise_exception()
                 return False
 
+        # What the sync cache already holds, by checksum. Reading the
+        # configs back just to compare one would pull every object into
+        # memory a second time, so the checksums come from the remote
+        # sync list the run that filled the cache left behind, and we
+        # keep them up to date as objects arrive.
+        cache_checksums = {}
+        cached_remote_sync_list = self.sync_cache.remote_sync_list
+        if cached_remote_sync_list:
+            for cached_object_id in self.sync_cache:
+                try:
+                    cache_checksums[cached_object_id] = cached_remote_sync_list[cached_object_id]
+                except KeyError:
+                    pass
+        cached_remote_sync_list = None
+
+        # Write the sync lists before a single object is fetched, not
+        # once the run is through. They are what makes the cache
+        # readable: without them merge_sync_cache() cannot tell what
+        # the files in it were meant to be and gives up at once. A
+        # daemon that is stopped or killed mid sync would otherwise
+        # leave a full cache that nobody can use.
+        if max_tries > 0:
+            self.sync_cache.local_sync_list = local_sync_list
+            self.sync_cache.remote_sync_list = remote_sync_list
+
         changed_object = False
         while try_count < max_tries:
             try_count += 1
@@ -598,12 +625,22 @@ class OTPmeSyncP1(OTPmeClient1):
                     # If we do not have this object set it to None to
                     # get it updated.
                     local_checksum = None
-                # Get checksum from sync cache.
-                if local_checksum is None:
+                # What we already pulled, in this run or in one that
+                # failed before us, is newer than what is on disk: the
+                # merge happens once the whole sync went through, so
+                # until then the local sync list still shows the old
+                # object. Without this a single object that changes
+                # mid sync costs another full download of every object.
+                if object_id in self.sync_cache:
                     try:
-                        local_checksum = self.sync_cache[object_id]['SYNC_CHECKSUM']
-                    except Exception:
-                        local_checksum = None
+                        local_checksum = cache_checksums[object_id]
+                    except KeyError:
+                        # No list to take the checksum from, so ask the
+                        # config itself.
+                        try:
+                            local_checksum = self.sync_cache[object_id]['SYNC_CHECKSUM']
+                        except Exception:
+                            pass
 
                 # Check if we need to update this object.
                 if remote_checksum == local_checksum:
@@ -638,16 +675,32 @@ class OTPmeSyncP1(OTPmeClient1):
                                             site=site,
                                             sync_type="objects")
 
-                    # Check if object is already in sync cache.
-                    try:
-                        object_config = self.sync_cache[object_id]
-                    except Exception:
-                        # If its not in our sync cache check it already exist
-                        # on our site.
-                        try:
-                            object_config = backend.read_config(object_id)
-                        except Exception as e:
-                            object_config = None
+                    # Check if object is already in sync cache. What is
+                    # not in there we may well have on our site, and it
+                    # is worth looking: the peer answers with USE_LOCAL
+                    # for every attribute whose checksum matches ours,
+                    # and for a user carrying a changelog that is most
+                    # of the object.
+                    #
+                    # The cache answers a miss with None rather than an
+                    # exception, so the local config was never read
+                    # here and every object came over in full.
+                    object_config = self.sync_cache[object_id]
+                    if object_config is None:
+                        # Only worth a read if we have the object at
+                        # all -- the checksum that put it on this list
+                        # already says so, and on a first sync that is
+                        # none of them.
+                        if object_list[object_id]['local_checksum'] is not None:
+                            try:
+                                # The OIDs of the remote sync list are
+                                # strings, read_config() takes an OID.
+                                object_config = backend.read_config(oid.get(object_id))
+                            except Exception as e:
+                                log_msg = _("Failed to read local object config: {object_id}: {e}", log=True)[1]
+                                log_msg = log_msg.format(object_id=object_id, e=e)
+                                self.logger.warning(log_msg)
+                                object_config = None
 
                     # Build attribute checksums. They are used by the remote
                     # site to transfer only changed parameters of the object
@@ -712,8 +765,13 @@ class OTPmeSyncP1(OTPmeClient1):
                                 log_msg = log_msg.format(object_id=object_id)
                                 self.logger.warning(log_msg)
                                 self.sync_cache.delete(object_id)
-                                # Make sure we try again.
-                                remote_sync_list_checksum = None
+                                cache_checksums.pop(object_id, None)
+                                # Make sure we try again. The checksum
+                                # of the remote list stays as it is:
+                                # the re-check below asks whether the
+                                # peer moved on since we got that list,
+                                # and it can only answer that if it
+                                # still knows what the list said.
                                 changed_object = True
                                 continue
                         # Check for object checksum.
@@ -747,6 +805,7 @@ class OTPmeSyncP1(OTPmeClient1):
 
                         # Update object in sync dict.
                         self.sync_cache[object_id] = new_object_config
+                        cache_checksums[object_id] = new_checksum
                         received_objects += 1
                         #log_msg = _("Received object: {object_id}", log=True)[1]
                         #log_msg = log_msg.format(object_id=object_id)
@@ -816,13 +875,19 @@ class OTPmeSyncP1(OTPmeClient1):
                 sync_success = True
                 break
 
-        # If we got a good sync state merge changes from sync cache.
-        if sync_success:
-            # Write sync lists to cache.
+        # The remote list may have moved on since we wrote it above.
+        # Written again whenever there is a cache to describe, not only
+        # when the run went through: a run that gives up leaves its
+        # objects for the next one.
+        if sync_success or len(self.sync_cache) > 0:
             self.sync_cache.local_sync_list = local_sync_list
             self.sync_cache.remote_sync_list = remote_sync_list
+
+        # If we got a good sync state merge changes from sync cache.
+        merge_success = False
+        if sync_success:
             # Merge sync cache.
-            self.merge_sync_cache(realm, site,
+            merge_success = self.merge_sync_cache(realm, site,
                             sync_older_objects=sync_older_objects,
                             skip_object_deletion=skip_object_deletion)
         else:
@@ -837,8 +902,12 @@ class OTPmeSyncP1(OTPmeClient1):
             new_local_checksum = local_sync_list_checksum
             if synced_objects_count > 0 or failed_objects_count > 0:
                 if failed_objects_count == 0:
-                    # On success we can clear our sync cache.
-                    self.sync_cache.clear()
+                    # Only a merge that got everything in lets us throw
+                    # the cache away. What did not make it stays, and
+                    # the next run picks it up -- a daemon restart in
+                    # between does not cost the objects.
+                    if merge_success:
+                        self.sync_cache.clear()
                     log_msg = _("Sync finished successful. Synchronized {synced_objects_count} objects.", log=True)[1]
                     log_msg = log_msg.format(synced_objects_count=synced_objects_count)
                     self.logger.info(log_msg)
@@ -848,8 +917,8 @@ class OTPmeSyncP1(OTPmeClient1):
                     self.logger.critical(log_msg)
         else:
             if local_sync_list_checksum == remote_sync_list_checksum:
-                log_msg = _("Remote config checksum matches local. No sync needed: {local_sync_list_checksum}", log=True)[1]
-                log_msg = log_msg.format(local_sync_list_checksum=local_sync_list_checksum)
+                log_msg = _("Remote config checksum matches local. No sync needed: {realm}/{site}: {local_sync_list_checksum}", log=True)[1]
+                log_msg = log_msg.format(realm=realm, site=site, local_sync_list_checksum=local_sync_list_checksum)
                 self.logger.info(log_msg)
                 new_local_checksum = local_sync_list_checksum
                 sync_success = True
@@ -860,6 +929,17 @@ class OTPmeSyncP1(OTPmeClient1):
                 self.logger.warning(log_msg)
                 new_local_checksum = local_sync_list_checksum
                 exit_status = False
+
+        # Only after a run that got through, and only if nothing was
+        # left behind: a list that is missing objects would make every
+        # one of them look like an orphan.
+        if remove_orphan_objects:
+            if sync_success and failed_objects_count == 0:
+                self.remove_orphan_objects(realm, site,
+                                        sync_params, remote_sync_list)
+            else:
+                log_msg = _("Not removing orphan objects: sync did not finish.", log=True)[1]
+                self.logger.warning(log_msg)
 
         # Update our sync status on peer node.
         try:
@@ -884,7 +964,12 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def merge_sync_cache(self, realm, site,
         sync_older_objects=False, skip_object_deletion=True):
-        """ Merge sync cache. """
+        """ Merge sync cache.
+
+        True only if every object that was meant to go in went in. The
+        caller throws the cache away on that answer and on no other,
+        so an object a worker lost is still there on the next run.
+        """
         add_list = {}
         add_order = list(config.object_add_order)
         own_realm, own_site = get_own_realm_site()
@@ -898,7 +983,7 @@ class OTPmeSyncP1(OTPmeClient1):
         remote_sync_list = self.sync_cache.remote_sync_list
         # Missing remote sync list means incomplete sync cache.
         if not remote_sync_list:
-            return
+            return False
 
         # Get sync object types.
         sync_params = self.sync_cache.sync_parameters
@@ -1010,7 +1095,7 @@ class OTPmeSyncP1(OTPmeClient1):
             w = multiprocessing.start_process(
                                 name=f"sync_worker_{i}",
                                 target=self._process_object_worker_loop,
-                hard_exit=True,
+                                hard_exit=True,
                                 target_args=(self.mass_add_work_queue,
                                             self.mass_add_result_queue,
                                             realm, site,
@@ -1022,11 +1107,15 @@ class OTPmeSyncP1(OTPmeClient1):
 
         pushed = 0
         results_seen = 0
+        # Objects that were meant to go in and did not, either because
+        # a worker could not process them or because it died holding
+        # one. What the cache keeps hangs on this.
+        merge_failures = 0
 
         def _drain_results(timeout=0):
             """Pull as many completed results as available; update
             progress and the shared `results_seen` counter."""
-            nonlocal object_counter, results_seen
+            nonlocal object_counter, results_seen, merge_failures
             drained = 0
             while True:
                 # First call uses the requested timeout; subsequent
@@ -1055,28 +1144,54 @@ class OTPmeSyncP1(OTPmeClient1):
                 elif status == "skipped":
                     pass
                 else:
+                    merge_failures += 1
                     log_msg = _("Failed to process object: {x_oid}", log=True)[1]
                     log_msg = log_msg.format(x_oid=x_oid)
                     self.logger.warning(log_msg)
             return drained
 
         def _wait_until_drained(target_pushed):
-            """Block until results_seen catches up to target_pushed,
-            OR all workers have exited unexpectedly (in which case
-            report the lost items and bail out)."""
+            """Block until results_seen catches up to target_pushed, or
+            until what is missing cannot arrive any more.
+
+            A worker takes one item at a time, so one that dies takes at
+            most that one with it and no result for it is ever sent.
+            Waiting for all of them to die before giving up means
+            waiting for ever while the others sit idle: a single worker
+            killed for memory used to stop a sync here silently, for
+            hours, mid-run.
+
+            So the dead ones are counted. Once they account for
+            everything still outstanding, and nothing has arrived for a
+            while, nothing more is coming. The while is what keeps a
+            worker busy with a large object from being given up on.
+            """
+            nonlocal merge_failures
+            # Ten seconds of no result at all, at 0.5s a look.
+            max_quiet_rounds = 20
+            quiet_rounds = 0
             while results_seen < target_pushed:
-                drained = _drain_results(timeout=0.5)
-                if drained == 0:
-                    alive = sum(1 for w in self.mass_add_workers
-                                if w.is_alive())
-                    if alive == 0:
-                        _drain_results(timeout=0)
-                        lost = target_pushed - results_seen
-                        if lost > 0:
-                            log_msg = _("Lost {n} sync object(s): all workers exited unexpectedly.", log=True)[1]
-                            log_msg = log_msg.format(n=lost)
-                            self.logger.critical(log_msg)
-                        return False
+                if _drain_results(timeout=0.5) > 0:
+                    quiet_rounds = 0
+                    continue
+                quiet_rounds += 1
+                alive = sum(1 for w in self.mass_add_workers
+                            if w.is_alive())
+                dead = len(self.mass_add_workers) - alive
+                outstanding = target_pushed - results_seen
+                if alive > 0:
+                    if dead < outstanding:
+                        continue
+                    if quiet_rounds < max_quiet_rounds:
+                        continue
+                _drain_results(timeout=0)
+                lost = target_pushed - results_seen
+                if lost > 0:
+                    merge_failures += lost
+                    log_msg = _("Lost {n} sync object(s): {dead} worker(s) exited unexpectedly.", log=True)[1]
+                    log_msg = log_msg.format(n=lost, dead=dead)
+                    self.logger.critical(log_msg)
+                return False
             return True
 
         # Push items in add_order, holding a barrier whenever the
@@ -1085,6 +1200,7 @@ class OTPmeSyncP1(OTPmeClient1):
         # start so that parent-references always exist before
         # children depend on them.
         prev_object_type = None
+        merge_aborted = False
         try:
             for object_type in add_order:
                 # Get object list.
@@ -1104,6 +1220,8 @@ class OTPmeSyncP1(OTPmeClient1):
                 # before pushing the next type.
                 if prev_object_type is not None and object_type != prev_object_type:
                     if not _wait_until_drained(pushed):
+                        # The types still to come are never pushed.
+                        merge_aborted = True
                         break
                 prev_object_type = object_type
                 # Add objects to progress calculation.
@@ -1143,7 +1261,8 @@ class OTPmeSyncP1(OTPmeClient1):
                         update_realm_ca_data = True
 
             # All work queued — wait for the rest to finish.
-            _wait_until_drained(pushed)
+            if not _wait_until_drained(pushed):
+                merge_aborted = True
         finally:
             # Send stop sentinels and wait for workers to exit.
             # NB: don't name the loop var '_' — that would shadow the
@@ -1187,6 +1306,13 @@ class OTPmeSyncP1(OTPmeClient1):
             realm = backend.get_object(uuid=config.realm_uuid)
             realm.update_ca_data(force=True, verify_acls=False)
 
+        if merge_aborted or merge_failures > 0:
+            log_msg = _("Sync cache not fully merged: {merge_failures} object(s) left for the next run.", log=True)[1]
+            log_msg = log_msg.format(merge_failures=merge_failures)
+            self.logger.warning(log_msg)
+            return False
+        return True
+
     def _process_object_worker_loop(self, work_queue, result_queue,
         realm, site, own_realm, own_site, sync_older_objects):
         """ Long-lived worker: receive {"oid": oid_str} messages from
@@ -1198,10 +1324,18 @@ class OTPmeSyncP1(OTPmeClient1):
         Every iteration is wrapped in a broad try/except so any
         failure still produces ONE result on the queue. Without
         that, the parent's _wait_until_drained() would otherwise
-        hang waiting for a result that's never coming. """
+        hang waiting for a result that's never coming.
+
+        It also ends when the process that started it is gone. The
+        stop sentinel only arrives if the parent got as far as sending
+        it, and a daemon that is stopped leaves through os._exit(),
+        which does not stop its daemon children either. A worker left
+        behind sits in recv() waiting for work nobody will send. """
         import gc
         from otpme.lib import cache as _cache_mod
         from otpme.lib import backend as _backend_mod
+
+        parent_pid = os.getppid()
 
         proctitle = setproctitle.getproctitle()
         proctitle = f"{proctitle}: Sync worker"
@@ -1211,15 +1345,21 @@ class OTPmeSyncP1(OTPmeClient1):
         # Done ONCE per worker, not per task.
         multiprocessing.atfork()
 
+        self.logger = config.setup_logger(existing_logger=self.logger)
+
         # The signal handler used to call os._exit(1), which could
         # leave shared state corrupt if it fired mid-IPC. With
         # POSIX mqueue the recv() syscall returns ExitOnSignal on
         # EINTR, so we just need a flag-setting handler and an
         # ExitOnSignal-aware loop.
+        # The signal is remembered whatever else is going on, and acted
+        # on further down, once no transaction is open. Deciding that
+        # in the handler loses the signal instead of postponing it: no
+        # second one is sent, and the loop has nothing else to look at,
+        # so a worker that took a SIGTERM while writing ignored every
+        # one after it and outlived the daemon it belonged to.
         stop_flag = [False]
         def signal_handler(_signal, frame):
-            if config.active_transactions:
-                return
             stop_flag[0] = True
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
@@ -1233,7 +1373,15 @@ class OTPmeSyncP1(OTPmeClient1):
 
         try:
             while True:
-                if stop_flag[0]:
+                # Between two objects, so a write that was running when
+                # the signal came has finished. The check is what the
+                # handler used to do, in the one place where waiting
+                # costs nothing.
+                if stop_flag[0] and not config.active_transactions:
+                    return
+                if os.getppid() != parent_pid:
+                    log_msg = _("Sync worker ending: the process that started it is gone.", log=True)[1]
+                    self.logger.warning(log_msg)
                     return
                 try:
                     msg = work_queue.recv(timeout=1)
@@ -1309,9 +1457,6 @@ class OTPmeSyncP1(OTPmeClient1):
         own_realm, own_site, sync_older_objects):
         """ Process one sync object. Returns one of: "added",
         "updated", "skipped", "failed". """
-        # FIXME: this may be a cache bug. We need to investigate this without cache.clear().
-        # Clear caches on add to prevent cached false negatives (e.g. parent object not found by UUID).
-        cache.clear()
         # Make sure parent object exists on our site.
         if object_id.object_type in config.tree_object_types:
             try:
@@ -1632,6 +1777,111 @@ class OTPmeSyncP1(OTPmeClient1):
                     log_msg = log_msg.format(object_id=object_id, e=e)
                     self.logger.critical(log_msg)
                     self.removed_objects.append(object_id.read_oid)
+
+    def remove_orphan_objects(self, realm, site, sync_params,
+        remote_sync_list):
+        """ Remove what this host synced once and does not any more.
+
+        A sync removes what is missing from the list it just compared,
+        and that list only mentions the object types the host syncs now.
+        A type it no longer syncs is in neither list, so its objects are
+        never named and never removed -- they sit there until somebody
+        rejoins the host. The same holds for a type the host is given by
+        name rather than whole (include_uuids): only the named objects
+        are mentioned, so one left over from before stays.
+
+        Asked for by hand, and only after a run that got through: the
+        list is what tells an orphan from an object the peer happened
+        not to send this time.
+
+        Realms and sites are left alone. hostd syncs those itself, see
+        HostDaemon.sync_sites(), and a data revision is the bookkeeping
+        of the site it belongs to.
+        """
+        own_realm, own_site = get_own_realm_site()
+        skip_types = ["realm", "site", "data_revision"]
+        # Every type the sync system knows about. A node syncs the most
+        # of them, so its list is the one that covers all the others.
+        known_types = config.get_sync_object_types(host_type="node")
+        synced_types = list(sync_params['object_types'])
+        try:
+            checksum_only_types = list(sync_params['checksum_only_types'])
+        except (KeyError, TypeError):
+            checksum_only_types = []
+        try:
+            by_name_types = list(sync_params['include_uuids'])
+        except (KeyError, TypeError):
+            by_name_types = []
+        # A checksum-only type is already covered: the local list holds
+        # every object of it, so what the peer left out is removed the
+        # ordinary way (see backend.get_sync_list()).
+        by_name_types = [x for x in by_name_types
+                        if x not in checksum_only_types]
+
+        # Children before parents, like remove_deleted_objects().
+        del_order = list(config.object_add_order)
+        del_order.reverse()
+
+        removed = 0
+        for object_type in del_order:
+            if object_type in skip_types:
+                continue
+            if object_type not in known_types:
+                continue
+            if object_type in synced_types:
+                continue
+            keep_oids = None
+            if object_type in by_name_types:
+                keep_oids = remote_sync_list
+            local_oids = backend.search(object_type=object_type,
+                                        attribute="uuid",
+                                        value="*",
+                                        realm=realm,
+                                        site=site,
+                                        return_type="full_oid")
+            orphans = []
+            for x_oid in local_oids:
+                if keep_oids is not None and x_oid in keep_oids:
+                    continue
+                orphans.append(oid.get(x_oid))
+            if not orphans:
+                continue
+            x_sort = lambda x: len(x.path.split("/"))
+            for object_id in sorted(orphans, key=x_sort, reverse=True):
+                if not backend.object_exists(object_id):
+                    continue
+                if object_type == "user":
+                    sign_key_cache.del_cache(object_id)
+                if object_type == "token":
+                    x_object = backend.get_object(object_id)
+                    if x_object:
+                        self.update_nsscache(x_object)
+                log_msg = _("Removing orphan object: {object_id}", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id)
+                self.logger.info(log_msg)
+                cluster = False
+                if self.host_type == "node":
+                    if realm == own_realm:
+                        if site == own_site:
+                            if config.master_node:
+                                cluster = True
+                try:
+                    backend.delete_object(object_id, cluster=cluster)
+                except Exception as e:
+                    log_msg = _("Failed to delete orphan object: {object_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id, e=e)
+                    self.logger.critical(log_msg)
+                    continue
+                removed += 1
+
+        if removed == 0:
+            log_msg = _("No orphan objects found: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site)
+        else:
+            log_msg = _("Removed {removed} orphan object(s): {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(removed=removed, realm=realm, site=site)
+        self.logger.info(log_msg)
+        return removed
 
     def update_nsscache(self, x_object):
         """ Update nsscache of objects. """
@@ -2052,7 +2302,8 @@ class OTPmeSyncP1(OTPmeClient1):
     def do_sync(self, sync_type="objects", sync_last_used=False,
         ignore_changed_objects=False, skip_object_deletion=False,
         sync_older_objects=False, max_tries=3, resync=False,
-        offline=False, realm=config.realm, site=config.site):
+        offline=False, remove_orphan_objects=False,
+        realm=config.realm, site=config.site):
         """ Sync objects with realm/site. """
         sync_status = False
 
@@ -2064,6 +2315,7 @@ class OTPmeSyncP1(OTPmeClient1):
                                 sync_last_used=sync_last_used,
                                 sync_older_objects=sync_older_objects,
                                 skip_object_deletion=skip_object_deletion,
+                                remove_orphan_objects=remove_orphan_objects,
                                 ignore_changed_objects=ignore_changed_objects)
 
         elif sync_type == "used_otps":

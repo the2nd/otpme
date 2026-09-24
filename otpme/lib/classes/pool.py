@@ -49,8 +49,7 @@ write_acls = []
 
 read_value_acls = {
                     "view"      : [
-                                    "node",
-                                    "policy",
+                                    "nodes",
                                     "dynamic_groups",
                                 ],
             }
@@ -391,10 +390,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -466,6 +465,12 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("pool", commands)
+    # Register index attributes.
+    # Which node serves this pool. Asked where the mount is answered,
+    # which is a node. A share names its nodes as well, see share.py;
+    # both write it through OTPmeObject.add_node().
+    config.register_index_attribute("node", sync=["node:untrusted"],
+                                    object_types=["pool"])
     config.register_recursive_default_acl("site", "+pool")
     config.register_default_acl("unit", "+pool")
     config.register_recursive_default_acl("unit", "+pool")

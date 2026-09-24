@@ -144,11 +144,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver show_acls {resolver}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-resolver list_acls {resolver}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of resolver.'),
+                                    'cmd'                   : _('List ACLs set on this resolver.'),
                                 },
                 },
 
@@ -345,7 +345,7 @@ cmd_help = {
                 },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-resolver list_policies {resolver}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

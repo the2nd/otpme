@@ -319,6 +319,335 @@ def run_pre_post_add_policies():
         return wrapped
     return wrapper
 
+# What a host gets about itself on top of what it gets about any other
+# host. Host.get_sync_parameters() reads them (see daemon/hostd.py, which
+# calls it on the host itself) to work out which users and tokens this
+# host has to ask for at all. Without them a host that syncs by login
+# token would quietly go back to syncing every user there is.
+HOST_SELF_SYNC_FIELDS = [
+                    "SYNC_BY_LOGIN_TOKEN",
+                    "LOGINS_LIMITED",
+                    "TOKENS",
+                    "ROLES",
+                    "SYNC_GROUPS_ENABLED",
+                    "SYNC_GROUPS",
+                    # Read by authorize_token(), which on a host asks the
+                    # host object itself. Only its own are of use to it.
+                    "TOKEN_LOGIN_INTERFACES",
+                    ]
+
+# Every view that needs a checksum of its own. Not every object has all
+# of them -- a host has no node view of itself and only a host has a
+# view of itself -- but the index attribute of each has to be registered
+# once, here.
+#
+# The full view is not among them. It is the whole object, so its
+# checksum is the checksum of the whole object, which the index already
+# keeps as sync_checksum. Giving it a second name would mean writing
+# every object's checksum twice and keeping the two in step.
+#
+# An untrusted host is not among them either. A host syncs with a node
+# of its own site and with no other (HostDaemon.get_sync_connection()
+# keeps the connection there, OTPmeHost.get_sync_parameters() refuses
+# anything else), so on the serving side it is always of our site and
+# always trusted -- see get_sync_audience(), which says so out loud.
+SYNC_AUDIENCES = [
+                "node:untrusted",
+                "host:trusted",
+                "host:trusted:sso",
+                "host:self",
+                "host:self:sso",
+                ]
+
+# What a write touches even when nothing about the object changed: the
+# moment it was written, who wrote it, and the line that went into the
+# changelog. A view checksum taken over those moves on every write, and
+# every peer holding that view fetches an object that, by what it is
+# given, has not changed -- which is what the views were meant to stop.
+#
+# They still travel: an object arrives with its timestamps, and the
+# receiving side needs them (see OTPmeConfig.get_auth_user(), which asks
+# the index whether the object it holds is still current). They are only
+# left out of the hash.
+#
+# Not for the full view, which is the whole object and keeps the
+# checksum of the whole object.
+VOLATILE_SYNC_FIELDS = [
+                "CHANGELOG",
+                "LAST_MODIFIED",
+                "LAST_MODIFIED_BY",
+                "LAST_MODIFIED_BY_CACHE",
+                ]
+
+# Where a field is written a second time. Taking the field out of a view
+# is not enough while a copy of it rides along inside another field: the
+# copy puts it back, and a change to it moves the view's checksum after
+# all. So whenever a field goes, its copies go with it -- out of the
+# view for a field the view does not carry (reduce_sync_config()), and
+# out of the hash for a field that travels but must not be hashed
+# (drop_volatile_fields()).
+MIRRORED_FIELDS = {
+            "DESCRIPTION"       : {
+                        'INDEX'                 : ["description",
+                                                "ldif:description"],
+                        'LDIF'                  : ["description"],
+                        'EXTENSION_ATTRIBUTES'  : ["description"],
+                        },
+            "LAST_MODIFIED"     : {
+                        'INDEX'                 : ["last_modified",
+                                                "ldif:modifyTimestamp"],
+                        'LDIF'                  : ["modifyTimestamp"],
+                        'EXTENSION_ATTRIBUTES'  : ["modifyTimestamp"],
+                        },
+            "LAST_MODIFIED_BY"  : {
+                        'INDEX'                 : ["last_modified_by"],
+                        },
+            }
+
+# The LDIF attributes a host searches by: the five nsscache builds a
+# passwd entry from and the one it builds a group from (nsscache.py),
+# plus the two the duplicate check looks at when a user or a group
+# arrives (sync1.py). Every other ldif: attribute is indexed to be
+# filtered on over LDAP, and a host serves no LDAP -- ldapd is started
+# by clusterd, which a host does not run.
+#
+# Named here rather than taken from the registration, because the
+# registration of an ldif: attribute happens when the extension that
+# defines it is loaded (LDIFHandler.register_schema_attributes()). What
+# is registered would then depend on what a process happened to load,
+# and two nodes would hand out two different views of the same object.
+HOST_LDIF_INDEX_ATTRIBUTES = [
+                "ldif:cn",
+                "ldif:uidNumber",
+                "ldif:gidNumber",
+                "ldif:loginShell",
+                "ldif:homeDirectory",
+                "ldif:memberUid",
+                ]
+
+def reduce_sync_index(sync_config, audience, object_type=None):
+    """ Take out of the index what this view does not carry.
+
+    The index travels whole otherwise, and then a peer fetches an object
+    because something changed that it never reads -- admin_access_enabled
+    on a user, last_backup on a node. Which view an attribute belongs to
+    is said where the attribute is registered, so the answer sits next
+    to the thing it is about, and adding an index attribute is a
+    decision about where it goes (see
+    OTPmeConfig.register_index_attribute()).
+
+    What this object type says about an attribute wins over what the
+    attribute says in general, because several object types set the
+    same one and they do not have to agree.
+
+    An attribute nobody registered stays. That is the base attributes of
+    the index, and anything else that has not been looked at: a view
+    that carries too much costs a sync that need not happen, one that
+    carries too little loses a peer its object with nothing saying why.
+
+    An ldif: attribute is the other way round, see
+    HOST_LDIF_INDEX_ATTRIBUTES: it goes to a node, which answers LDAP
+    about the object, and to a host only if a host looks it up.
+    """
+    try:
+        object_index = dict(sync_config['INDEX'])
+    except KeyError:
+        return sync_config
+    try:
+        type_sync = config.index_attribute_sync_by_type[object_type]
+    except KeyError:
+        type_sync = {}
+    peer_type = audience.split(":")[0]
+    for attribute in list(object_index):
+        if attribute.startswith("ldif:"):
+            if peer_type == "node":
+                continue
+            if attribute in HOST_LDIF_INDEX_ATTRIBUTES:
+                continue
+            object_index.pop(attribute)
+            continue
+        try:
+            attribute_sync = type_sync[attribute]
+        except KeyError:
+            try:
+                attribute_sync = config.index_attribute_sync[attribute]
+            except KeyError:
+                continue
+        if attribute_sync is True:
+            continue
+        if audience in attribute_sync:
+            continue
+        object_index.pop(attribute)
+    sync_config['INDEX'] = object_index
+    return sync_config
+
+def check_index_attribute(key, object_type):
+    """ Whether this object type may write this index attribute.
+
+    A function rather than a method because a session is not an
+    OTPmeObject and keeps an index of its own (see Session.add_index()),
+    and a check only half the writers run is a check that says nothing.
+    """
+    if str(key).startswith("ldif:"):
+        return
+    if key not in config.index_attributes:
+        msg = _("Index attribute not registered: {key}")
+        msg = msg.format(key=key)
+        raise OTPmeException(msg)
+    if key in config.otpme_base_attributes:
+        return
+    if key in config.index_attribute_all_types:
+        return
+    try:
+        type_sync = config.index_attribute_sync_by_type[object_type]
+    except KeyError:
+        type_sync = {}
+    if key in type_sync:
+        return
+    msg = _("Index attribute not registered for object type: {key}: {object_type}")
+    msg = msg.format(key=key, object_type=object_type)
+    raise OTPmeException(msg)
+
+def drop_mirrored_field(sync_config, field):
+    """ Take a field's copies out of the fields that keep them. """
+    try:
+        mirrors = MIRRORED_FIELDS[field]
+    except KeyError:
+        return sync_config
+    for holder in mirrors:
+        try:
+            holder_data = dict(sync_config[holder])
+        except KeyError:
+            continue
+        if holder == "EXTENSION_ATTRIBUTES":
+            # An extension keeps its own copy of what it put in the LDIF.
+            for extension in holder_data:
+                x_attributes = dict(holder_data[extension])
+                for attribute in mirrors[holder]:
+                    x_attributes.pop(attribute, None)
+                holder_data[extension] = x_attributes
+        else:
+            for attribute in mirrors[holder]:
+                holder_data.pop(attribute, None)
+        # Put back a copy, never the dict the caller handed us: what
+        # goes out to a peer is a shallow copy of the object's own
+        # config (see get_sync_config()).
+        sync_config[holder] = holder_data
+    return sync_config
+
+def drop_volatile_fields(sync_config):
+    """ Take out of a config what a write touches whatever it did. """
+    for field in VOLATILE_SYNC_FIELDS:
+        sync_config.pop(field, None)
+        drop_mirrored_field(sync_config, field)
+    return sync_config
+
+# What a node of a site we trust is given whole. A user of ours logs in
+# over there, and that login is answered on the spot, which needs the
+# secrets -- see AuthHandler, which fails the login of a user whose site
+# does not trust us with the words "If we do not have users
+# secrets/tokens auth must fail". Nothing else about us has to go there
+# in full.
+TRUSTED_SITE_FULL_TYPES = ["user", "token"]
+
+def get_sync_relationship(peer, object_site_uuid=None, object_uuid=None):
+    """ How much of an object the given peer may see.
+
+    A trusted node syncs the whole object, secrets included, so anything
+    it could read that way is not worth withholding from it elsewhere.
+    An untrusted one gets what <sync_fields> lists for it and nothing
+    more. For a host "trusted" is not that at all -- it only picks which
+    of two field lists applies, see get_sync_field_names().
+
+    A site we trust is a third answer, "trusted_site". It is not the
+    same as trusted: we hand it our users and their tokens so they can
+    log in over there, and that is the whole of what the trust is for.
+    What it makes of the answer is get_sync_audience()'s to decide.
+
+    Takes the object apart instead of an instance, because a sync list
+    is built from the index, where there are no instances. Asking the
+    same question twice in two places is how a checksum and the thing it
+    describes drift apart.
+    """
+    # Check if this object is from peers site.
+    if peer.site_uuid == object_site_uuid:
+        return "trusted"
+    # Check if this object is peers site.
+    if peer.site_uuid == object_uuid:
+        return "trusted"
+    # Check if peer is from our site.
+    if peer.site_uuid == config.site_uuid:
+        return "trusted"
+    # Check if peer is from one of our trusted sites.
+    our_site = backend.get_object(object_type="site",
+                                uuid=config.site_uuid)
+    if peer.site_uuid in our_site.trusted_sites:
+        return "trusted_site"
+    return "untrusted"
+
+def get_sync_audience(peer, object_site_uuid=None, object_uuid=None,
+    object_type=None):
+    """ Which view of an object the given peer gets.
+
+    Everything that decides how much of an object goes out, said in one
+    word. The checksum of a view is stored under that word, so the
+    marker a peer compares is built from the same decision that builds
+    what the peer receives -- see OTPmeObject.get_sync_field_names().
+    """
+    # A host gets more about itself than about any other host, but not
+    # everything: its join and leave OTPs are checked where they are
+    # used, which is the other end.
+    if object_type == "host" and peer.type == "host":
+        if peer.uuid == object_uuid:
+            audience = "host:self"
+            if peer_is_sso_host(peer):
+                audience = f"{audience}:sso"
+            return audience
+
+    relationship = get_sync_relationship(peer=peer,
+                                        object_site_uuid=object_site_uuid,
+                                        object_uuid=object_uuid)
+
+    if relationship == "trusted_site":
+        # A node of a site we trust gets our users and their tokens
+        # whole, because it answers their logins itself, and the
+        # reduced view of everything else.
+        if peer.type == "node" and object_type in TRUSTED_SITE_FULL_TYPES:
+            return "full"
+        relationship = "untrusted"
+
+    if peer.type == "host" and relationship != "trusted":
+        # A host syncs with a node of its own site and with no other:
+        # HostDaemon.get_sync_connection() keeps the connection there,
+        # and OTPmeHost.get_sync_parameters() refuses a peer from
+        # anywhere else. So on this side a host is of our site and
+        # trusted, and there is no other host view -- none is listed in
+        # SYNC_AUDIENCES and none is hashed, so answering with one would
+        # send the host asking for a checksum nobody wrote, on every
+        # run, for ever. Say so instead.
+        msg = _("Host from another site: {peer}")
+        msg = msg.format(peer=peer.oid)
+        raise OTPmeException(msg)
+
+    if peer.type == "node":
+        # Trusted nodes are allowed to sync all fields.
+        if relationship == "trusted":
+            return "full"
+        return f"node:{relationship}"
+
+    audience = f"{peer.type}:{relationship}"
+    if peer.type == "host":
+        if peer_is_sso_host(peer):
+            audience = f"{audience}:sso"
+    return audience
+
+def peer_is_sso_host(peer):
+    """ Whether the given peer is one of the SSO hosts of our site. """
+    own_site = backend.get_object(uuid=config.site_uuid)
+    if not own_site:
+        return False
+    return peer.uuid in own_site.sso_hosts
+
 def load_object(force=True):
     """ Decorator to make sure the object gets (re) loaded. """
     def wrapper(f):
@@ -392,26 +721,96 @@ def register():
 
 def register_backend():
     # Register index attributes.
-    config.register_index_attribute('acl')
-    config.register_index_attribute('unit')
-    config.register_index_attribute('role')
-    config.register_index_attribute('token')
-    config.register_index_attribute('group')
-    config.register_index_attribute('policy')
-    config.register_index_attribute('enabled')
-    config.register_index_attribute('signature')
-    config.register_index_attribute('object_uuid')
-    config.register_index_attribute('create_time')
-    config.register_index_attribute('last_modified')
-    config.register_index_attribute('last_modified_by')
-    config.register_index_attribute('resolver')
-    config.register_index_attribute('resolver_key')
-    config.register_index_attribute('resolver_checksum')
-    config.register_index_attribute('auto_disable')
-    config.register_index_attribute('origin')
+    # What every copy of an object needs whatever else it carries.
+    # Written by OTPmeBaseObject.add() and OTPmeObject.add_extension(),
+    # so every object type has them and says the same about them.
+    config.register_index_attribute('realm_uuid', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('site_uuid', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('extension', sync=True,
+                                    object_types="all")
+    # A node answers LDAP queries about these objects and needs the
+    # description for that; a host serves no LDAP.
+    config.register_index_attribute('description', sync=["node:untrusted"],
+                                    object_types="all")
+    # Asked for by the management interface only.
+    config.register_index_attribute('acl_inheritance_enabled',
+                                    sync=["node:untrusted"],
+                                    object_types="all")
+    # logins_limited is registered by the client, the host and the node,
+    # which are what OTPmeClientObject stands behind; sync_user by the
+    # role, the group and the host; last_backup by the node and the
+    # share, which are the objects backupd runs for.
+    # Never lands in an object's index: index_search() answers a search
+    # for an ACL out of the ACL tables, so nothing ever adds one here
+    # and what is said about its views has nothing to act on. Said all
+    # the same, so the next reader does not take it for an oversight.
+    config.register_index_attribute('acl', sync=["node:untrusted"],
+                                    object_types="all")
+    # What belongs to what. A host decides who may log in and builds
+    # its nsscache out of these, and they move only when somebody
+    # really is assigned or unassigned. The group is not among them:
+    # the scope, the share and the user set that one, see there.
+    config.register_index_attribute('unit', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('role', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('token', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('policy', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('enabled', sync=True,
+                                    object_types="all")
+    # Only ever searched: User.find_signatures() asks which objects a
+    # user signed, which is a management command and runs on a node.
+    config.register_index_attribute('signature', sync=["node:untrusted"],
+                                    object_types="all")
+    # What every copy of an object says about itself, whatever else it
+    # carries. last_modified is what the receiving side compares to
+    # know the object it holds is no longer current, see
+    # OTPmeConfig.get_auth_user().
+    config.register_index_attribute('object_uuid', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('create_time', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('last_modified', sync=True,
+                                    object_types="all")
+    config.register_index_attribute('last_modified_by', sync=True,
+                                    object_types="all")
+    # What a resolver of this site put here, and what it made it from.
+    # A resolver runs on a node of the site it belongs to.
+    config.register_index_attribute('resolver', sync=["node:untrusted"],
+                                    object_types="all")
+    config.register_index_attribute('resolver_key',
+                                    sync=["node:untrusted"],
+                                    object_types="all")
+    config.register_index_attribute('resolver_checksum',
+                                    sync=["node:untrusted"],
+                                    object_types="all")
+    # When an unused object disables itself, which the site that owns
+    # it works out.
+    config.register_index_attribute('auto_disable',
+                                    sync=["node:untrusted"],
+                                    object_types="all")
+    # Where the object came from. A session says it too, and says it
+    # for itself, see session.py.
+    config.register_index_attribute('origin', sync=True,
+                                    object_types="all")
+    # The checksum of one view of the object, one attribute per view.
+    # A sync list asks for the one of the view its peer gets, so that a
+    # change to a field that peer never receives does not send it
+    # looking (see update_sync_checksums() and backend.get_sync_list()).
+    for audience in SYNC_AUDIENCES:
+        config.register_index_attribute(f"sync_checksum:{audience}",
+                                        object_types="all")
     # Names of the config parameters set on the object (not their
-    # values), to find the objects that have a parameter set.
-    config.register_index_attribute('config')
+    # values), to find the objects that have a parameter set. Asked for
+    # through "otpme-tool search", which a node answers out of its own
+    # site only (see the search branch of OTPmeMgmtP1), so a copy held
+    # somewhere else is never the one that answers.
+    config.register_index_attribute('config', sync=[],
+                                    object_types="all")
 
 def name_len_setter(value, **kwargs):
     """ Shared setter for the per-object-type max_<type>_name_len config
@@ -427,6 +826,79 @@ def name_len_setter(value, **kwargs):
         msg = _("max name length must be positive")
         raise ValueError(msg)
     return value
+
+def token_role_list_setter(object_ids, **kwargs):
+    """ Shared setter for a config parameter naming tokens and roles.
+
+    Resolves the given token and role OIDs to their UUIDs. Written as
+    OIDs because that is what an administrator reads, and stored as
+    UUIDs so a rename keeps the permission with the object it was given
+    to, and a new object of the same name does not inherit it. Same
+    reasoning as site_admin_blacklist.
+
+    Used by allow_confd_jobs and allow_inventory, which ask the same
+    question -- which tokens and roles -- about two different things.
+    """
+    if isinstance(object_ids, str):
+        object_ids = object_ids.split(",")
+    object_uuids = []
+    for x_object_id in object_ids:
+        x_object_id = x_object_id.strip()
+        if not x_object_id:
+            continue
+        # Verifies the OID itself and raises on a malformed one.
+        x_oid = oid.get(x_object_id)
+        if x_oid.object_type not in ['token', 'role']:
+            msg = _("Not a token or role: {object_id}")
+            msg = msg.format(object_id=x_object_id)
+            raise ValueError(msg)
+        x_uuid = backend.get_uuid(x_oid)
+        if not x_uuid:
+            msg = _("Unknown object: {object_id}")
+            msg = msg.format(object_id=x_object_id)
+            raise ValueError(msg)
+        if x_uuid in object_uuids:
+            continue
+        object_uuids.append(x_uuid)
+    return object_uuids
+
+def token_role_list_getter(object_uuids, **kwargs):
+    """ The other way round, for showing it. """
+    if isinstance(object_uuids, str):
+        object_uuids = object_uuids.split(",")
+    object_ids = []
+    for x_uuid in object_uuids:
+        x_object_id = backend.get_oid(uuid=x_uuid, full=False)
+        if not x_object_id:
+            # Show the unresolvable entry instead of hiding it.
+            object_ids.append(x_uuid)
+            continue
+        object_ids.append(x_object_id)
+    return object_ids
+
+def token_role_list_allows(allowed, token):
+    """ Whether <token> is named in such a list.
+
+    A token counts as named when it is in a named role, however deep
+    the role nesting goes.
+    """
+    if token is None:
+        return False
+    if not allowed:
+        return False
+    if token.uuid in allowed:
+        return True
+    try:
+        token_roles = token.get_roles(return_type="uuid", recursive=True)
+    except Exception as e:
+        log_msg = _("Failed to get roles of token '{token}': {e}", log=True)[1]
+        log_msg = log_msg.format(token=token.rel_path, e=e)
+        logger.warning(log_msg)
+        return False
+    for role_uuid in token_roles:
+        if role_uuid in allowed:
+            return True
+    return False
 
 def text_len_setter(value, **kwargs):
     """ Setter for max_description_len and max_info_len: a positive int. """
@@ -549,6 +1021,7 @@ def register_config_parameters():
         return _parameters
     config.register_config_parameter(name="force_site_config_parameters",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=force_site_config_parameters_setter,
                                     object_types=['site'])
     # LDIF attributes that are readable without a "view:attribute:<attr>"
@@ -570,6 +1043,7 @@ def register_config_parameters():
         return _attributes
     config.register_config_parameter(name="ldif_whitelist_attributes",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=ldif_whitelist_attributes_setter,
                                     default_value=LDIF_WHITELIST_ATTRIBUTES,
                                     admin_only=True,
@@ -1185,92 +1659,253 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.unit_uuid = unit_uuid
 
     def get_sync_relationship(self, peer):
-        """ How much of this object the given peer may see.
+        """ How much of this object the given peer may see. """
+        return get_sync_relationship(peer=peer,
+                                    object_site_uuid=self.site_uuid,
+                                    object_uuid=self.uuid)
 
-        A trusted node syncs the whole object, secrets included, so
-        anything it could read that way is not worth withholding from
-        it elsewhere. An untrusted one gets what <sync_fields> lists
-        for it and nothing more.
+    def get_sync_audience(self, peer):
+        """ Which view of this object the given peer gets. """
+        return get_sync_audience(peer=peer,
+                                object_site_uuid=self.site_uuid,
+                                object_uuid=self.uuid,
+                                object_type=self.type)
+
+    def get_sync_audiences(self):
+        """ Every view of this object that needs a checksum of its own.
+
+        What the checksums are built for. A host asks only for what
+        sync_fields lists for it; without that entry get_sync_config()
+        refuses it, so there is no host view to build.
+
+        Neither the full view nor an untrusted host is among them, see
+        SYNC_AUDIENCES.
         """
-        # Check if this object is from peers site.
-        if peer.site_uuid == self.site_uuid:
-            return "trusted"
-        # Check if this object is peers site.
-        if peer.site_uuid == self.uuid:
-            return "trusted"
-        # Check if peer is from our site.
-        if peer.site_uuid == config.site_uuid:
-            return "trusted"
-        # Check if peer is from one of our trusted sites.
-        our_site = backend.get_object(object_type="site",
-                                    uuid=config.site_uuid)
-        if peer.site_uuid in our_site.trusted_sites:
-            return "trusted"
-        return "untrusted"
+        audiences = ["node:untrusted"]
+        if "host" in self.sync_fields:
+            relationships = ["trusted"]
+            # Only a host has a view of itself.
+            if self.type == "host":
+                relationships.append("self")
+            for relationship in relationships:
+                audiences.append(f"host:{relationship}")
+                audiences.append(f"host:{relationship}:sso")
+        return audiences
 
-    def get_sync_config(self, peer):
-        """
-        Get object config with fields selected by sync peer type (e.g.
-        host or node)
-        """
-        sync_config = backend.read_config(self.oid)
-        sync_config = sync_config.copy()
+    def get_sync_field_names(self, audience):
+        """ The config fields a view is made of. None means all of them. """
+        if audience == "full":
+            return None
+        audience_parts = audience.split(":")
+        peer_type = audience_parts[0]
+        relationship = audience_parts[1]
 
-        if peer.type != "node":
-            if peer.type not in self.sync_fields:
-                raise PermissionDenied("Permission denied.")
-
-        # If the syncing host is this host do not restrict sync fields.
-        if self.type == "host" and peer.type == "host":
-            if peer.uuid == self.uuid:
-                return sync_config
-
-        relationship = self.get_sync_relationship(peer)
-
-        # Trusted nodes are allowed to sync all fields.
-        if peer.type == "node" and relationship == "trusted":
-            return sync_config
+        # A host looking at itself is of its own site, so the trusted
+        # lists apply, plus what it needs about itself and nobody else.
+        extra_fields = []
+        if relationship == "self":
+            relationship = "trusted"
+            extra_fields = list(HOST_SELF_SYNC_FIELDS)
 
         allowed_fields = ['VERSION']
         # Get base sync fields (e.g. UUID, REALM, SITE...)
         try:
-            allowed_fields += list(self._base_sync_fields[peer.type][relationship])
+            allowed_fields += list(self._base_sync_fields[peer_type][relationship])
         except KeyError:
             pass
 
         # Get object specific sync fields (e.g. GROUP, TOKENS...)
         try:
-            allowed_fields += list(self.sync_fields[peer.type][relationship])
+            allowed_fields += list(self.sync_fields[peer_type][relationship])
         except KeyError:
             pass
 
-        if peer.type == "host":
-            own_site = backend.get_object(uuid=config.site_uuid)
-            if peer.uuid in own_site.sso_hosts:
-                try:
-                    allowed_fields += list(self.sync_fields[peer.type]['sso_host'])
-                except KeyError:
-                    pass
+        if audience_parts[2:] == ["sso"]:
+            try:
+                allowed_fields += list(self.sync_fields[peer_type]['sso_host'])
+            except KeyError:
+                pass
 
-        if allowed_fields:
-            allowed_config_paras = []
-            for f in allowed_fields:
-                if not f.startswith("CONFIG_PARAMS:"):
+        allowed_fields += extra_fields
+
+        return allowed_fields
+
+    def reduce_sync_config(self, sync_config, allowed_fields, audience=None):
+        """ Drop from a config everything a view does not include. """
+        if not allowed_fields:
+            return sync_config
+        allowed_config_paras = []
+        for f in allowed_fields:
+            if not f.startswith("CONFIG_PARAMS:"):
+                continue
+            config_para = f.split(":")[1]
+            allowed_config_paras.append(config_para)
+        for f in dict(sync_config):
+            if allowed_config_paras:
+                if f == "CONFIG_PARAMS":
+                    config_paras = sync_config[f]
+                    for x in dict(config_paras):
+                        if x in allowed_config_paras:
+                            continue
+                        config_paras.pop(x)
                     continue
-                config_para = f.split(":")[1]
-                allowed_config_paras.append(config_para)
-            for f in dict(sync_config):
-                if allowed_config_paras:
-                    if f == "CONFIG_PARAMS":
-                        config_paras = sync_config[f]
-                        for x in dict(config_paras):
-                            if x in allowed_config_paras:
-                                continue
-                            config_paras.pop(x)
-                        continue
-                if f in allowed_fields:
-                    continue
-                sync_config.pop(f)
+            if f in allowed_fields:
+                continue
+            sync_config.pop(f)
+        # A field this view does not carry must not come along inside
+        # another one either. DESCRIPTION, for one, is written to the
+        # LDIF and to the index as well, and leaving those in would hand
+        # a peer the description it is not meant to have -- and move the
+        # checksum of its view every time somebody edits it.
+        for field in MIRRORED_FIELDS:
+            if field in allowed_fields:
+                continue
+            drop_mirrored_field(sync_config, field)
+        if audience is not None:
+            reduce_sync_index(sync_config, audience, object_type=self.type)
+        return sync_config
+
+    def update_sync_checksums(self):
+        """ Hash every view of this object, one by one.
+
+        A peer downloads an object when the checksum it is given differs
+        from the one it holds. Taken over the whole object, that happens
+        whenever anything changes -- including fields the peer never
+        receives, which means a download of something it already has.
+        So each view is hashed over exactly the fields that view is made
+        of, and a peer is given the one of its own view (see
+        get_sync_audience()).
+
+        Only the site that owns the object does this. Everywhere else a
+        config is passed on as it arrived, checksums and all: a restore,
+        a join or a cluster write must not invent new ones, or every
+        host would come asking for everything again.
+
+        Returns what has to go into the index journal for them, because
+        the checksums are not part of self.index: INDEX travels whole,
+        and a peer is only ever given the checksum of its own view.
+        """
+        # Not ours to say. What we hold of another site is a copy, and a
+        # reduced one: hashing its views here would give answers the
+        # owner never gave, and the peers we serve would act on them.
+        if not self.object_config.is_authoritative():
+            return []
+
+        checksum_data = self.object_config.get_checksum_data()
+        try:
+            stored_checksums = dict(self.object_config['SYNC_CHECKSUMS'])
+        except KeyError:
+            stored_checksums = {}
+
+        sync_checksums = {}
+        for audience in self.get_sync_audiences():
+            allowed_fields = self.get_sync_field_names(audience)
+            audience_data = stuff.copy_object(checksum_data)
+            audience_data = self.reduce_sync_config(audience_data,
+                                                    allowed_fields,
+                                                    audience=audience)
+            audience_data = drop_volatile_fields(audience_data)
+            audience_checksum = self.object_config.gen_checksum(audience_data)
+            sync_checksums[audience] = audience_checksum
+
+        self.object_config['SYNC_CHECKSUMS'] = sync_checksums
+        self.log_moved_sync_views(stored_checksums, sync_checksums)
+
+        now = time.time_ns()
+        index_journal = []
+        for audience in sync_checksums:
+            index_attribute = f"sync_checksum:{audience}"
+            # By name, without a value: a view has one checksum, so
+            # dropping the name drops the old one whatever it was.
+            index_journal.append([now, 'del', index_attribute])
+            index_journal.append([now, 'add', index_attribute,
+                                sync_checksums[audience]])
+        return index_journal
+
+    def log_moved_sync_views(self, stored_checksums, sync_checksums):
+        """ Say which views this write moved, and what moved them.
+
+        A peer that fetches an object again is answering a checksum that
+        moved, and the log otherwise says only that it fetched it. What
+        moved it is in reach here: the attributes this write changed,
+        and the index attributes it touched, which is where a change
+        that no view was meant to see comes from -- an index attribute
+        rides along in every view whatever the view is made of.
+
+        For deciding which views an index attribute belongs to, so that
+        costs a look at a log line instead of an investigation.
+        """
+        if config.debug_level("sync") < 1:
+            return
+        moved = []
+        for audience in sorted(sync_checksums):
+            if stored_checksums.get(audience) == sync_checksums[audience]:
+                continue
+            moved.append(audience)
+        if not moved:
+            return
+        # Nothing to say for an object that had none: everything moved,
+        # because there was nothing to move from.
+        if not stored_checksums:
+            return
+        changed = list(self.object_config.modified_attributes)
+        index_attributes = []
+        for x_entry in self.index_journal:
+            index_attribute = x_entry[2]
+            if index_attribute in index_attributes:
+                continue
+            index_attributes.append(index_attribute)
+        log_msg = _("Sync view moved: {oid}: {views} (changed: {changed}) (index: {index})", log=True)[1]
+        log_msg = log_msg.format(oid=self.oid,
+                                views=", ".join(moved),
+                                changed=", ".join(sorted(changed)) or "-",
+                                index=", ".join(sorted(index_attributes)) or "-")
+        logger.debug(log_msg)
+
+    def get_sync_config(self, peer, object_config=None):
+        """
+        Get object config with fields selected by sync peer type (e.g.
+        host or node)
+
+        A caller that has already read the config hands it in. Nothing
+        here needs the object to be loaded, only to be identified:
+        which fields go to which peer is decided by the class and by the
+        sub type, and the sub type is in the config. A sync walks every
+        object of a site, and loading each of them to find out what kind
+        of thing it is costs more than everything else it does -- see
+        backend.get_instance_from_oid(load=False).
+        """
+        if object_config is None:
+            object_config = backend.read_config(self.oid)
+        sync_config = object_config.copy()
+
+        if peer.type != "node":
+            if peer.type not in self.sync_fields:
+                raise PermissionDenied("Permission denied.")
+
+        audience = self.get_sync_audience(peer)
+
+        # Read before reducing: the table of checksums is itself a field
+        # that most views do not include. The full view is not in it --
+        # it is the whole object, and SYNC_CHECKSUM already says what
+        # the whole object is, so nothing has to be put in its place.
+        try:
+            audience_checksum = sync_config['SYNC_CHECKSUMS'][audience]
+        except KeyError:
+            audience_checksum = None
+
+        allowed_fields = self.get_sync_field_names(audience)
+        if allowed_fields is not None:
+            sync_config = self.reduce_sync_config(sync_config,
+                                                allowed_fields,
+                                                audience=audience)
+
+        # The peer stores SYNC_CHECKSUM of what it gets and compares
+        # that value the next time it asks (see write_config()). So what
+        # goes out is the checksum of the view it is getting, and a peer
+        # never sees the checksum of a view it is not allowed to have.
+        if audience_checksum:
+            sync_config['SYNC_CHECKSUM'] = audience_checksum
 
         return sync_config
 
@@ -1978,6 +2613,18 @@ class OTPmeBaseObject(OTPmeLockObject):
         if not self.object_config.modified:
             return
 
+        # Hash the views of this object. After the check above, not
+        # before it: writing the checksums marks the config modified,
+        # and an object nothing changed about would then be written
+        # every time somebody asked it to.
+        #
+        # A full index update takes the checksums out of the config
+        # itself (see backends/file/file.py); an incremental one only
+        # applies what the journal says, so they have to be said there.
+        sync_checksum_journal = self.update_sync_checksums()
+        if not full_index_update:
+            index_journal += sync_checksum_journal
+
         log_msg = _("Writing object: {oid}", log=True)[1]
         log_msg = log_msg.format(oid=self.oid)
         logger.debug(log_msg)
@@ -2048,7 +2695,30 @@ class OTPmeBaseObject(OTPmeLockObject):
         key: Union[str,int,float],
         value: Union[str,int,float,None],
         ):
-        """ Add attribute to object index. """
+        """ Add attribute to object index.
+
+        Only an attribute that was registered for this object type,
+        because the registration is where it is said which views the
+        attribute goes to, and an attribute that names no views is
+        quietly handed to every peer there is (see reduce_sync_index()).
+        Insisting on it here is what keeps that from happening by
+        forgetting rather than by choice.
+
+        Registered for the type, not just registered at all: several
+        object types set the same attribute and each says its own thing
+        about it, so an attribute another type registered says nothing
+        about this one. An attribute registered with object_types="all"
+        answers for every type, which is what the ones written by a
+        method of the base class use.
+
+        An ldif: attribute is exempt. Which of those an object has is
+        decided by its extensions, not by this code, and the view it
+        belongs to follows the LDIF attribute it mirrors -- so there is
+        nothing about it to forget. Only the seven that are searched by
+        name are registered, and registering the rest would mean keeping
+        a list of every attribute every schema allows.
+        """
+        check_index_attribute(key, self.type)
         try:
             values = self.index[key]
         except KeyError:
@@ -2267,17 +2937,29 @@ class OTPmeObject(OTPmeBaseObject):
                             "TYPE",
                             "INDEX",
                             "ENABLED",
-                            "LDIF",
-                            "LDIF_ATTRIBUTES",
-                            "EXTENSION_ATTRIBUTES",
+                            # An LDIF is there to be served over LDAP,
+                            # and a host serves none -- it runs hostd
+                            # and confd and nothing else. What it does
+                            # read of it, nsscache asks the index for
+                            # (see HOST_LDIF_INDEX_ATTRIBUTES), and the
+                            # extension attributes are only what the
+                            # LDIF is built from. For a user of any size
+                            # this is the largest thing that travelled.
+                            #"LDIF",
+                            #"LDIF_ATTRIBUTES",
+                            #"EXTENSION_ATTRIBUTES",
                             "POLICIES",
                             "POLICY_OPTIONS",
                             #"CONFIG_PARAMS",
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
-                            "INFO",
-                            "DESCRIPTION",
+                            #"INFO",
+                            # A host serves no LDAP -- it runs hostd and
+                            # confd and nothing else -- so nobody there
+                            # reads it. Its copies in the LDIF and in
+                            # the index go with it, see MIRRORED_FIELDS.
+                            #"DESCRIPTION",
                             "CREATOR",
                             "CREATE_TIME",
                             "LAST_MODIFIED",
@@ -2290,7 +2972,14 @@ class OTPmeObject(OTPmeBaseObject):
                         },
 
                     'node'  : {
+                        # SYNC_CHECKSUMS holds the checksum of every
+                        # view of this object. A node needs them all:
+                        # it serves the hosts of its own site from what
+                        # it synced, so it has to hand on the checksums
+                        # of the host views as well. A host gets only
+                        # its own, as SYNC_CHECKSUM (get_sync_config()).
                         'untrusted'  : [
+                            "SYNC_CHECKSUMS",
                             "UUID",
                             "REALM",
                             "SITE",
@@ -2313,7 +3002,9 @@ class OTPmeObject(OTPmeBaseObject):
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
-                            "INFO",
+                            #"INFO",
+                            # A node runs ldapd, so it answers LDAP
+                            # queries about these objects and needs it.
                             "DESCRIPTION",
                             "CREATOR",
                             "CREATE_TIME",
@@ -2698,6 +3389,11 @@ class OTPmeObject(OTPmeBaseObject):
                 break
 
             if not recursive:
+                break
+
+            # The walk ends at the site. Above it sits the realm, and a
+            # realm holds no config parameters for the objects below it.
+            if parent_object.type == "site":
                 break
 
             parent_object = parent_object.get_parent_object(run_policies=False)
@@ -3786,19 +4482,29 @@ class OTPmeObject(OTPmeBaseObject):
             for child_type in child_types:
                 childs = []
                 child_hook = child_types[child_type]
+                # Asked without an ACL check, because this is the object
+                # itself looking for what it has to update, not somebody
+                # asking to be shown it. There is nobody to check for
+                # anyway: this runs in a daemon with no authenticated
+                # token -- and what an ACL check hands back on refusal
+                # is False, which the lines below then iterate over.
                 if self.type == "unit":
                     childs = self.get_members(object_types=[child_type],
                                                 return_type="instance",
-                                                recursive=False)
+                                                recursive=False,
+                                                verify_acls=False)
                     childs = childs[child_type]
                 if self.type == "role":
                     if child_type == "group":
-                        childs = self.get_groups(return_type="instance")
+                        childs = self.get_groups(return_type="instance",
+                                                verify_acls=False)
                         role_roles = self.get_roles(parent=True,
                                                 recursive=True,
-                                                return_type="instance")
+                                                return_type="instance",
+                                                verify_acls=False)
                         for role in role_roles:
-                            childs += role.get_groups(return_type="instance")
+                            childs += role.get_groups(return_type="instance",
+                                                    verify_acls=False)
                 if self.type == "user":
                     if child_type == "group":
                         for token_uuid in self.tokens:
@@ -5696,12 +6402,19 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Update OTPme policy of object. """
+        # The site of the object, as in add_policy(): the policy this
+        # object carries is the one of its own site.
+        if self.type == "site":
+            object_site = self.name
+        else:
+            object_site = self.site
+
         # Get policy.
         result = backend.search(object_type="policy",
                                 attribute="name",
                                 value=policy_name,
-                                realm=config.realm,
-                                site=config.site,
+                                realm=self.realm,
+                                site=object_site,
                                 return_type="instance")
         if not result:
             msg = _("Unknown policy: {policy_name}")
@@ -5744,21 +6457,29 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Remove OTPme policy from object. """
+        # The site of the object, not the site we are on: add_policy()
+        # took the policy from the first, so the second would not find
+        # again what it attached.
+        if self.type == "site":
+            object_site = self.name
+        else:
+            object_site = self.site
+
         result = backend.search(object_type="policy",
                                 attribute="name",
                                 value=policy_name,
-                                realm=config.realm,
-                                site=config.site,
+                                realm=self.realm,
+                                site=object_site,
                                 return_type="instance")
         if not result:
-            msg = ("Unknown policy: {policy_name}")
+            msg = _("Unknown policy: {policy_name}")
             msg = msg.format(policy_name=policy_name)
             return callback.error(msg)
 
         policy = result[0]
 
         if policy.uuid not in self.policies:
-            msg = ("Policy not enabled for this object.")
+            msg = _("Policy not enabled for this object.")
             return callback.error(msg)
 
         msg = _("Remove policy '{policy_name}' from {object_type} '{object_name}'?: ")
@@ -6122,6 +6843,7 @@ class OTPmeObject(OTPmeBaseObject):
                 raise Exception(exception)
         # Get all assigned tokens.
         token_uuids = self.get_tokens(return_type="uuid",
+                                    skip_disabled=skip_disabled,
                                     include_roles=include_roles)
         user_uuids = []
         if token_uuids:
@@ -6159,12 +6881,16 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:scopes'])
-    def list_scopes(
+    @check_acls(acls=['find:scopes'])
+    def find_scopes(
         self,
         **kwargs,
         ):
-        """ Get all scopes this object is assigned to. """
+        """ Get all scopes this object is assigned to.
+
+        A scope holds the objects it is for, so this is the other
+        direction: where is this object used.
+        """
         return self.get_scopes(**kwargs)
 
     def get_scopes(
@@ -6195,7 +6921,13 @@ class OTPmeObject(OTPmeBaseObject):
                                         return_attributes=return_attributes)
         result = []
         scope_data = {**scopes_result, **role_scopes_result}
-        all_scopes = set(list(scopes_result) + list(role_scopes_result))
+        # Direct ones first, then the ones from the roles. A set() would
+        # drop the duplicates too, but also the order.
+        all_scopes = list(scopes_result)
+        for scope_uuid in role_scopes_result:
+            if scope_uuid in all_scopes:
+                continue
+            all_scopes.append(scope_uuid)
         for scope_uuid in all_scopes:
             scope_name = scope_data[scope_uuid]['name']
             scope_site = scope_data[scope_uuid]['site']
@@ -6343,6 +7075,62 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
+    def find_objects(
+        self,
+        object_type: str,
+        return_type: str="name",
+        skip_disabled: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Find objects of the given type that hold a reference to us.
+
+        The other direction of the list_* commands: those answer what is
+        assigned to this object, this one answers where this object is
+        assigned. Whoever holds a reference indexes it under the type
+        name of the object it holds, so what we search for is our own
+        type.
+        """
+        # The ACL cannot sit in a decorator, the object type arrives as
+        # an argument.
+        find_acl = f"find:{object_type}s"
+        if not self.verify_acl(find_acl):
+            msg = _("Permission denied: {object_path}")
+            msg = msg.format(object_path=self.path)
+            return callback.error(msg, exception=PermissionDenied)
+
+        search_attributes = {
+                        self.type   : {'value':self.uuid},
+                        }
+        if skip_disabled:
+            search_attributes['enabled'] = {'value':True}
+        return_attributes = ['uuid', 'site', return_type]
+        search_result = backend.search(object_type=object_type,
+                                    attributes=search_attributes,
+                                    return_attributes=return_attributes)
+        result = []
+        for uuid in search_result:
+            if return_type == "name":
+                x_result = search_result[uuid]['name']
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            else:
+                x_result = search_result[uuid][return_type]
+            if x_result in result:
+                continue
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
+    @cli.check_rapi_opts()
     @check_acls(acls=['view:roles'])
     def list_roles(
         self,
@@ -6353,13 +7141,19 @@ class OTPmeObject(OTPmeBaseObject):
 
     def get_roles(
         self,
-        return_type: str="read_oid",
+        return_type: str="name",
         _caller: str="API",
         skip_disabled: bool=True,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Return list with all roles assigned to this object. """
+        """ Return list with all roles assigned to this object.
+
+        The default used to be read_oid, and the command maps of six
+        object types did not override it, so their list_roles printed
+        OIDs where every other list prints names. No caller relies on
+        the default, they all name the return type they want.
+        """
         result = []
         if self.roles:
             search_attr = {}
@@ -6491,6 +7285,15 @@ class OTPmeObject(OTPmeBaseObject):
         ):
         return self.get_dynamic_groups(**kwargs)
 
+    def _get_dynamic_group_roles(self):
+        """ Roles whose dynamic groups apply to this object.
+
+        get_roles() does not mean the same thing for every object type,
+        so the direction belongs to the type, not to a parameter the
+        caller sets.
+        """
+        return self.get_roles(recursive=True, return_type="instance")
+
     def get_dynamic_groups(
         self,
         include_roles: bool=True,
@@ -6508,13 +7311,14 @@ class OTPmeObject(OTPmeBaseObject):
             result += self.dynamic_groups
 
         if include_roles:
-            roles = self.get_roles(recursive=True, return_type="instance")
+            roles = self._get_dynamic_group_roles()
             for role in roles:
                 if not role.dynamic_groups:
                     continue
                 result += role.dynamic_groups
 
-        result = list(set(sorted(result)))
+        # sorted() before set() threw the order away again.
+        result = sorted(set(result))
 
         if _caller == "RAPI":
             result = ",".join(result)
@@ -7239,13 +8043,17 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def list_acls(
+    def find_acls(
         self,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Get assigned ACLs of object. """
+        """ Get the ACLs this object holds on other objects.
+
+        Not the ACLs set on this object -- those are list_acls. This
+        searches everything else for a grant to us.
+        """
         if config.auth_token and not config.auth_token.is_admin():
             msg = _("You must be admin for this command.")
             return callback.error(msg)
@@ -7256,12 +8064,12 @@ class OTPmeObject(OTPmeBaseObject):
                                 return_type="uuid")
         acls = []
         for x_uuid in result['acls']:
-            x_object = backend.get_oid(x_uuid)
+            x_oid = backend.get_oid(x_uuid)
             for raw_acl in result['acls'][x_uuid]:
                 _acl = otpme_acl.decode(raw_acl)
                 if _acl.owner_uuid != self.uuid:
                     continue
-                _acl_string = f"{x_object} {_acl.id}"
+                _acl_string = f"{x_oid} {_acl.id}"
                 if _caller == "CLIENT":
                     callback.send(_acl_string)
                 acls.append(_acl_string)
@@ -7384,6 +8192,16 @@ class OTPmeObject(OTPmeBaseObject):
             check_admin_role = False
         if self.type == "node":
             check_admin_role = False
+        # Site admins should not add, delete, join or unjoin nodes. The
+        # node itself is covered above, but adding and deleting one is
+        # asked on the unit it sits in, and joining and leaving on the
+        # join access group.
+        if self.type == "unit":
+            if acl in ["add:node", "delete:node"]:
+                check_admin_role = False
+        if self.type == "accessgroup":
+            if acl in ["join:node", "leave:node"]:
+                check_admin_role = False
         if self.uuid == config.admin_token_uuid:
             check_admin_role = False
         # Same for whatever else the site put out of their reach. Only
@@ -7842,14 +8660,18 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['view:acl'])
     @audit_log()
-    def get_acls(
+    def list_acls(
         self,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Get ACLs of object. """
+        """ Get the ACLs set on this object.
+
+        The other direction is find_acls: the ACLs this object holds on
+        other objects.
+        """
         if run_policies:
             try:
                 self.run_policies("get_acls",
@@ -8655,10 +9477,11 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Do not inherit ACL if object does not support it.
         if self.acl_inheritance_enabled is None:
+            inherit_acls_message = _("Object cannot inherit ACLs")
             inherit_acls = False
 
-        if not self.acl_inheritance_enabled:
-            inherit_acls_message = "ACL inheritance disabled"
+        if self.acl_inheritance_enabled is False:
+            inherit_acls_message = _("ACL inheritance disabled")
             inherit_acls = False
 
         if inherit_acls:
@@ -8682,10 +9505,15 @@ class OTPmeObject(OTPmeBaseObject):
                 inherit_acls_message = _("Permission denied")
                 inherit_acls = False
 
-        if keep_acls is not None:
-            inherit_acls = True
-            if keep_acls:
-                inherit_acls = False
+        # Only ever switches the inheritance off. Letting keep_acls=False
+        # switch it on would step over every check above -- including the
+        # one for add:acl/delete:acl on this object, which is what keeps
+        # somebody who may move an object into a unit from handing
+        # themselves the default ACLs of that unit. The CLI never sends
+        # False (--keep-acls maps to True), but the command takes the
+        # argument, so the API can.
+        if keep_acls:
+            inherit_acls = False
 
         if inherit_acls:
             callback.send(_("* Removing default ACLs of old unit..."))
@@ -10844,6 +11672,13 @@ class OTPmeObject(OTPmeBaseObject):
             config_cache.invalidate()
             self.set_changelog(f"removed unknown config parameter '{parameter}'")
             return self._cache(callback=callback)
+        # A realm holds no config parameters: nothing reads them. The
+        # resolution of a parameter ends at the site (see
+        # get_config_parameter()), so a value here would never be used.
+        # Removing one that is still there stays possible.
+        if self.type == "realm" and not delete:
+            msg = _("A realm cannot hold config parameters.")
+            return callback.error(msg)
         if verify_acls and not self.verify_acl(f'set:config:{parameter}'):
             msg = _("Permission denied.")
             return callback.error(msg)
@@ -10908,6 +11743,25 @@ class OTPmeObject(OTPmeBaseObject):
                     self.set_changelog(f"removed value '{changelog_value}' from '{parameter}'")
                 return self._cache(callback=callback)
             else:
+                # A site gets the default of every parameter written into
+                # it when it is created (Site.add() -> set_default_config_
+                # params()), and nothing ever writes it again. The
+                # resolution ends at the site, so removing one here would
+                # leave every object below it without a value -- and what
+                # an unset parameter means is up to whoever reads it.
+                # Getting it back takes otpme-site upgrade, which is not
+                # what somebody removing a parameter has in mind.
+                #
+                # Only on a site: on a unit, user or token a removed
+                # parameter simply falls back to the value above it.
+                if self.type == "site":
+                    has_default = para_data.get('default', None) is not None
+                    if not has_default and para_data.get('default_genner', None):
+                        has_default = para_data.get('gen_default_on_create', False)
+                    if has_default:
+                        msg = _("Config parameter has a default and cannot be removed from a site: {parameter}")
+                        msg = msg.format(parameter=parameter)
+                        return callback.error(msg)
                 try:
                     deller = para_data['deller']
                 except KeyError:

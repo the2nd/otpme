@@ -177,9 +177,11 @@ class OTPmeMgmtClient(object):
                                                     **kwargs)
             return status, response
 
-        ## Make sure object class is registered.
-        #module = f"otpme.lib.classes.{command}"
-        #register_module(module)
+        # resolve_path() answers from config.tree_object_types, and
+        # nothing registers the object types on the client side. Without
+        # this every absolute path died with "Unknown object type".
+        if [x for x in object_list if x.startswith("/")]:
+            register_module(f"otpme.lib.classes.{command}")
 
         # If this command includes a OTPme object (e.g. user, token etc.)
         # we need to do some special handling.

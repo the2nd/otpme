@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-import pprint
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -67,7 +66,7 @@ def resolve_tags(tags, from_uuid=True):
                 raise InvalidTag(msg)
             try:
                 object_id = stuff.resolve_uuid(object_xxx)
-            except UnknownUUID as e:
+            except UnknownUUID:
                 x_list.append(object_xxx)
             else:
                 x_list.append(object_id.full_oid)
@@ -102,6 +101,17 @@ def resolve_tags(tags, from_uuid=True):
 
     return sorted_tags
 
+def drop_disabled_signers(signers):
+    """ Remove the signers that are switched off. """
+    for signer in list(signers):
+        if signer.enabled:
+            continue
+        log_msg = _("Ignoring disabled signer: {signer_oid}", log=True)[1]
+        log_msg = log_msg.format(signer_oid=signer.object_oid)
+        logger.debug(log_msg)
+        signers.remove(signer)
+    return signers
+
 def get_signers(signer_type, username=None):
     """ Get signers configured for this host. """
     from otpme.lib.classes.command_handler import CommandHandler
@@ -110,7 +120,10 @@ def get_signers(signer_type, username=None):
     global_signers = command_handler.get_signers(signer_type=signer_type,
                                                 private=False)
     if username is None:
-        return global_signers
+        # Dropped here as well as below: a caller that asks for the
+        # signers of this host without naming a user (confd, for one)
+        # used to get the disabled ones along.
+        return drop_disabled_signers(global_signers)
 
     force_signers_mapping = {
                             'token'         : "force_token_signers",
@@ -148,15 +161,7 @@ def get_signers(signer_type, username=None):
         if private_signers:
             signers = private_signers
 
-    for signer in list(signers):
-        if not signer.enabled:
-            log_msg = _("Ignoring disabled signer: {signer_oid}", log=True)[1]
-            log_msg = log_msg.format(signer_oid=signer.object_oid)
-            logger.debug(log_msg)
-            signers.remove(signer)
-            continue
-
-    return signers
+    return drop_disabled_signers(signers)
 
 def get_signature_info(signature):
     """ Describe the given signature for a log message. """
@@ -262,6 +267,17 @@ class OTPmeSigner(object):
                                 'agent_script',
                                 'backup_script',
                                 'share_script',
+                                # Host configuration management: one type
+                                # per kind of job, so that the right to
+                                # install a package is not also the right
+                                # to swap the signers of a host. See
+                                # data_objects/conf_job.py.
+                                'repo_mgmt',
+                                'sw_mgmt',
+                                'signer_mgmt',
+                                'service_mgmt',
+                                'file_mgmt',
+                                'host_mgmt',
                                 ]
 
     def __init__(self, uuid=None, object_uuid=None,
@@ -354,8 +370,17 @@ class OTPmeSigner(object):
         """ Disable signer. """
         self.enabled = False
 
-    def load(self):
-        """ Load signer(s). """
+    def load(self, keep_gone=False):
+        """ Load signer(s).
+
+        With <keep_gone> a signer the current state no longer backs is
+        left as it is: a user or role that was deleted, and a member a
+        role does not have anymore, whether they were deleted or taken
+        out of it. What they signed is out there -- the key script of an
+        offline token, an agent script -- and still has to validate, so
+        losing the key that was pinned for them is a decision, not
+        something an update does on its own.
+        """
         log_msg = _("Loading signer...", log=True)[1]
         self.logger.debug(log_msg)
 
@@ -370,18 +395,27 @@ class OTPmeSigner(object):
             raise OTPmeException(msg)
 
         # Get OID
+        object_id = None
         try:
             object_id = stuff.resolve_uuid(self.object_uuid)
         except UnknownUUID as e:
-            msg = _("Unknown object: {object_uuid}")
-            msg = msg.format(object_uuid=self.object_uuid)
-            raise UnknownObject(msg) from e
+            if not keep_gone or not self.object_oid:
+                msg = _("Unknown object: {object_uuid}")
+                msg = msg.format(object_uuid=self.object_uuid)
+                raise UnknownObject(msg) from e
         except Exception as e:
             msg = _("Unable to resolve UUID to OID: {object_uuid}: {e}")
             msg = msg.format(object_uuid=self.object_uuid, e=e)
             raise UnknownObject(msg) from e
 
         if not object_id:
+            if keep_gone and self.object_oid:
+                # The user or role is gone. What we know of it stays:
+                # the OID we cached and the keys we pinned.
+                log_msg = _("Signer object was deleted, keeping it: {object_oid}", log=True)[1]
+                log_msg = log_msg.format(object_oid=self.object_oid)
+                self.logger.info(log_msg)
+                return
             msg = _("Unknown user/role: {uuid}")
             msg = msg.format(uuid=self.uuid)
             raise UnknownObject(msg)
@@ -408,6 +442,7 @@ class OTPmeSigner(object):
 
         # For roles we have to check each member.
         role_members = self.get_role_members(object_id)
+        members = {}
         for x_uuid in role_members:
             x_oid = role_members[x_uuid]
             try:
@@ -420,7 +455,16 @@ class OTPmeSigner(object):
                         'uuid'          : x_uuid,
                         'public_key'    : x_key,
                     }
-            self.signers[x_uuid] = signer
+            members[x_uuid] = signer
+        if keep_gone:
+            for x_uuid in self.signers:
+                if x_uuid in members:
+                    continue
+                members[x_uuid] = self.signers[x_uuid]
+                log_msg = _("Member of role is gone, keeping the key: {oid}", log=True)[1]
+                log_msg = log_msg.format(oid=self.signers[x_uuid]['oid'])
+                self.logger.info(log_msg)
+        self.signers = members
 
         log_msg = _("Loaded {count} users from role: {object_id}", log=True)[1]
         log_msg = log_msg.format(count=len(role_members), object_id=object_id)
@@ -484,7 +528,7 @@ class OTPmeSigner(object):
                 uuid = getattr(self, x)
                 try:
                     object_id = stuff.resolve_uuid(uuid)
-                except UnknownUUID as e:
+                except UnknownUUID:
                     sign_info[x] = uuid
                 else:
                     sign_info[x] = object_id.full_oid
@@ -503,7 +547,7 @@ class OTPmeSigner(object):
         Check if the signer object or the key of the given
         signer is outdated.
         """
-        unknown_val = "unknown"
+        deleted_val = "deleted"
         removed_val = "removed"
         outdated_val = "outdated"
         # Get copy of this signer object to update and compare.
@@ -520,9 +564,8 @@ class OTPmeSigner(object):
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
             config.raise_exception()
-            return unknown_val
+            return deleted_val
 
-        # FIXME: check if siger role/user does not exist anymore!!!!
         # Check if signer object (e.g. role) itself is outdated.
         if not uuid:
             object_outdated = False
@@ -545,6 +588,11 @@ class OTPmeSigner(object):
             raise OTPmeException(msg) from None
 
         if uuid not in c_signer.signers:
+            # Gone from the role either way, but for two reasons that
+            # are not the same: somebody took them out, or the user does
+            # not exist anymore. The second keeps its pinned key.
+            if self.user_is_deleted(uuid):
+                return deleted_val
             return removed_val
 
         c_signer_key = c_signer.signers[uuid]['public_key']
@@ -552,6 +600,23 @@ class OTPmeSigner(object):
             return outdated_val
 
         return False
+
+    def user_is_deleted(self, uuid):
+        """ Whether the user of the given UUID is gone.
+
+        Told apart from a user who is only no longer a member of the
+        role: the first keeps the key that was pinned for them, the
+        second does not.
+        """
+        try:
+            object_id = stuff.resolve_uuid(uuid)
+        except UnknownUUID:
+            return True
+        except Exception:
+            # Whether it exists is not answered, so do not act as if it
+            # did not.
+            return False
+        return not object_id
 
     def get_signer_key(self, uuid):
         """ Get signer public key. """
@@ -765,7 +830,7 @@ class OTPmeSignature(object):
                     continue
                 try:
                     object_id = stuff.resolve_uuid(uuid)
-                except UnknownUUID as e:
+                except UnknownUUID:
                     sign_info[x] = uuid
                 else:
                     sign_info[x] = object_id.full_oid

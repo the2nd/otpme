@@ -153,8 +153,12 @@ def register_backend():
                                 path_getter=path_getter,
                                 oid_getter=oid_getter)
     # Register search attributes.
-    config.register_index_attribute('job_name')
-    config.register_index_attribute('job_status')
+    # A job runs where it was started, never on a node of another site.
+    job_types = ["job"]
+    config.register_index_attribute('job_name', sync=[],
+                                    object_types=job_types)
+    config.register_index_attribute('job_status', sync=[],
+                                    object_types=job_types)
 
 @match_class_typing
 class OTPmeTreeJob(OTPmeDataObject):

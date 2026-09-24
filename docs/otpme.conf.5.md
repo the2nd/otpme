@@ -371,7 +371,8 @@ Directory for pidfiles and sockets (default: /var/run/otpme).
 Directory for logfiles (default: /var/log/otpme).
 
 **MOUNT_ROOT_DIR**  
-Mount root directory (default: /otpme).
+Mount root directory (default: /otpme). A share is mounted below it as
+*user***/***realm***/***site***/***share*.
 
 **SHARE_ROOT**  
 Overrides the **share_root** config parameter.
@@ -512,9 +513,6 @@ Client certificate for syslog.
 Client key for syslog.
 
 # SYNCHRONIZATION
-
-**SYNC_MEM_CACHE**  
-Cache objects in memory while syncing.
 
 **SYNC_INTERVAL**  
 Interval in seconds between sync attempts with master node.

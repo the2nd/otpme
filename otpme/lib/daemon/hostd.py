@@ -380,8 +380,6 @@ class HostDaemon(OTPmeDaemon):
             x_sync_time = x['time']
             x_sync_realm = x['realm']
             x_sync_site = x['site']
-            x_skip_list = x['skip_list']
-            x_skip_admin = x['skip_admin']
             x_object_types = x['object_types']
             try:
                 response = add_sync_list_checksum(realm=x_sync_realm,
@@ -389,8 +387,6 @@ class HostDaemon(OTPmeDaemon):
                                             peer_realm=sync_conn.peer.realm,
                                             peer_site=sync_conn.peer.site,
                                             sync_time=x_sync_time,
-                                            skip_list=x_skip_list,
-                                            skip_admin=x_skip_admin,
                                             object_types=x_object_types,
                                             checksum=config.SYNCING_STATUS_STRING)
                 exception = None
@@ -899,6 +895,14 @@ class HostDaemon(OTPmeDaemon):
                             }
                 if sync_job not in self.sync_jobs:
                     self.sync_jobs.append(sync_job)
+                return
+
+            try:
+                object_sync_child = self._sync_childs['objects']
+            except Exception:
+                object_sync_child = None
+
+            if object_sync_child:
                 return
 
             # Create child process that will do the sync.

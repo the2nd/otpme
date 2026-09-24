@@ -123,9 +123,7 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                             'force',
                             'callback',
                             '_caller',
-                            'lock_timeout',
                             'run_policies',
-                            'lock_reload_on_change',
                             ]
             try:
                 callback = f_kwargs['callback']

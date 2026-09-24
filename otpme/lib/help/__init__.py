@@ -108,30 +108,31 @@ def get_cmd_help(command, mod_name=None):
 register_global_opt("-r <realm>", "Connect to realm")
 register_global_opt("-s <site>", "Connect to site")
 register_global_opt("--type <object_type>", "Object type to act on (e.g. token type).")
-register_global_opt("-t <timeout>", "Connect timeout in seconds")
-register_global_opt("-tt <timeout>", "Connection timeout in seconds")
+register_global_opt("-t <timeout>", "Seconds to wait until the connection is established (default: 5)")
+register_global_opt("-tt <timeout>", "Seconds to wait when a request is sent and for its answer (default: 15)")
+register_global_opt("--reneg-timeout <timeout>", "Only for otpme-agent: seconds to wait when renewing a login session (default: 30)")
 register_global_opt("-c <config_file>", "Use alternative config file")
-register_global_opt("-f", "Do not ask any user questions")
-register_global_opt("--no-pager", "Do use pager (less) on command output larger than terminal size.")
+register_global_opt("-f", "Do not ask any questions: every confirmation counts as yes (also when signing)")
+register_global_opt("--no-pager", "Do not use a pager (less) on command output larger than the terminal size.")
 register_global_opt("--changelog <text>", "Add custom text to the object changelog.")
 register_global_opt("-u <username>", "User used for authentication (e.g. realm join)")
 register_global_opt("--no-dns", "Do not resolve OTPme site address via DNS")
 register_global_opt("--use-dns", "Resolve OTPme site address via DNS")
 register_global_opt("--login-no-dns", "Do not resolve OTPme login point via DNS")
 register_global_opt("--login-use-dns", "Resolve OTPme login point via DNS")
-register_global_opt("--use-ssh-agent [y|n]", "Use ssh-agent for authentication")
-register_global_opt("--use-smartcard [y|n]", "Use smartcard for authentication")
+register_global_opt("--use-ssh-agent <y|n>", "Use ssh-agent for authentication")
+register_global_opt("--use-smartcard <y|n>", "Use smartcard for authentication")
 register_global_opt("--fetch-scripts", "Fetch scripts from server instead of using cached ones.")
-register_global_opt("--stdin-pass", "Read passphrase from stdin")
-register_global_opt("--impersonate-token [token]", "Work as token [token]. Needs admin permissions.")
+register_global_opt("--stdin-pass", "Read the password, OTP or PIN from stdin")
+register_global_opt("--impersonate-token <user/token>", "Work as the given token. Needs admin permissions.")
 register_global_opt("--socket", "Use mgmtd socket.")
 register_global_opt("--api", "Use direct API calls instead of connecting to a daemon")
-register_global_opt("--auth-token [token]", "Emulate login with [token] in API mode")
-register_global_opt("--print-raw-sign-data", "Print raw data to sign instead of sign info")
+register_global_opt("--auth-token <token>", "Emulate login with the given token in API mode")
+register_global_opt("--print-raw-sign-data", "When asked to sign, show the raw data instead of the summary")
 #register_global_opt("--ignore-changed-objects", "Sync objects even if they changed while syncing.")
 register_global_opt("--version", "Show version")
 register_global_opt("-v", "Enable verbose mode")
-register_global_opt("-d", "Enable debug mode. Multiple 'd' will increase debug level")
+register_global_opt("-dd", "Enable debug output (log level DEBUG). -d always needs a topic letter, see otpme(1).")
 register_global_opt("-da", "Debug function cache adds")
 register_global_opt("-dA", "Enable debug of transactions.")
 register_global_opt("-dA1", "Debug reading/writing transactions on disk.")
@@ -166,23 +167,20 @@ register_global_opt("-dP", "Enable profiling via cProfile")
 register_global_opt("-dT", "Print warning if timing of function/method calls takes longer than --debug-timing-limit.")
 register_global_opt("-dTT", "Print timing result after method finishes.")
 register_global_opt("-dTTT", "Print warning each time method call gets slower.")
-register_global_opt("--color-logs", "Use colored logs.")
-register_global_opt("--log-filter <syncd,authd>", "Only print log messages for the given daemons.")
-register_global_opt("--lock-timeout <int>", "Lock timeout in seconds when starting jobs.")
-register_global_opt("--lock-wait-timeout <int>", "Lock wait timeout in seconds when starting jobs.")
-register_global_opt("--lock-ignore-changed-objects", "Ignore if an object changed while waiting for lock.")
-register_global_opt("--job-timeout <int>", "Job timeout.")
-register_global_opt("--enable-typing", "Enable python type checking.")
-register_global_opt("--disable-locking", "Disable locking in API mode (use with caution!).")
-register_global_opt("--debug-daemons <authd,mgmtd>", "Enable debug stuff only for the given daemons.")
-register_global_opt("--debug-profile-sort <cumtime,ncalls,tottime>", "Statistic output sorting.")
-register_global_opt("--debug-profile-print-callers <caller1,caller2>", "Print callers.")
-register_global_opt("--debug-func-caches <instance_cache,search_cache>", "Enable debug stuff only for the given function caches.")
-register_global_opt("--debug-func-names <method1,method2>", "Enable timing for given functions only.")
-register_global_opt("--debug-func-start <method1,method2>", "Start timing on method call.")
-register_global_opt("--debug-users <user1,user2>", "Enable debug stuff only for the given users.")
-register_global_opt("--debug-timing-limit <seconds>", "Print warning if function/method call takes longer than <seconds>.")
-register_global_opt("--debug-counter-limit <call_count>", "Print warning if function/method is called more than <call_count>.")
+register_global_opt("--color-logs", "Show log messages in color.")
+register_global_opt("--log-filter <syncd,authd>", "Only show log messages of the given daemons.")
+register_global_opt("--lock-wait-timeout <seconds>", "How long to wait for an object another job has locked (default: 0, do not wait).")
+register_global_opt("--job-timeout <seconds>", "Stop the job on the server when it shows no activity for this long (default: 60).")
+register_global_opt("--enable-typing", "Check argument types on every function call (for finding bugs, slow).")
+register_global_opt("--disable-locking", "With --api: do not lock objects. Changes can get lost if others change objects too.")
+register_global_opt("--debug-daemons <authd,mgmtd>", "Only apply the debug options inside the given daemons.")
+register_global_opt("--debug-profile-sort <cumtime|ncalls|tottime>", "With -dP: how the profile output is sorted (default: tottime).")
+register_global_opt("--debug-profile-print-callers <func1,func2>", "With -dP: also show who called the given functions.")
+register_global_opt("--debug-func-caches <instance_cache,search_cache>", "With -da/-dh: only show the given function caches.")
+register_global_opt("--debug-func-names <regex1,regex2>", "With -dT: only time functions whose full name matches a regex.")
+register_global_opt("--debug-func-start <regex1,regex2>", "With -dT: start timing at the first call of a matching function.")
+register_global_opt("--debug-users <user1,user2>", "Only trace and time calls for requests of the given users.")
+register_global_opt("--debug-timing-limit <seconds>", "With -dT: warn about calls that take longer (default: 0.2).")
 
 # FIXME: One reason why get_help() is located in help.py is
 #        the import time compared to putting it into e.g. cli.py.
@@ -251,9 +249,17 @@ def get_help(command, subcommand=None, command_map=None,
             continue
         if not '_help' in command_map[command][mod_name][c]:
             continue
+        # A command another command calls for you (e.g. otpme-user
+        # add_token, which otpme-token add uses). It still works when
+        # typed, but the help says that it is not the way in.
+        internal_command = command_map[command][mod_name][c].get('internal', False)
         for f in command_map[command][mod_name][c]['_help']:
             if f == "cmd":
-                help_text = f"\t- {command_map[command][mod_name][c]['_help'][f]}"
+                cmd_help_text = command_map[command][mod_name][c]['_help'][f]
+                if internal_command:
+                    internal_msg = _("internal")
+                    cmd_help_text = f"{cmd_help_text} ({internal_msg})"
+                help_text = f"\t- {cmd_help_text}"
                 row = [ f" {c}", help_text ]
                 cmd_table.append(row)
             else:
@@ -566,9 +572,6 @@ def _get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--print-raw-sign-data":
             main_opts['print_raw_sign_data'] = True
             sys.argv.pop(0)
-        elif sys.argv[0] == "--no-sync-mem-cache":
-            main_opts['sync_mem_cache'] = False
-            sys.argv.pop(0)
         elif sys.argv[0] == "--ignore-changed-objects":
             main_opts['hostd_sync_ignore_changed_objects'] = True
             sys.argv.pop(0)
@@ -746,21 +749,6 @@ def _get_main_opts(clear_cache=False, mod_name=None):
                 raise OTPmeException("--debug-timing-limit requires a int/float") from None
             main_opts['debug_timing_limit'] = debug_timing_limit
             sys.argv.pop(0)
-        elif sys.argv[0] == "--debug-counter-limit":
-            sys.argv.pop(0)
-            try:
-                debug_counter_limit = int(sys.argv[0])
-            except Exception:
-                raise OTPmeException("--debug-counter-limit requires a int") from None
-            main_opts['debug_counter_limit'] = debug_counter_limit
-            sys.argv.pop(0)
-        elif sys.argv[0] == "--lock-timeout":
-            sys.argv.pop(0)
-            try:
-                main_opts['lock_timeout'] = int(sys.argv.pop(0))
-            except Exception:
-                msg = ("--lock-timeout requires an int")
-                raise OTPmeException(msg) from None
         elif sys.argv[0] == "--lock-wait-timeout":
             sys.argv.pop(0)
             try:
@@ -768,9 +756,6 @@ def _get_main_opts(clear_cache=False, mod_name=None):
             except Exception:
                 msg = ("--lock-wait-timeout requires an int")
                 raise OTPmeException(msg) from None
-        elif sys.argv[0] == "--lock-ignore-changed-objects":
-            sys.argv.pop(0)
-            main_opts['ignore_changed_objects'] = True
         elif sys.argv[0] == "--job-timeout":
             sys.argv.pop(0)
             main_opts['job_timeout'] = int(sys.argv[0])

@@ -228,11 +228,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-client show_acls {client}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client list_acls {client}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of client'),
+                                    'cmd'                   : _('List ACLs set on this client.'),
                                 },
                 },
 
@@ -373,20 +373,20 @@ cmd_help = {
                                     'cmd'                   : _('List assigned roles.'),
                                 },
                 },
-    'list_scopes'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-client list_scopes [--return-type <return_type>] {client}'),
+    'find_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-client find_scopes [--return-type <return_type>] {client}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List scopes the token is assigned to.'),
+                                    'cmd'                   : _('Find scopes this client is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-client list_policies {client}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

@@ -83,39 +83,44 @@ cmd_help = {
 
 
     'enable_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool enable_signer [--private --type <signer_type>] {signer_uuid}'),
-                    'cmd'   :   '--private :private=True: --type :signer_type: [signer_uuid]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool enable_signer [--private] [--signer-type <signer_type>] [signer_uuid]'),
+                    'cmd'   :   '--private :private=True: --signer-type :signer_type: [signer_uuid]',
                     '_help' :   {
                                     'cmd'                   : _('Enable signer.'),
                                     '--private'             : _('Enable signer of the logged in user.'),
+                                    '--signer-type <type>'  : _('Enable every signer of this type instead of one.'),
                                 },
                 },
 
 
     'disable_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool disable_signer [--private --type <signer_type>] {signer_uuid}'),
-                    'cmd'   :   '--private :private=True: --type :signer_type: [signer_uuid]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool disable_signer [--private] [--signer-type <signer_type>] [signer_uuid]'),
+                    'cmd'   :   '--private :private=True: --signer-type :signer_type: [signer_uuid]',
                     '_help' :   {
                                     'cmd'                   : _('Disable signer.'),
                                     '--private'             : _('Disable signer of the logged in user.'),
+                                    '--signer-type <type>'  : _('Disable every signer of this type instead of one.'),
                                 },
                 },
 
     'update_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool update_signer [--private] [--no-pin] [--tags tag1,tag2...] [signer_uuid]'),
-                    'cmd'   :   '--private :private=True: --no-pin :pin=false: [signer_uuid]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool update_signer [--private] [--no-pin] [--remove-gone] [--signer-type <signer_type>] [signer_uuid]'),
+                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --remove-gone :remove_gone=True: --signer-type :signer_type: [signer_uuid]',
                     '_help' :   {
                                     'cmd'                   : _('Update signer.'),
                                     '--no-pin'              : _('Do not pin signature keys.'),
                                     '--private'             : _('Update signer of the logged in user.'),
+                                    '--signer-type <type>'  : _('Update every signer of this type instead of one.'),
+                                    '--remove-gone'         : _('Drop signers that are not there anymore: the user was deleted, or is no longer in the role. Without this they are kept, so what they signed still validates.'),
                                 },
                 },
 
     'show_signer'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool show_signer [--private] {signer_uuid}'),
-                    'cmd'   :   '--private :private=True: [signer_uuid]',
+                    '_cmd_usage_help' : _('Usage: otpme-tool show_signer [--private] [--signer-type <signer_type>] [signer_uuid]'),
+                    'cmd'   :   '--private :private=True: --signer-type :signer_type: [signer_uuid]',
                     '_help' :   {
                                     'cmd'                   : _('Show signer(s).'),
+                                    '--signer-type <type>'  : _('Only signers of this type.'),
                                     '--private'             : _('Show signer(s) of the logged in user.'),
                                 },
                 },
@@ -370,18 +375,27 @@ cmd_help = {
                 },
 
 
+    'force_sync'      : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool force_sync {object_id}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'   : _('Write an object whole, index, ACLs and LDIF included.'),
+                                },
+                },
+
+
     'do_sync'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool do_sync [ --realm <realm> --site <site> --resync --no-memory-cache --ignore-changed-objects --offline] {objects|token_counters|used_otps|nsscache|ssh_authorized_keys}'),
-                    'cmd'   :   '--realm :realm: --site :site: --resync :resync=True: --no-memory-cache :mem_cache=False: --ignore-changed-objects :ignore_changed_objects=True: --sync-older-objects :sync_older_objects=True: --offline :offline=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-tool do_sync [ --realm <realm> --site <site> --resync --ignore-changed-objects --remove-orphan-objects --offline] {objects|token_counters|used_otps|nsscache|ssh_authorized_keys}'),
+                    'cmd'   :   '--realm :realm: --site :site: --resync :resync=True: --ignore-changed-objects :ignore_changed_objects=True: --sync-older-objects :sync_older_objects=True: --remove-orphan-objects :remove_orphan_objects=True: --offline :offline=True: <|object|>',
                     '_help' :   {
                                     'cmd'                       : _('Do a manual hostd sync.'),
                                     '--realm <realm>'           : _('Realm to sync.'),
                                     '--host-type <host_type>'   : _('Site to sync.'),
                                     '--resync'                  : _('Do a complete resync.'),
                                     '--offline'                 : _('Do a sync of offline token data.'),
-                                    '--no-memory-cache'         : _('Do not cache objects in memory.'),
                                     '--sync-older-objects'      : _('Sync objects even if they are older than the local ones.'),
                                     '--ignore-changed-objects'  : _('Sync objects even if they changed while syncing.'),
+                                    '--remove-orphan-objects'   : _('Remove local objects of types this host no longer syncs.'),
                                 },
                 },
 

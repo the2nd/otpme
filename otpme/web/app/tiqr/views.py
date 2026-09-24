@@ -12,6 +12,7 @@ from otpme.web.app.tiqr import tiqr_bp
 from otpme.web.app.views import get_authd_conn
 from otpme.web.app.views import get_ssod_conn
 from otpme.web.app.views import check_forwarded_for
+from otpme.web.app.views import _site_rate_limit
 
 logger = config.logger
 
@@ -40,12 +41,21 @@ TIQR_ENROLL_ERROR = 101
 # This limit is the whole of that burden: there is no per-challenge
 # attempt counter, because counting would mean writing cluster-visible
 # state from an unauthenticated endpoint (see the note in
-# otpme/lib/token/tiqr/tiqr.py). What it leaves an attacker is 30
-# tries a minute against a six digit response, for the
+# otpme/lib/token/tiqr/tiqr.py). What the default leaves an attacker is
+# 30 tries a minute against a six digit response, for the
 # tiqr_challenge_expiry seconds a challenge lives -- 90 guesses per
 # challenge at the three minute default, each worth one in a million.
 # Lower it, or shorten the expiry, if that is not the margin you want.
-_RATE_LIMIT_TIQR = "30 per minute"
+_RATE_LIMIT_TIQR = "30/minute"
+
+
+def _rate_limit_tiqr():
+    """ The site's sso_rate_limit_tiqr, or the default above.
+
+    A callable, because a decorator argument is evaluated once at
+    import time while this has to be read per request -- the same
+    pattern the routes in otpme/web/app/views.py use. """
+    return _site_rate_limit("sso_rate_limit_tiqr") or _RATE_LIMIT_TIQR
 
 
 def _protocol_version():
@@ -114,7 +124,7 @@ def _enroll_reply(ok):
 
 
 @tiqr_bp.route('/metadata', methods=['GET'])
-@limiter.limit(_RATE_LIMIT_TIQR)
+@limiter.limit(_rate_limit_tiqr)
 def metadata():
     """ The app fetching what it needs to enroll an account. """
     enrollment_key = request.args.get('enrollment_key')
@@ -151,7 +161,7 @@ def metadata():
 
 
 @tiqr_bp.route('/enroll', methods=['POST'])
-@limiter.limit(_RATE_LIMIT_TIQR)
+@limiter.limit(_rate_limit_tiqr)
 def enroll():
     """ The app delivering the secret it generated. """
     enrollment_secret = request.args.get('enrollment_secret')
@@ -189,7 +199,7 @@ def enroll():
 
 
 @tiqr_bp.route('/auth', methods=['POST'])
-@limiter.limit(_RATE_LIMIT_TIQR)
+@limiter.limit(_rate_limit_tiqr)
 def auth():
     """ The app answering an authentication challenge.
 

@@ -2197,8 +2197,24 @@ class OTPmeClient(OTPmeClientBase):
         # return a list with all replies if there is more than one response.
         if self.endpoint and not self.print_messages:
             if self.combined_responses:
-                response = list(self.combined_responses)
+                combined_responses = list(self.combined_responses)
                 self.combined_responses = []
+                # What the command gave back goes last, because that is
+                # where the callers look for it (connections.get(),
+                # OTPmeMgmt1Protocol.get_script_signatures()). Without
+                # it the result was whatever was said last on the way --
+                # for a command that had nothing else to say that is the
+                # same thing, and for one that did it was not: asking
+                # for a key script while the connection still had to
+                # authenticate gave back the message of that, and the
+                # file we wrote it to was not a script.
+                #
+                # A command that only printed has no result of its own
+                # (JobCallback.ok() without a message answers True), and
+                # then the last thing it said is the result, as before.
+                if response is not None and not isinstance(response, bool):
+                    combined_responses.append(response)
+                response = combined_responses
             else:
                 # If there is just one response of type str() we return it.
                 if not isinstance(response, str):

@@ -110,11 +110,19 @@ def register():
       (rotate + invalidate chain on replay)
       https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
     """
-    config.register_index_attribute('authcode_hash')
-    config.register_index_attribute('access_token_hash')
-    config.register_index_attribute('refresh_token_hash')
-    config.register_index_attribute('burned_authcode_hash')
-    config.register_index_attribute('burned_refresh_token_hash')
+    # Looked up by the SSO server of the site the session belongs to,
+    # and by nothing else anywhere.
+    session_types = ["session"]
+    config.register_index_attribute('authcode_hash', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('access_token_hash', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('refresh_token_hash', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('burned_authcode_hash', sync=[],
+                                    object_types=session_types)
+    config.register_index_attribute('burned_refresh_token_hash', sync=[],
+                                    object_types=session_types)
 
 
 class OIDCSession(Session):

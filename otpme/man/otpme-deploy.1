@@ -1,0 +1,556 @@
+.TH OTPME-DEPLOY 1 "2026-09-18" "OTPme 0.3.0a278" "OTPme Manual"
+.SH NAME
+otpme-deploy \- manage configuration jobs for hosts
+.SH SYNOPSIS
+.B otpme-deploy
+.I command
+[\fIoptions\fR]
+.SH DESCRIPTION
+.B otpme-deploy
+creates configuration jobs for hosts and shows their results.
+A job does one thing on one or more hosts, for example install a package, add an apt repository or restart a service.
+.PP
+Every job is signed with the sign key of the user who creates it.
+Before you sign, OTPme shows you what the job does.
+The host checks the signature before it runs the job.
+.PP
+Two checks must pass before a job runs:
+.IP 1. 4
+The nodes check that you may create jobs for the host.
+This is set with the config parameter \fBallow_confd_jobs\fR.
+.IP 2. 4
+The host checks that the job is signed by a signer it trusts for this job type.
+Signers are added on the host with \fBotpme\-tool add_signer \-\-signer\-type\fR \fIjob_type\fR.
+.PP
+A host without a signer for the job type refuses the job and says so.
+A refusal is not a run: the job is still there, and it runs as soon as the reason is gone.
+Add the missing signer and the host does the job, you do not need a new one.
+See \fBRefused jobs\fR.
+.PP
+You name the hosts of a job with
+.BR \-\-host ,
+.BR \-\-unit ,
+.B \-\-role
+or
+.BR \-\-group .
+To find out which hosts need the job, ask
+.BR otpme\-inventory (1):
+it knows which host has which package version, and what each machine is made of.
+See \fBFinding the hosts\fR under \fBEXAMPLES\fR.
+.SS Who can see and change jobs
+Admins can see and change all jobs.
+Other users see a job if they may create jobs for at least one of its hosts.
+They only see the state and the results of those hosts.
+The user who created a job sees all of its hosts.
+.PP
+\fBack\fR and \fBcancel\fR change the whole job.
+They are allowed for the user who created the job, and for users who may create jobs for all of its hosts.
+.SS How jobs run
+On every host, the \fBconfd\fR daemon asks the nodes of its site for new jobs every 60 seconds.
+It runs one job at a time.
+Each job runs as its own transient systemd service (\fBotpme\-confd\-job\-\fIuuid\fB.service\fR).
+This way a job keeps running when OTPme is restarted, even if the job restarts OTPme itself.
+.PP
+A job runs only once on each host.
+If the result can not be sent, confd sends it again later.
+It does not run the job again.
+.PP
+The full output of a job stays on the host in \fI/var/log/otpme/confd/\fIuuid\fI.log\fR.
+The nodes get the last 64 KiB of the output.
+.SS Refused jobs
+A host refuses a job it may not or cannot run.
+It may not run a job it holds no signer for, one whose signature does not hold, or one that would take away its last \fBsigner_mgmt\fR signer.
+It cannot run a job that names an object it has not synced yet.
+.PP
+A refused job is not done.
+Nothing ran, and the job can still run later, so the host does not put it away.
+It reports the refusal once, so you see why nothing happened, and it keeps the job in view.
+.PP
+When the host may not run a job, it waits for its signers to change.
+Add the signer it was missing, and the job runs with the next round.
+.PP
+When the host cannot run a job, it asks for the job again every round.
+Nothing tells a host that a user or a role has arrived, so it tries until it can.
+This needs nothing from you: the sync brings the object, and the next round runs the job.
+.PP
+A failed job is done.
+It ran, and it did not work.
+It is never run again, on that host you need a new job.
+.PP
+\fBcancel\fR ends the waiting.
+A job that was taken back is not offered to a host anymore, so a host that refused it never sees it again.
+The refusal it reported stays, and \fBshow\fR names it next to the cancellation: the host saw the job and said no, and then the job was withdrawn.
+.PP
+\fBshow\fR and \fBresults\fR name both states, and \fBack\fR takes both.
+.SS How long jobs are kept
+Jobs and their results stay on the nodes for 90 days (site parameter \fBconf_job_max_age\fR).
+This also applies to jobs that worked, so you can see which jobs were already sent.
+A job that failed or was refused on a host stays until you acknowledge it with \fBack\fR.
+After that it is removed when it is older than \fBconf_job_max_age\fR.
+.PP
+If a host is deleted before it ran a job, the job does not wait for it.
+The host is shown as deleted.
+.PP
+On the host, confd keeps the job logs for 90 days.
+.SH JOB TYPES
+Each job has a job type and an action.
+The job type is also the signer type the host checks against.
+Arguments are given with \fB\-\-arg\fR \fIname\fB=\fIvalue\fR.
+A value with commas is a list.
+.TP
+.B sw_mgmt
+Manage software packages.
+.RS
+.TP
+.B install packages=\fIpkg1,pkg2\fR
+Install packages.
+.TP
+.B remove packages=\fIpkg1,pkg2\fR [\fBautoremove=yes\fR]
+Remove packages. With \fBautoremove=yes\fR, packages that are no longer needed are removed too.
+.TP
+.B upgrade packages=\fIpkg1,pkg2\fR
+Upgrade installed packages.
+.TP
+.B autoremove
+Remove packages that are no longer needed.
+.RE
+.TP
+.B repo_mgmt
+Manage apt repositories.
+.RS
+.TP
+.B add_repo name=\fIname\fB line=\fIline\fR \fB\-\-key\fR \fIkey_file\fR
+Add a repository and its signing key, then update the package lists.
+\fIline\fR is a normal sources.list line without options, for example \fB"deb https://repo.example.org/debian bookworm main"\fR.
+The key is required.
+.TP
+.B del_repo name=\fIname\fR
+Remove a repository that was added with \fBadd_repo\fR, then update the package lists.
+.TP
+.B update
+Update the package lists.
+.RE
+.TP
+.B signer_mgmt
+Manage the signers of the host.
+.RS
+.TP
+.B show_signer \fR[\fBtype=\fIsigner_type\fR]
+Show the signers the host holds, or only those of one type.
+The answer is the output of the job, so
+.B otpme\-deploy results
+shows it.
+This action changes nothing.
+.TP
+.B add_signer type=\fIsigner_type\fB signer=\fIobject_id\fR [\fBtags=\fItag1,tag2\fR]
+Add a system-wide signer. \fIobject_id\fR is the OID of a user or role, for example \fBrole|example.org/berlin/sw\-admins\fR.
+The signer is pinned to the current key of the user or role.
+If the signer exists already, nothing changes.
+.RS
+.PP
+The host needs the user or the role itself for this, not only its name: it pins a key, and the key is in the object.
+A host that has not synced the object yet refuses the job and runs it as soon as the object is there.
+This happens with a user or a role that was just created, and it sorts itself out.
+.PP
+A name nobody ever had is a different thing, and \fBadd\fR says so right away instead of letting every host refuse the job for ever.
+.RE
+.TP
+.B del_signer type=\fIsigner_type\fB signer=\fIobject_id\fR [\fBremove_last_own_signer=\fIyes\fR]
+Remove a signer. If there is no such signer, nothing changes.
+.TP
+.B update_signer type=\fIsigner_type\fB signer=\fIobject_id\fR [\fBremove_gone=\fIyes\fR] [\fBremove_last_own_signer=\fIyes\fR]
+Pin the current key of the user or role again, for example after a key change.
+.RS
+.PP
+\fBdel_signer\fR and \fBupdate_signer\fR also take the UUID of the signer entry, as \fBshow_signer\fR prints it in its first column.
+They name an entry on the host, and an entry outlives its user or role.
+A signer whose role was deleted has no OID left to name it with, and the UUID is the only way to remove it.
+\fBadd_signer\fR does not take a UUID: it needs the object.
+.PP
+A signer whose user or role was deleted is kept, and so is the key a role pinned for a member it does not have anymore.
+What they signed is out there and still has to validate.
+\fBremove_gone=yes\fR drops them, which is how their keys go once nothing needs them.
+.RE
+.PP
+A host verifies a \fBsigner_mgmt\fR job against its \fBsigner_mgmt\fR signers, so such a job can take away the permission it runs under.
+The host refuses a job that would leave no \fBsigner_mgmt\fR signer covering the user who signed it.
+They could not send another job to that host, and putting a signer back is itself a \fBsigner_mgmt\fR job: somebody would have to walk to the host.
+.PP
+\fBremove_last_own_signer=yes\fR allows it.
+Say it only when you mean to hand the host over, or when you are at its console.
+The word is part of the job, so it stands in the tags you are shown before you sign.
+.PP
+These actions do the same as \fBotpme\-tool show_signer\fR, \fBadd_signer\fR, \fBdel_signer\fR and \fBupdate_signer\fR run as root on the host.
+\fBotpme\-tool del_signer\fR on the host takes the UUID of the entry as well, which is the way out when the host cannot be reached by job anymore.
+.RE
+.TP
+.B service_mgmt
+Manage systemd services.
+.RS
+.TP
+.B start\fR|\fBstop\fR|\fBrestart\fR|\fBenable\fR|\fBdisable\fR \fBunit=\fIunit\fR
+Run the action on a systemd unit.
+.RE
+.TP
+.B file_mgmt
+Manage files.
+.RS
+.TP
+.B put_file path=\fIpath\fR \fB\-\-file\fR \fIsource_file\fR [\fBmode=\fImode\fR] [\fBowner=\fIuser\fR] [\fBgroup=\fIgroup\fR]
+Write a file on the host.
+The content comes from \fIsource_file\fR.
+.TP
+.B del_file path=\fIpath\fR
+Remove a file.
+.RE
+.TP
+.B host_mgmt
+Manage the host itself.
+.RS
+.TP
+.B dist_upgrade
+Update the package lists, then upgrade all packages.
+Stops if the update fails.
+.TP
+.B reboot
+Reboot the host after one minute.
+The delay lets the host send the result first.
+.RE
+.PP
+The job types \fBfile_mgmt\fR, \fBsigner_mgmt\fR and \fBhost_mgmt\fR give full control over the host.
+Only add signers for them that you trust with root access.
+.SH COMMANDS
+.TP
+.B add \fR[\fB\-\-host\fR \fIhost1,host2\fR] [\fB\-\-unit\fR \fIunit\fR] [\fB\-\-recursive\fR] [\fB\-\-role\fR \fIrole1,role2\fR] [\fB\-\-group\fR \fIgroup1,group2\fR] [\fB\-\-arg\fR \fIname=value\fR]... [\fB\-\-file\fR \fIpath\fR] [\fB\-\-key\fR \fIpath\fR] [\fB\-\-expiry\fR \fItime\fR] \fIjob_type\fR \fIaction\fR
+Create a job and sign it.
+You need at least one of \fB\-\-host\fR, \fB\-\-unit\fR, \fB\-\-role\fR or \fB\-\-group\fR. They can be combined, and a host named twice is taken once.
+The command fails if a required argument is missing, if an argument is unknown, or if you may not create jobs for one of the hosts.
+A \fBsigner_mgmt\fR job also fails here when it names a signer that is not a user or a role, or one that does not exist at all.
+.TP
+.B list \fR[\fB\-\-host\fR \fIhost\fR] [\fB\-\-failed\fR] [\fB\-\-pending\fR]
+List jobs. Shows the time, the job type and action, the arguments, the number of hosts, the signer and the state of the job.
+The colour says how the job stands, the worst state first:
+red when a host ran it and it did not work,
+yellow when a host would not run it,
+grey when the job was taken back,
+cyan when a host failed or refused and that was acknowledged with \fBack\fR,
+orange while a host has not run it yet,
+green when every host ran it.
+.RS
+.PP
+\fBack\fR takes the place of red and yellow, so what somebody has already seen does not hide the line that is new.
+It changes nothing about a job that worked or one that is still running.
+.PP
+A job that was taken back is over, and grey says that better than what it was over of.
+But not while a host reported something nobody has looked at yet: cancelling a job does not undo what it did on the hosts that already had it, so an unacknowledged failure keeps its colour.
+.RE
+.TP
+.B show \fIjob_uuid\fR
+Show a job and the state on each host: \fBok\fR, \fBfailed\fR, \fBrefused\fR or \fBpending\fR.
+A \fBrefused\fR line is only shown when there is one (see \fBRefused jobs\fR).
+.TP
+.B results \fR[\fB\-\-host\fR \fIhost\fR] [\fIjob_uuid\fR]
+Show the results of a job, or all results of a host.
+The header line of each result names the state, in the same colours as \fBlist\fR: green when the job worked, yellow when the host refused it, red when it ran and did not work.
+.TP
+.B ack \fIjob_uuid\fR
+Acknowledge a job that failed or was refused. Without this, such a job is never removed (see \fBHow long jobs are kept\fR).
+.TP
+.B cancel \fIjob_uuid\fR
+Cancel a job. Hosts that did not run the job yet will not run it.
+The job stays in the list and is shown as cancelled.
+.SH OPTIONS
+.TP
+.B \-\-host \fIhost1,host2\fR
+Hosts or nodes the job is for.
+.TP
+.B \-\-unit \fIunit\fR
+All hosts of this unit.
+.TP
+.B \-\-recursive
+With \fB\-\-unit\fR: also the hosts of all units below it.
+.TP
+.B \-\-role \fIrole1,role2\fR
+All hosts of these roles.
+A role holds hosts, never nodes, so this never reaches a node.
+.TP
+.B \-\-group \fIgroup1,group2\fR
+All hosts of these groups.
+A group holds hosts, never nodes.
+.TP
+.B \-\-arg \fIname=value\fR
+An argument of the job. Use it once for each argument.
+A value with commas is a list, for example \fBpackages=tcpdump,ngrep\fR.
+The same name twice is an error.
+.TP
+.B \-\-file \fIpath\fR
+The file that \fBfile_mgmt put_file\fR writes on the host.
+.TP
+.B \-\-key \fIpath\fR
+The signing key of a repository for \fBrepo_mgmt add_repo\fR.
+.TP
+.B \-\-expiry \fItime\fR
+How long hosts may run the job, for example \fB7D\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+Default: 30 days.
+A host that comes online later does not run an expired job.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH SIGNATURES
+A job signature covers the job type, the action, all arguments, the number of hosts and the name of each host.
+These values are shown to you as tags before you sign.
+A long value (more than 64 characters, for example file content) is shown as its size and its SHA256 hash.
+You can compare the hash with \fBsha256sum\fR.
+.PP
+The host checks that the tags match the job.
+So a node can not show you one job and send another job to the host.
+.SH AUDIT LOG
+A job is an order to run something on someone else's machine, so every step of it is written to the audit log.
+Where that log goes is set with \fBAUDIT_LOG_SERVER\fR in \fIotpme.conf\fR.
+Without a server the entries go to \fI/var/log/otpme/audit.log\fR on the machine that wrote them.
+See
+.BR otpme.conf (5).
+.PP
+On the nodes:
+.TP
+.B job_created
+A job was made. Says the job type, the action, the arguments, the hosts, the signer and when the job expires.
+The actor is the token that made it.
+.TP
+.B job_denied
+Somebody asked for a job for a host they may not make jobs for.
+Says the host and that \fBallow_confd_jobs\fR is the reason.
+Written at warning level.
+.TP
+.B job_result
+A host reported what became of a job.
+Says the status and the exit code, and in \fBordered_by\fR the token the job was made with, so a result reads back to the order.
+The actor is the host: it reports about itself, nobody is logged in there.
+Warning level when the job did not work.
+.TP
+.B job_acked \fR/\fB job_cancelled
+Somebody acknowledged a failed job, or took a job back.
+.PP
+On each host:
+.TP
+.B job_started
+The host checked a job and is about to run it.
+Says the signer it verified, by UUID.
+.TP
+.B job_done
+The job finished on the host, with the status and the exit code.
+Written once, when the result is there, even if sending it to the nodes has to be tried again.
+Warning level when the job did not work.
+.TP
+.B job_refused
+The host will not run a job, with the reason: no signer it trusts for this job type, a signature that does not hold, a runner that did not start, or an object the job names that has not reached the host yet.
+Written at warning level.
+The host writes this once per job, not once a round, so a job that waits for a sync does not fill the log.
+.PP
+Both ends name a host by its FQDN, so the entries of one job fit together.
+.PP
+A host names the signer by UUID and never by name.
+It holds no users and no roles, only the UUIDs it trusts, and a signature carries no name either.
+A name in such an entry would be one the host cannot check.
+The name is on the nodes, in
+.BR job_created ,
+under the same job UUID.
+.PP
+Example of one job, from both sides:
+.PP
+.RS
+.nf
+mgmtd: Deploy job_created actor=alice/login job=8a1e1207\-... job_type=sw_mgmt \\
+       action=upgrade args="packages=openssl" hosts=client1 host_count=1 \\
+       signer=alice expiry=1790000000
+confd: Deploy job_started actor=client1.example.org job=8a1e1207\-... \\
+       job_type=sw_mgmt action=upgrade signer_uuid=fea7dc2d\-...
+confd: Deploy job_done actor=client1.example.org job=8a1e1207\-... \\
+       job_type=sw_mgmt action=upgrade status=ok exit_code=0
+syncd: Deploy job_result actor=client1.example.org job=8a1e1207\-... \\
+       job_type=sw_mgmt action=upgrade status=ok exit_code=0 \\
+       ordered_by=alice/login
+.fi
+.RE
+.SH EXAMPLES
+The examples use the realm \fBexample.org\fR and the site \fBberlin\fR.
+An OID contains a \fB|\fR, so put the argument in quotes.
+.SS Setup
+Before the first job, two things are needed.
+.TP
+.B otpme-unit config hosts allow_confd_jobs 'role|example.org/berlin/host\-admins'
+On a node: allow members of the role host\-admins to create jobs for the hosts of the unit \fBhosts\fR.
+.TP
+.B otpme-tool add_signer \-\-signer\-type signer_mgmt 'role|example.org/berlin/host\-admins'
+On each host, as root: trust the role host\-admins for signer_mgmt jobs.
+After this, all other signers can be added with jobs (see \fBsigner_mgmt\fR below).
+.SS Finding the hosts
+A job needs to know which hosts it is for.
+.BR otpme\-inventory (1)
+answers that.
+.PP
+Which hosts still have the old openssl:
+.PP
+.RS
+.nf
+$ otpme\-inventory search 'openssl=3.0.9*'
+client1 openssl=3.0.9\-1
+client2 openssl=3.0.9\-1
+.fi
+.RE
+.PP
+The names of those hosts as one argument for
+.BR \-\-host :
+.PP
+.RS
+.nf
+$ otpme\-inventory search 'openssl=3.0.9*' | cut \-d' ' \-f1 | sort \-u | paste \-sd,
+client1,client2
+.fi
+.RE
+.PP
+So the whole thing is two commands:
+.PP
+.RS
+.nf
+$ hosts=$(otpme\-inventory search 'openssl=3.0.9*' | cut \-d' ' \-f1 | sort \-u | paste \-sd,)
+$ otpme\-deploy add \-\-host "$hosts" \-\-arg packages=openssl sw_mgmt upgrade
+.fi
+.RE
+.PP
+The same works for hardware.
+Upgrade the firmware package only on the machines that have that model:
+.PP
+.RS
+.nf
+$ hosts=$(otpme\-inventory search \-\-hardware 'model=PowerEdge R640' | cut \-d' ' \-f1 | paste \-sd,)
+$ otpme\-deploy add \-\-host "$hosts" \-\-arg packages=srvadmin\-all sw_mgmt install
+.fi
+.RE
+.PP
+When the hosts are a unit, a role or a group, name that instead.
+It stays right when a host is added later, and a list of names does not.
+.SS sw_mgmt
+.TP
+.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg packages=libreoffice sw_mgmt install
+Install LibreOffice on all hosts of the unit \fBhosts\fR and the units below it.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg packages=firefox\-esr,thunderbird sw_mgmt upgrade
+Upgrade two installed packages.
+.TP
+.B otpme-deploy add \-\-host client1,client2 \-\-arg packages=tcpdump,ngrep \-\-arg autoremove=yes sw_mgmt remove
+Remove two packages and the packages that are no longer needed.
+.TP
+.B otpme-deploy add \-\-host client1 sw_mgmt autoremove
+Remove packages that are no longer needed.
+.SS repo_mgmt
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg name=example \-\-arg 'line=deb https://repo.example.org/debian bookworm main' \-\-key example.asc repo_mgmt add_repo
+Add an apt repository with its signing key from the file \fBexample.asc\fR.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg name=example repo_mgmt del_repo
+Remove the repository again.
+.TP
+.B otpme-deploy add \-\-unit hosts repo_mgmt update
+Update the package lists.
+.SS signer_mgmt
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg type=sw_mgmt \-\-arg 'signer=role|example.org/berlin/sw\-admins' signer_mgmt add_signer
+Trust the role sw\-admins for sw_mgmt jobs on client1.
+.TP
+.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg type=service_mgmt \-\-arg 'signer=user|example.org/berlin/alice' signer_mgmt add_signer
+Trust the user alice for service_mgmt jobs on all hosts of the unit \fBhosts\fR and the units below it.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg type=repo_mgmt \-\-arg 'signer=role|example.org/berlin/repo\-admins' \-\-arg tags=deploy,berlin signer_mgmt add_signer
+Add a signer with two tags.
+.TP
+.B otpme-deploy add \-\-unit hosts \-\-recursive \-\-arg type=service_mgmt \-\-arg 'signer=user|example.org/berlin/alice' signer_mgmt update_signer
+Pin the new key of alice, for example after alice changed the sign key.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg type=sw_mgmt \-\-arg 'signer=role|example.org/berlin/sw\-admins' signer_mgmt del_signer
+Remove the signer again.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg type=sw_mgmt signer_mgmt show_signer
+Ask client1 which sw_mgmt signers it holds.
+The answer comes with \fBotpme\-deploy results\fR, and its first column is the UUID of each entry.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg type=sw_mgmt \-\-arg signer=fea7dc2d\-3c41\-4a0e\-9d2f\-1b6c8e5a7d90 signer_mgmt del_signer
+Remove a signer by the UUID of its entry.
+This is the way to get rid of a signer whose user or role was deleted: there is no OID left to name it with.
+.SS service_mgmt
+.TP
+.B otpme-deploy add \-\-unit hosts \-\-arg unit=cups.service service_mgmt restart
+Restart CUPS on all hosts of the unit \fBhosts\fR.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg unit=ssh.service service_mgmt enable
+Start SSH at boot.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg unit=bluetooth.service service_mgmt stop
+Stop a service.
+.SS file_mgmt
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg path=/etc/motd \-\-arg mode=0644 \-\-file motd.txt file_mgmt put_file
+Write /etc/motd with the content of the local file \fBmotd.txt\fR.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg path=/etc/app/app.conf \-\-arg mode=0640 \-\-arg owner=root \-\-arg group=app \-\-file app.conf file_mgmt put_file
+Write a file with owner, group and mode. The directory must exist.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-arg path=/etc/motd file_mgmt del_file
+Remove a file.
+.SS host_mgmt
+.TP
+.B otpme-deploy add \-\-unit hosts host_mgmt dist_upgrade
+Upgrade all hosts of the unit \fBhosts\fR.
+.TP
+.B otpme-deploy add \-\-host client1 \-\-expiry 1h host_mgmt reboot
+Reboot client1. If the host is offline for more than one hour, it does not reboot later.
+.SS Jobs and results
+.TP
+.B otpme-deploy list
+List all jobs.
+.TP
+.B otpme-deploy list \-\-host client1
+List the jobs for client1.
+.TP
+.B otpme-deploy list \-\-pending
+List the jobs that at least one host did not run yet.
+.TP
+.B otpme-deploy list \-\-failed
+List the jobs that failed on at least one host.
+.TP
+.B otpme-deploy show 8a1e1207\-f626\-42ff\-b538\-60b7b4223f31
+Show a job and its state on each host.
+.TP
+.B otpme-deploy results 8a1e1207\-f626\-42ff\-b538\-60b7b4223f31
+Show the results of a job.
+.TP
+.B otpme-deploy results \-\-host client1
+Show all results of client1.
+.TP
+.B otpme-deploy ack 8a1e1207\-f626\-42ff\-b538\-60b7b4223f31
+Acknowledge a job that failed or was refused.
+.TP
+.B otpme-deploy cancel 8a1e1207\-f626\-42ff\-b538\-60b7b4223f31
+Cancel a job.
+.SH FILES
+.TP
+.I /var/log/otpme/confd/
+Full output of each job, on the host.
+.TP
+.I /var/spool/otpme/confd/
+Jobs, results and markers of confd, on the host.
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme\-tool (1),
+.BR otpme\-host (1),
+.BR otpme\-unit (1),
+.BR otpme\-inventory (1)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2026 the2nd. License: GPLv3

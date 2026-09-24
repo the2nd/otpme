@@ -261,6 +261,13 @@ def register():
     """ Register object. """
     register_hooks()
     register_token_type()
+    # The second factor is checked where the login happens, which is the
+    # home site of the user, and read off the token there. The ssh token
+    # sets both as well.
+    config.register_index_attribute("second_factor_token", sync=[],
+                                    object_types=["token"])
+    config.register_index_attribute("second_factor_token_enabled", sync=[],
+                                    object_types=["token"])
     register_config_parameters()
     register_commands("token",
                     commands,

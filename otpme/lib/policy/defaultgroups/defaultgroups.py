@@ -212,7 +212,8 @@ class DefaultgroupsPolicy(Policy):
                     'user'   : ['set_default_group', 'set_groups'],
                     }
 
-        self.object_types = ['realm', 'site', 'unit']
+        # No realm, see Realm.add_policy().
+        self.object_types = ['site', 'unit']
 
         self.default_group = None
 

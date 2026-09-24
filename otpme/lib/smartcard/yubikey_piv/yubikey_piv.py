@@ -64,7 +64,7 @@ def _load_private_pem(pem):
         pw = cli.read_pass(prompt='Key file password: ')
         return encryption.load_private_key(pem, password=pw)
 
-from otpme.lib. exceptions import *
+from otpme.lib.exceptions import *
 
 logger = config.logger
 
@@ -210,6 +210,21 @@ class YubikeypivClientHandler(object):
                 key_len = self.local_command_args['key_len']
             except Exception:
                 key_len = 2048
+            # The command line hands us a string. Without this every
+            # --key-len failed the check below, even the valid ones.
+            try:
+                key_len = int(key_len)
+            except (TypeError, ValueError):
+                msg = _("Invalid key len: {key_len}")
+                msg = msg.format(key_len=key_len)
+                raise OTPmeException(msg) from None
+            # A YubiKey takes 2048 always, 3072 and 4096 from firmware
+            # 5.7 on. Anything else it refuses somewhere deep inside the
+            # deploy, so it is checked here.
+            if key_len not in [2048, 3072, 4096]:
+                msg = _("Invalid key len: {key_len}")
+                msg = msg.format(key_len=key_len)
+                raise OTPmeException(msg)
 
             backup_file = None
             restore_file = None
@@ -227,7 +242,10 @@ class YubikeypivClientHandler(object):
                 except Exception:
                     restore_file = None
                     if private_key_backup_key is None:
-                        backup_file = "/dev/shm/" + self.object_identifier.replace("/", "_")
+                        # The file holds a JSON dict with both PEMs, so
+                        # name it .json and not .pem.
+                        backup_name = self.object_identifier.replace("/", "_")
+                        backup_file = f"/dev/shm/{backup_name}.json"
 
             if restore_file and not os.path.exists(restore_file):
                 msg = _("Restore file does not exist: {file}")

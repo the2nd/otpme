@@ -96,6 +96,8 @@ ldap_search_cache = FuncCache(name="ldap_search_cache",
                             default_cache="default")
 supported_acls_cache = FuncCache(name="supported_acls",
                                 default_cache="default")
+decode_acl_cache = FuncCache(name="decoded_acls",
+                                default_cache="default")
 unit_members_cache = FuncCache(name="unit_members",
                             default_cache="default",
                             clear_on_object_types=config.tree_object_types)
@@ -153,6 +155,7 @@ def init():
     global assigned_role_cache
     global assigned_host_cache
     global assigned_token_cache
+    global decode_acl_cache
     global supported_acls_cache
     global assigned_device_cache
     ## Add instance cache with per object type caching.
@@ -330,6 +333,7 @@ def init():
             assigned_token_cache,
             assigned_device_cache,
             supported_acls_cache,
+            decode_acl_cache,
             ]
 
 # Shared cache uses pickle and pickle is to slow!!!!!    

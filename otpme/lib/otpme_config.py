@@ -427,9 +427,6 @@ class OTPmeConfig(object):
         self.register_config_var("agent_keepalive_interval", int, 6,
                                 config_file_parameter="AGENT_KEEPALIVE_INTERVAL")
 
-        self.register_config_var("sync_mem_cache", bool, True,
-                            config_file_parameter="SYNC_MEM_CACHE")
-
         # Use DNS to get OTPme login realm/site and socket URI.
         self.register_config_var("login_use_dns", bool, True,
                                 config_file_parameter="LOGIN_USE_DNS")
@@ -448,11 +445,9 @@ class OTPmeConfig(object):
         self.register_config_var("read_stdin_pass", bool, False)
         # Password read from stdin.
         self.register_config_var("stdin_pass", str, None)
-        # Locking stuff.
-        self.register_config_var("lock_timeout", int, 30)
+        # How long a job waits for an object locked by another job
+        # (--lock-wait-timeout). 0: do not wait.
         self.register_config_var("lock_wait_timeout", int, 0)
-        # Ignore if objects change while waiting for lock.
-        self.register_config_var("ignore_changed_objects", bool, False)
         # Use direct backend access (e.g. in daemon mode).
         self.register_config_var("use_backend", None, None)
         # Debug mode.
@@ -481,7 +476,6 @@ class OTPmeConfig(object):
         self.register_config_var("verbose_level", int, 0)
         # Limit a function/method must at least take to be printed.
         self.register_config_var("debug_timing_limit", float, 0.2)
-        self.register_config_var("debug_counter_limit", int, 100)
         # Print warning if function/method call took longer than debug timing limit.
         self.register_config_var("print_timing_warnings", bool, False)
         # Print result of function/method calls that took longer than debug timing limit.
@@ -885,6 +879,20 @@ class OTPmeConfig(object):
         self.register_config_var("ldap_index_attributes", list, [])
         # All index attributes.
         self.register_config_var("index_attributes", list, [])
+        # Which views of an object each index attribute goes to, by the
+        # names OTPmeObject.get_sync_audiences() uses. An attribute that
+        # names none of them travels to every view, which is what the
+        # index did before there were views.
+        self.register_config_var("index_attribute_sync", dict, {})
+        # The same, for an object type that says something of its own
+        # about an attribute other object types share with it:
+        # {object_type: {attribute: views}}.
+        self.register_config_var("index_attribute_sync_by_type", dict, {})
+        # The attributes whose answer was registered for every object
+        # type at once, with object_types="all". Kept apart from the
+        # ones that simply have no answer yet, so add_index() can tell
+        # a decision from an omission.
+        self.register_config_var("index_attribute_all_types", list, [])
 
         self.register_config_var("logout_pass_len", int, 6,
                             config_file_parameter="LOGOUT_PASS_LEN")
@@ -2178,20 +2186,76 @@ class OTPmeConfig(object):
         extension_attributes.append(attribute)
         self.attribute_types[extension][object_type] = extension_attributes
 
-    def register_index_attribute(self, attribute, ldif=False):
-        """ Register attribute to be added to the search index. """
+    def register_index_attribute(self, attribute, ldif=False, sync=None,
+        object_types=None):
+        """ Register attribute to be added to the search index.
+
+        <sync> says which views this attribute is part of: True for
+        every one of them, or the names OTPmeObject.get_sync_audiences()
+        uses. False, or an empty list, keeps it on the site that owns
+        the object.
+
+        It is asked for, rather than defaulted, so that adding an index
+        attribute is a decision about where it goes. True is the answer
+        that changes nothing and is the honest one for an attribute
+        nobody has looked at yet.
+
+        <object_types> says which object types the answer is for, and
+        the attribute is registered where those types set it. Several
+        object types set the same attribute -- the access group, the
+        group, the role, the share and the vlan all set host -- and one
+        answer for all of them is one answer too few as soon as two of
+        them need different ones. Each names its own.
+
+        "all" is the other case: an attribute every object writes,
+        through a method of the base class, where the answer is the
+        same for each. realm_uuid is one. Listing every type there
+        would be the same sentence over and over, and one the next
+        object type would be added without. It is spelled out rather
+        than left off so that nothing said is a mistake, not a default.
+        """
         if ldif:
-            if attribute in self.ldap_index_attributes:
-                msg = _("LDIF index attribute already registered: {attribute}")
+            index_name = f"ldif:{attribute}"
+            registered = attribute in self.ldap_index_attributes
+        else:
+            index_name = attribute
+            registered = attribute in self.otpme_index_attributes
+        if registered:
+            # Registering it again is how an object type says something
+            # of its own about an attribute somebody else registered.
+            # Without that it is the same mistake twice.
+            if object_types is None:
+                msg = _("Index attribute already registered: {attribute}")
                 msg = msg.format(attribute=attribute)
                 raise AlreadyRegistered(msg)
+        elif ldif:
             self.ldap_index_attributes.append(attribute)
         else:
-            if attribute in self.otpme_index_attributes:
-                msg = _("OTPme index attribute already registered: {attribute}")
-                msg = msg.format(attribute=attribute)
-                raise AlreadyRegistered(msg)
             self.otpme_index_attributes.append(attribute)
+
+        if sync is None:
+            sync = True
+        if sync is True:
+            attribute_sync = True
+        elif not sync:
+            attribute_sync = []
+        else:
+            attribute_sync = list(sync)
+
+        if object_types == "all":
+            self.index_attribute_all_types.append(index_name)
+            self.index_attribute_sync[index_name] = attribute_sync
+        elif object_types is None:
+            self.index_attribute_sync[index_name] = attribute_sync
+        else:
+            for object_type in object_types:
+                try:
+                    type_sync = self.index_attribute_sync_by_type[object_type]
+                except KeyError:
+                    type_sync = {}
+                    self.index_attribute_sync_by_type[object_type] = type_sync
+                type_sync[index_name] = attribute_sync
+
         # Merged list of attributes that can be searched via the (file backend) index.
         self.index_attributes = self.otpme_base_attributes \
                             + self.otpme_index_attributes \
@@ -2428,9 +2492,25 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         self.cluster_object_types.append(object_type)
 
+    # The other end going away is something that happens, not a mistake
+    # to be caught in the act. Re-raising one takes away the retry that
+    # was going to deal with it and kills the process that was going to
+    # do the retrying, which is how a single dropped connection stopped
+    # a cluster from syncing again until somebody noticed.
+    connection_exceptions = (
+                        ConnectionError,
+                        ConnectionTimeout,
+                        ConnectionQuit,
+                        )
+
     def raise_exception(self, message=None):
-        """ Raise exceptions if requested (-de) and print info. """
+        """ Raise exceptions if requested (-de) and print info.
+
+        Never for a connection error, whatever -dee says.
+        """
         if not self.raise_exceptions:
+            return
+        if isinstance(sys.exc_info()[1], self.connection_exceptions):
             return
         import inspect
         #for i in range(0, len(inspect.stack())):
@@ -3270,7 +3350,7 @@ class OTPmeConfig(object):
     def master_node(self):
         master_node = self.get_master_node()
         if not master_node:
-            return False
+            return None
         try:
             this_node = self.host_data['name']
         except Exception:

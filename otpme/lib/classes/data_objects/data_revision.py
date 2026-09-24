@@ -115,7 +115,10 @@ def register_backend():
                             cache_region="data_object",
                             backup_attributes=['realm', 'site'])
     # Register index attributes.
-    config.register_index_attribute('data_revision')
+    # A data revision is not handed to another site at all, see
+    # OTPmeHost.get_sync_parameters().
+    config.register_index_attribute('data_revision', sync=[],
+                                    object_types=["data_revision"])
     # Register object to backend.
     class_getter = lambda: DataRevision
     backend.register_object_type(object_type="data_revision",

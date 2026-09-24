@@ -129,8 +129,8 @@ cmd_help = {
                 },
 
     'gen_keys'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user gen_keys [--server] [-b <bits>] [--sign-algo <algo>] [--encrypt-algo <algo>] [--pass-hash-type <hash_type>] [-n] {user}'),
-                    'cmd'   :   '-b :key_len: --server :key_mode=server: --sign-algo :sign_algo: --encrypt-algo :encrypt_algo: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user gen_keys [--server] [-b <bits>] [--sign-algo <algo>] [--encrypt-algo <algo>] [-n] {user}'),
+                    'cmd'   :   '-b :key_len: --server :key_mode=server: --sign-algo :sign_algo: --encrypt-algo :encrypt_algo: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                               : _('Generate user\'s sign + encrypt key pairs'),
                                     '-b <bits>'                         : _('Key length in bits (e.g. 2048; only relevant for rsa)'),
@@ -138,7 +138,6 @@ cmd_help = {
                                     '-n'                                : _('Do not encrypt server side private keys'),
                                     '--sign-algo <algo>'                : _('Algorithm for the signing key (rsa|ed25519, default rsa)'),
                                     '--encrypt-algo <algo>'             : _('Algorithm for the encryption key (rsa|x25519, default rsa)'),
-                                    '--pass-hash-type <pass_hash_type>' : _('Hash type used to derive encryption key from password.'),
                                     '--stdin-pass'                      : _('Read passphrase for RSA private key from stdin'),
                                 },
                 },
@@ -238,11 +237,11 @@ cmd_help = {
                                 },
                 },
 
-    'gen_cert'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user gen_cert {user}'),
+    'gen_csr'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user gen_csr {user}'),
                     'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Generate user certificate'),
+                                    'cmd'                   : _('Generate certificate signing request for user'),
                                     '--stdin-pass'          : _('Read passphrase for RSA private key from stdin'),
                                 },
                 },
@@ -251,6 +250,7 @@ cmd_help = {
     'sign_data'    : {
                     # This command is not intended to be used by the user directly.
                     # It is called internally when running otpme-tool sign command.
+                    'internal'  : True,
                     'cmd'   :   '--data :data: --stdin-data :stdin_data=True: --digest :digest: --stdin-pass :stdin_pass=True: <|object|>',
                 },
 
@@ -258,6 +258,7 @@ cmd_help = {
     'encrypt'    : {
                     # This command is not intended to be used by the user directly.
                     # It is called internally when running otpme-tool encrypt command.
+                    'internal'  : True,
                     'cmd'   :   '--data :data: --stdin-data :stdin_data=True: --stdin-pass :stdin_pass=True: <|object|>',
                 },
 
@@ -265,6 +266,7 @@ cmd_help = {
     'decrypt'    : {
                     # This command is not intended to be used by the user directly.
                     # It is called internally when running otpme-tool decrypt command.
+                    'internal'  : True,
                     'cmd'   :   '--data :data: --stdin-data :stdin_data=True: --stdin-pass :stdin_pass=True: <|object|>',
                 },
 
@@ -272,10 +274,14 @@ cmd_help = {
     'deploy_token'    : {
                     # This command is not intended to be used by the user directly.
                     # It is called internally when running otpme-token deploy command.
+                    'internal'  : True,
                     'cmd'   :   '<|object|> <token_name> <token_type>',
                 },
 
     'add_token'    : {
+                    # This command is not intended to be used by the user directly.
+                    # It is called internally when running otpme-token deploy command.
+                    'internal'  : True,
                     '_cmd_usage_help' : _('Usage: otpme-user add_token [-r] [--no-qrcode] [--enable-mschap] [--token-type <token_type>] [--name <token_name>] [--destination <dst_token>] [--password <password>] [--weak-password] {user}'),
                     'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: --enable-mschap :enable_mschap=True: --name :token_name: --token-type :token_type: --destination :destination_token: --password :password: --weak-password :weak_password=True: <|object|>',
                     '_help' :   {
@@ -414,7 +420,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-user auto_disable -u {user} {time}'),
                     'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
                     '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "1d" or "09:53 13.06.2023").'),
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023").'),
                                     '-u'                    : _('Disable object if it was unused for the given time.'),
                                 },
                 },
@@ -531,11 +537,11 @@ cmd_help = {
                                 },
                 },
 
-    'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user show_acls {user}'),
+    'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-user list_acls {user}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of user'),
+                                    'cmd'                   : _('List ACLs set on this user.'),
                                 },
                 },
 
@@ -662,7 +668,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-user list_policies {user}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -782,18 +788,19 @@ cmd_help = {
                                     'cmd'                   : _('Disable auto-sign feature of user.'),
                                 },
                 },
-    'list_groups'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user list_groups {user}'),
+    'find_groups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-user find_groups {user}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                       : _('List user\'s groups.'),
+                                    'cmd'                       : _('Find groups this user is assigned to.'),
                                     '--return-type'             : _('Attribute to return.'),
                                 },
                 },
     'list_tokens'   : {
+                    'internal'  : True,
                     '_cmd_usage_help' : _('Usage: otpme-user list_tokens {user}'),
                     'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
                     'ovals' :   {
@@ -805,15 +812,27 @@ cmd_help = {
                                     '--token-types <hotp,totp>' : _('Token types to list.'),
                                 },
                 },
-    'list_roles'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-user list_roles {user}'),
+    'find_roles'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-user find_roles {user}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List user\'s roles.'),
+                                    'cmd'                   : _('Find roles this user is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_signatures'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-user find_signatures {user}'),
+                    'cmd'   :   '--return-type :return_type: --object-types :[object_types]: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'rel_path', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                           : _('Find objects this user has signed.'),
+                                    '--return-type'                 : _('Attribute to return.'),
+                                    '--object-types <token,script>' : _('Object types to search.'),
                                 },
                 },
     'photo'      : {

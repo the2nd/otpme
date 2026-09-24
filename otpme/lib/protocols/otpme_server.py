@@ -1322,7 +1322,8 @@ class OTPmeServer1(object):
             # Requiring the signature is the safe direction: the request
             # fails instead of passing unsigned.
             if self.user:
-                if not ag_instance.get_sign_public_key(self.user.uuid):
+                sign_key = ag_instance.get_sign_public_key(self.user.uuid)
+                if not sign_key:
                     return
         self.sotp_signing = True
         self.sotp_sign_object = ag_instance

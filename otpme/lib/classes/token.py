@@ -76,6 +76,8 @@ read_value_acls = {
                         "device_name",
                         "accessgroups",
                         "groups",
+                        "hosts",
+                        "nodes",
                         "roles",
                         "shares",
                         "scopes",
@@ -86,6 +88,17 @@ read_value_acls = {
                         "auth_script",
                         "dynamic_groups",
                         "token_data",
+                        ],
+                # The other direction: not what this token holds, but
+                # who holds this token.
+                "find"  : [
+                        "roles",
+                        "groups",
+                        "accessgroups",
+                        "scopes",
+                        "shares",
+                        "hosts",
+                        "nodes",
                         ],
             }
 
@@ -113,21 +126,13 @@ default_acls = []
 recursive_default_acls = []
 
 commands = {
-    'add'   : {
-            'default'    : {
-                'missing'    : {
-                    'method'            : 'add',
-                    'args'              : ['dict_name'],
-                    'oargs'             : ['dict_type'],
-                    'job_type'          : 'process',
-                    },
-                'exists'    : {
-                    'method'            : 'add',
-                    'args'              : ['dict_name'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
+    # No 'add' here. A token is added through the user it belongs to
+    # (User.add_token()), which is what the CLI rewrites "otpme-token
+    # add" to, see CommandHandler.handle_token_add_del_command(). The
+    # entry that used to sit here came from the dictionary object and
+    # declared dict_name/dict_type as the arguments of Token.add(),
+    # which takes an owner_uuid -- so anything reaching it through the
+    # API got a TypeError instead of a token.
     'get_config'   : {
             'default'    : {
                 'exists'    : {
@@ -498,73 +503,76 @@ commands = {
                     },
                 },
             },
-    'list_hosts'   : {
+    'find_hosts'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_hosts',
+                    'method'            : 'find_hosts',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
             },
-    'list_groups'   : {
+    'find_groups'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_groups',
+                    'method'            : 'find_groups',
                     'job_type'          : 'thread',
-                    'oargs'             : ['return_type'],
+                    'oargs'             : ['return_type', 'include_roles'],
                     'dargs'             : {'return_type':'name', 'include_roles':False},
                     },
                 },
             },
-    'list_accessgroups'   : {
+    'find_accessgroups'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_access_groups',
+                    'method'            : 'find_accessgroups',
                     'job_type'          : 'thread',
-                    'oargs'             : ['return_type'],
+                    'oargs'             : ['return_type', 'include_roles'],
                     'dargs'             : {'return_type':'name', 'include_roles':False},
                     },
                 },
             },
-    'list_nodes'   : {
+    'find_nodes'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_nodes',
+                    'method'            : 'find_nodes',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
             },
-    'list_roles'   : {
+    'find_roles'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_roles',
+                    'method'            : 'find_roles',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'recursive'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
             },
-    'list_scopes'   : {
+    'find_scopes'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_scopes',
+                    # get_scopes() walks past the ACL check that sits on
+                    # find_scopes().
+                    'method'            : 'find_scopes',
                     'job_type'          : 'thread',
-                    'oargs'             : ['return_type'],
-                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
+                    'oargs'             : ['return_type', 'include_roles'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False,
+                                        'include_roles':False},
                     },
                 },
             },
-    'list_shares'   : {
+    'find_shares'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_shares',
+                    'method'            : 'find_shares',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
-                    'dargs'             : {'return_type':'path', 'skip_disabled':False},
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
             },
@@ -630,10 +638,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -698,10 +706,10 @@ commands = {
                     },
                 },
             },
-    'list_acls'   : {
+    'find_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_acls',
+                    'method'            : 'find_acls',
                     'job_type'          : 'process',
                     },
                 },
@@ -737,6 +745,12 @@ commands = {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_dynamic_groups',
+                    'oargs'             : ['include_roles'],
+                    # get_dynamic_groups() takes the roles along by
+                    # default because that is what a login needs. On the
+                    # command line you want to see what is set on this
+                    # token, so --include-roles has to be asked for.
+                    'dargs'             : {'include_roles':False},
                     'job_type'          : 'thread',
                     },
                 },
@@ -845,7 +859,10 @@ def register_oid():
     user_path_re = oid.object_regex['user']['path']
     realm_name_re = oid.object_regex['realm']['name']
     site_name_re = oid.object_regex['site']['name']
-    user_name_re = oid.object_regex['user']['name']
+    # The OID form, not the name form: a token of the TOKENSTORE user
+    # has to form a valid OID, and that name never passes the regex a
+    # user name is checked against.
+    user_name_re = oid.object_regex['user']['oid_name']
     token_name_re = r'([0-9a-z]([0-9a-z_.\-:]*[0-9a-z]){0,})'
     token_path_re = f'{user_path_re}[/]{token_name_re}'
     # An OID is not a path, see accessgroup.py. Our OID names the user
@@ -1073,11 +1090,41 @@ def register_backend():
                             cache_region="tree_object",
                             backup_attributes=['realm', 'user', 'name'])
     # Register index attributes.
-    config.register_index_attribute('token_type')
-    config.register_index_attribute('owner_uuid')
-    config.register_index_attribute('pass_type')
-    config.register_index_attribute('support_dot1x')
-    config.register_index_attribute('support_links')
+    token_types = ["token"]
+    # What kind of token this is. A host needs it to authenticate
+    # offline, without asking anybody.
+    config.register_index_attribute('token_type', sync=True,
+                                    object_types=token_types)
+    # A login happens on the home site of the user, which hands back
+    # what an offline login needs; what follows on another site is a
+    # JWT auth. So no node of another site looks these up, and the
+    # auth handler reads them off the object anyway. user.py sets
+    # auth_script_enabled as well.
+    config.register_index_attribute('allow_offline', sync=[],
+                                    object_types=token_types)
+    config.register_index_attribute('auth_script_enabled', sync=[],
+                                    object_types=token_types)
+    config.register_index_attribute('keep_session', sync=[],
+                                    object_types=token_types)
+    # The authorization script of a token. Read off the object by
+    # whoever runs it; a user has one too, see user.py.
+    config.register_index_attribute('auth_script', sync=["node:untrusted"],
+                                    object_types=token_types)
+    # Who a token belongs to, which a host has to know when it checks
+    # one without asking anybody.
+    config.register_index_attribute('owner_uuid', sync=True,
+                                    object_types=token_types)
+    # Which kind of password this token answers with, read where it is
+    # checked -- on a host too, when it checks offline.
+    config.register_index_attribute('pass_type', sync=True,
+                                    object_types=token_types)
+    # Asked by the RADIUS server, which runs on a node.
+    config.register_index_attribute('support_dot1x', sync=["node:untrusted"],
+                                    object_types=token_types)
+    # Whether another token may be linked to this one, read where the
+    # link is followed -- on a host too, when it checks offline.
+    config.register_index_attribute('support_links', sync=True,
+                                    object_types=token_types)
     # Register object to backend.
     class_getter = token.get_class
     class_getter_args = {'TOKEN_TYPE' : 'token_type'}
@@ -1743,8 +1790,8 @@ class Token(OTPmeObject):
         return callback.ok(return_msg)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:shares'])
-    def list_shares(
+    @check_acls(acls=['find:shares'])
+    def find_shares(
         self,
         **kwargs,
         ):
@@ -1788,6 +1835,13 @@ class Token(OTPmeObject):
                 result.append(share.oid.full_oid)
             elif return_type == "uuid":
                 result.append(share.uuid)
+            elif return_type == "name":
+                # Same rule as every other list command: the site only
+                # when it is not ours.
+                if share.site != config.site:
+                    result.append(f"{share.site}/{share.name}")
+                else:
+                    result.append(share.name)
             elif return_type == "path":
                 result.append(share.share_id)
             else:
@@ -1801,8 +1855,8 @@ class Token(OTPmeObject):
         return callback.ok("\n".join(result))
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:hosts'])
-    def list_hosts(
+    @check_acls(acls=['find:hosts'])
+    def find_hosts(
         self,
         **kwargs,
         ):
@@ -1845,8 +1899,8 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:nodes'])
-    def list_nodes(
+    @check_acls(acls=['find:nodes'])
+    def find_nodes(
         self,
         **kwargs,
         ):
@@ -1889,8 +1943,8 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:roles'])
-    def list_roles(
+    @check_acls(acls=['find:roles'])
+    def find_roles(
         self,
         **kwargs,
         ):
@@ -1899,7 +1953,7 @@ class Token(OTPmeObject):
 
     def get_roles(
         self,
-        return_type: str="read_oid",
+        return_type: str="name",
         recursive: bool=False,
         _caller: str="API",
         skip_disabled: bool=True,
@@ -1934,7 +1988,6 @@ class Token(OTPmeObject):
 
         # Get roles recursive.
         if recursive:
-            return_attributes = ['uuid', 'site', return_type]
             for uuid in roles_search_result:
                 role_roles = get_roles(role_uuid=uuid,
                                         parent=True,
@@ -2043,13 +2096,26 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:groups'])
-    def list_groups(
+    @check_acls(acls=['find:groups'])
+    def find_groups(
         self,
         **kwargs,
         ):
         """ Return list with all groups this token is in. """
         return self.get_groups(**kwargs)
+
+    @cli.check_rapi_opts()
+    @check_acls(acls=['find:accessgroups'])
+    def find_accessgroups(
+        self,
+        **kwargs,
+        ):
+        """ Return list with all access groups this token is in.
+
+        The ACL cannot sit on get_access_groups(): a login asks that one
+        while it is still deciding who the caller is.
+        """
+        return self.get_access_groups(**kwargs)
 
     def get_groups(
         self,
@@ -4228,6 +4294,7 @@ class Token(OTPmeObject):
             share_id = share.share_id
             shares_data[share_id] = {
                 'name': share.name,
+                'realm': share.realm,
                 'site': share.site,
                 'nodes': node_fqdns,
                 'limit_hosts': share.limit_by_hosts,

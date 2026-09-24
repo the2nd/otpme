@@ -929,6 +929,47 @@ class ACLChecker(object):
                     return True
         return False
 
+def get_unit_filter(search_regex, realm=None, site=None):
+    """ Get the unit a search path asks for.
+
+    A path that ends with a slash asks for the objects of that unit, not
+    for an object whose name is the path: "/realm/site/unit/" or just
+    "unit/". Returns the units UUID, or None when the path names no unit
+    (e.g. "/realm/site/"). Everything else returns False, meaning the
+    value is an ordinary search regex.
+
+    The unit index attribute holds the UUID of the unit an object sits
+    in directly, so the result is that unit alone. Sub units are their
+    own units.
+    """
+    from otpme.lib import backend
+    if not isinstance(search_regex, str):
+        return False
+    if not search_regex.endswith("/"):
+        return False
+    path_parts = search_regex.strip("/").split("/")
+    if search_regex.startswith("/"):
+        # Realm and site are already decided by the daemon we talk to.
+        path_parts = path_parts[2:]
+    unit_path = "/".join(path_parts)
+    if not unit_path:
+        return None
+    if realm is None:
+        realm = config.realm
+    if site is None:
+        site = config.site
+    result = backend.search(object_type="unit",
+                            attribute="rel_path",
+                            value=unit_path,
+                            realm=realm,
+                            site=site,
+                            return_type="uuid")
+    if not result:
+        msg = _("Unknown unit: {unit_path}")
+        msg = msg.format(unit_path=unit_path)
+        raise OTPmeException(msg)
+    return result[0]
+
 def show_objects(object_type, realm=None, site=None, search_regex=None,
     sort_by=None, reverse=False, max_len=None, id_attr=None, output_fields=None,
     border=True, header=True, csv=False, csv_sep=";", show_all=False, _caller="API",
@@ -1122,6 +1163,11 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     if object_type == "unit":
         max_len = None
 
+    # A path that ends with a slash asks for the objects of that unit.
+    unit_filter = get_unit_filter(search_regex, realm=realm, site=site)
+    if unit_filter is not False:
+        search_regex = None
+
     # By default we only show objects the user has edit permissions on.
     if search_regex is None:
         search_regex = "*"
@@ -1176,6 +1222,8 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
                         search_attribute    : {'value':search_regex},
                         'template'          : {'value':show_templates},
                         }
+    if unit_filter:
+        search_attributes['unit'] = {'value':unit_filter}
 
     # Get objects based on search regex and ACLs assiged.
     object_count, result = backend.search(realm=realm,
@@ -2047,6 +2095,13 @@ def list_objects(object_type, show_all=False, reverse=False,
     if config.use_api and not config.auth_token:
         verify_acls = None
 
+    # A path that ends with a slash asks for the objects of that unit.
+    unit_filter = get_unit_filter(search_regex)
+    if unit_filter is not False:
+        # The path itself is answered by the unit, so what is left to
+        # match is every name below it.
+        search_regex = "*"
+
     if search_regex is None:
         search_regex = "*"
 
@@ -2080,6 +2135,8 @@ def list_objects(object_type, show_all=False, reverse=False,
                         search_attribute    : {'value':search_regex},
                         'template'          : {'value':show_templates},
                         }
+    if unit_filter:
+        search_attributes['unit'] = {'value':unit_filter}
     # Get objects based on search regex and ACLs assiged.
     try:
         object_list = backend.search(realm=config.realm,

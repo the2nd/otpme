@@ -29,9 +29,8 @@ cmd_help = {
                     '-l <file>'                         : _('Log to file instead of stdout.'),
                     '--no-index-start'                  : _('Don\'t start/stop index.'),
                     '--no-cache-start'                  : _('Don\'t start/stop cache.'),
-                    '--flush-cache'                     : _('Flush cache on daemon start.'),
+                    '--cache-flush'                     : _('Flush cache on daemon start.'),
                     '--ignore-changed-objects'          : _('Hostd should sync objects even if they changed while syncing.'),
-                    '--no-sync-mem-cache'               : _('Hostd should not cache objects in memory while syncing.'),
                     '--keep-floating-ip'                : _('Do not deconfigure floating IP when shutting down on master node.'),
                 },
 

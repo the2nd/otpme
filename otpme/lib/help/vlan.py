@@ -235,11 +235,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-vlan show_acls {vlan}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-vlan list_acls {vlan}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of VLAN.'),
+                                    'cmd'                   : _('List ACLs set on this VLAN.'),
                                 },
                 },
 
@@ -345,7 +345,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-vlan list_policies {vlan}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

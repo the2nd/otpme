@@ -84,6 +84,11 @@ read_value_acls =    {
                     "dump"      : [
                                 "sso_logo",
                                 ],
+                    # The other direction: not what this client holds,
+                    # but who holds this client.
+                    "find"      : [
+                                "scopes",
+                                ],
             }
 
 write_value_acls = {
@@ -799,10 +804,10 @@ commands = {
                     },
                 },
             },
-    'list_scopes'   : {
+    'find_scopes'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_scopes',
+                    'method'            : 'find_scopes',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'include_roles':False, 'skip_disabled':False},
@@ -989,10 +994,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1083,11 +1088,30 @@ def register():
     register_sync_settings()
     register_commands("client", commands)
     # Register index attributes.
-    config.register_index_attribute("address")
-    config.register_index_attribute("oidc_auth")
-    config.register_index_attribute("sso_enabled")
-    config.register_index_attribute("auth_cache_enabled")
-    config.register_index_attribute("auth_cache_timeout")
+    # Where a client is reached. get_client() looks one up by it for a
+    # RADIUS request and asks its own site only, and a client object is
+    # held by that site alone anyway. A site sets the attribute too and
+    # says something else about it, see site.py.
+    client_types = ["client"]
+    config.register_index_attribute("address", sync=[],
+                                    object_types=client_types)
+    # Shown by the management interface, searched by nothing else.
+    config.register_index_attribute("dot1x_auth", sync=["node:untrusted"],
+                                    object_types=client_types)
+    # A client is authenticated against by the site it belongs to.
+    config.register_index_attribute("oidc_auth", sync=[],
+                                    object_types=client_types)
+    config.register_index_attribute("sso_enabled", sync=[],
+                                    object_types=client_types)
+    config.register_index_attribute("auth_cache_enabled", sync=[],
+                                    object_types=client_types)
+    config.register_index_attribute("auth_cache_timeout", sync=[],
+                                    object_types=client_types)
+    # Whether every user may log in here or only the ones this object
+    # holds tokens for. Written by OTPmeClientObject, which the host
+    # and the node stand behind as well.
+    config.register_index_attribute("logins_limited", sync=True,
+                                    object_types=client_types)
     config.register_recursive_default_acl("site", "+client")
     config.register_default_acl("unit", "+client")
     config.register_recursive_default_acl("unit", "+client")
@@ -1200,7 +1224,12 @@ def register_backend():
                             cache_region="tree_object",
                             backup_attributes=['realm', 'site', 'name'])
     # Register index attributes.
-    config.register_index_attribute('accessgroup')
+    # The access group a client authenticates against, asked where the
+    # client is authenticated -- by the nodes of its own site, which is
+    # the only place a client object is held now. A session names its
+    # group as well, see session.py.
+    config.register_index_attribute('accessgroup', sync=[],
+                                    object_types=["client"])
     # Register object to backend.
     class_getter = lambda: Client
     backend.register_object_type(object_type="client",

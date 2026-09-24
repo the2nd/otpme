@@ -250,8 +250,10 @@ class IdrangePolicy(Policy):
                             'get_next_free_id',
                             ],
                     }
+        # No realm: a policy lives in a site, and a realm that carried
+        # one would enforce what a single site decides (see
+        # Realm.add_policy()). A site is the widest this goes.
         self.object_types = [
-                    'realm',
                     'site',
                     'unit',
                     ]

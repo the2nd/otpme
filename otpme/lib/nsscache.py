@@ -138,8 +138,6 @@ def update_sync_map(lock=None, syncing=False):
                                             site=x.name,
                                             peer_realm=config.realm,
                                             peer_site=config.site,
-                                            skip_admin=False,
-                                            skip_users=skip_users,
                                             object_types=object_types,
                                             checksum=config.SYNCING_STATUS_STRING)
                 exception = None
@@ -166,8 +164,6 @@ def update_sync_map(lock=None, syncing=False):
                                         site=x.name,
                                         peer_realm=config.realm,
                                         peer_site=config.site,
-                                        skip_admin=False,
-                                        skip_users=skip_users,
                                         object_types=object_types,
                                         checksum=sync_list_checksum)
             exception = None

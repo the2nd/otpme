@@ -28,6 +28,7 @@ from otpme.lib import connections
 from otpme.lib import desktop_notify
 from otpme.lib import multiprocessing
 from otpme.lib.fuse import get_mount_point
+from otpme.lib.fuse import get_share_realm
 from otpme.lib.fuse import mount_share_proc
 from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.protocols import status_codes
@@ -83,11 +84,12 @@ def _load_piv():
     hpke_decap_x25519 = _hd
     hpke_info_default = _hi
 
-def mount_share(username, share_id, share_site, share_name,
+def mount_share(username, share_id, share_realm, share_site, share_name,
     share_nodes, encrypted, sotp_signing, session_id, logger,
     mount_timeout=None):
     try:
-        mount_point = prepare_mount_point(username, share_site, share_name)
+        mount_point = prepare_mount_point(username, share_realm,
+                                        share_site, share_name)
     except Exception as e:
         msg, log_msg = _("Failed to prepare mountpoint: {error}", log=True)
         msg = msg.format(error=e)
@@ -118,8 +120,9 @@ def mount_share(username, share_id, share_site, share_name,
                                 join=True)
     return mount_point
 
-def umount_share(username, share_site, share_name, logger):
-    mount_point = get_mount_point(username, share_site, share_name)
+def umount_share(username, share_realm, share_site, share_name, logger):
+    mount_point = get_mount_point(username, share_realm,
+                                share_site, share_name)
     try:
         subprocess.run(["fusermount", "-z", "-u", mount_point])
     except Exception as e:
@@ -573,6 +576,7 @@ class OTPmeAgent(UnixDaemon):
                         if login_token not in tokens:
                             continue
                         try:
+                            share_realm = get_share_realm(data[share_id])
                             share_site = data[share_id]['site']
                             share_name = data[share_id]['name']
                             share_nodes = data[share_id]['nodes']
@@ -595,6 +599,7 @@ class OTPmeAgent(UnixDaemon):
                         try:
                             mount_point = mount_share(username=login_user,
                                                     share_id=share_id,
+                                                    share_realm=share_realm,
                                                     share_site=share_site,
                                                     share_name=share_name,
                                                     share_nodes=share_nodes,
@@ -674,6 +679,7 @@ class OTPmeAgent(UnixDaemon):
                         if login_token not in tokens:
                             continue
                         try:
+                            share_realm = get_share_realm(data[share_id])
                             share_site = data[share_id]['site']
                             share_name = data[share_id]['name']
                         except KeyError:
@@ -689,6 +695,7 @@ class OTPmeAgent(UnixDaemon):
 
                         try:
                             mount_point = umount_share(username=login_user,
+                                                    share_realm=share_realm,
                                                     share_site=share_site,
                                                     share_name=share_name,
                                                     logger=self.logger)
@@ -852,7 +859,9 @@ class OTPmeAgent(UnixDaemon):
             for share_id in shares:
                 share_name = shares[share_id]['name']
                 share_site = shares[share_id]['site']
-                mount_point = get_mount_point(login_user, share_site, share_name)
+                share_realm = get_share_realm(shares[share_id])
+                mount_point = get_mount_point(login_user, share_realm,
+                                            share_site, share_name)
                 try:
                     subprocess.run(["fusermount", "-u", mount_point])
                 except Exception as e:
@@ -1703,6 +1712,12 @@ class OTPmeAgent(UnixDaemon):
                                             sotp_sign_method=sotp_sign_method,
                                             auto_auth=True, allow_untrusted=True,
                                             sync_token_data=False)
+            except SOTPSigningRequired as e:
+                msg, log_msg = _("Daemon requires SOTP signing: {daemon}: {e}", log=True)
+                msg = msg.format(daemon=daemon, e=e)
+                log_msg = log_msg.format(daemon=daemon, e=e)
+                self.logger.warning(log_msg)
+                raise AuthFailed(msg) from e
             except AuthFailed as e:
                 msg, log_msg = _("Authentication failed while connecting to daemon: {daemon}: {e}", log=True)
                 msg = msg.format(daemon=daemon, e=e)

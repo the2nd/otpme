@@ -130,15 +130,15 @@ Keep persisted share mounts on hosts (transient unmount only).
 **list_roles \[**-r**\] *role***  
 List roles assigned to the role. Use **-r** for recursive listing.
 
-**list_acls *role***  
-Show ACLs assigned to the role.
+**find_acls *role***  
+Find the ACLs this role holds on other objects.
 
-**list_scopes \[**--return-type** *TYPE*\] *role***  
-List OIDC scopes the role is assigned to. **--return-type** selects the
+**find_scopes \[**--return-type** *TYPE*\] *role***  
+Find OIDC scopes the role is assigned to. **--return-type** selects the
 attribute to return (**name**, **read_oid**, **full_oid**, **uuid**).
 
-**list_shares \[**-r**\] \[**--return-type** *TYPE*\] *role***  
-List shares granted via this role. **-r** walks child roles too.
+**find_shares \[**-r**\] \[**--return-type** *TYPE*\] *role***  
+Find shares granted via this role. **-r** walks child roles too.
 
 ## VLAN Assignment
 
@@ -210,32 +210,79 @@ attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
 
 ## Policy Management
 
+A *policy* is the name of a policy, not a path. It is looked for in the
+site of the role. Which policies there are, and what each of them does,
+is in **otpme-policy**(1).
+
+Attaching and detaching ask before they change anything; the global
+option **-f** skips the question.
+
 **add_policy *role* *policy***  
-Attach a policy to the role.
+Attach a policy to the role.  
+A policy has a list of object types it is for; one that does not name
+**role** is refused. So is a second policy of a type that allows only
+one per object.  
+Needs the ACL **assign:policy**.
 
 **remove_policy *role* *policy***  
-Remove a policy from the role.
+Remove a policy from the role.  
+Needs the ACL **remove:policy**, and that one verbatim: a plain
+**remove** does not cover it. Detaching a policy takes away what it
+enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *role***  
-List policies attached to the role. Use **--return-type** to select the
-attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+List the policies attached to the role. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+Use **--policy-types** to list only policies of the given types; these
+are policy types, not policy names.  
+Needs the ACL **view:policies**.
 
 ## ACL Management
 
-**add_acl *role* *owner_type* *owner* *acl***  
-Add an access control entry.
+An ACL says what somebody may do with this role. The somebody is a role
+or a token, never a user.
+
+What the three forms *acl*, **+***acl* and **++***acl* mean, and which
+ACLs exist, is under **ACLs** in **otpme**(7).
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
+The other direction, the ACLs this role holds on other objects, is
+**find_acls** under **Listing** above.
+
+**add_acl *role* *owner_type* *owner* *acl*\[**:***value*\]**  
+Give a role or a token an ACL on this role.  
+*owner_type* is **role** or **token**, and *owner* the path of that role
+or token. An ACL may carry a value, for example **view:tokens**.  
+Needs the ACL **add:acl**.
 
 **del_acl *role* *acl***  
-Remove an access control entry.
+Take that ACL away again.  
+Here the *acl* is the whole entry, owner and all, the way **list_acls**
+prints it: **role:berlin/sw-admins:view**.  
+Needs the ACL **delete:acl**.
 
-**show_acls *role***  
-Display all ACLs for the role.
+**list_acls *role***  
+Show the ACLs that lie on this role, i.e. who may do what with it. Needs
+the ACL **view:acl**.
 
 **enable_acl_inheritance *role***  
-Enable ACL inheritance from parent objects.
+Let the role inherit the default ACLs of the unit above it. It does not
+by default.
+
+Only default ACLs are inherited. An ordinary ACL on the unit never is.
+
+Moving a role into another unit is the one place that asks something
+else as well: the site admin role **SITE_ADMIN** gets neither the
+default ACLs of the new unit nor loses those of the old one.
+
+Needs the ACL **enable:acl_inheritance**.
 
 **disable_acl_inheritance *role***  
-Disable ACL inheritance.
+Stop inheriting them. Only the ACLs on the role itself count from then
+on.  
+Needs the ACL **disable:acl_inheritance**.
 
 ## Extension and Attribute Management
 
@@ -290,19 +337,37 @@ Dump the info text to stdout.
 
 ## Object Changelog
 
+Every change to the object writes an entry: who made it, when, and what
+was done. A change can carry a comment of its own, through the global
+option **--changelog**.
+
+An *entry_id* is the number the listing shows in front of an entry,
+counted from 0.
+
+Only the comment of an entry can be changed or removed. What was done
+and by whom stays as it is.
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
 **changelog *role***  
-Show the object's changelog (chronological list of changes with author,
-timestamp and optional custom text passed via **--changelog**).
+Show the changelog of the role. Needs the ACL **view:changelog**.
 
-**edit_changelog *role* *changelog_id***  
-Open the given changelog entry in the editor named by **EDITOR** to edit
-its custom text.
+**edit_changelog *role* *entry_id* *comment***  
+Set the comment of that entry, or replace the one it has. Needs the ACL
+**edit:changelog**.
 
-**del_changelog *role* *changelog_id***  
-Remove a single entry from the object's changelog.
+**del_changelog *role* *entry_id***  
+Remove the comment of that entry. The entry itself stays, and an entry
+without a comment is refused. Needs the ACL **edit:changelog**.
 
 **clear_changelog *role***  
-Clear the object's entire changelog.
+Remove every entry of the changelog.  
+This needs more than the ACL **clear:changelog**: the config parameter
+**allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
+true by default, but where no value is found at all, clearing is
+refused. OTPme asks the token you are signed in with first, then the
+object.
 
 ## Import/Export
 

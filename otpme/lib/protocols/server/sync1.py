@@ -25,6 +25,17 @@ from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.classes.data_objects.used_otp import UsedOTP
 from otpme.lib.classes.data_objects.token_counter import TokenCounter
+from otpme.lib.classes.data_objects.conf_result import ConfResult
+from otpme.lib.classes.data_objects.conf_result import CONF_RESULT_STATUS
+from otpme.lib.classes.data_objects.conf_result import CONF_RESULT_MAX_AGE
+from otpme.lib.classes.data_objects.host_inventory import HostInventory
+from otpme.lib.classes.data_objects.host_inventory import get_host_inventory
+from otpme.lib.confd.inventory import MAX_PACKAGES
+from otpme.lib.confd.inventory import check_inventory
+from otpme.lib.confd.inventory import get_packages_checksum
+from otpme.lib.confd.hardware import check_hardware
+from otpme.lib.confd.hardware import get_hardware_checksum
+from otpme.lib.audit import emit_audit
 
 from otpme.lib.exceptions import *
 
@@ -37,11 +48,31 @@ def register():
     config.register_otpme_protocol("syncd", PROTOCOL_VERSION, server=True)
     locking.register_lock_type(LOCK_TYPE, module=__file__)
 
+def get_handout_checksum(sync_config):
+    """ The checksum that belongs with a config we are handing out.
+
+    Not the one of the whole object: what goes out is one view of it,
+    and the peer compares what the sync list said about that same view.
+    get_sync_config() has already put it in, so it is taken from there
+    rather than asked for a second time and in another way.
+    """
+    try:
+        return sync_config['SYNC_CHECKSUM']
+    except KeyError:
+        return None
+
 def add_sync_list_checksum(realm, site, peer_realm, peer_site, checksum,
-    object_types=None, skip_admin=False, skip_users=None,
-    skip_list=None, include_templates=False,
-    include_uuids=None, sync_time=None):
-    """ Update sync list checksum. """
+    object_types=None, sync_time=None):
+    """ Write down what the peer says it holds.
+
+    The checksum is the peer's, worked out on its side over the view it
+    gets, and it is kept as it arrives. This used to build a sync list
+    of its own first and throw it away again -- a walk over every object
+    of the site, for nothing, on every sync a peer finished. It would
+    have been the wrong list anyway: built without a peer, so over the
+    checksums of the whole object rather than of the view that peer is
+    served (see backend.get_sync_list()).
+    """
 
     if sync_time is not None:
         sync_map = backend.get_sync_map(realm=realm,
@@ -59,17 +90,6 @@ def add_sync_list_checksum(realm, site, peer_realm, peer_site, checksum,
     update_type = "status"
     if checksum != config.SYNCING_STATUS_STRING:
         update_type = "checksum"
-        # Get sync list checksum.
-        sync_list, \
-        sync_list_checksum = backend.get_sync_list(realm=realm,
-                                                site=site,
-                                                object_types=object_types,
-                                                skip_list=skip_list,
-                                                skip_users=skip_users,
-                                                skip_admin=skip_admin,
-                                                include_templates=include_templates,
-                                                include_uuids=include_uuids,
-                                                quiet=True)
     # Update checksum.
     backend.add_sync_map(realm=realm,
                         site=site,
@@ -155,13 +175,13 @@ class OTPmeSyncP1(OTPmeServer1):
                                             uuid=site.realm_uuid)
             object_config = site_realm.get_sync_config(peer=self.peer)
             encoded_config = json.encode(object_config, encoding="hex")
-            sync_checksum = backend.get_sync_checksum(site_realm.oid)
+            sync_checksum = get_handout_checksum(object_config)
             site_objects.append([site_realm.oid.full_oid, encoded_config, sync_checksum])
 
         # Get sites object config.
         object_config = site.get_sync_config(peer=self.peer)
         encoded_config = json.encode(object_config, encoding="hex")
-        sync_checksum = backend.get_sync_checksum(site.oid)
+        sync_checksum = get_handout_checksum(object_config)
         site_objects.append([site.oid.full_oid, encoded_config, sync_checksum])
 
         # Get all nodes.
@@ -174,18 +194,19 @@ class OTPmeSyncP1(OTPmeServer1):
         for node in all_site_nodes:
             object_config = node.get_sync_config(peer=self.peer)
             node_config = json.encode(object_config, encoding="hex")
+            # Taken here: the loop below builds other configs over it.
+            node_checksum = get_handout_checksum(object_config)
             # Add node units.
             unit_uuid = node.unit_uuid
             while unit_uuid:
                 unit = backend.get_object(object_type="unit", uuid=unit_uuid)
                 object_config = unit.get_sync_config(peer=self.peer)
                 encoded_config = json.encode(object_config, encoding="hex")
-                sync_checksum = backend.get_sync_checksum(unit.oid)
+                sync_checksum = get_handout_checksum(object_config)
                 site_objects.append([unit.oid.full_oid, encoded_config, sync_checksum])
                 unit_uuid = unit.unit_uuid
             # Add master node config.
-            sync_checksum = backend.get_sync_checksum(node.oid)
-            site_objects.append([node.oid.full_oid, node_config, sync_checksum])
+            site_objects.append([node.oid.full_oid, node_config, node_checksum])
 
         # Get all CAs.
         all_site_cas = backend.search(object_type="ca",
@@ -197,18 +218,19 @@ class OTPmeSyncP1(OTPmeServer1):
         for ca in all_site_cas:
             object_config = ca.get_sync_config(peer=self.peer)
             node_config = json.encode(object_config, encoding="hex")
+            # Taken here: the loop below builds other configs over it.
+            ca_checksum = get_handout_checksum(object_config)
             # Add ca units.
             unit_uuid = ca.unit_uuid
             while unit_uuid:
                 unit = backend.get_object(object_type="unit", uuid=unit_uuid)
                 object_config = unit.get_sync_config(peer=self.peer)
                 encoded_config = json.encode(object_config, encoding="hex")
-                sync_checksum = backend.get_sync_checksum(unit.oid)
+                sync_checksum = get_handout_checksum(object_config)
                 site_objects.append([unit.oid.full_oid, encoded_config, sync_checksum])
                 unit_uuid = unit.unit_uuid
             # Add master ca config.
-            sync_checksum = backend.get_sync_checksum(ca.oid)
-            site_objects.append([ca.oid.full_oid, node_config, sync_checksum])
+            site_objects.append([ca.oid.full_oid, node_config, ca_checksum])
 
         return site_objects
 
@@ -294,6 +316,7 @@ class OTPmeSyncP1(OTPmeServer1):
                                                     include_templates=include_templates,
                                                     include_uuids=include_uuids,
                                                     skip_admin=skip_admin,
+                                                    peer=self.peer,
                                                     quiet=True)
         finally:
             # Release sync lock.
@@ -315,8 +338,7 @@ class OTPmeSyncP1(OTPmeServer1):
         return response
 
     def add_sync_list_checksum_command(self, realm, site, object_types,
-        skip_list, skip_users, skip_admin, include_templates,
-        include_uuids, peer_checksum):
+        peer_checksum):
         """ Handle add sync list checksum command. """
         exception = None
         try:
@@ -325,12 +347,7 @@ class OTPmeSyncP1(OTPmeServer1):
                                         peer_realm=self.peer.realm,
                                         peer_site=self.peer.site,
                                         object_types=object_types,
-                                        checksum=peer_checksum,
-                                        skip_admin=skip_admin,
-                                        skip_users=skip_users,
-                                        skip_list=skip_list,
-                                        include_templates=include_templates,
-                                        include_uuids=include_uuids)
+                                        checksum=peer_checksum)
         except Exception as e:
             exception = str(e)
 
@@ -390,9 +407,18 @@ class OTPmeSyncP1(OTPmeServer1):
             # Hotfix our index.
             backend.index_del(object_id)
             return status, response
-        # Get object.
-        o = backend.get_object(object_type=object_type,
-                                object_id=object_id)
+        # Read the config once, and do not load an object out of it.
+        # What goes out is decided by the class and by the sub type, and
+        # the sub type is in the config; loading every object of a site
+        # to find that out is what this spends its time and its memory
+        # on. Nothing is cached either: a sync touches each object once,
+        # so nothing here would ever be read a second time.
+        object_config = backend.read_config(object_id)
+        o = None
+        if object_config:
+            o = backend.get_instance_from_oid(object_id,
+                                            object_config,
+                                            load=False)
         if not o:
             status = status_codes.UNKNOWN_OBJECT
             response, log_msg = _("Unknown object: {object_id}", log=True)
@@ -402,7 +428,8 @@ class OTPmeSyncP1(OTPmeServer1):
             return status, response
         # Get sync object config.
         try:
-            sync_config = o.get_sync_config(peer=self.peer)
+            sync_config = o.get_sync_config(peer=self.peer,
+                                            object_config=object_config)
         except Exception as e:
             response = _("Failed to get object sync config: {o_oid}: {e}")
             response = response.format(o_oid=o.oid, e=e)
@@ -432,7 +459,7 @@ class OTPmeSyncP1(OTPmeServer1):
                 return status, response
             sync_config['SYNC_PARENT_OBJECT_UUID'] = parent_object.uuid
 
-        object_checksum = backend.get_sync_checksum(object_id)
+        object_checksum = get_handout_checksum(sync_config)
         response = {'checksum':object_checksum,'object_config':sync_config}
         if o.track_last_used:
             response['last_used'] = o.last_used
@@ -622,6 +649,299 @@ class OTPmeSyncP1(OTPmeServer1):
                 'outdated_objects'  : remote_outdated_objects,
                 }
         return status, response
+
+    def get_conf_jobs(self, known_jobs):
+        """ The configuration management jobs for the asking host.
+
+        Only jobs that name this host, only those it does not know about
+        already -- it ran them, or it refused them and said so -- and
+        only those that are not past their expiry. Whether the host may
+        run one is not decided here but on the host, by the signature.
+        """
+        if not isinstance(known_jobs, list):
+            known_jobs = []
+        try:
+            jobs = backend.search(object_type="conf_job",
+                                attribute="target_host",
+                                value=self.peer.uuid,
+                                return_type="instance")
+        except Exception as e:
+            log_msg = _("Failed to search jobs of host '{host}': {e}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn, e=e)
+            self.logger.critical(log_msg)
+            return False, "SYNC_FAILED_TO_GET_JOBS"
+        # What this host already did with a job. Its own list of known
+        # jobs lives in its spool directory, and that is gone after a
+        # rejoin -- it would then do everything again. A result of ours
+        # is the one thing a lost spool cannot take away.
+        #
+        # A run that happened is over, whether it worked or not: a
+        # failed sw_mgmt install must not install again by itself. A
+        # refusal is not a run -- the host looked at the job and said
+        # no -- and it has to be able to come back, because that is how
+        # a job runs after all once its signer is added.
+        try:
+            host_results = backend.search(object_type="conf_result",
+                                        attribute="host_uuid",
+                                        value=self.peer.uuid,
+                                        return_type="instance")
+        except Exception as e:
+            log_msg = _("Failed to search job results of host '{host}': {e}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn, e=e)
+            self.logger.warning(log_msg)
+            host_results = []
+        done_jobs = []
+        for x_result in host_results:
+            if x_result.status == "refused":
+                continue
+            done_jobs.append(x_result.job_uuid)
+
+        host_jobs = []
+        for job in jobs:
+            if job.uuid in known_jobs:
+                continue
+            if job.uuid in done_jobs:
+                continue
+            if job.is_expired():
+                continue
+            if job.is_cancelled():
+                # Taken back: a host that has not run it never will.
+                continue
+            # copy(): what an object config holds is an incremental dict
+            # or list, and neither goes through JSON.
+            host_jobs.append({
+                        'uuid'      : job.uuid,
+                        'job_type'  : job.job_type,
+                        'action'    : job.action,
+                        'args'      : job.args.copy(),
+                        'targets'   : job.targets.copy(),
+                        'created'   : job.created,
+                        'expiry'    : job.expiry,
+                        'signature' : job.signature,
+                    })
+        log_msg = _("Sending {count} job(s) to host: {host}", log=True)[1]
+        log_msg = log_msg.format(count=len(host_jobs), host=self.peer.fqdn)
+        self.logger.debug(log_msg)
+        return True, {'jobs':host_jobs}
+
+    def add_conf_result(self, result):
+        """ Take the result of a job from the host that ran it.
+
+        A host may only report about itself and only about a job that
+        names it. Sending a result again overwrites the one before: the
+        result of a job and a host is one object, so a host whose answer
+        got lost on the way does not pile up. """
+        try:
+            job_uuid = result['job_uuid']
+            job_type = result['job_type']
+            action = result['action']
+            status = result['status']
+            started = result['started']
+            finished = result['finished']
+        except (TypeError, KeyError) as e:
+            log_msg = _("Job result from host '{peer_fqdn}' misses attributes: {e}", log=True)[1]
+            log_msg = log_msg.format(peer_fqdn=self.peer.fqdn, e=e)
+            self.logger.warning(log_msg)
+            return False, "SYNC_INCOMPLETE_COMMAND"
+        if status not in CONF_RESULT_STATUS:
+            log_msg = _("Job result with unknown status: {status}", log=True)[1]
+            log_msg = log_msg.format(status=status)
+            self.logger.warning(log_msg)
+            return False, "SYNC_INVALID_JOB_RESULT"
+        job_oid = oid.get(object_type="conf_job",
+                        realm=config.realm,
+                        site=config.site,
+                        uuid=job_uuid)
+        job = backend.get_object(object_type="conf_job", object_id=job_oid)
+        if job is None:
+            log_msg = _("Job result for unknown job: {job_uuid}", log=True)[1]
+            log_msg = log_msg.format(job_uuid=job_uuid)
+            self.logger.warning(log_msg)
+            return False, "SYNC_UNKNOWN_JOB"
+        if self.peer.uuid not in job.targets:
+            log_msg = _("Host '{host}' reports about a job it was not given: {job_uuid}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn, job_uuid=job_uuid)
+            self.logger.warning(log_msg)
+            return False, "SYNC_UNKNOWN_JOB"
+        conf_result = ConfResult(realm=config.realm,
+                                site=config.site,
+                                job_uuid=job_uuid,
+                                host_uuid=self.peer.uuid)
+        exists = conf_result.exists()
+        conf_result.job_type = job_type
+        conf_result.action = action
+        conf_result.status = status
+        conf_result.exit_code = result.get('exit_code')
+        conf_result.output = result.get('output')
+        conf_result.output_truncated = bool(result.get('output_truncated'))
+        conf_result.log_path = result.get('log_path')
+        conf_result.log_size = result.get('log_size')
+        conf_result.started = started
+        conf_result.finished = finished
+        conf_result.expiry = time.time() + CONF_RESULT_MAX_AGE
+        try:
+            if exists:
+                # add() is what writes the index, so a result that goes
+                # from failed to ok would keep saying failed -- and
+                # get_conf_jobs() asks the index.
+                conf_result.update_index('job_result_status', status)
+                conf_result._write()
+            else:
+                conf_result.add()
+        except Exception as e:
+            log_msg = _("Failed to add job result: {job_uuid}: {e}", log=True)[1]
+            log_msg = log_msg.format(job_uuid=job_uuid, e=e)
+            self.logger.critical(log_msg)
+            return False, "SYNC_FAILED_TO_ADD_JOB_RESULT"
+        # What became of an instruction to run something on somebody
+        # else's machine belongs in the audit log next to who asked for
+        # it (see deploy.audit_job()). The actor is the host: it reports
+        # about itself, nobody is logged in here. The token the job was
+        # made with goes in as well, so a result can be read back to the
+        # order without looking the job up.
+        #
+        # Imported here and not at the top: deploy registers commands of
+        # its own, and pulling it in while this module loads would move
+        # that registration.
+        from otpme.lib.deploy import get_job_token
+        emit_audit("Deploy", "job_result",
+                level='info' if status == "ok" else 'warning',
+                actor=self.peer.fqdn,
+                job=job_uuid,
+                job_type=job_type,
+                action=action,
+                status=status,
+                exit_code=conf_result.exit_code,
+                ordered_by=get_job_token(job))
+        log_msg = _("Got job result from host '{host}': {job_uuid}: {status}", log=True)[1]
+        log_msg = log_msg.format(host=self.peer.fqdn,
+                                job_uuid=job_uuid,
+                                status=status)
+        self.logger.info(log_msg)
+        return True, {'status':True}
+
+    def peer_is_own_host(self):
+        """ Whether the peer is a host or node of our own site.
+
+        Only those report their inventory to us: the inventory of a host
+        is kept on the nodes of its own site. """
+        if self.peer.type not in ("host", "node"):
+            return False
+        if self.peer.realm != config.realm:
+            return False
+        if self.peer.site != config.site:
+            return False
+        return True
+
+    def get_host_inventory(self, packages_checksum, hardware_checksum=None):
+        """ What we know about the asking host: its system, and its
+        packages if they differ from what it has.
+
+        The host sends the checksum of its packages. Only when ours is
+        another do we send the whole list, so the host can work out the
+        difference and send just that (see update_host_inventory()).
+
+        The hardware takes no such round: it is a dozen values, so the
+        answer only says whether ours is the same, and the host sends
+        all of it again when it is not. """
+        if not self.peer_is_own_host():
+            return False, "SYNC_PERMISSION_DENIED"
+        peer = backend.get_object(uuid=self.peer.uuid)
+        if not peer:
+            return False, "SYNC_UNKNOWN_HOST"
+        inventory = get_host_inventory(self.peer.uuid)
+        packages = {}
+        hardware = {}
+        if inventory:
+            packages = inventory.packages
+            hardware = inventory.hardware
+        checksum = get_packages_checksum(packages)
+        response = {
+                    'os'                : peer.os,
+                    'os_version'        : peer.os_version,
+                    'packages_checksum' : checksum,
+                    'packages'          : None,
+                    'hardware_checksum' : get_hardware_checksum(hardware),
+                    }
+        if checksum != packages_checksum:
+            response['packages'] = packages
+        return True, response
+
+    def update_host_inventory(self, os_name, os_version,
+        set_packages, del_packages, hardware=None):
+        """ Take what the asking host reports about itself.
+
+        The host object is written without touching last_modified: the
+        host told us what it runs, nobody changed it. The packages and
+        the hardware go to its inventory, not to the host object, see
+        host_inventory.py. """
+        if not self.peer_is_own_host():
+            return False, "SYNC_PERMISSION_DENIED"
+        if set_packages is None:
+            set_packages = {}
+        if del_packages is None:
+            del_packages = []
+        try:
+            check_inventory(os_name=os_name,
+                            os_version=os_version,
+                            set_packages=set_packages,
+                            del_packages=del_packages)
+            # What is not a field of an inventory is dropped here, so a
+            # host cannot fill the index with names of its own.
+            if hardware is not None:
+                hardware = check_hardware(hardware)
+        except Exception as e:
+            log_msg = _("Invalid inventory from host '{host}': {e}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn, e=e)
+            self.logger.warning(log_msg)
+            return False, "SYNC_INVALID_INVENTORY"
+        peer = backend.get_object(uuid=self.peer.uuid)
+        if not peer:
+            return False, "SYNC_UNKNOWN_HOST"
+        if os_name is not None or os_version is not None:
+            try:
+                peer.update_os(os_name=os_name, os_version=os_version)
+            except Exception as e:
+                log_msg = _("Failed to update system of host '{host}': {e}", log=True)[1]
+                log_msg = log_msg.format(host=self.peer.fqdn, e=e)
+                self.logger.critical(log_msg)
+                return False, "SYNC_FAILED_TO_UPDATE_INVENTORY"
+        if not set_packages and not del_packages and hardware is None:
+            return True, {'status':True}
+        inventory = get_host_inventory(self.peer.uuid)
+        exists = True
+        if not inventory:
+            exists = False
+            inventory = HostInventory(realm=config.realm,
+                                    site=config.site,
+                                    host_uuid=self.peer.uuid)
+        packages_count = len(inventory.packages) + len(set_packages)
+        if packages_count > MAX_PACKAGES:
+            log_msg = _("Host '{host}' reports too many packages.", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn)
+            self.logger.warning(log_msg)
+            return False, "SYNC_INVALID_INVENTORY"
+        if set_packages or del_packages:
+            inventory.update_packages(set_packages=set_packages,
+                                    del_packages=del_packages)
+        if hardware is not None:
+            inventory.update_hardware(hardware)
+        try:
+            if exists:
+                inventory._write()
+            else:
+                inventory.add()
+        except Exception as e:
+            log_msg = _("Failed to update inventory of host '{host}': {e}", log=True)[1]
+            log_msg = log_msg.format(host=self.peer.fqdn, e=e)
+            self.logger.critical(log_msg)
+            return False, "SYNC_FAILED_TO_UPDATE_INVENTORY"
+        log_msg = _("Updated inventory of host '{host}': {set_count} new or changed, {del_count} removed package(s).", log=True)[1]
+        log_msg = log_msg.format(host=self.peer.fqdn,
+                                set_count=len(set_packages),
+                                del_count=len(del_packages))
+        self.logger.info(log_msg)
+        return True, {'status':True}
 
     def sync_offline_token_data(self, data_type,
         object_id, session_uuid, remote_objects):
@@ -955,6 +1275,10 @@ class OTPmeSyncP1(OTPmeServer1):
                         "get_ssh_authorized_keys",
                         "sync_offline_token_data",
                         "sync_token_data",
+                        "get_conf_jobs",
+                        "add_conf_result",
+                        "get_host_inventory",
+                        "update_host_inventory",
                         ]
 
         # Indicates if the command was successful.
@@ -1154,11 +1478,6 @@ class OTPmeSyncP1(OTPmeServer1):
             response = self.add_sync_list_checksum_command(sync_realm,
                                                             sync_site,
                                                             object_types,
-                                                            skip_list,
-                                                            skip_users,
-                                                            skip_admin,
-                                                            include_templates,
-                                                            include_uuids,
                                                             peer_checksum)
             return self.build_response(status, response)
 
@@ -1188,6 +1507,41 @@ class OTPmeSyncP1(OTPmeServer1):
                 self.logger.warning(log_msg)
                 return self.build_response(status, response)
             status, response = self.get_last_used_times(sync_object_types)
+            return self.build_response(status, response)
+
+        if command == "get_conf_jobs":
+            # confd asks for the jobs of its host, see daemon/confd.py.
+            known_jobs = command_args.get('known_jobs')
+            status, response = self.get_conf_jobs(known_jobs)
+            return self.build_response(status, response)
+
+        if command == "add_conf_result":
+            try:
+                result = command_args['result']
+            except Exception:
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing job result.", log=True)
+                status = False
+                self.logger.warning(log_msg)
+                return self.build_response(status, response)
+            status, response = self.add_conf_result(result)
+            return self.build_response(status, response)
+
+        if command == "get_host_inventory":
+            # confd asks what we know about its host, see
+            # daemon/confd.py and confd/inventory.py.
+            packages_checksum = command_args.get('packages_checksum')
+            hardware_checksum = command_args.get('hardware_checksum')
+            status, response = self.get_host_inventory(packages_checksum,
+                                            hardware_checksum=hardware_checksum)
+            return self.build_response(status, response)
+
+        if command == "update_host_inventory":
+            status, response = self.update_host_inventory(
+                                    os_name=command_args.get('os'),
+                                    os_version=command_args.get('os_version'),
+                                    set_packages=command_args.get('set_packages'),
+                                    del_packages=command_args.get('del_packages'),
+                                    hardware=command_args.get('hardware'))
             return self.build_response(status, response)
 
         if command == "sync_offline_token_data":

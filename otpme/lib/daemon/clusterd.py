@@ -1433,9 +1433,12 @@ class ClusterDaemon(OTPmeDaemon):
                                                 quiet_autoconnect=True,
                                                 compress_request=False)
             except Exception as e:
+                # Debug: this runs once a second for as long as the node
+                # is disabled, and a node that is disabled refusing us is
+                # what we are waiting for, not something to report.
                 log_msg = _("Connection to master node failed: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
+                self.logger.debug(log_msg)
                 time.sleep(1)
                 continue
             # Check if node is disabled.
@@ -2886,9 +2889,19 @@ class ClusterDaemon(OTPmeDaemon):
         all_entries += self.get_cluster_out_journal_sessions()
         for cluster_journal_entry in all_entries:
             try:
+                processed_timestamp = self.processed_journal_entries[cluster_journal_entry.journal_id]
+            except KeyError:
+                pass
+            else:
+                if cluster_journal_entry.timestamp == processed_timestamp:
+                    continue
+            try:
                 if not cluster_journal_entry.committed:
                     continue
-                if not self.check_member_nodes(cluster_journal_entry):
+                processed_timestamp = cluster_journal_entry.timestamp
+                if not self.check_member_nodes(cluster_journal_entry,
+                                            timestamp=processed_timestamp,
+                                            cache=True):
                     continue
                 self.check_online_nodes(cluster_journal_entry)
             except ObjectDeleted:

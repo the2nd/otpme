@@ -247,11 +247,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca show_acls {ca}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca list_acls {ca}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of CA'),
+                                    'cmd'                   : _('List ACLs set on this CA.'),
                                 },
                 },
 
@@ -377,7 +377,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-ca list_policies {ca}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

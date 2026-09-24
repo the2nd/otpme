@@ -85,15 +85,32 @@ Delete a signature from a script.
 
 ## Policy Management
 
+A *policy* is the name of a policy, not a path. It is looked for in the
+site of the script. Which policies there are, and what each of them
+does, is in **otpme-policy**(1).
+
+Attaching and detaching ask before they change anything; the global
+option **-f** skips the question.
+
 **add_policy *script* *policy***  
-Attach a policy to the script.
+Attach a policy to the script.  
+A policy has a list of object types it is for; one that does not name
+**script** is refused. So is a second policy of a type that allows only
+one per object.  
+Needs the ACL **assign:policy**.
 
 **remove_policy *script* *policy***  
-Remove a policy from the script.
+Remove a policy from the script.  
+Needs the ACL **remove:policy**, and that one verbatim: a plain
+**remove** does not cover it. Detaching a policy takes away what it
+enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *script***  
-List policies attached to the script. Use **--return-type** to select
-the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+List the policies attached to the script. Use **--return-type** to
+select the attribute returned (**name**, **read_oid**, **full_oid**,
+**uuid**). Use **--policy-types** to list only policies of the given
+types; these are policy types, not policy names.  
+Needs the ACL **view:policies**.
 
 ## ACL Management
 
@@ -103,7 +120,7 @@ Add an access control entry.
 **del_acl *script* *acl***  
 Remove an access control entry.
 
-**show_acls *script***  
+**list_acls *script***  
 Display all ACLs for the script.
 
 **enable_acl_inheritance *script***  
@@ -126,19 +143,37 @@ Dump the info text to stdout.
 
 ## Object Changelog
 
+Every change to the object writes an entry: who made it, when, and what
+was done. A change can carry a comment of its own, through the global
+option **--changelog**.
+
+An *entry_id* is the number the listing shows in front of an entry,
+counted from 0.
+
+Only the comment of an entry can be changed or removed. What was done
+and by whom stays as it is.
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
 **changelog *script***  
-Show the object's changelog (chronological list of changes with author,
-timestamp and optional custom text passed via **--changelog**).
+Show the changelog of the script. Needs the ACL **view:changelog**.
 
-**edit_changelog *script* *changelog_id***  
-Open the given changelog entry in the editor named by **EDITOR** to edit
-its custom text.
+**edit_changelog *script* *entry_id* *comment***  
+Set the comment of that entry, or replace the one it has. Needs the ACL
+**edit:changelog**.
 
-**del_changelog *script* *changelog_id***  
-Remove a single entry from the object's changelog.
+**del_changelog *script* *entry_id***  
+Remove the comment of that entry. The entry itself stays, and an entry
+without a comment is refused. Needs the ACL **edit:changelog**.
 
 **clear_changelog *script***  
-Clear the object's entire changelog.
+Remove every entry of the changelog.  
+This needs more than the ACL **clear:changelog**: the config parameter
+**allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
+true by default, but where no value is found at all, clearing is
+refused. OTPme asks the token you are signed in with first, then the
+object.
 
 ## Import/Export
 

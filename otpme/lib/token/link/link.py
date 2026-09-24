@@ -126,6 +126,12 @@ def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "link")
     config.register_ssh_token("link")
+    # Followed when a node builds the sync parameters for a host it
+    # serves (OTPmeHost.get_sync_parameters()), so a node holding tokens
+    # of another site needs it.
+    config.register_index_attribute("destination_token",
+                                    sync=["node:untrusted"],
+                                    object_types=["token"])
 
 @match_class_typing
 class LinkToken(Token):

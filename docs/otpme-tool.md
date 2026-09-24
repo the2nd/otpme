@@ -103,6 +103,25 @@ Get time of last successful sync.
 Do a manual hostd sync. Sync types: objects, token_counters, used_otps,
 nsscache, ssh_authorized_keys.
 
+**--remove-orphan-objects** also removes local objects of a type this
+host no longer syncs. A normal sync never names those objects, so
+nothing else takes them away. It runs only after a sync that finished
+and left no object behind.
+
+**force_sync *object_id***  
+Write an object again, whole. The search index, the ACLs and the LDIF
+data are built from the object itself instead of being updated step by
+step. Entries that were left over are removed this way. Use it when the
+index of an object does not match the object.
+
+This also sets the last modified time of the object, so other nodes
+fetch it again. Hosts do not, because the data a host gets does not
+include that time.
+
+It takes an object ID, so it works for every object. This includes the
+ones without a **touch** command, like a host inventory or a used OTP.
+You need to be admin.
+
 ## Cryptographic Operations
 
 **sign \[**--stdin-pass**\] *file* *sign_file***  
@@ -349,9 +368,6 @@ Do a complete resync.
 **--offline**  
 Sync offline token data.
 
-**--no-memory-cache**  
-Do not cache objects in memory.
-
 **--sync-older-objects**  
 Sync objects even if they are older than the local ones.
 
@@ -372,9 +388,14 @@ trusted. With **--no-pin**, any valid key of the signer object is
 accepted.
 
 **--signer-type *TYPE***  
-The type of scripts this signer is trusted for. Supported types:
-**token**, **key_script**, **push_script**, **auth_script**,
-**login_script**, **agent_script**.
+What this signer is trusted for. Supported types: **token**,
+**key_script**, **push_script**, **auth_script**, **login_script**,
+**agent_script**.  
+Types for configuration jobs (see **otpme-deploy**(1)): **sw_mgmt**,
+**repo_mgmt**, **signer_mgmt**, **service_mgmt**, **file_mgmt**,
+**host_mgmt**. A host only runs a job if it is signed by a signer of the
+job type. **file_mgmt**, **signer_mgmt** and **host_mgmt** give full
+control over the host.
 
 **--tag *TAG***  
 Add tag to signer (can be used multiple times).

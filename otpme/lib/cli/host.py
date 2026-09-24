@@ -26,8 +26,10 @@ table_headers = [
                 "unit",
                 "status",
                 "roles",
+                "roles (m)",
+                "groups (m)",
                 "tokens",
-                "accessgroups",
+                "accessgroups (m)",
                 "sync_users",
                 "sync_groups",
                 "logins",
@@ -149,7 +151,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 get_roles = True
         if get_roles:
             member_roles = []
-            return_attrs = ['rel_path', 'enabled', 'site']
+            return_attrs = ['name', 'enabled', 'site']
             roles_count, roles_result = backend.search(object_type="role",
                                                 attribute="uuid",
                                                 value="*",
@@ -157,18 +159,21 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                                                 join_search_attr="uuid",
                                                 join_search_val=host_uuid,
                                                 join_attribute="role",
-                                                order_by="rel_path",
+                                                order_by="name",
                                                 max_results=max_roles,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs)
             for role_uuid in roles_result:
                 role_site = roles_result[role_uuid]['site']
-                role_rel_path = roles_result[role_uuid]['rel_path']
+                role_name = roles_result[role_uuid]['name']
                 role_enabled = roles_result[role_uuid]['enabled'][0]
                 role_status_string = ""
                 if not role_enabled:
                     role_status_string = " (D)"
-                role_string = f"{role_rel_path} ({role_site}) {role_status_string}"
+                if role_site == config.site:
+                    role_string = f"{role_name}{role_status_string}"
+                else:
+                    role_string = f"{role_name} ({role_site}){role_status_string}"
                 member_roles.append(role_string)
 
                 processed_roles = len(member_roles)
@@ -185,6 +190,47 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 row.append("")
             else:
                 row.append("-")
+        # The other direction: roles and groups that hold this host.
+        # The columns above say what the host holds.
+        for field, member_type, find_acl in [
+                            ("roles (m)", "role", "find:roles"),
+                            ("groups (m)", "group", "find:groups"),
+                            ]:
+            if field not in output_fields:
+                continue
+            if not check_acl(find_acl):
+                row.append("-")
+                continue
+            return_attrs = ['name', 'enabled', 'site']
+            member_count, member_result = backend.search(
+                                            object_type=member_type,
+                                            attribute=object_type,
+                                            value=host_uuid,
+                                            order_by="name",
+                                            max_results=max_roles,
+                                            return_query_count=True,
+                                            return_attributes=return_attrs)
+            member_strings = []
+            for member_uuid in member_result:
+                member_site = member_result[member_uuid]['site']
+                member_name = member_result[member_uuid]['name']
+                member_enabled = member_result[member_uuid]['enabled'][0]
+                member_status_string = ""
+                if not member_enabled:
+                    member_status_string = " (D)"
+                if member_site == config.site:
+                    member_string = f"{member_name}{member_status_string}"
+                else:
+                    member_string = f"{member_name} ({member_site}){member_status_string}"
+                member_strings.append(member_string)
+                if len(member_strings) == max_roles:
+                    if member_count > max_roles:
+                        msg = _("({shown} of {total} total)")
+                        msg = msg.format(shown=len(member_strings),
+                                        total=member_count)
+                        member_strings.append(msg)
+                    break
+            row.append("\n".join(member_strings))
         # Tokens.
         get_tokens = False
         token_access = False
@@ -231,7 +277,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
             else:
                 row.append("-")
         # Accessgroups.
-        if "accessgroups" in output_fields:
+        if "accessgroups (m)" in output_fields:
             if check_acl("view:accessgroups"):
                 # A host is granted access by the accessgroups it is a
                 # member of and by the ones its roles are in (see

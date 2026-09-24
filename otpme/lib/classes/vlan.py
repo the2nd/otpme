@@ -471,10 +471,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -706,7 +706,17 @@ def register():
     config.register_recursive_default_acl("site", "+vlan")
     config.register_default_acl("unit", "+vlan")
     config.register_recursive_default_acl("unit", "+vlan")
-    config.register_index_attribute("vlan_id")
+    # Assigned by the RADIUS server, which a node of another site runs
+    # for its own clients against our users.
+    vlan_types = ["vlan"]
+    config.register_index_attribute("vlan_id", sync=["node:untrusted"],
+                                    object_types=vlan_types)
+    # Which host or device this vlan is for. get_member_vlan() reads it
+    # off the object, so the index stays on the owning site.
+    config.register_index_attribute("host", sync=[],
+                                    object_types=vlan_types)
+    config.register_index_attribute("device", sync=[],
+                                    object_types=vlan_types)
 
 def register_hooks():
     config.register_auth_on_action_hook("vlan", "change_vlan_id")
@@ -825,7 +835,9 @@ class Vlan(OTPmeObject):
                         'trusted'  : [
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
-                            "EXTENSION_ATTRIBUTES",
+                            # Only the LDIF is built from them, and a
+                            # host has no LDIF, see _base_sync_fields.
+                            #"EXTENSION_ATTRIBUTES",
                             ]
                         },
 

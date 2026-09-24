@@ -233,11 +233,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm show_acls {realm}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-realm list_acls {realm}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of realm'),
+                                    'cmd'                   : _('List ACLs set on this realm.'),
                                 },
                 },
 
@@ -360,7 +360,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-realm list_policies {realm}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

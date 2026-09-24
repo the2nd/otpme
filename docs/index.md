@@ -35,6 +35,8 @@ OTPme is an authentication system supporting hardware tokens, smartcards and one
 | [otpme-tool](otpme-tool.md) | OTPme tools |
 | [otpme-trash](otpme-trash.md) | Manage trash |
 | [otpme-backup](otpme-backup.md) | Manage backups |
+| [otpme-deploy](otpme-deploy.md) | Manage configuration jobs for hosts |
+| [otpme-inventory](otpme-inventory.md) | Show the system and the packages of hosts |
 
 ## Reference
 

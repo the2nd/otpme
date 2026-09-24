@@ -197,7 +197,8 @@ class ObjecttemplatesPolicy(Policy):
                     'host'   : ['pre_add_host'],
                     }
 
-        self.object_types = ['realm', 'site', 'unit']
+        # No realm, see Realm.add_policy().
+        self.object_types = ['site', 'unit']
 
         #self.object_templates = {}
 

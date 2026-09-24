@@ -128,7 +128,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
         return
 
     def get_idrange_policies(self, o):
-        """ Get the IDRange policies that apply to the given object. """
+        """ Get the IDRange policies that apply to the given object.
+
+        The unit first, then the site. The realm was asked after that
+        and cannot be: it carries no policy but auth on action (see
+        Realm.add_policy()).
+        """
         policies = None
         if o.unit_uuid:
             unit = backend.get_object(object_type="unit", uuid=o.unit_uuid)
@@ -137,10 +142,6 @@ class OTPmeExtension(OTPmeLDIFHandler):
         if not policies:
             site = backend.get_object(object_type="site", uuid=o.site_uuid)
             policies = site.get_policies(policy_type="idrange",
-                                        return_type="instance")
-        if not policies:
-            realm = backend.get_object(object_type="realm", uuid=o.realm_uuid)
-            policies = realm.get_policies(policy_type="idrange",
                                         return_type="instance")
         return policies
 

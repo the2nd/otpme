@@ -238,11 +238,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit show_acls {unit}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-unit list_acls {unit}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of unit'),
+                                    'cmd'                   : _('List ACLs set on this unit.'),
                                 },
                 },
 
@@ -373,7 +373,7 @@ cmd_help = {
                 },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-unit list_policies {unit}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

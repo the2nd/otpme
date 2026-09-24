@@ -221,6 +221,14 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
         print_messages = None
         kwargs['print_messages'] = print_messages
 
+    # A caller that tries a connection it expects to fail (the node
+    # disabled check asks once a second whether it may come back) says
+    # so, and then the attempt does not end up in the log.
+    try:
+        quiet = kwargs['quiet_autoconnect']
+    except Exception:
+        quiet = False
+
     conn_kwargs = dict(kwargs)
     _conn_kwargs = dict(kwargs)
 
@@ -548,16 +556,18 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
         # Set socket URI.
         socket_uri = net.format_socket_uri("tcp", connect_address, daemon_port)
         conn_kwargs['socket_uri'] = socket_uri
-        log_msg = _("Trying connection to: {socket_uri}", log=True)[1]
-        log_msg = log_msg.format(socket_uri=socket_uri)
-        logger.debug(log_msg)
+        if not quiet:
+            log_msg = _("Trying connection to: {socket_uri}", log=True)[1]
+            log_msg = log_msg.format(socket_uri=socket_uri)
+            logger.debug(log_msg)
         # Get daemon connection.
         try:
             daemon_conn = get_connection(**conn_kwargs)
         except (NoClusterService, ConnectionError) as e:
             connect_exception = e
-            log_msg = str(connect_exception)
-            logger.warning(log_msg)
+            if not quiet:
+                log_msg = str(connect_exception)
+                logger.warning(log_msg)
             continue
         connect_exception = None
         status, \
@@ -567,7 +577,7 @@ def get(daemon, mgmt=None, ping=True, **kwargs):
         break
 
     if connect_exception:
-        if len(connect_addresses) > 1:
+        if len(connect_addresses) > 1 and not quiet:
             log_msg = _("All round-robin addresses failed.", log=True)[1]
             logger.warning(log_msg)
         raise connect_exception

@@ -218,7 +218,13 @@ def run(script_type, script_path, realm=None, site=None, options=None,
                 command_line.append(i)
     elif variables:
         for var_name in variables:
-            script_env[var_name] = str(variables[var_name])
+            var_val = variables[var_name]
+            # Same as for the [NAME] form above: a value that is not
+            # there is left out, instead of reaching the script as the
+            # string "None".
+            if isinstance(var_val, bool) or var_val is None:
+                continue
+            script_env[var_name] = str(var_val)
 
     # Warn if script runs as root.
     if user == "root":

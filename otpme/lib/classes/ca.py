@@ -532,10 +532,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -607,8 +607,8 @@ def get_recursive_default_acls(**kwargs):
     return acls
 
 VALID_CERT_KEY_LENS = [
-                        1024,
                         2048,
+                        3072,
                         4096,
                         8192,
                     ]
@@ -659,6 +659,22 @@ def register_object_unit():
 
 def register_config():
     """ Registger config stuff. """
+    # The subject fields of the certificates this CA issues. Shown by
+    # the management interface, searched by nothing else.
+    ca_sync = ["node:untrusted"]
+    ca_types = ["ca"]
+    config.register_index_attribute("country", sync=ca_sync,
+                                    object_types=ca_types)
+    config.register_index_attribute("email", sync=ca_sync,
+                                    object_types=ca_types)
+    config.register_index_attribute("locality", sync=ca_sync,
+                                    object_types=ca_types)
+    config.register_index_attribute("organization", sync=ca_sync,
+                                    object_types=ca_types)
+    config.register_index_attribute("ou", sync=ca_sync,
+                                    object_types=ca_types)
+    config.register_index_attribute("state", sync=ca_sync,
+                                    object_types=ca_types)
     # Object types our config parameters are valid for.
     object_types = [
                         'site',
@@ -667,14 +683,16 @@ def register_config():
                     ]
     # Length for certificate keys.
     def key_len_setter(key_len, **kwargs):
-        valid_key_lens = [2048, 4096]
+        # The same list the parameter is registered with below, so a
+        # value that is accepted here also passes that check.
+        valid_key_lens = VALID_CERT_KEY_LENS
         if key_len not in valid_key_lens:
             msg = _("Invalid key len.")
             raise ValueError(msg)
         return key_len
     config.register_config_parameter(name="cert_key_len",
                                     ctype=int,
-                                    default_value=2048,
+                                    default_value=3072,
                                     setter=key_len_setter,
                                     valid_values=VALID_CERT_KEY_LENS,
                                     object_types=object_types)
@@ -836,20 +854,17 @@ class Ca(OTPmeObject):
                             ],
                         },
                     'host'  : {
+                        # No untrusted list: a host is always of our
+                        # own site, see get_sync_audience().
                         'trusted'  : [
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
-                            "EXTENSION_ATTRIBUTES",
+                            # Only the LDIF is built from them, and a
+                            # host has no LDIF, see _base_sync_fields.
+                            #"EXTENSION_ATTRIBUTES",
                             "CERT",
                             "CRL",
                             ],
-                        'untrusted'  : [
-                            "EXTENSIONS",
-                            "OBJECT_CLASSES",
-                            "EXTENSION_ATTRIBUTES",
-                            "CERT",
-                            "CRL",
-                            ]
                         },
                     }
 

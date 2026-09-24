@@ -237,11 +237,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role show_acls {role}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_acls {role}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of role'),
+                                    'cmd'                   : _('List ACLs set on this role.'),
                                 },
                 },
 
@@ -263,11 +263,11 @@ cmd_help = {
                                 },
                 },
 
-     'list_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_acls {role}'),
+     'find_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_acls {role}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show assigend ACLs of role'),
+                                    'cmd'                   : _('Find ACLs this role holds on other objects.'),
                                 },
                 },
 
@@ -536,7 +536,7 @@ cmd_help = {
                     },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-role list_policies {role}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -553,24 +553,60 @@ cmd_help = {
                                     'cmd'                   : _('List dynamic groups of role.'),
                                 },
                 },
+    'find_accessgroups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_accessgroups [--return-type <return_type>] {role}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find accessgroups this role is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_groups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_groups [--return-type <return_type>] {role}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find groups this role is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_clients'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_clients [--return-type <return_type>] {role}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find clients this role is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
 
-    'list_scopes'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_scopes [--return-type <return_type>] {role}'),
+    'find_scopes'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_scopes [--return-type <return_type>] {role}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
-                                    'cmd'                   : _('List scopes the token is assigned to.'),
+                                    'cmd'                   : _('Find scopes this role is assigned to.'),
                                     '--return-type'         : _('Attribute to return.'),
                                 },
                 },
-    'list_shares'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-role list_shares {role}'),
-                    'cmd'   :   '-r :recursive=True: --return-type :return_type: [|object|]',
+    'find_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role find_shares [-r] [--return-type <return_type>] {role}'),
+                    'cmd'   :   '-r :recursive=True: --return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'path', 'read_oid', 'full_oid', 'uuid'],
+                                },
                     '_help' :   {
-                                    'cmd'                       : _('List users.'),
-                                    '-r'                        : _('List shares recursive.'),
+                                    'cmd'                       : _('Find shares this role is assigned to.'),
+                                    '-r'                        : _('Also shares of the roles above this role.'),
                                     '--return-type'             : _('Attribute to return.'),
                                 },
                 },

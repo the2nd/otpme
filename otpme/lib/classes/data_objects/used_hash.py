@@ -26,8 +26,28 @@ def register():
 
 def register_backend():
     # Register index attributes.
-    config.register_index_attribute('user_uuid')
-    config.register_index_attribute('token_uuid')
+    # A used hash is a record of a login, and a login is answered by
+    # the home site of the user. Replay detection reads them there --
+    # AuthHandler through User._get_used_sotp() -- and nowhere else.
+    # conf_job and conf_result set expiry as well; confd reads it off
+    # the job rather than the index. A session and a photo name their
+    # user too, and a session its token, see there.
+    #
+    # Every subclass of UsedHash writes them, so all four are named.
+    hash_types = ["used_otp",
+                "used_sotp",
+                "token_counter",
+                "failed_pass"]
+    config.register_index_attribute('user_uuid', sync=[],
+                                    object_types=hash_types)
+    config.register_index_attribute('token_uuid', sync=[],
+                                    object_types=hash_types)
+    config.register_index_attribute('expiry', sync=[],
+                                    object_types=hash_types)
+    config.register_index_attribute('accessgroup_uuid', sync=[],
+                                    object_types=hash_types)
+    config.register_index_attribute('session_uuid', sync=[],
+                                    object_types=hash_types)
 
 @match_class_typing
 class UsedHash(OTPmeDataObject):

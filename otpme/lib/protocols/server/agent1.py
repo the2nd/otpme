@@ -25,6 +25,7 @@ from otpme.lib import multiprocessing
 #from otpme.lib.encoding.base import encode
 #from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
+from otpme.lib.fuse import get_share_realm
 from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.classes.otpme_agent import mount_share
 from otpme.lib.classes.otpme_agent import umount_share
@@ -560,6 +561,7 @@ class OTPmeAgentP1(object):
                 for share_id in shares:
                     share_name = shares[share_id]['name']
                     share_site = shares[share_id]['site']
+                    share_realm = get_share_realm(shares[share_id])
                     share_nodes = shares[share_id]['nodes']
                     share_encrypted = shares[share_id]['encrypted']
                     share_sotp_signing = shares[share_id]['sotp_signing']
@@ -570,6 +572,7 @@ class OTPmeAgentP1(object):
                     try:
                         mount_share(username=login_user,
                                     share_id=share_id,
+                                    share_realm=share_realm,
                                     share_site=share_site,
                                     share_name=share_name,
                                     share_nodes=share_nodes,
@@ -627,8 +630,10 @@ class OTPmeAgentP1(object):
                         continue
                     share_site = shares[share_id]['site']
                     share_name = shares[share_id]['name']
+                    share_realm = get_share_realm(shares[share_id])
                     try:
                         mount_point = umount_share(username=login_user,
+                                                share_realm=share_realm,
                                                 share_site=share_site,
                                                 share_name=share_name,
                                                 logger=self.logger)

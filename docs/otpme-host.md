@@ -42,8 +42,11 @@ Move host to a different unit.
 Re-index the object to fix potential index problems.
 
 **auto_disable \[**-u**\] *host* *time***  
-Set auto-disable value (e.g. "1d" or "09:53 13.06.2023"). Use **-u** to
-disable the object if it was unused for the given time.
+Set auto-disable time. It is either a relative time with a leading
+**+**, e.g. **+30D**, or an absolute one, e.g. **"09:53 13.06.2023"**.
+The units are **s**, **m**, **h**, **D**, **W**, **M** and **Y**, see
+**otpme**(7). Use **-u** to disable the object if it was unused for the
+given time.
 
 **mac *host* *mac_address***  
 Set the host's MAC address. Used for MAB port authentication (see the
@@ -202,32 +205,66 @@ Get SSH authorized keys for the host, optionally for a specific user.
 
 ## Object Changelog
 
+Every change to the object writes an entry: who made it, when, and what
+was done. A change can carry a comment of its own, through the global
+option **--changelog**.
+
+An *entry_id* is the number the listing shows in front of an entry,
+counted from 0.
+
+Only the comment of an entry can be changed or removed. What was done
+and by whom stays as it is.
+
+A command that changes something asks first; the global option **-f**
+skips the question.
+
 **changelog *host***  
-Show the object's changelog (chronological list of changes with author,
-timestamp and optional custom text passed via **--changelog**).
+Show the changelog of the host. Needs the ACL **view:changelog**.
 
-**edit_changelog *host* *changelog_id***  
-Open the given changelog entry in the editor named by **EDITOR** to edit
-its custom text.
+**edit_changelog *host* *entry_id* *comment***  
+Set the comment of that entry, or replace the one it has. Needs the ACL
+**edit:changelog**.
 
-**del_changelog *host* *changelog_id***  
-Remove a single entry from the object's changelog.
+**del_changelog *host* *entry_id***  
+Remove the comment of that entry. The entry itself stays, and an entry
+without a comment is refused. Needs the ACL **edit:changelog**.
 
 **clear_changelog *host***  
-Clear the object's entire changelog.
+Remove every entry of the changelog.  
+This needs more than the ACL **clear:changelog**: the config parameter
+**allow_changelog_clearing** has to allow it (see **otpme**(7)). It is
+true by default, but where no value is found at all, clearing is
+refused. OTPme asks the token you are signed in with first, then the
+object.
 
 ## Policy Management
 
+A *policy* is the name of a policy, not a path. It is looked for in the
+site of the host. Which policies there are, and what each of them does,
+is in **otpme-policy**(1).
+
+Attaching and detaching ask before they change anything; the global
+option **-f** skips the question.
+
 **add_policy *host* *policy***  
-Attach a policy to the host.
+Attach a policy to the host.  
+A policy has a list of object types it is for; one that does not name
+**host** is refused. So is a second policy of a type that allows only
+one per object.  
+Needs the ACL **assign:policy**.
 
 **remove_policy *host* *policy***  
-Remove a policy from the host.
+Remove a policy from the host.  
+Needs the ACL **remove:policy**, and that one verbatim: a plain
+**remove** does not cover it. Detaching a policy takes away what it
+enforces, so it must not be cheaper than attaching one.
 
 **list_policies \[**--return-type** *TYPE*\] \[**--policy-types** *t1,t2*\] *host***  
-List policies attached to the host. Use **--return-type** to select the
-attribute returned (**name**, **read_oid**, **full_oid**, **uuid**) and
-**--policy-types** to limit the listing to the given policy types.
+List the policies attached to the host. Use **--return-type** to select
+the attribute returned (**name**, **read_oid**, **full_oid**, **uuid**).
+Use **--policy-types** to list only policies of the given types; these
+are policy types, not policy names.  
+Needs the ACL **view:policies**.
 
 ## ACL Management
 
@@ -237,7 +274,7 @@ Add an access control entry.
 **del_acl *host* *acl***  
 Remove an access control entry.
 
-**show_acls *host***  
+**list_acls *host***  
 Display all ACLs for the host.
 
 **enable_acl_inheritance *host***  

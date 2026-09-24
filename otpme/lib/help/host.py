@@ -132,7 +132,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-host auto_disable -u {host} {time}'),
                     'cmd'   :   '-u :unused=True: <|object|> <auto_disable>',
                     '_help' :   {
-                                    'cmd'                   : _('Change auto disable value (e.g "1d" or "09:53 13.06.2023").'),
+                                    'cmd'                   : _('Change auto disable value (e.g "+30D" or "09:53 13.06.2023").'),
                                     '-u'                    : _('Disable object if it was unused for the given time.'),
                                 },
                 },
@@ -236,11 +236,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host show_acls {host}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-host list_acls {host}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of host'),
+                                    'cmd'                   : _('List ACLs set on this host.'),
                                 },
                 },
 
@@ -367,7 +367,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-host list_policies {host}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -399,6 +399,50 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List assigned roles.'),
+                                },
+                },
+    'find_roles'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-host find_roles [--return-type <return_type>] {host}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find roles this host is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_groups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-host find_groups [--return-type <return_type>] {host}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find groups this host is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_accessgroups'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-host find_accessgroups [--return-type <return_type>] {host}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find accessgroups this host is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-host find_shares [--return-type <return_type>] {host}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find shares this host is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
                                 },
                 },
     'list_dynamic_groups'   : {

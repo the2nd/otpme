@@ -207,16 +207,22 @@ class ForcetokenPolicy(Policy):
                             'authorize',
                             ],
                     }
+        # No group: a group never runs the "authorize" hook, so the
+        # policy would sit there without ever being asked.
         self.object_types = [
                     'role',
                     'host',
                     'node',
-                    'group',
                     'client',
                     'accessgroup',
                     ]
 
-        self.force_pass_types = [ 'otp', 'ssh_key', 'smartcard', 'tiqr' ]
+        # The default of force_pass_types is declared with the attribute
+        # (see _get_object_config()), not set here. Setting it here goes
+        # through the incremental list property, which records one "add"
+        # per value; loading the object then replaces the values without
+        # cancelling those adds, and the next write of the policy, about
+        # whatever, appends the default to the stored list again.
 
         self._sub_sync_fields = {
                     'host'  : {
@@ -240,6 +246,10 @@ class ForcetokenPolicy(Policy):
             'FORCE_PASS_TYPES'              : {
                                             'var_name'      : 'force_pass_types',
                                             'type'          : list,
+                                            'default'       : ['otp',
+                                                            'ssh_key',
+                                                            'smartcard',
+                                                            'tiqr'],
                                             'required'      : False,
                                         },
             }

@@ -106,8 +106,17 @@ def register_rel_path_getter(object_type, getter):
     rel_path_getter[object_type] = getter
 
 def register_oid_schema(object_type, full_schema, read_schema=None,
-    valid_owners=None, name_regex=None, path_regex=None, oid_regex=None):
-    """ Register OID schema used by OTPmeOid(). """
+    valid_owners=None, name_regex=None, path_regex=None, oid_regex=None,
+    oid_name_regex=None):
+    """ Register OID schema used by OTPmeOid().
+
+    oid_name_regex: what a name of this object type may look like inside
+    an OID, where that is wider than name_regex. A name checker may let
+    names past that the regex refuses (e.g. the base object TOKENSTORE),
+    and those names still have to form a valid OID -- also in the OID of
+    another object type that names this one, like a token naming its
+    user. Defaults to name_regex.
+    """
     global object_regex
     global full_oid_schema
     global read_oid_schema
@@ -122,6 +131,16 @@ def register_oid_schema(object_type, full_schema, read_schema=None,
             msg = msg.format(object_type=object_type, name_regex=name_regex)
             raise OTPmeException(msg)
         object_regex[object_type]['name'] = name_regex
+
+    if oid_name_regex is None:
+        oid_name_regex = name_regex
+    if oid_name_regex:
+        if 'oid_name' in object_regex[object_type]:
+            msg = _("OID name regex alreaddy registered: {object_type}: {oid_name_regex}")
+            msg = msg.format(object_type=object_type,
+                            oid_name_regex=oid_name_regex)
+            raise OTPmeException(msg)
+        object_regex[object_type]['oid_name'] = oid_name_regex
 
     if path_regex:
         if 'path' in object_regex[object_type]:
@@ -353,8 +372,20 @@ def resolve_path(object_path, object_type):
     # Get object site/realm.
     if full_path:
         object_realm = split_path[0]
+        # An absolute path names at least the realm, and for everything
+        # but a realm also the site. Without this check "/" walked into
+        # an IndexError.
+        if not object_realm:
+            msg = _("Path names no realm: {object_path}")
+            msg = msg.format(object_path=object_path)
+            raise OTPmeException(msg)
         if object_type != "realm":
-            object_site = split_path[1]
+            try:
+                object_site = split_path[1]
+            except IndexError:
+                msg = _("Path names no site: {object_path}")
+                msg = msg.format(object_path=object_path)
+                raise OTPmeException(msg) from None
     else:
         if object_type != "realm":
             object_realm = config.realm

@@ -176,16 +176,16 @@ def row_getter(realm, site, device_order, device_data, acls, object_type=None,
                 member_roles = []
                 roles_result = {}
                 if device_roles:
-                    return_attrs = ['rel_path', 'site', 'enabled']
+                    return_attrs = ['name', 'site', 'enabled']
                     roles_result = backend.search(object_type="role",
                                                 attribute="uuid",
                                                 values=device_roles,
-                                                order_by="rel_path",
+                                                order_by="name",
                                                 return_attributes=return_attrs)
                 roles_count = len(roles_result)
                 for role_uuid in roles_result:
                     role_site = roles_result[role_uuid]['site']
-                    role_rel_path = roles_result[role_uuid]['rel_path']
+                    role_name = roles_result[role_uuid]['name']
                     try:
                         role_enabled = roles_result[role_uuid]['enabled'][0]
                     except Exception:
@@ -193,7 +193,10 @@ def row_getter(realm, site, device_order, device_data, acls, object_type=None,
                     role_status_string = ""
                     if not role_enabled:
                         role_status_string = " (D)"
-                    role_string = f"{role_rel_path} ({role_site}) {role_status_string}"
+                    if role_site == config.site:
+                        role_string = f"{role_name}{role_status_string}"
+                    else:
+                        role_string = f"{role_name} ({role_site}){role_status_string}"
                     member_roles.append(role_string)
                     if len(member_roles) == max_roles:
                         if roles_count > max_roles:

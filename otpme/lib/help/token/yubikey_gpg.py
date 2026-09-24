@@ -18,13 +18,14 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_gpg deploy -d -r -n --backup <backup_file> --restore <restore_file> [token]'),
-                    'cmd'   :   '-n :no_token_write=True: -r :replace=True: --backup :gpg_backup_file: --restore :gpg_restore_file: -d :debug=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token --type yubikey_gpg deploy -d -r -n --key-len <key_len> --backup <backup_file> --restore <restore_file> {token}'),
+                    'cmd'   :   '-n :no_token_write=True: --key-len :key_len: -r :replace=True: --backup :gpg_backup_file: --restore :gpg_restore_file: -d :debug=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Initialize yubikey GPG applet.'),
                                     '-r'                    : _('Replace existing token.'),
                                     '-n'                    : _('Do NOT initialize yubikey GPG applet, just add token data to OTPme token.'),
-                                    '--backup <file>'       : _('Write GPG backup to file (default /dev/shm/User_Name.gpg).'),
+                                    '--key-len <key_len>'   : _('RSA key length in bits: 2048, 3072 (default) or 4096.'),
+                                    '--backup <file>'       : _('Write GPG backup to file (default /dev/shm/<real_name>.gpg).'),
                                     '--restore <file>'      : _('Restore GPG configuration from backup file.'),
                                     '-d'                    : _('Enable token related debug output.'),
                                 },

@@ -15,7 +15,7 @@ from otpme.lib import config
 from otpme.lib.messages import message
 from otpme.lib.messages import error_message
 
-def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
+def gpg_applet(gpg_backup_file=None, gpg_restore_file=None, key_len=3072):
     """ Setup yubikey GPG applet. """
     import signal
     import shutil
@@ -154,6 +154,12 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     user_email = None
     new_password = None
     gpg_passphrase = None
+    # A restore gets its key IDs from the restored keyring below. Without
+    # these a restore died with "name 'auth_key_id' is not defined".
+    master_key_id = None
+    auth_key_id = None
+    enc_key_id = None
+    sign_key_id = None
 
     if not gpg_restore_file:
         if not user_real_name:
@@ -190,9 +196,11 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         try:
             master_key_id, \
             auth_key_id, \
-            enc_key_id = gpg.init_gpg(user_real_name=user_real_name,
+            enc_key_id, \
+            sign_key_id = gpg.init_gpg(user_real_name=user_real_name,
                                     user_email=user_email,
-                                    passphrase=gpg_passphrase)
+                                    passphrase=gpg_passphrase,
+                                    key_len=key_len)
         except Exception as e:
             config.raise_exception()
             msg = _("Error initializating GPG: {error}")
@@ -278,6 +286,14 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
                 break
             error_message("Wrong passphrase.")
 
+        # The sub keys come from the restored keyring. gpg finds them
+        # through the main key, and key_to_card() picks the right one
+        # by its capability.
+        master_key_id = key_id
+        auth_key_id = key_id
+        enc_key_id = key_id
+        sign_key_id = key_id
+
         if not new_password:
             new_password = cli.get_password(prompt='New token password: ', min_len=pin_min_len)
 
@@ -317,46 +333,49 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         cleanup()
         sys.exit(1)
 
-    # Try to move key to card.
+    # Try to move keys to card. One key per card slot: signature,
+    # encryption and authentication.
     message("Writing keys to yubikey...")
-    try:
-        gpg.key_to_card(auth_key_id,
-                        key_type="auth",
-                        sc_admin_pin=new_password,
-                        gpg_passphrase=gpg_passphrase,
-                        debug=debug)
-    except Exception as e:
-        raise
-        msg = _("Failed to write GPG auth key to yubikey: {error}")
-        msg = msg.format(error=e)
-        error_message(msg)
-        cleanup()
-        sys.exit(1)
-    # Restart gpg agent to make key_to_card() work because it sends passwords
-    # that are not required when the first key_to_card() was run.
-    gpg.stop_agent()
-    message("Starting gpg-agent...")
-    try:
-        ssh_agent_pid, \
-        ssh_auth_sock, \
-        gpg_agent_info = gpg.start_agent()
-    except Exception as e:
-        error_message(str(e))
-        cleanup()
-        sys.exit(1)
-    try:
-        gpg.key_to_card(enc_key_id,
-                        key_type="encrypt",
-                        sc_admin_pin=new_password,
-                        gpg_passphrase=gpg_passphrase,
-                        debug=debug)
-    except Exception as e:
-        raise
-        msg = _("Failed to write GPG encryption key to yubikey: {error}")
-        msg = msg.format(error=e)
-        error_message(msg)
-        cleanup()
-        sys.exit(1)
+    # A backup written before the sign key existed has no sign sub key.
+    # The two other slots still work, so this is a warning, not an abort.
+    card_keys = [
+                ('auth', auth_key_id, False),
+                ('encrypt', enc_key_id, False),
+                ('sign', sign_key_id, True),
+                ]
+    for key_type, key_id, missing_ok in card_keys:
+        try:
+            key_written = gpg.key_to_card(key_id,
+                                        key_type=key_type,
+                                        sc_admin_pin=new_password,
+                                        gpg_passphrase=gpg_passphrase,
+                                        debug=debug,
+                                        missing_ok=missing_ok)
+        except Exception as e:
+            config.raise_exception()
+            msg = _("Failed to write GPG {key_type} key to yubikey: {error}")
+            msg = msg.format(key_type=key_type, error=e)
+            error_message(msg)
+            cleanup()
+            sys.exit(1)
+        if not key_written:
+            msg = _("Backup has no {key_type} key. Card slot stays empty.")
+            msg = msg.format(key_type=key_type)
+            error_message(msg)
+            continue
+        # Restart gpg agent to make the next key_to_card() work because it
+        # sends passwords that are not required when the first
+        # key_to_card() was run.
+        gpg.stop_agent()
+        message("Starting gpg-agent...")
+        try:
+            ssh_agent_pid, \
+            ssh_auth_sock, \
+            gpg_agent_info = gpg.start_agent()
+        except Exception as e:
+            error_message(str(e))
+            cleanup()
+            sys.exit(1)
 
     # Try to get ssh keygrip needed for sshcontrol
     # file (e.g. confirm key usage)

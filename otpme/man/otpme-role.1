@@ -124,14 +124,14 @@ Keep persisted share mounts on hosts (transient unmount only).
 .B list_roles \fR[\fB\-r\fR] \fIrole\fR
 List roles assigned to the role. Use \fB\-r\fR for recursive listing.
 .TP
-.B list_acls \fIrole\fR
-Show ACLs assigned to the role.
+.B find_acls \fIrole\fR
+Find the ACLs this role holds on other objects.
 .TP
-.B list_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
-List OIDC scopes the role is assigned to. \fB\-\-return\-type\fR selects the attribute to return (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_scopes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
+Find OIDC scopes the role is assigned to. \fB\-\-return\-type\fR selects the attribute to return (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .TP
-.B list_shares \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
-List shares granted via this role. \fB\-r\fR walks child roles too.
+.B find_shares \fR[\fB\-r\fR] [\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
+Find shares granted via this role. \fB\-r\fR walks child roles too.
 .SS VLAN Assignment
 A role is not assigned a VLAN from here. The VLAN names the role, not the
 other way round, so the assignment belongs to the site that runs the network
@@ -198,31 +198,79 @@ Remove a sync user from the role.
 .B list_sync_users \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIrole\fR
 List sync users of the role. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the role.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIrole\fR \fIpolicy\fR
 Attach a policy to the role.
+.br
+A policy has a list of object types it is for; one that does not name \fBrole\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIrole\fR \fIpolicy\fR
 Remove a policy from the role.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIrole\fR
-List policies attached to the role. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+List the policies attached to the role.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS ACL Management
+An ACL says what somebody may do with this role.
+The somebody is a role or a token, never a user.
+.PP
+What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
+.PP
+The other direction, the ACLs this role holds on other objects, is \fBfind_acls\fR under \fBListing\fR above.
 .TP
-.B add_acl \fIrole\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fIrole\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR]
+Give a role or a token an ACL on this role.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, for example \fBview:tokens\fR.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
 .B del_acl \fIrole\fR \fIacl\fR
-Remove an access control entry.
+Take that ACL away again.
+.br
+Here the \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:view\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
-.B show_acls \fIrole\fR
-Display all ACLs for the role.
+.B list_acls \fIrole\fR
+Show the ACLs that lie on this role, i.e. who may do what with it.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIrole\fR
-Enable ACL inheritance from parent objects.
+Let the role inherit the default ACLs of the unit above it. It does not by default.
+.RS
+.PP
+Only default ACLs are inherited. An ordinary ACL on the unit never is.
+.PP
+Moving a role into another unit is the one place that asks something else as well: the site admin role \fBSITE_ADMIN\fR gets neither the default ACLs of the new unit nor loses those of the old one.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIrole\fR
-Disable ACL inheritance.
+Stop inheriting them.
+Only the ACLs on the role itself count from then on.
+.br
+Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS Extension and Attribute Management
 .TP
 .B add_extension \fIrole\fR \fIextension\fR
@@ -272,18 +320,37 @@ shows it on the SSO portal, in the language of whoever is looking, see \fBotpme\
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIrole\fR
 Dump the info text to stdout.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIrole\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the role.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fIrole\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fIrole\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fIrole\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fIrole\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIrole\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIrole\fR

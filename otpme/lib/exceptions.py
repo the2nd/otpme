@@ -28,6 +28,10 @@ class LoopDetected(OTPmeException):
 class JobNotStoppable(OTPmeException):
     pass
 
+class JobNotReady(OTPmeException):
+    """ A configuration management job we cannot run yet, but will. """
+    pass
+
 class AlreadyExists(OTPmeException):
     pass
 

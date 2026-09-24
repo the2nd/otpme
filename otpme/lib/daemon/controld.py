@@ -171,6 +171,18 @@ def register():
                             getx=cluster_status_getter,
                             setx=cluster_status_setter)
     config.register_config_var("_cluster_status", None, False)
+    # Register cluster floating IP property.
+    def cluster_ip_getter(self):
+        try:
+            return config._cluster_ip.value
+        except AttributeError:
+            return False
+    def cluster_ip_setter(self, new_status):
+        config._cluster_ip.value = new_status
+    config.register_property(name="cluster_ip",
+                            getx=cluster_ip_getter,
+                            setx=cluster_ip_setter)
+    config.register_config_var("_cluster_ip", None, False)
     # Register cluster vote participation property.
     def cluster_vote_participation_getter(self):
         try:
@@ -451,6 +463,12 @@ class ControlDaemon(UnixDaemon):
             log_msg = log_msg.format(name=config._cluster_status.name)
             self.logger.critical(log_msg)
         try:
+            config._cluster_ip.close()
+        except Exception as e:
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._cluster_ip.name)
+            self.logger.critical(log_msg)
+        try:
             config._cluster_vote_participation.close()
         except Exception as e:
             log_msg = _("Failed to close shared bool: {name}", log=True)[1]
@@ -544,6 +562,7 @@ class ControlDaemon(UnixDaemon):
         # takes the privileges we have and the other daemons do not.
         if config.start_haproxy:
             self.start_haproxy()
+        config.cluster_ip = True
 
     def start_haproxy(self):
         """ Start the LDAP load balancer. """
@@ -607,6 +626,7 @@ class ControlDaemon(UnixDaemon):
             log_msg = log_msg.format(site=config.site, error=e)
             self.logger.critical(log_msg)
             raise Exception(msg) from e
+        config.cluster_ip = False
 
     def configure(self):
         """ Make sure we are configured correctly. """
@@ -635,6 +655,7 @@ class ControlDaemon(UnixDaemon):
                     'httpd',
                     'fsd',
                     'backupd',
+                    'confd',
                     #'idled',
                     #'ldapd',
                     ]
@@ -651,18 +672,20 @@ class ControlDaemon(UnixDaemon):
             child_daemons["ssod"] = {}
             child_daemons["clusterd"] = {}
             child_daemons["backupd"] = {}
+            child_daemons["confd"] = {}
             #child_daemons["ldapd"] = {}
             #child_daemons["idled"] = {}
 
         if config.host_data['type'] == "host":
             # Daemons we have to handle and its start order.
-            self.daemons = [ 'hostd' ]
+            self.daemons = [ 'hostd', 'confd' ]
             if config.sso_server:
                 self.daemons.append("httpd")
             if config.backup_server:
                 self.daemons.append("backupd")
             # Set child daemons.
             child_daemons['hostd'] = ""
+            child_daemons["confd"] = {}
             if config.sso_server:
                 child_daemons["httpd"] = {}
             if config.backup_server:
@@ -787,6 +810,14 @@ class ControlDaemon(UnixDaemon):
         try:
             config._cluster_status = multiprocessing.get_bool(cluster_status,
                                                             random_name=False)
+        except Exception as e:
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+        cluster_ip = "otpme-cluster-status"
+        try:
+            config._cluster_ip = multiprocessing.get_bool(cluster_ip,
+                                                        random_name=False)
         except Exception as e:
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -1245,7 +1276,9 @@ class ControlDaemon(UnixDaemon):
             from otpme.lib.daemon.scriptd import ScriptDaemon
             from otpme.lib.daemon.backupd import BackupDaemon
             from otpme.lib.daemon.clusterd import ClusterDaemon
+            from otpme.lib.daemon.confd import ConfDaemon
         else:
+            from otpme.lib.daemon.confd import ConfDaemon
             if config.backup_server:
                 from otpme.lib.daemon.backupd import BackupDaemon
             if config.sso_server:
@@ -1254,6 +1287,12 @@ class ControlDaemon(UnixDaemon):
         # Set daemon user/group.
         daemon_user = config.user
         daemon_group = config.group
+        if daemon_name == "confd":
+            # The one daemon that keeps the privileges we start it with:
+            # installing a package or writing a file below /etc needs
+            # them, see daemon/confd.py.
+            daemon_user = "root"
+            daemon_group = "root"
 
         if daemon_name == "authd":
             daemon_class = AuthDaemon
@@ -1281,6 +1320,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = BackupDaemon
         elif daemon_name == "clusterd":
             daemon_class = ClusterDaemon
+        elif daemon_name == "confd":
+            daemon_class = ConfDaemon
         else:
             msg = _("Got unknown daemon: {daemon}")
             msg = msg.format(daemon=daemon_name)

@@ -307,11 +307,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share show_acls {share}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share list_acls {share}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of share.'),
+                                    'cmd'                   : _('List ACLs set on this share.'),
                                 },
                 },
 
@@ -709,7 +709,7 @@ cmd_help = {
                 },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-share list_policies {share}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

@@ -297,8 +297,18 @@ class OTPmeJoinP1(OTPmeServer1):
                 for uuid in result:
                     sync_objects.append((x, uuid))
         else:
-            # Add base accessgroups.
+            # Add base accessgroups. A node gets all of them. A host
+            # gets the realm one and no other: it answers one login
+            # itself, the offline one, and authorize_token() reads the
+            # login interfaces a token is allowed on off that group and
+            # off no other -- the client branch there is not a host's.
+            # ssh.py asks the same question while it writes
+            # authorized_keys. The sync keeps that one group current
+            # (Host.get_sync_parameters() names it), but mentions no
+            # other, so a host given more at join keeps it for good.
             base_access_groups = config.get_base_objects("accessgroup")
+            if host.type != "node":
+                base_access_groups = [config.realm_access_group]
             for x in base_access_groups:
                 result = backend.search(object_type="accessgroup",
                                         attribute="name",

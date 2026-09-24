@@ -48,15 +48,33 @@ Remove a node from the pool.
 .B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIpool\fR
 List nodes in the pool. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the pool.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIpool\fR \fIpolicy\fR
 Attach a policy to the pool.
+.br
+A policy has a list of object types it is for; one that does not name \fBpool\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIpool\fR \fIpolicy\fR
 Remove a policy from the pool.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIpool\fR
-List policies attached to the pool. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+List the policies attached to the pool.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS ACL Management
 .TP
 .B add_acl \fIpool\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -65,7 +83,7 @@ Add an access control entry.
 .B del_acl \fIpool\fR \fIacl\fR
 Remove an access control entry.
 .TP
-.B show_acls \fIpool\fR
+.B list_acls \fIpool\fR
 Display all ACLs for the pool.
 .TP
 .B enable_acl_inheritance \fIpool\fR
@@ -85,18 +103,37 @@ opened in the editor specified by the \fBEDITOR\fR environment variable.
 .B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIpool\fR
 Dump the info text to stdout.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIpool\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the pool.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fIpool\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fIpool\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fIpool\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fIpool\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIpool\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIpool\fR

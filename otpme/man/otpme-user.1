@@ -1,4 +1,4 @@
-.TH OTPME-USER 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME-USER 1 "2026-09-20" "OTPme 0.3.0a278" "OTPme Manual"
 .SH NAME
 otpme-user \- manage OTPme user accounts
 .SH SYNOPSIS
@@ -14,16 +14,27 @@ Users are identified by their name within the organizational unit hierarchy (e.g
 .SS User Management
 .TP
 .B add \fR[\fIoptions\fR] \fIusername\fR
-Create a new user account. By default, creates a user with a default token.
+Create a new user account.
+It gets a default token, whose name and type come from
+.BR default_token_name " and " default_token_type
+(see \fBotpme\fR(7)) unless \fB\-\-default\-token\fR or \fB\-\-default\-token\-type\fR says otherwise.
+\fB\-\-no\-default\-token\fR creates the user without one.
 .TP
-.B del \fIuser\fR [\fIuser\fR ...]
+.B del \fR[\fB\-\-no\-trash\fR] \fIuser\fR [\fIuser\fR ...]
 Delete one or more user accounts.
+The user and their tokens go to the trash, from where
+.BR otpme\-trash (1)
+can bring them back.
+\fB\-\-no\-trash\fR deletes them right away instead.
 .TP
 .B show \fR[\fIuser\fR]
 Display user information. Without arguments, shows all users.
 .TP
-.B list \fR[\fIregex\fR]
-List users, optionally filtered by regex pattern.
+.B list \fR[\fB\-a\fR] [\fB\-\-attribute\fR \fIATTR\fR] \fR[\fIregex\fR]
+List the users, and with a regex only those whose name matches it.
+.br
+You get the users you may change; \fB\-a\fR adds those you may only look at.
+\fB\-\-attribute\fR shows the given attribute instead of the name.
 .TP
 .B enable \fR[\fB\-\-share\-notify\fR|\fB\-\-no\-share\-notify\fR] \fR[\fB\-\-no\-persist\-mount\fR] \fIuser\fR
 Enable a disabled user account.
@@ -57,13 +68,18 @@ Keep persisted share mounts on hosts (transient unmount only).
 Rename a user account.
 .TP
 .B move \fR[\fB\-\-keep\-acls\fR] \fIuser\fR \fIunit\fR
-Move user to a different organizational unit.
+Move the user into another unit.
+The default ACLs of the old unit go, those of the new one come; \fB\-\-keep\-acls\fR leaves the ACLs as they are.
 .TP
 .B touch \fIuser\fR
 Re-index the object to fix potential index problems.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fIuser\fR \fItime\fR
-Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable if unused for the given time.
+Set auto\-disable time.
+It is either a relative time with a leading \fB+\fR, e.g. \fB+30D\fR, or an absolute one, e.g. \fB"09:53 13.06.2023"\fR.
+The units are \fBs\fR, \fBm\fR, \fBh\fR, \fBD\fR, \fBW\fR, \fBM\fR and \fBY\fR, see
+.BR otpme (7).
+Use \fB\-u\fR to disable the user if they were not used for the given time.
 .TP
 .B enable_auto_mount \fIuser\fR
 Enable auto-mount for user.
@@ -81,65 +97,98 @@ ACL for the role resolved from the user's
 cascade. Errors if
 .B admin_access_role
 is unset or the role cannot be resolved.
+.IP
+The ACL is set on two kinds of token only: the user's default token, and the SSO token of every site that has one for this user. Those are the tokens the user signs in with. It is not set on the user object, and not on their other tokens. A token may be given a temporary password when it carries the ACL itself or when the user does, so one on the user would cover every token they have. Errors if the user has none of these tokens.
 .TP
 .B disable_admin_access \fIuser\fR
 Disable admin access for the user: clear
 .BR allow_temp_passwords ,
 revoke the
 .B set_temp_password
-ACL for the
-.B admin_access_role
-role, and purge any active temporary password from every token that still has one.
+ACL from the same tokens, and purge any active temporary password from every token that still has one.
 .SS Token Management
-.TP
-.B add_token \fR[\fB\-r\fR] [\fB\-\-no\-qrcode\fR] [\fB\-\-enable\-mschap\fR] [\fB\-\-token\-type\fR \fITYPE\fR] [\fB\-\-name\fR \fINAME\fR] [\fB\-\-destination\fR \fIDST\fR] [\fB\-\-password\fR \fIPASS\fR] [\fB\-\-weak\-password\fR] \fIuser\fR
-Add a new token to the user. \fB\-r\fR replaces an existing token of the same name while keeping its UUID (useful when re-running setup).
-.TP
-.B del_token \fIuser\fR \fItoken\fR
-Delete a token from the user.
-.TP
-.B list_tokens \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-token\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
-List all tokens assigned to user(s). Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-token\-types\fR to filter by token type.
-.TP
-.B deploy_token \fIuser\fR \fItoken\fR
-Deploy the token (e.g. a smartcard token).
+Tokens are managed from the token side; see
+.BR otpme\-token (1).
 .SS Group Membership
 .TP
 .B group \fIuser\fR \fIgroup\fR
 Change the user's default group. (A user is added to further groups from the group side; see
 .BR otpme-group (1).)
 .TP
-.B list_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
-List groups the user belongs to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_groups \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
+Find groups the user belongs to. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Role Membership
 Roles are managed from the role side; see
 .BR otpme-role (1).
 .TP
-.B list_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
-List roles assigned to the user. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+.B find_roles \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fR[\fIuser\fR]
+Find roles assigned to the user. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the user.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIuser\fR \fIpolicy\fR
 Attach a policy to the user.
+.br
+A policy has a list of object types it is for; one that does not name \fBuser\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIuser\fR \fIpolicy\fR
 Remove a policy from the user.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
-.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
-List policies attached to the user. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR) and \fB\-\-policy\-types\fR to filter by policy type.
+.B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIuser\fR
+List the policies attached to the user.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS User Configuration
 .TP
 .B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set a configuration parameter. Use \fB\-d\fR to delete (reset to default) or \fB\-a\fR to append the value to a list-typed parameter.
+Set a configuration parameter on the user.
+\fB\-a\fR appends the value to a parameter that holds a list.
+.br
+\fB\-d\fR removes the parameter from the user, or with a value only that one value from a list.
+The parameter is then looked up on the user's unit and on the site again, so what the user gets is whatever stands there.
+See \fBCONFIG PARAMETERS\fR in
+.BR otpme (7).
 .TP
 .B show_config \fIuser\fR [\fIparameter\fR]
-Show all configuration parameters.
+Show the configuration parameters set on the user, or only the given one.
 .TP
 .B get_config \fIuser\fR \fIparameter\fR
-Show the value of a single configuration parameter.
+Show the value of one parameter, as the user sees it after the lookup on unit and site.
 .TP
 .B description \fIuser\fR \fR[\fIdescription\fR]
-Set user description.
+Set the description of the user.
+Without a description OTPme asks for one and offers the current text for editing.
+.TP
+.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR \fR[\fIinfo\fR]
+Set the info text of the user, a free text that may run over several paragraphs.
+Without a text OTPme opens the current one in the editor named by
+.BR EDITOR .
+.br
+An info text is kept per language.
+\fB\-\-language\fR says which one, e.g. \fB\-\-language de\fR.
+Without it the text is stored under \fBinfo\fR, which is the note of the administrator and is never shown to a user.
+.br
+How long such a text may be is
+.B max_info_len
+in
+.BR otpme (7),
+which also says who reads it.
+.TP
+.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR
+Write the info text of that language to stdout.
 .TP
 .B language \fIuser\fR \fIlanguage\fR
 Set the user's localization language (e.g. "en", "de").
@@ -155,17 +204,29 @@ Undo
 Unblock the user for the given accessgroup, or for all accessgroups if none is given.
 .TP
 .B enable_auto_mount \fIuser\fR / \fBdisable_auto_mount \fIuser\fR
-See \fISS User Management\fR above.
+See \fBUser Management\fR above.
 .TP
 .B enable_autosign \fIuser\fR
-Enable the auto-sign feature of the user.
+Sign every object this user changes, without asking.
+.br
+It works next to the config parameter
+.B auto_sign
+(see \fBotpme\fR(7)): one of the two is enough for the signature to happen.
 .TP
 .B disable_autosign \fIuser\fR
-Disable the auto-sign feature of the user.
+Do not sign automatically any more.
+An object whose
+.B auto_sign
+says otherwise is still signed.
 .SS User Scripts
+The script options after \fB\-\-\fR say how the script gets its values: \fB[NAME]\fR puts a value into the environment of the script, \fB%name\fR makes it a command line argument, and everything else goes to the command line as it is. Without options the script gets all values in its environment. The values themselves are listed under \fBUser Scripts\fR in
+.BR otpme (7).
+.PP
+Where the script itself is optional, leaving it out makes OTPme ask for it, with the script the user has now and its options ready for editing.
 .TP
 .B auth_script \fIuser\fR \fIscript\fR \fB\-\-\fR \fR[\fIscript_options\fR]
 Set the user's authorization script.
+This one needs the script; the three below do not.
 .TP
 .B enable_auth_script \fIuser\fR / \fBdisable_auth_script \fIuser\fR
 Enable / disable the user's authorization script.
@@ -185,109 +246,228 @@ Set the user's login script.
 .B enable_login_script \fIuser\fR / \fBdisable_login_script \fIuser\fR
 Enable / disable the user's login script.
 .SS VLAN Assignment
-A user is never the object of a port authentication -- a token is. So a user
-has no VLAN of its own, and cannot be made a member of one. What it can do
-is set the default for its tokens through the
+A user is never the object of a port authentication \(em a token is.
+So a user has no VLAN of its own, and it cannot be made a member of one.
+.PP
+The way to give a person a VLAN is to put their token, or a role that token is in, into the VLAN:
+.PP
+.RS
+.B otpme-vlan add_token \fIvlan\fR \fIuser\fB/\fItoken\fR
+.RE
+.PP
+That is the assignment that counts.
+A VLAN of the site answering the RADIUS request that names the token, or a role the token is in, decides the answer, and nothing below is asked any more (see
+.BR otpme\-vlan (1)).
+.PP
+Only where no such VLAN names the token does OTPme ask the
 .B vlans
-config parameter (see
-.BR otpme (7)):
+config parameter, and only there is the value on the user of any use:
 .PP
 .RS
 .B otpme-user config \fIuser\fR vlans \fIvlan\fR
 .RE
 .PP
-A token without a
-.B vlans
-parameter of its own inherits this one, the same way it inherits any other
-config parameter from its user, its unit and its site.
-.PP
-It only decides where no VLAN of the site answering the RADIUS request names
-the token or a role it is in, because membership always wins. To give a
-person a VLAN that way, put their token or one of their roles into it (see
-.BR otpme-vlan (1)).
+The parameter is read along the cascade of the \fItoken\fR: first on the token, then on the user, then on the unit, then on the site (see
+.BR otpme (7)).
+The value on the user is therefore what the tokens of that user get as long as none of them carries one of its own.
 .SS Cryptographic Keys
 .TP
 .B gen_keys \fR[\fIoptions\fR] \fIuser\fR
-Generate the user's sign and encrypt RSA key pairs.
+Generate the sign and the encrypt key pair of the user.
+Both are RSA by default; \fB\-\-sign\-algo\fR and \fB\-\-encrypt\-algo\fR choose another one, see \fBKey Generation Options\fR below.
 .TP
 .B del_keys \fIuser\fR
-Delete the user's cryptographic keys.
+Remove all four keys of the user: both private and both public ones.
+It asks first, and it refuses when the user has no keys at all.
+Needs the ACL \fBdel_keys\fR.
 .TP
-.B gen_cert \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
-Generate a certificate for the user.
+.B gen_csr \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
+Make a certificate signing request with the private key of the user and write it to stdout.
+The key script does the work, so the key never leaves where it lies.
+.br
+It stops there: OTPme does not hand the request to a CA and does not store a certificate.
+What happens with the request is up to you.
+\fB\-\-stdin\-pass\fR reads the key password from stdin.
 .TP
 .B key_mode \fIuser\fR \fImode\fR
-Set key mode (\fBclient\fR or \fBserver\fR).
+Where the private keys of the user are kept.
+.RS
+.TP
+.B client
+They stay on the client, which hands the server a blob it cannot read.
+.TP
+.B server
+They lie on the server, wrapped in an AES key that the client encrypts with the key password of the user.
+Reading one means asking the client to unwrap it.
+.RE
 .TP
 .B get_key_mode \fIuser\fR
-Display current key mode.
+Show the key mode of the user.
+A user who never had one set is \fBclient\fR.
 .TP
 .B get_sign_key_type \fIuser\fR
-Show the user's sign key type.
+Show what kind of sign key the user has: \fBrsa\fR or \fBed25519\fR.
 .TP
 .B get_enc_key_type \fIuser\fR
-Show the user's encrypt key type.
+Show what kind of encrypt key the user has: \fBrsa\fR or \fBx25519\fR.
 .TP
 .B key_cache_time \fIuser\fR \fItime\fR
 Set how long otpme-agent may cache the users private key, e.g. how long it keeps the yubikey PIV handler open after the PIN was entered. Accepts a plain number of seconds or a time string such as \fI5m\fR. The default \fI0\fR means no timeout, the key stays cached as long as the agent runs. The agent gets the value with the login session, so a change takes effect on the next login.
 .TP
-.B key_pass \fIuser\fR
-Change key passphrase.
+.B key_pass \fR[\fB\-\-stdin\-pass\fR] \fIuser\fR
+Change the password of the private keys of the user.
+\fB\-\-stdin\-pass\fR reads it from stdin.
 .TP
 .B sign_private_key \fIuser\fR \fIprivate_key\fR
-Set the user's sign private key.
+Set the sign private key of the user, as the client keeps it.
+An empty value removes the key.
+.br
+Only the user themselves may do this; there is no ACL that lets somebody else.
 .TP
 .B encrypt_private_key \fIuser\fR \fIprivate_key\fR
-Set the user's encrypt private key.
+The same for the encrypt private key.
 .TP
 .B sign_public_key \fIuser\fR \fIpublic_key\fR
-Set the user's sign public key.
+Set the sign public key of the user.
+.br
+The user themselves needs no permission for it.
+Anybody else needs the ACL \fBedit:sign_public_key\fR.
 .TP
 .B encrypt_public_key \fIuser\fR \fIpublic_key\fR
-Set the user's encrypt public key.
+The same for the encrypt public key, with the ACL \fBedit:encrypt_public_key\fR.
 .TP
 .B import_sign_key \fR[\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
-Import the user's sign RSA key. \fB\-n\fR stores the private key unencrypted, \fB\-\-server\fR keeps it on the server.
+Take a private key the user already has and make it their sign key.
+The key comes from a file, or from stdin with \fB\-\-stdin\-key\fR.
+.br
+It only works in server key mode.
+In client key mode the key belongs to the client, and importing one is refused.
+.br
+Without \fB\-\-server\fR the key script on the client encrypts the key with the key password of the user, and only the encrypted private key and the public key are sent.
+With \fB\-\-server\fR the key itself is sent and the server wraps it, the way
+.B gen_keys
+does.
+Either way the key ends up on the server.
+.br
+The user themselves needs no permission for it.
+Anybody else needs the ACL \fBedit:sign_private_key\fR, plus \fBimport_sign_key\fR.
 .TP
 .B import_encrypt_key \fR[\fB\-\-server\fR] [\fB\-n\fR] [\fB\-\-stdin\-key\fR] \fIuser\fR \fR[\fIprivate_key_file\fR]
-Import the user's encrypt RSA key. Flags as for
+The same for the encrypt key, with the ACLs \fBedit:encrypt_private_key\fR and \fBimport_encrypt_key\fR.
+Options as for
 .BR import_sign_key .
 .TP
 .B dump_sign_key \fR[\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
-Dump the user's sign key to stdout. \fB\-p\fR dumps the private key (or a pointer to it), \fB\-n\fR dumps it unencrypted if possible.
+Write the sign key of the user to stdout.
+Without \fB\-p\fR that is the public key, base64 encoded; \fB\-n\fR writes it decoded instead.
+.br
+\fB\-p\fR writes the private key.
+In server key mode \fB\-n\fR decrypts it first, which asks the client for the key password; without \fB\-n\fR you get the stored, still encrypted form.
+In client key mode you get what the client put there.
+.br
+Dumping the private key needs the ACL \fBdump:sign_private_key\fR, the public one \fBdump:sign_public_key\fR.
+The user themselves needs neither.
 .TP
 .B dump_encrypt_key \fR[\fB\-p\fR] [\fB\-n\fR] [\fB\-\-stdin\-pass\fR] \fIuser\fR
-Dump the user's encrypt key to stdout. Flags as for
+The same for the encrypt key, with the ACLs \fBdump:encrypt_private_key\fR and \fBdump:encrypt_public_key\fR.
+Options as for
 .BR dump_sign_key .
+.TP
+.B find_signatures \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-object\-types\fR \fIt1,t2\fR] \fR[\fIuser\fR]
+Find the objects the user has signed.
+Signing writes the signer into the index, so the answer comes from the index.
+No object is read.
+.br
+What is found can be of any type, so the default answer names the type: \fBtoken|realm/site/user/name\fR.
+Use \fB\-\-return\-type\fR to select another attribute (\fBname\fR, \fBrel_path\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-object\-types\fR to search the given types only.
+.br
+Only objects you may see are listed.
+Needs the ACL \fBfind:signatures\fR.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIuser\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the user.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fIuser\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fIuser\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fIuser\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fIuser\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIuser\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS ACL Management
+An ACL says what somebody may do with this user.
+The somebody is a role or a token, never another user.
+.PP
+What the three forms \fIacl\fR, \fB+\fIacl\fR and \fB++\fIacl\fR mean, and which ACLs exist, is under \fBACLs\fR in
+.BR otpme (7).
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
+.PP
+A user holds no ACLs of their own, so there is no \fBfind_acls\fR here. Their tokens do; see
+.BR otpme\-token (1).
 .TP
-.B add_acl \fIuser\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
-Add an access control entry.
+.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] \fIuser\fR \fIowner_type\fR \fIowner\fR \fIacl\fR[\fB:\fIvalue\fR]
+Give a role or a token an ACL on this user.
+.br
+\fIowner_type\fR is \fBrole\fR or \fBtoken\fR, and \fIowner\fR the path of that role or token.
+An ACL may carry a value, e.g. \fBedit:password\fR.
+.br
+\fB\-r\fR adds the ACL to the tokens of the user as well.
+\fB\-a\fR applies the default ACLs of the user to the tokens it already has.
+.br
+Needs the ACL \fBadd:acl\fR.
 .TP
-.B del_acl \fIuser\fR \fIacl\fR
-Remove an access control entry.
+.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] \fIuser\fR \fIacl\fR[\fB:\fIvalue\fR]
+Take that ACL away again.
+\fB\-r\fR removes it from the tokens of the user as well, \fB\-a\fR removes the default ACLs from the tokens it already has.
+.br
+Here the \fIacl\fR is the whole entry, owner and all, the way \fBlist_acls\fR prints it: \fBrole:berlin/sw\-admins:edit\fR.
+.br
+Needs the ACL \fBdelete:acl\fR.
 .TP
-.B show_acls \fIuser\fR
-Display all ACLs for the user.
+.B list_acls \fIuser\fR
+Show the ACLs that lie on this user, i.e. who may do what with them.
+Needs the ACL \fBview:acl\fR.
 .TP
 .B enable_acl_inheritance \fIuser\fR
-Enable ACL inheritance from parent objects.
+Let the user inherit the default ACLs of the unit above them. They do not by default.
+.RS
+.PP
+Only default ACLs are inherited. An ordinary ACL on the unit never is.
+.PP
+Moving a user into another unit is the one place that asks something else as well: an admin user gets neither the default ACLs of the new unit nor loses those of the old one.
+A user counts as admin when one of their tokens is the admin token of the site or is in the site admin role \fBSITE_ADMIN\fR.
+.PP
+Needs the ACL \fBenable:acl_inheritance\fR.
+.RE
 .TP
 .B disable_acl_inheritance \fIuser\fR
-Disable ACL inheritance.
+Stop inheriting them.
+Only the ACLs on the user itself count from then on.
+.br
+Needs the ACL \fBdisable:acl_inheritance\fR.
 .SS LDAP Integration
 .TP
 .B add_attribute \fR[\fB\-i\fR \fIposition\fR] \fIuser\fR \fIattribute\fR=[\fIvalue\fR]
@@ -305,25 +485,23 @@ Add an LDAP object class to the user.
 .B del_object_class \fIuser\fR \fIclass\fR
 Remove an LDAP object class from the user.
 .TP
-.B show_ldif \fIuser\fR
-Display LDAP LDIF representation of the user.
-.TP
-.B info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR \fR[\fIinfo\fR]
-Set free-form user info text. If
-.I info
-is omitted, the current info text is opened in the editor specified by the
-.B EDITOR
-environment variable.
-.TP
-.B dump_info \fR[\fB\-\-language\fR \fILANG\fR] \fIuser\fR
-Dump the user info text to stdout.
+.B show_ldif \fR[\fB\-a\fR \fIattr1,attr2\fR] \fIuser\fR
+Show the user as LDIF, the way LDAP hands them out.
+\fB\-a\fR shows only the attributes you name.
 .SS Extension Management
+An extension brings LDAP object classes and the attributes that go with them to the user.
+Without one there is nothing to set with
+.B add_attribute
+and nothing for LDAP to answer with.
+.PP
+A new user gets \fBbase\fR and \fBposix\fR.
+\fBposix\fR is where \fBuidNumber\fR, \fBgidNumber\fR, \fBhomeDirectory\fR and \fBloginShell\fR come from, the attributes a unix system asks for.
 .TP
 .B add_extension \fIuser\fR \fIextension\fR
 Add an extension to the user.
 .TP
 .B remove_extension \fIuser\fR \fIextension\fR
-Remove an extension from the user.
+Remove an extension from the user, with the attributes it brought.
 .SS User Photo
 .TP
 .B photo \fIuser\fR \fIimage_path\fR
@@ -338,30 +516,51 @@ Dump the user's photo as base64 to stdout.
 .TP
 .B del_photo \fIuser\fR
 Remove the user's photo.
-.SS Import/Export
+.SS Export and Cleanup
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIuser\fR
-Export user configuration. Use \fB\-\-password\fR to encrypt.
+Write the whole object of the user to stdout, as JSON.
+.br
+Without \fB\-\-password\fR it is written as it is, in clear.
+With one, a key is derived from that password and the object is encrypted with it; the salt goes into the output, so the password is all you need to read it back.
+.br
+Reading it back in is
+.BR otpme\-tool " " import ,
+see
+.BR otpme\-tool (1).
 .TP
-.B remove_orphans \fIuser\fR
-Remove orphaned object references.
+.B remove_orphans \fR[\fB\-r\fR] \fIuser\fR
+Remove what the user still points at although it is gone: ACLs, policies, signatures and tokens whose object does not exist any more.
+.br
+It shows everything it found and asks once.
+\fB\-r\fR does the same for the tokens of the user.
 .SH OPTIONS
 .SS User Creation Options
+These are the options of
+.BR add .
+.PP
+Groups and roles hold tokens, not users, so the options below put the \fIdefault token\fR of the new user into them.
+You need the ACL \fBadd:token\fR on each group and role.
 .TP
 .B \-\-group \fIGROUP\fR
-Set the default group of the user.
+The default group of the user.
+Without it the group of the template is used, or else the group a policy gives, or else the default group of the installation.
 .TP
 .B \-\-groups \fIGROUP1,GROUP2\fR
-Add user to multiple groups during creation.
+Put the default token into these groups as well.
 .TP
 .B \-\-role \fIROLE\fR
-Assign role during user creation.
+Put the default token into this role.
+.br
+It also switches off the \fBdefaultroles\fR policy for this user, so the user gets this role and no other.
 .TP
 .B \-\-roles \fIROLE1,ROLE2\fR
-Assign multiple roles during user creation.
+Put the default token into these roles as well.
+This one leaves the \fBdefaultroles\fR policy alone.
 .TP
 .B \-\-password \fIPASS\fR
-Set initial password during user creation.
+The password of the default token.
+It only works when that token is a password token; any other type is refused.
 .TP
 .B \-\-weak\-password
 Accept a password even if the password policy would reject it. Needs the
@@ -372,10 +571,23 @@ ACL on the target unit.
 Do not create a default token for the user.
 .TP
 .B \-\-default\-token \fINAME\fR
-Specify name for the default token (default: "login").
+Take a token that already lies in the \fBTOKENSTORE\fR and make it the default token of the new user.
+\fINAME\fR is its name there.
+.br
+It says nothing about the name of a \fInew\fR token: that comes from
+.BR default_token_name ,
+see
+.BR otpme (7).
+Giving this option also means the user gets a default token, whatever
+.B add_default_token
+says.
 .TP
 .B \-\-default\-token\-type \fITYPE\fR
-Specify type for the default token (default: system default).
+The type of the default token.
+Without it the type of
+.B default_token_type
+is used, see
+.BR otpme (7).
 .TP
 .B \-\-no\-qrcode
 Do not generate default token QR code (TOTP/HOTP only).
@@ -388,77 +600,124 @@ for the difference between
 and
 .BR mode2 .
 .TP
-.B \-t, \-\-template
-Create user as a template object.
+.B \-t
+Make the new user a template, i.e. an object to create other users from.
+A template gets no default token.
 .TP
 .B \-\-template \fINAME\fR
-Use specified template when creating user.
+Create the user from that template.
+It cannot be used together with \fB\-t\fR: a template is not made from a template.
 .TP
 .B \-\-attributes \fIATTR1=VAL1,ATTR2=VAL2\fR
-Set LDAP attributes during user creation.
+Give the new user these LDAP attributes right away, instead of setting them with
+.B add_attribute
+afterwards.
 .SS Key Generation Options
 .TP
+.B \-\-sign\-algo \fIALGO\fR
+The algorithm of the sign key: \fBrsa\fR (the default) or \fBed25519\fR.
+.TP
+.B \-\-encrypt\-algo \fIALGO\fR
+The algorithm of the encrypt key: \fBrsa\fR (the default) or \fBx25519\fR.
+.TP
 .B \-b \fIBITS\fR
-Specify key length in bits (default: 4096).
+The key length in bits.
+It only means something for RSA.
+.br
+Without it the user's
+.B user_key_len
+is used, see
+.BR otpme (7).
 .TP
 .B \-\-server
-Generate server-mode keys.
-.TP
-.B \-\-pass\-hash\-type \fITYPE\fR
-Specify password hash type.
+Generate the key pairs on the server.
 .TP
 .B \-n
-Do not encrypt the private key.
+Do not encrypt the private key on the server.
 .TP
 .B \-\-stdin\-pass
-Read passphrase from stdin.
+Read the passphrase from stdin.
+.SS Key Import Options
+These are the options of
+.BR import_sign_key " and " import_encrypt_key .
 .TP
 .B \-\-stdin\-key
-Read key from stdin.
+Read the private key from stdin instead of from a file.
+.TP
+.B \-\-server
+Send the key to the server and let it wrap the key.
+Without this option the key script on the client encrypts it first, and the key itself never goes over the wire.
+.TP
+.B \-n
+Store the private key unencrypted.
+Only together with \fB\-\-server\fR: the client refuses to hand out an unencrypted key.
 .SS Display Options
+These are the options of
+.BR show ,
+except \fB\-\-attribute\fR, which belongs to
+.BR list .
 .TP
 .B \-a
-Show all users (across all units).
+Show every user you may look at.
+.br
+Without it you only get the users you may change, i.e. the ones you hold a write ACL on.
+An admin sees every user either way.
 .TP
-.B \-t, \-\-show\-templates
-Include template users in output.
+.B \-t
+Show the user templates as well.
 .TP
-.B \-z \fISIZE\fR
-Limit output size.
+.B \-z \fIN\fR
+Show at most this many users.
+Without it you get 10; a search that has no number of its own stops at 1024.
 .TP
 .B \-\-fields \fIFIELD1,FIELD2\fR
-Display only specified fields.
+Show only these columns.
 .TP
 .B \-\-policy\-limit \fIN\fR
-Limit number of policies shown.
+Show at most this many policies per user.
 .TP
 .B \-\-limit \fIN\fR
-Limit number of items shown per object.
+Show at most this many items of every other list of a user, e.g. its tokens or groups.
 .TP
 .B \-\-sort\-by \fIFIELD\fR
-Sort output by field.
+Sort the output by that column.
 .TP
 .B \-\-reverse
-Reverse sort order.
+Turn the order of the output around.
 .TP
 .B \-\-raw
-Output without headers/borders.
+Leave out the headers and the borders of the table.
 .TP
 .B \-\-csv
-Output as CSV.
+Write the table as CSV.
 .TP
 .B \-\-csv\-sep \fISEP\fR
-CSV separator character.
+The character between two CSV fields.
 .TP
 .B \-\-attribute \fIATTR\fR
-Display specific attribute in list command.
-.SS General Options
+Of
+.BR list :
+show this attribute instead of the name.
+.SS Other Options
 .TP
 .B \-\-keep\-acls
-Preserve ACLs when moving user.
+Of
+.BR move :
+leave the ACLs of the user alone.
+.br
+Without it a move removes the default ACLs of the old unit and applies those of the new one.
+That does not happen for a user who inherits no ACLs, for an admin user, or where you may not add and remove ACLs on the user.
 .TP
 .B \-\-password \fIPASS\fR
-Password for encrypting exports.
+Of
+.BR export :
+the password the exported object is encrypted with.
+With
+.B add
+the same option means something else, see \fBUser Creation Options\fR above.
+.PP
+The options that work with every command \(em \fB\-f\fR, \fB\-\-changelog\fR and the rest \(em are in
+.BR otpme (1).
 .SH CONFIG PARAMETERS
 Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
 For a complete description of all available parameters and their applicable object types, see
@@ -475,29 +734,42 @@ Create user bob without a default token
 .B otpme-user add \-\-default\-token\-type totp charlie
 Create user charlie with a TOTP token
 .TP
-.B otpme-user add \-\-group admins \-\-role ADMIN dave
-Create admin user dave
+.B otpme-user add \-\-role SITE_ADMIN dave
+Create dave and put his default token into the role \fBSITE_ADMIN\fR, which is what makes him an admin of this site
 .TP
-.B otpme-user add \-\-groups users,developers \-\-roles DEV,USER eve
-Create user eve with multiple groups and roles
+.B otpme-user add \-\-group marketing \-\-roles employee,marketing eve
+Create eve with \fBmarketing\fR as her default group, and put her default token into the roles \fBemployee\fR and \fBmarketing\fR
+.SS Managing Tokens
+.TP
+.B otpme-token \-\-type totp add alice/totp
+Give alice a second token (tokens are managed with \fBotpme\-token\fR(1))
+.TP
+.B otpme-token list alice/*
+List the tokens alice has
+.TP
+.B otpme-token show alice/*
+Show them with their details
+.TP
+.B otpme-token del alice/totp
+Delete that token again
 .SS Managing Groups and Roles
 .TP
-.B otpme-user group alice developers
-Change alice's default group to developers
+.B otpme-user group alice marketing
+Change alice's default group to \fBmarketing\fR
 .TP
-.B otpme-group add_token developers alice/login
-Add one of alice's tokens to the developers group (group membership is granted per token, see
+.B otpme-group add_token marketing alice/login
+Put one of alice's tokens into the group \fBmarketing\fR (a group holds tokens, not users, see
 .BR otpme-group (1))
 .TP
-.B otpme-role add_user DEVELOPER alice/login
-Assign the DEVELOPER role to one of alice's tokens (managed from the role side, see
+.B otpme-role add_token employee alice/login
+Put that token into the role \fBemployee\fR as well (managed from the role side, see
 .BR otpme-role (1))
 .TP
-.B otpme-user list_groups alice
-Show alice's group memberships
+.B otpme-user find_groups alice
+Show the groups alice is in
 .TP
-.B otpme-user list_roles alice
-Show alice's assigned roles
+.B otpme-user find_roles alice
+Show the roles alice is in
 .SS VLAN Assignment
 .TP
 .B otpme-user config alice vlans guests
@@ -507,27 +779,40 @@ Set the VLAN her tokens use where no VLAN names them
 Put one of her tokens into a VLAN, which wins over the parameter above
 .SS Applying Policies
 .TP
-.B otpme-user add_policy alice strong_passwords
-Apply password policy to alice
+.B otpme-user add_policy alice password_strength
+Apply the password policy OTPme ships with to alice
 .TP
-.B otpme-user add_policy alice workhours_only
-Restrict alice's login times
+.B otpme-user add_policy alice workhours_login
+Let alice sign in on workdays between 6 and 18 only, with the login times policy OTPme ships with
+.TP
+.B otpme-user add_policy alice weekend_login
+The same for the weekend, see
+.BR otpme\-policy (1)
 .TP
 .B otpme-user list_policies alice
 Show all policies applied to alice
 .SS Key Management
 .TP
 .B otpme-user gen_keys alice
-Generate encryption keys for alice
+Generate the sign and encrypt keys of alice, RSA with \fBuser_key_len\fR bits
 .TP
-.B otpme-user gen_keys \-b 2048 bob
-Generate 2048-bit keys for bob
+.B otpme-user gen_keys \-b 4096 bob
+Generate them for bob with 4096 bits instead
+.TP
+.B otpme-user gen_keys \-\-sign\-algo ed25519 \-\-encrypt\-algo x25519 carol
+Generate them for carol on the 25519 curves, where the length is fixed
 .TP
 .B otpme-user key_pass alice
-Change alice's key passphrase
+Change the password of alice's private keys
 .TP
 .B otpme-user dump_sign_key alice
-Dump alice's sign public key
+Write alice's sign public key to stdout
+.TP
+.B otpme-user find_signatures alice
+Show every object alice has signed
+.TP
+.B otpme-user find_signatures \-\-object\-types script alice
+Show only the scripts she signed
 .SS Managing User Status
 .TP
 .B otpme-user disable alice
@@ -539,24 +824,31 @@ Re-enable alice's account
 .B otpme-user rename alice alice_temp
 Rename user alice to alice_temp
 .TP
-.B otpme-user move alice it/admins
-Move alice to it/admins unit
+.B otpme-user move alice users/marketing
+Move alice into another unit, here a sub\-unit of the \fBusers\fR unit new users land in
 .SS Querying Users
 .TP
 .B otpme-user show alice
 Show detailed information about alice
 .TP
 .B otpme-user list
-List all users in current unit
+List the users you may change
 .TP
 .B otpme-user list \-a
-List all users in all units
+List every user you may look at as well
 .TP
-.B otpme-user list "^admin.*"
-List users starting with "admin"
+.B otpme-user list \(dq^admin.*\(dq
+List the users whose name starts with \fBadmin\fR (quote it, or the shell takes the \fB*\fR)
 .TP
 .B otpme-user show \-\-fields name,uid,groups
-Show users with specific fields
+Show only these columns
+.TP
+.B otpme-user show_config alice
+Show the config parameters set on alice
+.TP
+.B otpme-tool search attribute=config value="backup_enabled"
+Show every object that has \fBbackup_enabled\fR set, whatever the value is.
+A parameter is only listed where somebody set it, not where it is inherited, so this is the way to find the places a value comes from.
 .SS Using Templates
 .TP
 .B otpme-user add \-t developer_template
@@ -565,17 +857,20 @@ Create a user template for developers
 .B otpme-user add \-\-template developer_template bob
 Create bob using the developer template
 .SH SEE ALSO
+.BR otpme (1),
 .BR otpme (7),
 .BR otpme-token (1),
 .BR otpme-group (1),
 .BR otpme-role (1),
 .BR otpme-policy (1),
+.BR otpme-script (1),
 .BR otpme-vlan (1),
-.BR otpme-unit (1)
+.BR otpme-unit (1),
+.BR otpme-trash (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

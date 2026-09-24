@@ -79,7 +79,7 @@ def register():
 def _sso_allowed_here(parameter):
     """ Does the site running this portal allow <parameter> at all?
 
-    The three ``_sso_allow_*_for_user`` resolvers below walk the user's
+    The four ``_sso_allow_*_for_user`` resolvers below walk the user's
     parents, and those end at the user's *home* site -- so setting
     sso_allow_fido2 to False on the site the portal runs on has no
     effect on a user from somewhere else. It reads as "not for our
@@ -111,18 +111,25 @@ def _sso_allowed_here(parameter):
 
 def _sso_allow_passkeys_for_user(user):
     """ Home-side resolution of the ``sso_allow_passkeys`` cascade
-    (user → unit → site) for the WebAuthn login path. Passkey login
-    is allowed only when the cascade resolves to an explicit True;
-    an unset cascade blocks. The registered default is intentionally
-    NOT consulted -- if nobody set the flag, no passkey login.
+    (user → unit → site) for the WebAuthn login path.
+
+    Fail-open like the other three: the cascade returns None when
+    nobody set the parameter, and the registered default is True. The
+    settings page resolves it the same way (_resolve_passkeys_allowed),
+    so a user who may register a passkey can also sign in with it --
+    which is not what a fail-closed read here would give them.
+
     Applied to drop passkey tokens from the assertion allow-list at
     ``fido2_auth_begin`` so the browser can't sign with a passkey and
     the whole attempt falls through the generic "Login failed" path.
     Fido2 (u2f-style) tokens are unaffected. """
     try:
-        return bool(user.get_config_parameter("sso_allow_passkeys"))
+        value = user.get_config_parameter("sso_allow_passkeys")
     except Exception:
-        return False
+        return True
+    if value is None:
+        return True
+    return bool(value)
 
 
 def _sso_allow_tiqr_for_user(user):

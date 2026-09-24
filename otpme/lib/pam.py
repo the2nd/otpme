@@ -635,6 +635,11 @@ class PamHandler(object):
                 try:
                     group_id = grp.getgrnam(group)[2]
                 except KeyError:
+                    # A dynamic group is a local group. If it is missing
+                    # the user silently ends up without it, so say so.
+                    log_msg = _("Dynamic group does not exist on this host: {group_name}", log=True)[1]
+                    log_msg = log_msg.format(group_name=group)
+                    self.logger.warning(log_msg)
                     continue
                 if group_id in current_groups:
                     continue

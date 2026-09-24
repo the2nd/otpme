@@ -13,6 +13,23 @@ try:
 except Exception:
     pass
 
+# termcolor knows no orange. 208 is orange in the 256 color palette,
+# which a terminal that shows the red and green of termcolor shows too.
+ORANGE = "\033[38;5;208m"
+# Grey from the same palette, for what is over and needs nothing: 244 is
+# dark enough to step back next to the other colors and still readable on
+# a light background.
+GREY = "\033[38;5;244m"
+COLOR_RESET = "\033[0m"
+
+def colored_orange(text):
+    """ <text> in orange, for the terminal. """
+    return f"{ORANGE}{text}{COLOR_RESET}"
+
+def colored_grey(text):
+    """ <text> in grey, for the terminal. """
+    return f"{GREY}{text}{COLOR_RESET}"
+
 def message(msg, newline=True, sameline=False,
     stderr=False, print_escape=True, prefix=None):
     """ Print a user message to stdout """

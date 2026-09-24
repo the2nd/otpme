@@ -222,8 +222,10 @@ def register_config_parameters():
     # Attributes we only hand out when the search asked for them by
     # name. A client that requests all attributes (SOGo does that on
     # every address book search) would otherwise pull the photos of
-    # every hit over the wire and into our caches. RFC 4522 allows
-    # holding back attributes on a wildcard request.
+    # every hit over the wire and into our caches. RFC 4511 (4.5.1.8)
+    # makes no promise that a "*" search returns every user attribute:
+    # it tells client implementors that attributes can be missing "due
+    # to access controls or other restrictions".
     def on_request_attributes_setter(attributes, **kwargs):
         if isinstance(attributes, str):
             attributes = attributes.split(",")
@@ -240,6 +242,7 @@ def register_config_parameters():
     # unset is meant to hold nothing back.
     config.register_config_parameter(name="ldap_on_request_attributes",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=on_request_attributes_setter,
                                     object_types=[
                                                 'site',
@@ -2766,6 +2769,12 @@ class LDAPServer(object):
         self.port = int(port)
         # save proctitle
         self.proctitle = setproctitle.getproctitle()
+        # The one run() sets comes too late for the signal handler
+        # below: a SIGTERM that arrives while this constructor is still
+        # reading the tree found no logger, and the AttributeError left
+        # the handler through whatever it interrupted -- so the worker
+        # reported a backend failure and then did not exit at all.
+        self.logger = config.logger
         # Set signal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)

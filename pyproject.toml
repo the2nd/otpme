@@ -188,6 +188,8 @@ otpme-pool = "otpme.bin.command:otpme_commands"
 otpme-device = "otpme.bin.command:otpme_commands"
 otpme-mount = "otpme.bin.command:otpme_commands"
 otpme-job = "otpme.bin.command:otpme_commands"
+otpme-deploy = "otpme.bin.command:otpme_commands"
+otpme-inventory = "otpme.bin.command:otpme_commands"
 otpme-pinentry = "otpme.bin.command:otpme_commands"
 otpme-backup = "otpme.bin.command:otpme_commands"
 otpme-get-authorized-keys = "otpme.bin.command:otpme_commands"
@@ -196,6 +198,7 @@ otpme-install-manpages = "otpme.bin.install_manpages:main"
 local-backup = "otpme.bin.backup_cli:main"
 otpme-yk-piv = "otpme.bin.yk_piv:main"
 otpme-hpke = "otpme.bin.hpke:main"
+otpme-confd-job = "otpme.bin.confd_job:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "otpme.__version__"}

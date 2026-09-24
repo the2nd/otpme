@@ -61,6 +61,15 @@ read_value_acls = {
                                     "scopes",
                                     "dynamic_groups",
                                 ],
+                    # The other direction: not what this role holds,
+                    # but who holds this role.
+                    "find"      : [
+                                    "accessgroups",
+                                    "groups",
+                                    "clients",
+                                    "shares",
+                                    "scopes",
+                                ],
             }
 
 write_value_acls = {
@@ -379,10 +388,10 @@ commands = {
                     },
                 },
             },
-    'list_shares'   : {
+    'find_shares'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'list_shares',
+                    'method'            : 'find_shares',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'recursive'],
                     'dargs'             : {'return_type':'path', 'recursive':False, 'skip_disabled':False},
@@ -464,6 +473,36 @@ commands = {
                     },
                 },
             },
+    'find_accessgroups'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'accessgroup', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_groups'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'group', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_clients'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'client', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'list_policies'   : {
             'default'    : {
                 'exists'    : {
@@ -482,10 +521,12 @@ commands = {
                     },
                 },
             },
-    'list_scopes'   : {
+    'find_scopes'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_scopes',
+                    # get_scopes() walks past the ACL check that sits on
+                    # find_scopes().
+                    'method'            : 'find_scopes',
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
@@ -681,18 +722,18 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
-            'default'    : {
-                'exists'    : {
-                    'method'            : 'get_acls',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'list_acls'   : {
             'default'    : {
                 'exists'    : {
                     'method'            : 'list_acls',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_acls'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_acls',
                     'job_type'          : 'process',
                     },
                 },
@@ -870,6 +911,18 @@ def register_backend():
                 'client',
                 ]
         return backend.rebuild_object_index("role", objects, after)
+    # Register index attributes.
+    # Which host or device is in this role. Asked where the login is
+    # answered, which is a node of the site that owns the role.
+    role_types = ["role"]
+    config.register_index_attribute("host", sync=[],
+                                    object_types=role_types)
+    config.register_index_attribute("device", sync=[],
+                                    object_types=role_types)
+    # Whose home directory a host of this role syncs. The group and the
+    # host name sync users as well, see there.
+    config.register_index_attribute("sync_user", sync=["node:untrusted"],
+                                    object_types=role_types)
     # Register object to config.
     config.register_object_type(object_type="role",
                             tree_object=True,
@@ -929,6 +982,7 @@ def register_config_parameters():
         return result
     config.register_config_parameter(name="device_token_types",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=device_token_types_setter,
                                     object_types=['role'])
     # How many device tokens one user may hold in this role. Unset means
@@ -1139,6 +1193,9 @@ class Role(OTPmeObject):
                             "ROLES",
                             "SYNC_USERS",
                             "DYNAMIC_GROUPS",
+                            # Read by authorize_token() on every login,
+                            # which on a host is answered by the host.
+                            "TOKEN_LOGIN_INTERFACES",
                             ]
                         },
 
@@ -1150,6 +1207,7 @@ class Role(OTPmeObject):
                             "ROLES",
                             "SYNC_USERS",
                             "DYNAMIC_GROUPS",
+                            "TOKEN_LOGIN_INTERFACES",
                             "CONFIG_PARAMS:device_token_suffix",
                             # Read where the token is written, which for
                             # a user of another site is their home site.
@@ -1261,6 +1319,17 @@ class Role(OTPmeObject):
             result = "\n".join(result)
         return callback.ok(result)
 
+    def _get_dynamic_group_roles(self):
+        """ Roles whose dynamic groups apply to this role.
+
+        For a role recursive alone means downward: which roles are in
+        this one. Dynamic groups need the other direction, what a member
+        of this role gets, so the roles above it.
+        """
+        return self.get_roles(parent=True,
+                            recursive=True,
+                            return_type="instance")
+
     @cli.check_rapi_opts()
     def get_access_groups(
         self,
@@ -1284,13 +1353,6 @@ class Role(OTPmeObject):
 
     @cli.check_rapi_opts()
     @check_acls(acls=['view:groups'])
-    def list_groups(
-        self,
-        **kwargs,
-        ):
-        """ Return list with all group names this role is in. """
-        return self.get_groups(**kwargs)
-
     def get_groups(
         self,
         return_type: str="uuid",
@@ -1312,8 +1374,8 @@ class Role(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    @check_acls(acls=['view:shares'])
-    def list_shares(
+    @check_acls(acls=['find:shares'])
+    def find_shares(
         self,
         **kwargs,
         ):
@@ -1357,6 +1419,13 @@ class Role(OTPmeObject):
                 result.append(share.oid.full_oid)
             elif return_type == "uuid":
                 result.append(share.uuid)
+            elif return_type == "name":
+                # Same rule as every other list command: the site only
+                # when it is not ours.
+                if share.site != config.site:
+                    result.append(f"{share.site}/{share.name}")
+                else:
+                    result.append(share.name)
             elif return_type == "path":
                 result.append(share.share_id)
             else:
@@ -1432,6 +1501,7 @@ class Role(OTPmeObject):
                 share_id = share.share_id
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
+                shares[share_id]['realm'] = share.realm
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['limit_hosts'] = share.limit_by_hosts
@@ -1516,6 +1586,7 @@ class Role(OTPmeObject):
                 share_id = share.share_id
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
+                shares[share_id]['realm'] = share.realm
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['encrypted'] = share.encrypted
@@ -1600,6 +1671,7 @@ class Role(OTPmeObject):
                 share_id = share.share_id
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
+                shares[share_id]['realm'] = share.realm
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['limit_hosts'] = share.limit_by_hosts
@@ -1725,6 +1797,7 @@ class Role(OTPmeObject):
                 shares = {}
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
+                shares[share_id]['realm'] = share.realm
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['encrypted'] = share.encrypted
@@ -1958,6 +2031,7 @@ class Role(OTPmeObject):
                 shares = {}
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
+                shares[share_id]['realm'] = share.realm
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['limit_hosts'] = share.limit_by_hosts
@@ -2060,6 +2134,7 @@ class Role(OTPmeObject):
                 shares = {}
                 shares[share_id] = {}
                 shares[share_id]['name'] = share.name
+                shares[share_id]['realm'] = share.realm
                 shares[share_id]['site'] = share.site
                 shares[share_id]['nodes'] = node_fqdns
                 shares[share_id]['limit_hosts'] = share.limit_by_hosts

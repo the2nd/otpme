@@ -206,7 +206,8 @@ class DefaultrolesPolicy(Policy):
                     'user'   : ['post_add_user'],
                     }
 
-        self.object_types = ['realm', 'site', 'unit']
+        # No realm, see Realm.add_policy().
+        self.object_types = ['site', 'unit']
 
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {

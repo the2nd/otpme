@@ -85,7 +85,7 @@ def get_gpg_version():
     version = line1.split()[2]
     return version
 
-def init_gpg(user_email, user_real_name, passphrase):
+def init_gpg(user_email, user_real_name, passphrase, key_len=3072):
     """ Init GPG. """
     import gnupg
     sys.stdout.write(_("Generating GPG keys...\n"))
@@ -96,12 +96,13 @@ def init_gpg(user_email, user_real_name, passphrase):
 
     gpg = gnupg.GPG(gnupghome=gpg_dir, verbose=False)
     gpg.encoding = 'utf-8'
-    # Master key must be at least as strong as the auth/encrypt subkeys
-    # it certifies -- a 1024-bit master key (~80 bit security, NIST
-    # sunset 2013) defeats the 4096-bit subkeys, because anyone who can
-    # factor the master can forge new auth subkeys at will.
+    sub_key_algo = f"rsa{key_len}"
+    # Master key must be at least as strong as the subkeys it certifies
+    # -- a 1024-bit master key (~80 bit security, NIST sunset 2013)
+    # defeats a 3072-bit subkey, because anyone who can factor the
+    # master can forge new auth subkeys at will. So both get key_len.
     input_data = gpg.gen_key_input(key_type="RSA",
-                                key_length=4096,
+                                key_length=key_len,
                                 name_real=user_real_name,
                                 name_email=user_email,
                                 passphrase=passphrase)
@@ -109,18 +110,26 @@ def init_gpg(user_email, user_real_name, passphrase):
 
     auth_key = gpg.add_subkey(master_key=master_key.fingerprint,
                             master_passphrase=passphrase,
-                            algorithm='rsa4096',
+                            algorithm=sub_key_algo,
                             usage='auth',
                             expire='-')
 
     enc_key = gpg.add_subkey(master_key=master_key.fingerprint,
                             master_passphrase=passphrase,
-                            algorithm='rsa4096',
+                            algorithm=sub_key_algo,
                             usage='encrypt',
+                            expire='-')
+
+    # The GPG applet has three slots. Without a sign subkey the
+    # signature slot stays empty and the card cannot sign anything.
+    sign_key = gpg.add_subkey(master_key=master_key.fingerprint,
+                            master_passphrase=passphrase,
+                            algorithm=sub_key_algo,
+                            usage='sign',
                             expire='-')
     stop_agent()
 
-    return str(master_key), str(auth_key), str(enc_key)
+    return str(master_key), str(auth_key), str(enc_key), str(sign_key)
 
 
 def create_backup(backup_file, passphrase):
@@ -331,6 +340,35 @@ def get_sub_keygrip():
                     break
     return keygrip
 
+def get_sub_key_index(capability):
+    """ Get the position of the sub key with the given capability.
+
+    "gpg --edit-key" selects sub keys by position ("key 1"), so the
+    position has to be looked up. Returns None if no sub key carries
+    the capability. A backup written before the sign key was added has
+    no sign sub key, and moving the wrong key into the signature slot
+    would be worse than leaving it empty.
+    """
+    gpg_list_command = [ GPG_BIN, '--list-secret-keys', '--with-colons' ]
+    returncode, \
+    stdout, \
+    stderr, \
+    pid = system_command.run(command=gpg_list_command)
+    if returncode != 0:
+        raise Exception(str(stderr))
+    stdout = stdout.decode()
+    sub_key_pos = 0
+    for line in stdout.split("\n"):
+        fields = line.split(":")
+        if fields[0] != "ssb":
+            continue
+        sub_key_pos += 1
+        if len(fields) < 12:
+            continue
+        if capability in fields[11].lower():
+            return sub_key_pos
+    return None
+
 def get_ssh_keygrip():
     """ Get keygrip of sub key 1 (public) needed for sshcontrol file. """
     keygrip = None
@@ -381,14 +419,37 @@ def get_main_key_id():
             key_id = line.split("/")[1][0:8]
     return key_id
 
-def key_to_card(key_id, key_type, sc_admin_pin, gpg_passphrase, debug=False):
+# Card slot the GPG applet offers for each key type, and the
+# capability letter gpg prints for it in colon listings.
+card_slots = {
+                'sign'      : { 'slot' : '1', 'capability' : 's' },
+                'encrypt'   : { 'slot' : '2', 'capability' : 'e' },
+                'auth'      : { 'slot' : '3', 'capability' : 'a' },
+            }
+
+def key_to_card(key_id, key_type, sc_admin_pin, gpg_passphrase, debug=False,
+    missing_ok=False):
     """ Move GPG sub key to card. """
     from otpme.lib import multiprocessing
-    if key_type != "auth":
-        if key_type != "encrypt":
-            msg = _("Unknown key type: {key_type}")
-            msg = msg.format(key_type=key_type)
-            raise OTPmeException(msg)
+    try:
+        card_slot = card_slots[key_type]['slot']
+        capability = card_slots[key_type]['capability']
+    except KeyError:
+        msg = _("Unknown key type: {key_type}")
+        msg = msg.format(key_type=key_type)
+        raise OTPmeException(msg) from None
+
+    # Which sub key holds the capability depends on the order they were
+    # created in, and a restored backup may carry a different order than
+    # the one we create today.
+    sub_key_pos = get_sub_key_index(capability)
+    if sub_key_pos is None:
+        if missing_ok:
+            return False
+        msg = _("Found no sub key for key type: {key_type}")
+        msg = msg.format(key_type=key_type)
+        raise OTPmeException(msg)
+
     # Start thread to handover token admin PIN to gpg-agent via socket
     passphrases = [ gpg_passphrase, sc_admin_pin, sc_admin_pin ]
     pass_thread = multiprocessing.start_thread(name="keytocard", target=send_passphrases, target_args=("keytocard", passphrases))
@@ -406,17 +467,11 @@ def key_to_card(key_id, key_type, sc_admin_pin, gpg_passphrase, debug=False):
     child.expect(gpg_prompt, timeout=3)
     child.sendline('toggle')
     child.expect(gpg_prompt, timeout=3)
-    if key_type == "auth":
-        child.sendline('key 1')
-    if key_type == "encrypt":
-        child.sendline('key 2')
+    child.sendline(f'key {sub_key_pos}')
     child.expect(gpg_prompt, timeout=3)
     child.sendline('keytocard')
     child.expect('Your selection?', timeout=3)
-    if key_type == "auth":
-        child.sendline('3')
-    if key_type == "encrypt":
-        child.sendline('2')
+    child.sendline(card_slot)
 
     i = child.expect([gpg_prompt,
                     gpg_card_error,

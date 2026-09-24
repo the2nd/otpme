@@ -702,16 +702,6 @@ class AuthonactionPolicy(Policy):
             msg = msg.format(object_type=object_type)
             return callback.error(msg)
 
-        try:
-            valid_hooks = config.auth_on_action_hooks[object_type]
-        except Exception:
-            valid_hooks = []
-
-        if hook_name not in valid_hooks:
-            msg = _("Unknown hook for this object type: {hook_name}")
-            msg = msg.format(hook_name=hook_name)
-            return callback.error(msg)
-
         if object_type in self.hooks:
             if hook_name not in self.hooks[object_type]:
                 return callback.error(_("Hook not added for this object type."))

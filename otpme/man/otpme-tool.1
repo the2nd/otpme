@@ -90,6 +90,18 @@ Get time of last successful sync.
 .TP
 .B do_sync \fR[\fIoptions\fR] \fIsync_type\fR
 Do a manual hostd sync. Sync types: objects, token_counters, used_otps, nsscache, ssh_authorized_keys.
+.IP
+.B \-\-remove\-orphan\-objects
+also removes local objects of a type this host no longer syncs. A normal sync never names those objects, so nothing else takes them away. It runs only after a sync that finished and left no object behind.
+.TP
+.B force_sync \fIobject_id\fR
+Write an object again, whole. The search index, the ACLs and the LDIF data are built from the object itself instead of being updated step by step. Entries that were left over are removed this way. Use it when the index of an object does not match the object.
+.IP
+This also sets the last modified time of the object, so other nodes fetch it again. Hosts do not, because the data a host gets does not include that time.
+.IP
+It takes an object ID, so it works for every object. This includes the ones without a
+.B touch
+command, like a host inventory or a used OTP. You need to be admin.
 .SS Cryptographic Operations
 .TP
 .B sign \fR[\fB\-\-stdin\-pass\fR] \fIfile\fR \fIsign_file\fR
@@ -319,9 +331,6 @@ Do a complete resync.
 .B \-\-offline
 Sync offline token data.
 .TP
-.B \-\-no\-memory\-cache
-Do not cache objects in memory.
-.TP
 .B \-\-sync\-older\-objects
 Sync objects even if they are older than the local ones.
 .TP
@@ -336,7 +345,13 @@ Operate on a signer of the logged in user instead of a system-wide signer. Witho
 Do not pin signature keys. By default signer keys are pinned, which means only the exact key present at the time the signer was added is trusted. With \fB\-\-no\-pin\fR, any valid key of the signer object is accepted.
 .TP
 .B \-\-signer\-type \fITYPE\fR
-The type of scripts this signer is trusted for. Supported types: \fBtoken\fR, \fBkey_script\fR, \fBpush_script\fR, \fBauth_script\fR, \fBlogin_script\fR, \fBagent_script\fR.
+What this signer is trusted for. Supported types: \fBtoken\fR, \fBkey_script\fR, \fBpush_script\fR, \fBauth_script\fR, \fBlogin_script\fR, \fBagent_script\fR.
+.br
+Types for configuration jobs (see
+.BR otpme\-deploy (1)):
+\fBsw_mgmt\fR, \fBrepo_mgmt\fR, \fBsigner_mgmt\fR, \fBservice_mgmt\fR, \fBfile_mgmt\fR, \fBhost_mgmt\fR.
+A host only runs a job if it is signed by a signer of the job type.
+\fBfile_mgmt\fR, \fBsigner_mgmt\fR and \fBhost_mgmt\fR give full control over the host.
 .TP
 .B \-\-tag \fITAG\fR
 Add tag to signer (can be used multiple times).

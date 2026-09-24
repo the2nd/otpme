@@ -356,7 +356,7 @@ Directory for pidfiles and sockets (default: /var/run/otpme).
 Directory for logfiles (default: /var/log/otpme).
 .TP
 .B MOUNT_ROOT_DIR
-Mount root directory (default: /otpme).
+Mount root directory (default: /otpme). A share is mounted below it as \fIuser\fB/\fIrealm\fB/\fIsite\fB/\fIshare\fR.
 .TP
 .B SHARE_ROOT
 Overrides the \fBshare_root\fR config parameter.
@@ -479,9 +479,6 @@ Client certificate for syslog.
 .B SYSLOG_KEY
 Client key for syslog.
 .SH SYNCHRONIZATION
-.TP
-.B SYNC_MEM_CACHE
-Cache objects in memory while syncing.
 .TP
 .B SYNC_INTERVAL
 Interval in seconds between sync attempts with master node.

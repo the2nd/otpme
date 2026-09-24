@@ -491,12 +491,13 @@ def update_data(host_cert=None, host_key=None, ca_data=None,
         msg = msg.format(hostname=myhost.name)
         raise OTPmeException(msg)
 
-    if host_cert != myhost.cert:
-        update_ssl_files(host_cert=host_cert)
-
-    if not host_cert:
-        host_cert = myhost.cert
-        update_ssl_files(host_cert=host_cert)
+    # The certificate of this host is not taken from its own object.
+    # It is written when the host joins, and when it renews: the host
+    # builds the CSR with its private key, the CA signs it, and the new
+    # certificate comes back over dump_cert straight into the files (see
+    # CommandHandler.renew_cert()). So the object never has to hand it
+    # back, and a host is not given a copy of its own certificate it has
+    # no use for.
 
     myrealm = backend.get_object(object_type="realm", name=myhost.realm)
     if not myrealm:

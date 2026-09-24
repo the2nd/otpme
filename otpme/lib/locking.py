@@ -30,9 +30,32 @@ registered_lock_types = {
                         }
 
 def atfork():
-    """ Make sure we do not handle locks from parent process. """
+    """ Make sure we do not handle locks from parent process.
+
+    Forgetting them is not enough. A flock belongs to the open file
+    description, and fork() gives the child a descriptor onto the very
+    same one, so the lock stands until every descriptor that refers to
+    it is closed. A child that keeps the parent's descriptors open
+    therefore holds the parent's locks -- for as long as it lives, and
+    past the end of the parent. A sync worker left over from a run an
+    hour ago held the sync lock of its site that way, and the next
+    clusterd waited on it for good.
+
+    Closed, not unlocked: LOCK_UN on such a descriptor would release
+    the lock the parent is still working under.
+    """
     global current_thread_locks
     global current_thread_fds
+    for thread_id in list(current_thread_fds):
+        try:
+            thread_fds = dict(current_thread_fds[thread_id])
+        except KeyError:
+            continue
+        for x_fd in thread_fds.values():
+            try:
+                x_fd.close()
+            except Exception:
+                pass
     current_thread_fds.clear()
     current_thread_locks.clear()
 

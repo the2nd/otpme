@@ -26,8 +26,8 @@ from otpme.lib.exceptions import *
 class OTPmeJob(object):
     """ Class to run a OTPme job as thread. """
     def __init__(self, name, target_method, thread=True, process=False,
-        timeout=None, lock_timeout=30, lock_wait_timeout=0, client=None,
-        reload_objects_on_change=True, _caller="API", args=None):
+        timeout=None, lock_wait_timeout=0, client=None,
+        _caller="API", args=None):
         # Set our name.
         if args is None:
             args = {}
@@ -49,10 +49,8 @@ class OTPmeJob(object):
         self.start_time = None
         # Job timeout.
         self.timeout = timeout
-        # Lock parameters.
-        self.lock_timeout = lock_timeout
+        # How long to wait for an object another job has locked.
         self.lock_wait_timeout = lock_wait_timeout
-        self.reload_objects_on_change = reload_objects_on_change
         self.pid = None
         # Our proctitle. Used when started as process and for the
         # multiprocessing manager.
@@ -217,9 +215,7 @@ class OTPmeJob(object):
         # wait for an existing lock.
         try:
             self.target_method.object_lock
-            self.args['lock_timeout'] = self.lock_timeout
             self.args['lock_wait_timeout'] = self.lock_wait_timeout
-            self.args['lock_reload_on_change'] = self.reload_objects_on_change
         except Exception:
             pass
         try:

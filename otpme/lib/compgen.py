@@ -548,7 +548,7 @@ def show_compgen():
             show_acls = True
         if show_acls:
             command_handler = CommandHandler()
-            cmd_line = ["show_acls", acl_object]
+            cmd_line = ["list_acls", acl_object]
             object_acls = command_handler.handle_command(command=object_type,
                                                     command_line=cmd_line,
                                                     client_type="RAPI")

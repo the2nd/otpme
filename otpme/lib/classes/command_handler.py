@@ -43,6 +43,7 @@ from otpme.lib.help import get_help
 from otpme.lib.messages import message
 from otpme.lib.encoding.base import encode
 from otpme.lib.messages import error_message
+from otpme.lib.messages import colored_orange
 from otpme.lib.register import register_module
 from otpme.lib.debug import add_debug_decorators
 from otpme.lib.compression.base import get_uncompressed_size
@@ -876,6 +877,12 @@ class CommandHandler(object):
         if command == "trash":
             return self.handle_trash_command(command, subcommand, command_line)
 
+        if command == "deploy":
+            return self.handle_deploy_command(command, subcommand, command_line)
+
+        if command == "inventory":
+            return self.handle_inventory_command(command, subcommand, command_line)
+
         if command == "backup":
             return self.handle_backup_command(command, subcommand, command_line)
 
@@ -980,10 +987,10 @@ class CommandHandler(object):
                     raise OTPmeException(msg) from e
                 self.command_args = {'data' : data}
 
-        # Generating users certificate needs some local action (e.g.
-        # calling key script) which is done below.
-        if command == "user" and subcommand == "gen_cert":
-            return self.handle_user_gen_cert_command(command, subcommand)
+        # Generating the users certificate signing request needs some
+        # local action (e.g. calling key script) which is done below.
+        if command == "user" and subcommand == "gen_csr":
+            return self.handle_user_gen_csr_command(command, subcommand)
 
         # When adding a script we need to send the given script base64 encoded.
         if command == "script" and subcommand == "add":
@@ -1963,6 +1970,9 @@ class CommandHandler(object):
             cache.enable()
             return self.handle_do_sync_command(command, subcommand, command_line)
 
+        if subcommand == "force_sync":
+            return self.handle_force_sync_command(command_line)
+
         if subcommand == "add_signer" \
         or subcommand == "del_signer" \
         or subcommand == "show_signer" \
@@ -2275,6 +2285,45 @@ class CommandHandler(object):
         response = self.send_command(daemon="mgmtd",
                                 command=command,
                                 command_args=command_args)
+        return response
+
+    def handle_deploy_command(self, command, subcommand, command_line):
+        """ Handle deploy command: the configuration management of
+        hosts. The job is signed with the sign key of the user asking
+        for it, which is why this goes through the same callback as
+        signing an object. """
+        if config.use_api:
+            register_module('otpme.lib.deploy')
+            register_module('otpme.lib.multiprocessing')
+            cache.init()
+            cache.enable()
+            self.init(use_backend=True)
+
+        login_user = config.login_user
+        # Send command.
+        command_args = {}
+        response = self.send_command(daemon="mgmtd",
+                                command=command,
+                                command_args=command_args,
+                                username=login_user)
+        return response
+
+    def handle_inventory_command(self, command, subcommand, command_line):
+        """ Handle inventory command: the system and the packages of
+        hosts, as their confd reports them. """
+        if config.use_api:
+            register_module('otpme.lib.inventory')
+            cache.init()
+            cache.enable()
+            self.init(use_backend=True)
+
+        login_user = config.login_user
+        # Send command.
+        command_args = {}
+        response = self.send_command(daemon="mgmtd",
+                                command=command,
+                                command_args=command_args,
+                                username=login_user)
         return response
 
     def handle_get_realm_command(self):
@@ -3064,6 +3113,13 @@ class CommandHandler(object):
         object_id = command_line[0]
         return self.dump_object(object_id)
 
+    def handle_force_sync_command(self, command_line):
+        """ Handle force sync command. """
+        if len(command_line) < 1:
+            return self.get_help()
+        object_id = command_line[0]
+        return self.force_sync(object_id)
+
     def handle_logout_mschap_command(self, command_line):
         """ Handle gen logout MSCHAP command. """
         if len(command_line) < 2:
@@ -3435,10 +3491,6 @@ class CommandHandler(object):
         except Exception:
             resync = False
         try:
-            mem_cache = command_args['mem_cache']
-        except Exception:
-            mem_cache = True
-        try:
             offline = command_args['offline']
         except Exception:
             offline = False
@@ -3450,6 +3502,10 @@ class CommandHandler(object):
             sync_older_objects = command_args['sync_older_objects']
         except Exception:
             sync_older_objects = False
+        try:
+            remove_orphan_objects = command_args['remove_orphan_objects']
+        except Exception:
+            remove_orphan_objects = False
 
         # Init in API mode because hostd may not be running when
         # doing manual sync.
@@ -3457,8 +3513,6 @@ class CommandHandler(object):
         # Init otpme.
         #init_otpme(use_backend=True)
         self.init(use_backend=True)
-
-        config.sync_mem_cache = mem_cache
 
         sync_last_used = False
         host_type = config.host_data['type']
@@ -3471,6 +3525,7 @@ class CommandHandler(object):
                     offline=offline,
                     sync_last_used=sync_last_used,
                     sync_older_objects=sync_older_objects,
+                    remove_orphan_objects=remove_orphan_objects,
                     ignore_changed_objects=ignore_changed_objects)
         if sync_status is False:
             msg = "Sync failed."
@@ -3536,91 +3591,6 @@ class CommandHandler(object):
             'sign_key_type'         : sign_algo,
             'encrypt_key_type'      : encrypt_algo,
         }
-
-    def deploy_token(self, token_rel_path, token_type, no_token_write=False):
-        """ Deploy token. """
-        # Enable/disable SERIAL_API_VISIBLE flag.
-        if token_type == "yubikey-serial":
-            from otpme.lib.smartcard.yubikey.yubikey import Yubikey
-            # Try to find yubikey.
-            try:
-                yk = Yubikey()
-            except Exception as e:
-                msg = _("Error detecting yubikey: {e}")
-                msg = msg.format(e=e)
-                raise OTPmeException(msg) from e
-
-            try:
-                slot = local_command_args['slot']
-            except Exception:
-                # Set default slot=2 if we got no slot from user.
-                slot = 2
-                local_command_args['slot'] = slot
-
-            try:
-                show_serial = local_command_args['show_serial']
-            except Exception:
-                show_serial = False
-
-            if show_serial:
-                try:
-                    message(yk.get_serial())
-                except Exception as e:
-                    raise OTPmeException(str(e)) from e
-            else:
-                # Try to set flag to given slot.
-                try:
-                    yk.set_serial_visible(**local_command_args)
-                    msg = _("Flag successfully set for slot {slot}")
-                    msg = msg.format(slot=slot)
-                    message(msg)
-                except Exception as e:
-                    raise OTPmeException(str(e)) from e
-
-
-        # Handle deployment of OpenSSH token (token type ssh in OTPme)
-        if token_type == "openssh":
-            # Path to SSH private key.
-            try:
-                ssh_private_key = local_command_args['private_key']
-            except Exception:
-                ssh_private_key = None
-            if ssh_private_key:
-                if not os.path.exists(ssh_private_key):
-                    msg = _("No such file or directory: {ssh_private_key}")
-                    msg = msg.format(ssh_private_key=ssh_private_key)
-                    raise OTPmeException(msg)
-                try:
-                    fd = open(ssh_private_key, "r")
-                    ssh_private_key = fd.read()
-                except Exception as e:
-                    msg = _("Error reading private key from file: {e}")
-                    msg = msg.format(e=e)
-                    raise OTPmeException(msg) from e
-                finally:
-                    fd.close()
-            else:
-                from otpme.lib import ssh
-                ssh_private_key, ssh_public_key = ssh.gen_ssh_key_pair()
-
-            # Hash type used to derive private key encryption key from password.
-            if ssh_private_key:
-                try:
-                    password_hash_type = local_command_args['password_hash_type']
-                except Exception:
-                    password_hash_type = "PBKDF2"
-                deploy_args['password_hash_type'] = password_hash_type
-
-            # Without private key we cannot continue.
-            if not ssh_private_key:
-                raise OTPmeException(_("Cannot continue without private key."))
-
-            # Get passprhase to protect private key.
-            password = cli.get_password(min_len=3)
-            deploy_args['password'] = password
-
-            # Add SSH public key to deployment args.
-            deploy_args['private_key'] = ssh_private_key
 
     def add_users(self, user_list):
         """ Mass user adding. """
@@ -4226,7 +4196,7 @@ class CommandHandler(object):
         sync_older_objects=False, ignore_changed_objects=False, sync_last_used=False,
         skip_object_deletion=False, max_tries=config.hostd_sync_retry_count,
         realm=None, site=None, sync_cache_on_failure=True, socket_uri=None,
-        check_connected_site=True):
+        check_connected_site=True, remove_orphan_objects=False):
         """ Do a manual hostd sync. """
         from otpme.lib import nsscache
         from otpme.lib import protocols
@@ -4292,6 +4262,7 @@ class CommandHandler(object):
                                     sync_last_used=sync_last_used,
                                     sync_older_objects=sync_older_objects,
                                     skip_object_deletion=skip_object_deletion,
+                                    remove_orphan_objects=remove_orphan_objects,
                                     ignore_changed_objects=ignore_changed_objects)
         if sync_conn:
             sync_conn.close()
@@ -4779,6 +4750,18 @@ class CommandHandler(object):
         if status == False:
             raise OTPmeException(response)
 
+    def force_sync(self, object_id):
+        """ Write an object whole so a peer gets it again. """
+        self.init()
+        command = "tool"
+        subcommand = "force_sync"
+        command_args = {'object_id':object_id}
+        response = self.send_command(daemon="mgmtd",
+                                command=command,
+                                subcommand=subcommand,
+                                command_args=command_args)
+        return response
+
     def dump_index(self, object_id):
         """ Dump object index. """
         #init_otpme()
@@ -5207,13 +5190,43 @@ class CommandHandler(object):
             msg = f"Failed to delete signers file: {signers_file}: {e}"
             raise OTPmeException(msg) from e
 
-    def update_signer(self, signer_uuid, private=False, **kwargs):
-        """ Update signer. """
-        signer = self.get_signers(signer_uuid=signer_uuid,
+    def update_signer(self, signer_uuid=None, private=False,
+        signer_type=None, remove_gone=False, **kwargs):
+        """ Update signer. One by its UUID, or all of a signer type.
+
+        A user who left must not take their signatures with them. What
+        they signed is out there -- the key script of an offline token,
+        an agent script -- and still has to validate, so an update keeps
+        the signer and every key it pinned, whether the user was deleted
+        or only taken out of the role.
+
+        With <remove_gone> it does not: a signer whose user or role was
+        deleted is refused, and a role drops the members it does not
+        have anymore. That is how their keys are taken out once nothing
+        needs them.
+        """
+        if not signer_uuid and not signer_type:
+            msg = "Need <signer_uuid> or <signer_type>."
+            raise OTPmeException(msg)
+
+        result = self.get_signers(signer_uuid=signer_uuid,
+                                    signer_type=signer_type,
                                     private=private)
-        signer.load()
-        self.del_signer(signer.uuid, private=private)
-        self.save_signer(signer=signer, private=private)
+        if not result:
+            if signer_uuid:
+                msg = f"Unknown signer: {signer_uuid}"
+                raise OTPmeException(msg)
+            msg = f"No signers of type found: {signer_type}"
+            raise OTPmeException(msg)
+
+        signers = result
+        if signer_uuid:
+            signers = [result]
+
+        for signer in signers:
+            signer.load(keep_gone=not remove_gone)
+            self.del_signer(signer.uuid, private=private)
+            self.save_signer(signer=signer, private=private)
 
     def enable_signer(self, signer_uuid=None, private=False,
         signer_type=None, **kwargs):
@@ -5318,8 +5331,10 @@ class CommandHandler(object):
         signers = sorted(signers)
         return signers
 
-    def show_signer(self, signer_uuid=None, private=False, **kwargs):
-        """ Show signers. """
+    def show_signer(self, signer_uuid=None, private=False,
+        signer_type=None, **kwargs):
+        """ Show signers. One by its UUID, all of a type, or all. """
+        from termcolor import colored
         from otpme.lib.classes.signing import resolve_tags
         #init_otpme()
         self.init()
@@ -5350,7 +5365,14 @@ class CommandHandler(object):
         table.right_padding_width = 1
 
         signers = self.get_signers(signer_uuid=signer_uuid,
+                                    signer_type=signer_type,
                                     private=private)
+        if signer_uuid:
+            # One UUID answers with one signer, not with a list of them.
+            if not signers:
+                msg = f"Unknown signer: {signer_uuid}"
+                raise OTPmeException(msg)
+            signers = [signers]
         for x_signer in signers:
             current_row = []
 
@@ -5373,40 +5395,44 @@ class CommandHandler(object):
                 verify_token_opts = "yes"
             current_row.append(verify_token_opts)
 
-            # Get user/signer OID.
+            # Get user/signer OID. A deleted user still has a signer, so
+            # the OID cached in it is what names them: the UUID alone
+            # says nothing about who it was.
             signer_uuid = x_signer.object_uuid
             try:
                 signer_oid = stuff.resolve_uuid(signer_uuid)
-            except Exception as e:
-                msg = str(e)
-                print(msg)
-                continue
+            except Exception:
+                signer_oid = None
 
+            signer_status = x_signer.check_outdated()
             if not signer_oid:
-                current_row.append("Unknown")
-                current_row.append("N/A")
-                current_row.append("N/A")
-                table.add_row(current_row)
-                continue
+                signer_oid = x_signer.object_oid
+                signer_status = "deleted"
 
-            # FIXME: check if signer role/user does not exist anymore!!!!
-            # Check if signer itself is outdated.
-            signer_info = signer_oid
-            signer_outdated = x_signer.check_outdated()
-            if signer_outdated:
-                signer_info = f"{signer_oid} (Outdated)"
+            signer_info = str(signer_oid)
+            if signer_status == "deleted":
+                # There is no object to look the UUID up in anymore, so
+                # the cached OID is what says who this was.
+                signer_info = f"{signer_info} ({signer_uuid}) (deleted)"
+                signer_info = colored(signer_info, "red")
+            elif signer_status:
+                signer_info = f"{signer_info} ({signer_status})"
+                signer_info = colored_orange(signer_info)
             current_row.append(signer_info)
 
             # Check if signer keys are outdated.
             signers = []
             for x in x_signer.signers:
-                key_status = None
                 object_oid = x_signer.signers[x]['oid']
                 key_status = x_signer.check_outdated(uuid=x)
-                if key_status:
-                    signer_info = f"{object_oid} ({key_status})"
+                if not key_status:
+                    signers.append(object_oid)
+                    continue
+                signer_info = f"{object_oid} ({key_status})"
+                if key_status == "deleted":
+                    signer_info = colored(signer_info, "red")
                 else:
-                    signer_info = object_oid
+                    signer_info = colored_orange(signer_info)
                 signers.append(signer_info)
             signers = "\n".join(signers)
             current_row.append(signers)
@@ -6156,7 +6182,7 @@ class CommandHandler(object):
             msg = f"Error adding script: {e}\n"
             raise OTPmeException(msg) from e
 
-    def handle_user_gen_cert_command(self, command, subcommand):
+    def handle_user_gen_csr_command(self, command, subcommand):
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
@@ -6227,19 +6253,9 @@ class CommandHandler(object):
             msg = _("Key script returned no CSR.")
             raise OTPmeException(msg)
 
-        # FIXME: not implemented yet.
-        ## Get CSR from key script output
-        #cert_req = script_stdout
-
-        #common_name = object_identifier
-        #valid=3650
-
-        #country = "DE"
-        #state = "BE"
-        #locality = "Berlin"
-        #organization = "OTPme"
-        #email = "root@otpme.org"
-
+        # The request is handed to whoever asked for it. Signing it, and
+        # keeping the certificate that comes back, is not part of this
+        # command -- which is why it is called gen_csr.
         self.newline = False
         return script_stdout
 

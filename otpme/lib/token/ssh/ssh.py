@@ -506,7 +506,7 @@ class SshToken(Token):
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
-    def verify_acl(self, action: str):
+    def verify_acl(self, action: str, **kwargs):
         """ Verify ACLs required to allow <action>. """
         # Parent class cannot know the ACL to allow verification of signatures
         # e.g. "view:script" for script objects and "view_public_key" for SSH
@@ -522,8 +522,9 @@ class SshToken(Token):
             or self.verify_acl("view:ssh_public_key"):
                 return True
 
-        # Finally try to verify ACL via parent class method.
-        if self._verify_acl(action):
+        # Finally try to verify ACL via parent class method. The kwargs
+        # go only here: the ACLs above are other ones than the action.
+        if self._verify_acl(action, **kwargs):
             return True
 
         return  False
@@ -1023,6 +1024,7 @@ class SshToken(Token):
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
+        **kwargs,
         ):
         """ Deploy SSH token. """
         if not public_key and not private_key:

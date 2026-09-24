@@ -41,6 +41,28 @@ _CacheInfo = collections.namedtuple('CacheInfo', [
     'hits', 'misses', 'maxsize', 'currsize'
 ])
 
+def result_is_empty(result):
+    """ Whether a result says "nothing found".
+
+    A negative answer is not kept. None never was -- the cache stores a
+    result only if it "is not None", and reads a miss as None as well --
+    but the search functions do not say "nothing" with None. They say it
+    with an empty list (index_search() returns its result_list), and an
+    empty list went in and was handed back out, so an object another
+    process wrote after the miss stayed invisible here for good. That is
+    what a sync worker ran into: the user its token belongs to was
+    written by another worker, and this one went on reporting the parent
+    as missing.
+
+    Only containers count. A function answering False or 0 is answering,
+    not declining.
+    """
+    if result is None:
+        return True
+    if isinstance(result, (list, dict, tuple, set)):
+        return len(result) == 0
+    return False
+
 class Cache(object):
     """ Cache class. """
     def __init__(self, name, cache_type="lru", maxsize=256, ignore_args=None,
@@ -298,7 +320,7 @@ class Cache(object):
             if result is None:
                 result = func(*args, **kwargs)
 
-            if result is not None:
+            if not result_is_empty(result):
                 if cache_name is not None:
                     update_cache = True
                     if use_shared_cache:

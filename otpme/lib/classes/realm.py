@@ -540,10 +540,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -690,6 +690,20 @@ def register_dn():
 
 def register_config():
     """ Register config stuff. """
+    # Searched by the management interface only. Everywhere else these
+    # are read off the object -- hostd asks x.sync_enabled, the auth
+    # handler asks user_realm.auth_enabled. The site sets the latter two
+    # as well; they are registered here, once.
+    realm_sync = ["node:untrusted"]
+    realm_types = ["realm"]
+    config.register_index_attribute("alias", sync=realm_sync,
+                                    object_types=realm_types)
+    # A site carries both as well and registers them for itself, see
+    # site.py.
+    config.register_index_attribute("auth_enabled", sync=realm_sync,
+                                    object_types=realm_types)
+    config.register_index_attribute("sync_enabled", sync=realm_sync,
+                                    object_types=realm_types)
     # Base CAs that will be created for each realm/site and that cannot be deleted
     # or renamed.
     config.register_config_var("realm_ca", str, REALM_CA)
@@ -975,6 +989,38 @@ class Realm(OTPmeObject):
                         return False
         # Finally try to verify ACL via parent class method.
         return self._verify_acl(action, **kwargs)
+
+    def add_policy(
+        self,
+        policy_name: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add a policy to the realm. Auth on action, and nothing else.
+
+        A policy object lives in a site. A realm does not, so the one it
+        would carry is the policy of whichever site answered the search
+        first, and the admins of that site would then decide what the
+        whole realm enforces. Auth on action is the exception because
+        realm init adds it (see add_base_objects()): the realm has hooks
+        of its own, and somebody has to be asked before they run.
+
+        Nothing else was ever read from here. Policies are looked for on
+        the object, and run_policies() does not walk up to the realm.
+        """
+        # A realm sits in no site, so this searches all of them, like
+        # the search the parent method does.
+        policy_types = backend.search(object_type="policy",
+                                attribute="name",
+                                value=policy_name,
+                                realm=self.realm,
+                                return_attributes=['policy_type'])
+        # An unknown name is not ours to complain about: the parent says
+        # so in the same words it uses for every other object type.
+        if policy_types and "authonaction" not in policy_types:
+            msg = _("A realm takes no policy but auth on action.")
+            return callback.error(msg)
+        return super().add_policy(policy_name, callback=callback, **kwargs)
 
     @check_acls(['enable:auth'])
     @object_lock()

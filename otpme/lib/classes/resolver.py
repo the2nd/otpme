@@ -439,10 +439,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -536,6 +536,10 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("resolver", commands)
+    # A resolver runs on a node, which is also where it is looked up.
+    config.register_index_attribute("resolver_type",
+                                    sync=["node:untrusted"],
+                                    object_types=["resolver"])
     locking.register_lock_type(LOCK_TYPE, module=__file__)
     config.register_recursive_default_acl("site", "+resolver")
     config.register_default_acl("unit", "+resolver")
@@ -754,7 +758,7 @@ class Resolver(OTPmeObject):
         enabled = result[0]
         return enabled
 
-    def verify_acl(self, action: str):
+    def verify_acl(self, action: str, **kwargs):
         """ Verify ACLs required to allow <action>.
 
         The objects a resolver creates are trusted, which only holds as
@@ -766,7 +770,7 @@ class Resolver(OTPmeObject):
         if action.split(":")[0] not in get_read_acl_names():
             if config.auth_token and not config.auth_token.is_admin():
                 return False
-        return self._verify_acl(action)
+        return self._verify_acl(action, **kwargs)
 
     @check_acls(['enable:sync_units'])
     @object_lock()

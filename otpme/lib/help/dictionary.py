@@ -149,11 +149,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-dictionary show_acls {dict_name}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-dictionary list_acls {dict_name}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of dictionary'),
+                                    'cmd'                   : _('List ACLs set on this dictionary.'),
                                 },
                 },
 
@@ -271,7 +271,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-dictionary list_policies {dictionary}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

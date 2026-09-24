@@ -151,11 +151,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-policy show_acls {policy}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy list_acls {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of policy.'),
+                                    'cmd'                   : _('List ACLs set on this policy.'),
                                 },
                 },
 

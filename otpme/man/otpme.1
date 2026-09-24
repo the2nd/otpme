@@ -1,6 +1,11 @@
-.TH OTPME 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.TH OTPME 1 "2026-09-18" "OTPme 0.3.0a278" "OTPme Manual"
 .SH NAME
 otpme \- global options for OTPme management commands
+.SH SYNOPSIS
+.B otpme\-\fIname\fR
+[\fIglobal options\fR]
+.I command
+[\fIoptions\fR]
 .SH DESCRIPTION
 All OTPme management commands (otpme-user, otpme-token, otpme-client, etc.) share a common set of global options described here. For a conceptual overview of the OTPme system, see
 .BR otpme (7).
@@ -14,16 +19,22 @@ Connect to a specific realm.
 Connect to a specific site.
 .TP
 .B \-t \fItimeout\fR
-Connect timeout in seconds.
+How long to wait until the connection to the daemon is established, in seconds. Default: 5.
 .TP
 .B \-tt \fItimeout\fR
-Connection timeout in seconds.
+How long to wait when a request is sent and for its answer, in seconds. Default: 15.
+Use a higher value for commands that take long on the server.
+.TP
+.B \-\-reneg\-timeout \fItimeout\fR
+Only for \fBotpme\-agent\fR: how long the agent waits for an answer when it renews a login session, in seconds. Default: 30.
 .TP
 .B \-c \fIconfig_file\fR
 Use alternative config file.
 .TP
 .B \-\-no\-dns
 Do not resolve OTPme site address via DNS.
+This is the default, see \fBUSE_DNS\fR in
+.BR otpme.conf (5).
 .TP
 .B \-\-use\-dns
 Resolve OTPme site address via DNS.
@@ -33,16 +44,18 @@ Do not resolve OTPme login point via DNS.
 .TP
 .B \-\-login\-use\-dns
 Resolve OTPme login point via DNS.
+This is the default, see \fBLOGIN_USE_DNS\fR in
+.BR otpme.conf (5).
 .SS Authentication Options
 .TP
-.B \-\-use\-ssh\-agent \fR[\fIy|n\fR]
-Use ssh-agent for authentication.
+.B \-\-use\-ssh\-agent \fBy\fR|\fBn\fR
+Use ssh-agent for authentication (\fBy\fR) or not (\fBn\fR). The value is required.
 .TP
-.B \-\-use\-smartcard \fR[\fIy|n\fR]
-Use smartcard for authentication.
+.B \-\-use\-smartcard \fBy\fR|\fBn\fR
+Use a smartcard for authentication (\fBy\fR) or not (\fBn\fR). The value is required.
 .TP
 .B \-\-stdin\-pass
-Read passphrase from stdin.
+Read the password, OTP or PIN from stdin.
 .TP
 .B \-\-auth\-token \fItoken\fR
 Emulate login with given token in API mode.
@@ -50,25 +63,38 @@ Emulate login with given token in API mode.
 .B \-u \fIusername\fR
 User used for authentication (e.g. when joining the realm as an ordinary user rather than the local root).
 .TP
-.B \-\-impersonate\-token \fR[\fItoken\fR]
-Work as the given token. Needs admin permissions.
+.B \-\-impersonate\-token \fIuser\fB/\fItoken\fR
+Work as the given token, for example \fBalice/login\fR. Needs admin permissions.
+You can not impersonate your own token, the token of the realm admin, or a token or user in \fBsite_admin_blacklist\fR.
+Each use is written to the log and the audit log.
+Has no effect with \fB\-\-api\fR.
 .TP
 .B \-\-fetch\-scripts
 Fetch scripts from the server instead of using cached ones.
 .SS Communication Options
 .TP
 .B \-\-socket
-Use mgmtd socket.
+Send the command to mgmtd over its local Unix socket instead of the network.
+This only works on a node.
+No login is needed: mgmtd takes the name of the local system user and works as the OTPme user of the same name, with that user's default token.
+See also \fBUSE_MGMTD_SOCKET\fR in
+.BR otpme.conf (5).
 .TP
 .B \-\-api
-Use direct API calls instead of connecting to a daemon.
+Run the command in this process, directly on the local data, without a daemon and without a login.
+This only works on a node, normally as root.
+Use it with care while the OTPme daemons are running: changes can be lost or break things.
+OTPme prints a warning in this case.
 .SS General Options
 .TP
 .B \-\-type \fIobject_type\fR
-Object type to act on (e.g. token type).
+Object type to act on, for example the token type.
+It goes before the command, for example \fBotpme\-token \-\-type totp add alice/totp\fR.
 .TP
 .B \-f
-Do not ask any user questions.
+Do not ask any questions: every confirmation counts as answered with yes.
+This also applies to deleting objects and to signing:
+with \fB\-f\fR, data is signed without showing it to you first.
 .TP
 .B \-\-no\-pager
 Do not page command output through a pager (e.g. \fBless\fR) even when it exceeds the terminal size. See also \fBUSE_PAGER\fR in
@@ -78,7 +104,9 @@ Do not page command output through a pager (e.g. \fBless\fR) even when it exceed
 Add the given text as a custom entry to the object changelog written by this command. Only meaningful for commands that change an object.
 .TP
 .B \-\-print\-raw\-sign\-data
-Print raw data to sign instead of sign info.
+When you are asked to sign something (for example a job of
+.BR otpme\-deploy (1)),
+show the raw data that is signed instead of the short summary.
 .TP
 .B \-\-version
 Show version.
@@ -86,28 +114,39 @@ Show version.
 .B \-v
 Enable verbose mode.
 .SS Debug Options
+Debug options start with \fB\-d\fR, followed by one or more letters.
+\fB\-d\fR alone is not valid.
+Each letter selects a topic, a letter with a digit a sub topic (for example \fB\-dc\fR for object caching, \fB\-dc1\fR for cache flushing).
+You can combine topics in one option, for example \fB\-dcn\fR.
+Some topics have levels: repeat the letter to raise the level (\fB\-dee\fR, \fB\-dTT\fR).
+.PP
+Selecting a topic sets the log level to DEBUG, so its messages are shown.
+The options that change how OTPme runs (\fB\-dD\fR, \fB\-de\fR, \fB\-dE\fR, \fB\-dP\fR, \fB\-dt\fR) do not change the log level.
+.PP
+\fBGeneral\fR
 .TP
-.B \-d
-Enable debug mode. Multiple 'd' will increase debug level.
-.br
-A letter selects a topic, a letter with a digit a sub topic of it (e.g. \fB\-dc\fR for object caching, \fB\-dc1\fR for the cache flushing within it). Options can be combined (\fB\-dcn\fR), and repeating one raises its level (\fB\-dc1c1\fR).
-.br
-Asking for a topic sets the log level to DEBUG, so its messages are shown. The options that say how to run rather than what to log (\fB\-dD\fR, \fB\-de\fR, \fB\-dE\fR, \fB\-dP\fR, \fB\-dt\fR) do not.
+.B \-dd
+Enable debug output in general (log level DEBUG).
 .TP
-.B \-da
-Debug function cache adds.
+.B \-dD
+Do not go to background and log to stdout.
 .TP
-.B \-dA
-Enable debug of transactions.
+.B \-dt
+Add timestamps to debug output.
 .TP
-.B \-dA1
-Debug reading/writing transactions on disk.
+.B \-\-color\-logs
+Show log messages in color.
 .TP
-.B \-dA2
-Debug single transaction actions.
+.B \-de
+Print tracebacks.
 .TP
-.B \-db
-Print when objects are read from backend.
+.B \-dee
+Print tracebacks and raise exceptions instead of handling them.
+.TP
+.B \-dE
+Add exception info to warning, error, critical and fatal log messages (sets \fBLOG_EXC_INFO\fR for this run).
+.PP
+\fBCaches\fR
 .TP
 .B \-dc
 Print when objects are read from cache.
@@ -115,8 +154,16 @@ Print when objects are read from cache.
 .B \-dc1
 Print when caches are flushed.
 .TP
-.B \-df
-Debug forking and privilege dropping.
+.B \-da
+Print when entries are added to function caches.
+.TP
+.B \-dh
+Print function cache hits.
+.PP
+\fBBackend and files\fR
+.TP
+.B \-db
+Print when objects are read from the backend.
 .TP
 .B \-dr
 Print file reads.
@@ -124,41 +171,24 @@ Print file reads.
 .B \-dw
 Print file writes.
 .TP
-.B \-dC
-Enable debug logging for client messages.
+.B \-dA
+Debug transactions.
 .TP
-.B \-dC1
-Debug client side crypto (keys, DH, signatures).
+.B \-dA1
+Debug reading and writing of transactions on disk.
 .TP
-.B \-dD
-Do not go to background and log to stdout.
-.TP
-.B \-de
-Print tracebacks.
-.TP
-.B \-dee
-Raise debug exceptions.
-.TP
-.B \-dE
-Include exception info in warning/error/critical/fatal log records (sets LOG_EXC_INFO for this run).
-.TP
-.B \-dh
-Debug function cache hits.
-.TP
-.B \-dH
-Debug host authentication (certificates, challenges).
+.B \-dA2
+Debug each single transaction action.
+.PP
+\fBLocks\fR
 .TP
 .B \-dL
 Debug locks.
 .TP
 .B \-dL1
 Debug waiting for locks.
-.TP
-.B \-dm
-Print loading of OTPme modules.
-.TP
-.B \-dM
-Enable function/method call tracing.
+.PP
+\fBNetwork and protocols\fR
 .TP
 .B \-dn
 Debug connections (accept, connect, close).
@@ -166,96 +196,141 @@ Debug connections (accept, connect, close).
 .B \-dN
 Debug network packets.
 .TP
-.B \-do
-Debug policies.
-.TP
 .B \-dp
 Debug protocol handling (preauth, commands).
+.TP
+.B \-dC
+Debug client messages.
+.TP
+.B \-dC1
+Debug client side crypto (keys, DH, signatures).
+.TP
+.B \-dH
+Debug host authentication (certificates, challenges).
+.PP
+\fBCluster and sync\fR
 .TP
 .B \-ds
 Debug object sync.
 .TP
 .B \-dS
 Debug cluster communication.
+.PP
+\fBObjects\fR
+.TP
+.B \-do
+Debug policies.
 .TP
 .B \-dx
 Debug object extensions.
+.PP
+\fBProcesses and modules\fR
 .TP
-.B \-dt
-Enable timestamps in debug output.
+.B \-df
+Debug forking and dropping of privileges.
+.TP
+.B \-dm
+Print when OTPme modules are loaded.
+.PP
+\fBProfiling and timing\fR
+.TP
+.B \-dM
+Trace function and method calls.
 .TP
 .B \-dP
-Enable profiling via cProfile.
+Profile with cProfile.
 .TP
 .B \-dT
-Print warning if function/method call takes longer than \-\-debug\-timing\-limit.
+Print a warning if a function or method call takes longer than \fB\-\-debug\-timing\-limit\fR.
 .TP
 .B \-dTT
-Print timing result after method finishes.
+Print the timing result after each method finishes (instead of the warnings of \fB\-dT\fR).
 .TP
 .B \-dTTT
-Print warning each time method call gets slower.
-.TP
-.B \-\-color\-logs
-Use colored logs.
+Print a warning each time a method call gets slower (instead of the output of \fB\-dT\fR and \fB\-dTT\fR).
+.PP
+\fBFilters and limits\fR
 .TP
 .B \-\-log\-filter \fIdaemon1,daemon2\fR
-Only print log messages for the given daemons.
+Only show log messages of the given daemons, for example \fBmgmtd,syncd\fR.
 .TP
 .B \-\-debug\-daemons \fIdaemon1,daemon2\fR
-Enable debug stuff only for the given daemons.
+Only apply the debug options inside the given daemons.
+Commands you run from a shell are not affected.
 .TP
 .B \-\-debug\-users \fIuser1,user2\fR
-Enable debug stuff only for the given users.
+Only trace and time calls made for requests of the given users.
 .TP
-.B \-\-debug\-func\-names \fImethod1,method2\fR
-Enable timing for given functions only.
+.B \-\-debug\-func\-names \fIregex1,regex2\fR
+With \fB\-dT\fR: only time the functions and methods whose full name (\fImodule.class.method\fR) matches one of the regular expressions.
 .TP
-.B \-\-debug\-func\-start \fImethod1,method2\fR
-Start timing on method call.
+.B \-\-debug\-func\-start \fIregex1,regex2\fR
+With \fB\-dT\fR: start timing at the first call of a function or method that matches one of the regular expressions.
+From then on, all calls are timed.
 .TP
 .B \-\-debug\-func\-caches \fIcache1,cache2\fR
-Enable debug stuff only for the given function caches.
+With \fB\-da\fR or \fB\-dh\fR: only show the given function caches.
 .TP
 .B \-\-debug\-timing\-limit \fIseconds\fR
-Print warning if function/method call takes longer than given seconds.
+With \fB\-dT\fR: warn about calls that take longer than this. The timing results also only show functions whose total time is longer.
+Default: 0.2.
 .TP
-.B \-\-debug\-counter\-limit \fIcall_count\fR
-Print warning if function/method is called more than given count.
-.TP
-.B \-\-debug\-profile\-sort \fIcumtime|ncalls|tottime\fR
-Statistic output sorting.
+.B \-\-debug\-profile\-sort \fBcumtime\fR|\fBncalls\fR|\fBtottime\fR
+With \fB\-dP\fR: how the profile output is sorted. Default: \fBtottime\fR.
 .TP
 .B \-\-debug\-profile\-print\-callers \fIfunc1,func2\fR
-Print callers of the given functions in the cProfile output.
+With \fB\-dP\fR: also show who called the given functions.
 .SS Job Options
 .TP
-.B \-\-lock\-timeout \fIseconds\fR
-Lock timeout in seconds when starting jobs.
-.TP
 .B \-\-lock\-wait\-timeout \fIseconds\fR
-Lock wait timeout in seconds when starting jobs.
-.TP
-.B \-\-lock\-ignore\-changed\-objects
-Ignore if an object changed while waiting for lock.
+How long to wait for an object that another job has locked. Default: 0 (do not wait, fail at once).
 .TP
 .B \-\-job\-timeout \fIseconds\fR
-Job timeout.
+Stop the job on the server when it shows no activity for this long. Default: 60.
 .SS Advanced Options
 .TP
 .B \-\-enable\-typing
-Enable Python type checking.
+Check on every function call that the arguments have the types the code expects (Python type hints).
+This is for finding bugs and makes everything slower.
 .TP
 .B \-\-disable\-locking
-Disable locking in API mode (use with caution).
+Do not lock objects while changing them.
+This only has an effect with \fB\-\-api\fR, because normally mgmtd does the locking.
+Only use it when nothing else changes objects at the same time: changes can get lost.
+.SS Daemon Options
+These options are used when starting the daemons with \fBotpme\-controld\fR.
+.TP
+.B \-l \fIfile\fR
+Write the log to this file instead of stdout.
+.TP
+.B \-\-no\-index\-start
+Do not start and stop the index database with the daemons.
+.TP
+.B \-\-no\-cache\-start
+Do not start and stop the cache with the daemons.
+.TP
+.B \-\-cache\-flush
+Empty the cache when the daemons start.
+.TP
+.B \-\-ignore\-changed\-objects
+hostd syncs objects even if they change while syncing.
+.TP
+.B \-\-keep\-floating\-ip
+On the master node: do not remove the floating IP when the daemons stop.
 .SH SEE ALSO
 .BR otpme (7),
+.BR otpme.conf (5),
+.BR pam_otpme (8),
 .BR otpme-accessgroup (1),
+.BR otpme-backup (1),
 .BR otpme-ca (1),
 .BR otpme-client (1),
+.BR otpme-deploy (1),
+.BR otpme-device (1),
 .BR otpme-dictionary (1),
 .BR otpme-group (1),
 .BR otpme-host (1),
+.BR otpme-inventory (1),
 .BR otpme-node (1),
 .BR otpme-policy (1),
 .BR otpme-pool (1),
@@ -267,12 +342,14 @@ Disable locking in API mode (use with caution).
 .BR otpme-site (1),
 .BR otpme-token (1),
 .BR otpme-tool (1),
+.BR otpme-trash (1),
 .BR otpme-unit (1),
-.BR otpme-user (1)
+.BR otpme-user (1),
+.BR otpme-vlan (1)
 
 .SH AUTHOR
 the2nd <the2nd@otpme.org>
 .SH NOTE
 This manual page was created with AI assistance.
 .SH COPYRIGHT
-Copyright \(co 2014-2025 the2nd. License: GPLv3
+Copyright \(co 2014-2026 the2nd. License: GPLv3

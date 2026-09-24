@@ -68,6 +68,13 @@ read_value_acls = {
                                 "jotp_rejoin",
                                 "policies",
                                 "groups",
+                                # No "inventory" here: who may read the
+                                # packages and the hardware of a host is
+                                # said by the allow_inventory config
+                                # parameter, not by an ACL. A plain
+                                # "view" covers every "view:<value>",
+                                # and "view" is given out to have
+                                # somebody read a status.
                                 ],
             }
 
@@ -275,6 +282,51 @@ class OTPmeHost(OTPmeClientObject):
 
         return super()._get_object_config(object_config=_object_config)
 
+    # The system the host runs, as confd on the host reports it (see
+    # update_os()). Kept in the index only, like last_backup: it is
+    # searchable there ("which hosts still run debian-12"), and it is not
+    # something an admin configures. The packages are not here but in
+    # host_inventory: host objects are synced to every host.
+    def _get_index_value(self, key):
+        """ The one value of an index attribute, or None. """
+        values = self.get_index(key)
+        if not values:
+            return None
+        return values[0]
+
+    @property
+    def os(self):
+        """ The operating system of the host (e.g. Linux). """
+        return self._get_index_value("os")
+
+    @property
+    def os_version(self):
+        """ The name and version of the system (e.g. debian-13). """
+        return self._get_index_value("os_version")
+
+    @object_lock(full_lock=True)
+    def update_os(
+        self,
+        os_name: Union[str,None]=None,
+        os_version: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Take what confd on the host reports about its system.
+
+        Written without touching last_modified: nobody changed the host,
+        it only told us what it runs. When that was is in the host's
+        inventory (host_inventory). """
+        if os_name == self.os and os_version == self.os_version:
+            return callback.ok()
+        if os_name is not None:
+            self.update_index("os", os_name)
+        if os_version is not None:
+            self.update_index("os_version", os_version)
+        return self._write(update_last_modified=False,
+                            update_last_modified_by=False,
+                            callback=callback)
+
     @property
     def fqdn(self):
         """ Set instance variables. """
@@ -300,6 +352,16 @@ class OTPmeHost(OTPmeClientObject):
     def enabled(self, enabled: bool):
         self._enabled = enabled
 
+    def get_dynamic_groups(self, include_roles: bool=False, **kwargs):
+        """ Return list with all dynamic groups of this host.
+
+        The dynamic groups of a host go to every login on it. Taking
+        the groups of its roles along would hand them to users who are
+        in none of those roles, so a host gives its own and nothing
+        else.
+        """
+        return super().get_dynamic_groups(include_roles=include_roles, **kwargs)
+
     def get_sync_parameters(self, realm: str, site: str, peer_uuid: str):
         """ Get data to build sync list. """
         # Get peer.
@@ -318,14 +380,24 @@ class OTPmeHost(OTPmeClientObject):
         # Other sites should not sent us sites.
         own_host = backend.get_object(uuid=config.uuid)
         if peer.realm != own_host.realm or peer.site != own_host.site:
-            try:
-                sync_object_types.remove("site")
-            except ValueError:
-                pass
-            try:
-                sync_object_types.remove("data_revision")
-            except ValueError:
-                pass
+            # What another site keeps to itself. A client is
+            # authenticated against by the nodes of its own site, so
+            # holding one here means holding a copy nothing reads and
+            # fetching it again whenever it changes.
+            #
+            # An access group is not such a thing, although it looks
+            # like one: a node is asked for a JWT for a group of
+            # another site and looks that group up by its own site name
+            # (AuthP1.gen_jwt()), so the groups of every site have to
+            # be here. Only a host gets by with the one group it reads,
+            # see Host.get_sync_parameters().
+            for x_type in ("site",
+                        "data_revision",
+                        "client"):
+                try:
+                    sync_object_types.remove(x_type)
+                except ValueError:
+                    pass
         valid_object_types = list(sync_object_types)
         result = backend.search(object_type="site",
                                 realm=realm,
@@ -446,6 +518,15 @@ class OTPmeHost(OTPmeClientObject):
             # Get token.
             token = backend.get_object(object_type="token",
                                         uuid=token_uuid)
+            # A deleted token can stay referenced by a role, an access
+            # group or the host itself until somebody runs
+            # remove_orphans. One of those must not cost the host every
+            # key it was going to get.
+            if not token:
+                log_msg = _("Ignoring orphan token: {token_uuid}", log=True)[1]
+                log_msg = log_msg.format(token_uuid=token_uuid)
+                logger.warning(log_msg)
+                continue
             # Get user from token owner.
             user = backend.get_object(object_type="user",
                                     uuid=token.owner_uuid)
@@ -1469,6 +1550,20 @@ class OTPmeHost(OTPmeClientObject):
             if not join_token:
                 join_token = self.join_token_cache
         lines.append(f'JOIN_TOKEN="{join_token}"')
+        lines.append(f'OS="{self.os or ""}"')
+        lines.append(f'OS_VERSION="{self.os_version or ""}"')
+        # The packages are kept on the nodes of the host's site only.
+        packages = ""
+        last_inventory_update = ""
+        if self.site == config.site and self.realm == config.realm:
+            from otpme.lib.classes.data_objects.host_inventory import get_host_inventory
+            inventory = get_host_inventory(self.uuid)
+            if inventory:
+                packages = len(inventory.packages)
+                if inventory.last_inventory_update:
+                    last_inventory_update = datetime.datetime.fromtimestamp(inventory.last_inventory_update)
+        lines.append(f'PACKAGES="{packages}"')
+        lines.append(f'LAST_INVENTORY_UPDATE="{last_inventory_update}"')
         return super().show_config(config_lines=lines,
                                     callback=callback, **kwargs)
 

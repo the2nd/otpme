@@ -27,8 +27,8 @@ cmd_help = {
                 },
 
     'deploy' : {
-                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] [-s <slot>] [token]'),
-                    'cmd'   :   '-n :no_token_write=True: -s :slot: -r :replace=True: -d :debug=True: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] [-n] [-s <slot>] {token}'),
+                    'cmd'   :   '-n :no_token_write=True: -s :slot: -r :replace=True: -d :debug=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Write HMAC-SHA1 config to given yubikey slot.'),
                                     '-s <slot>'             : _('Write new config to given slot.'),

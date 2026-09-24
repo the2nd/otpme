@@ -109,13 +109,34 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
     for ag_uuid in group_order:
         row = []
         ag_name = group_data[ag_uuid]['name']
-        max_fail = group_data[ag_uuid]['max_fail'][0]
-        max_sessions = group_data[ag_uuid]['max_sessions'][0]
-        max_fail_reset = group_data[ag_uuid]['max_fail_reset'][0]
-        session_timeout = group_data[ag_uuid]['session_timeout'][0]
-        timeout_pass_on = group_data[ag_uuid]['timeout_pass_on'][0]
-        sessions_enabled = group_data[ag_uuid]['sessions_enabled'][0]
-        unused_session_timeout = group_data[ag_uuid]['unused_session_timeout'][0]
+        try:
+            max_fail = group_data[ag_uuid]['max_fail'][0]
+        except Exception:
+            max_fail = 0
+        try:
+            max_sessions = group_data[ag_uuid]['max_sessions'][0]
+        except Exception:
+            max_sessions = 0
+        try:
+            max_fail_reset = group_data[ag_uuid]['max_fail_reset'][0]
+        except Exception:
+            max_fail_reset = 0
+        try:
+            session_timeout = group_data[ag_uuid]['session_timeout'][0]
+        except Exception:
+            session_timeout = 0
+        try:
+            timeout_pass_on = group_data[ag_uuid]['timeout_pass_on'][0]
+        except Exception:
+            timeout_pass_on = False
+        try:
+            sessions_enabled = group_data[ag_uuid]['sessions_enabled'][0]
+        except Exception:
+            sessions_enabled = False
+        try:
+            unused_session_timeout = group_data[ag_uuid]['unused_session_timeout'][0]
+        except Exception:
+            unused_session_timeout = 0
         try:
             sotp_signing = group_data[ag_uuid]['sotp_signing'][0]
         except Exception:

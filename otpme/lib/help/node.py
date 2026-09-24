@@ -220,11 +220,11 @@ cmd_help = {
                                 },
                 },
 
-     'show_acls'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node show_acls {node}'),
+     'list_acls'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-node list_acls {node}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : _('Show ACLs of node'),
+                                    'cmd'                   : _('List ACLs set on this node.'),
                                 },
                 },
 
@@ -351,7 +351,7 @@ cmd_help = {
 
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-node list_policies {node}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
@@ -390,6 +390,28 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('List dynamic groups of node.'),
+                                },
+                },
+    'find_shares'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-node find_shares [--return-type <return_type>] {node}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find shares this node is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
+                                },
+                },
+    'find_pools'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-node find_pools [--return-type <return_type>] {node}'),
+                    'cmd'   :   '--return-type :return_type: <|object|>',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : _('Find pools this node is assigned to.'),
+                                    '--return-type'         : _('Attribute to return.'),
                                 },
                 },
     'dump_cert'   : {

@@ -1494,7 +1494,7 @@ def resolve_uuid(object_uuid, object_type=None, object_types=None):
     return object_id
 
 def resolve_oid(object_id):
-    """ Resolve UUID to OID. """
+    """ Resolve OID to UUID. """
     from otpme.lib import config
     from otpme.lib import backend
     from otpme.lib import connections
@@ -1556,7 +1556,7 @@ def get_agent_vars(string):
         if line.startswith("SSH_AUTH_SOCK="):
             ssh_auth_sock = re.sub('^SSH_AUTH_SOCK=([^;]*);.*', r'\1', line)
         if line.startswith("SSH_AGENT_PID="):
-            ssh_agent_pid = re.sub('^SSH_AGENT_PID=([^;]*);.*', r'\1', line)
+            ssh_agent_pid = re.sub('^SSH_AGENT_PID=([^;]*)[;]*.*', r'\1', line)
         if line.startswith("GPG_AGENT_INFO="):
             gpg_agent_info = re.sub('^GPG_AGENT_INFO=([^;]*);.*', r'\1', line)
         if line.startswith("SSH_AGENT_NAME="):
@@ -2570,6 +2570,7 @@ def get_user_shares(auth_token, host_uuid):
             share_id = share.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = share.name
+            shares[share_id]['realm'] = share.realm
             shares[share_id]['site'] = share.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['encrypted'] = share.encrypted

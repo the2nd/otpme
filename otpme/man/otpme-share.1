@@ -9,7 +9,7 @@ otpme-share \- manage OTPme file shares
 .B otpme-share
 manages file shares in the OTPme system. A share provides access to a directory tree and can optionally be encrypted.
 .PP
-Shares support two types of scripts: An \fBadd script\fR (default: add_share.sh) is automatically executed when a share is created to set up the share directory structure. A \fBmount script\fR (default: mount_share.sh) can be configured to run each time a user mounts the share. Scripts are executed as the OTPme system user and group. The default scripts for new shares can be configured via the \fBdefault_share_add_script\fR and \fBdefault_share_mount_script\fR config parameters at site or unit level.
+Shares support two types of scripts: An \fBadd script\fR (default: add_share.sh) is automatically executed when a share is created to set up the share directory structure. A \fBmount script\fR (default: mount_share.sh) can be configured to run each time a user mounts the share. Scripts are run by scriptd as \fBROOT_SCRIPT_USER\fR and \fBROOT_SCRIPT_GROUP\fR (\fBnobody\fR and \fBnogroup\fR by default, see \fBotpme.conf\fR(5)), never as root and never as the OTPme user. A script that has to mount something or write outside its own directories therefore needs \fBsudo\fR for these commands. The default scripts for new shares can be configured via the \fBdefault_share_add_script\fR and \fBdefault_share_mount_script\fR config parameters at site or unit level.
 .SH HOME SHARES
 A normal share hands out its root directory to everybody. A \fBhome share\fR hands out \fIshare_root\fB/\fIhome_dir\fR instead, so every user gets their own directory and sees nothing else. The directory is created on the first mount, owned by the user and by default with mode 0700 (see \fBhome_share_permissions\fR).
 .PP
@@ -316,15 +316,33 @@ Remove a node from the share.
 .B list_nodes \fR[\fB\-\-return\-type\fR \fITYPE\fR] \fIshare\fR
 List nodes assigned to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
 .SS Policy Management
+A \fIpolicy\fR is the name of a policy, not a path.
+It is looked for in the site of the share.
+Which policies there are, and what each of them does, is in
+.BR otpme\-policy (1).
+.PP
+Attaching and detaching ask before they change anything; the global option \fB\-f\fR skips the question.
 .TP
 .B add_policy \fIshare\fR \fIpolicy\fR
 Attach a policy to the share.
+.br
+A policy has a list of object types it is for; one that does not name \fBshare\fR is refused.
+So is a second policy of a type that allows only one per object.
+.br
+Needs the ACL \fBassign:policy\fR.
 .TP
 .B remove_policy \fIshare\fR \fIpolicy\fR
 Remove a policy from the share.
+.br
+Needs the ACL \fBremove:policy\fR, and that one verbatim: a plain \fBremove\fR does not cover it.
+Detaching a policy takes away what it enforces, so it must not be cheaper than attaching one.
 .TP
 .B list_policies \fR[\fB\-\-return\-type\fR \fITYPE\fR] [\fB\-\-policy\-types\fR \fIt1,t2\fR] \fIshare\fR
-List policies attached to the share. Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+List the policies attached to the share.
+Use \fB\-\-return\-type\fR to select the attribute returned (\fBname\fR, \fBread_oid\fR, \fBfull_oid\fR, \fBuuid\fR).
+Use \fB\-\-policy\-types\fR to list only policies of the given types; these are policy types, not policy names.
+.br
+Needs the ACL \fBview:policies\fR.
 .SS ACL Management
 .TP
 .B add_acl \fIshare\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
@@ -333,7 +351,7 @@ Add an access control entry.
 .B del_acl \fIshare\fR \fIacl\fR
 Remove an access control entry.
 .TP
-.B show_acls \fIshare\fR
+.B list_acls \fIshare\fR
 Display all ACLs for the share.
 .TP
 .B enable_acl_inheritance \fIshare\fR
@@ -342,18 +360,37 @@ Enable ACL inheritance from parent objects.
 .B disable_acl_inheritance \fIshare\fR
 Disable ACL inheritance.
 .SS Object Changelog
+Every change to the object writes an entry: who made it, when, and what was done.
+A change can carry a comment of its own, through the global option \fB\-\-changelog\fR.
+.PP
+An \fIentry_id\fR is the number the listing shows in front of an entry, counted from 0.
+.PP
+Only the comment of an entry can be changed or removed.
+What was done and by whom stays as it is.
+.PP
+A command that changes something asks first; the global option \fB\-f\fR skips the question.
 .TP
 .B changelog \fIshare\fR
-Show the object's changelog (chronological list of changes with author, timestamp and optional custom text passed via \fB\-\-changelog\fR).
+Show the changelog of the share.
+Needs the ACL \fBview:changelog\fR.
 .TP
-.B edit_changelog \fIshare\fR \fIchangelog_id\fR
-Open the given changelog entry in the editor named by \fBEDITOR\fR to edit its custom text.
+.B edit_changelog \fIshare\fR \fIentry_id\fR \fIcomment\fR
+Set the comment of that entry, or replace the one it has.
+Needs the ACL \fBedit:changelog\fR.
 .TP
-.B del_changelog \fIshare\fR \fIchangelog_id\fR
-Remove a single entry from the object's changelog.
+.B del_changelog \fIshare\fR \fIentry_id\fR
+Remove the comment of that entry.
+The entry itself stays, and an entry without a comment is refused.
+Needs the ACL \fBedit:changelog\fR.
 .TP
 .B clear_changelog \fIshare\fR
-Clear the object's entire changelog.
+Remove every entry of the changelog.
+.br
+This needs more than the ACL \fBclear:changelog\fR: the config parameter
+.B allow_changelog_clearing
+has to allow it (see \fBotpme\fR(7)).
+It is true by default, but where no value is found at all, clearing is refused.
+OTPme asks the token you are signed in with first, then the object.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIshare\fR

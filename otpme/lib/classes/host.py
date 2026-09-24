@@ -21,6 +21,7 @@ from otpme.lib.changelog import object_changelog
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.register import register_module
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.device import OTPmeDevice
 from otpme.lib.classes.otpme_host import OTPmeHost
@@ -52,11 +53,21 @@ write_acls =  [
 read_value_acls = {
                 "view"      : [
                                 "mac",
+                                "roles",
+                                "tokens",
                                 "sync_users",
                                 "sync_groups",
                                 "dynamic_groups",
                                 "accessgroups",
                                 "auto_disable",
+                            ],
+                # The other direction: not what this host holds, but
+                # who holds this host.
+                "find"      : [
+                                "roles",
+                                "groups",
+                                "accessgroups",
+                                "shares",
                             ],
             }
 
@@ -592,6 +603,46 @@ commands = {
                     },
                 },
             },
+    'find_roles'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'role', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_groups'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'group', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_accessgroups'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'accessgroup', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'find_shares'   : {
+            'default'    : {
+                'exists'    : {
+                    'method'            : 'find_objects',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'object_type':'share', 'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'list_policies'   : {
             'default'    : {
                 'exists'    : {
@@ -800,10 +851,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -929,7 +980,41 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("host", commands)
-    config.register_index_attribute("mac_address")
+    # The configuration management of a host: its jobs and what came of
+    # them. Pulled in here because the objects belong to hosts and this
+    # module is registered early enough for the index to learn their
+    # object types.
+    register_module("otpme.lib.classes.data_objects.conf_job")
+    register_module("otpme.lib.classes.data_objects.conf_result")
+    register_module("otpme.lib.classes.data_objects.host_inventory")
+    # Looked up when a device or a host is recognised by its address,
+    # which happens where the login is answered. Written by
+    # OTPmeDevice.change_mac(), which a device runs as well, see
+    # device.py.
+    config.register_index_attribute("mac_address", sync=["node:untrusted"],
+                                    object_types=["host"])
+    host_types = ["host"]
+    # Shown by the management interface, searched by nothing else.
+    config.register_index_attribute("sync_group", sync=["node:untrusted"],
+                                    object_types=host_types)
+    # A host is told whether it may log in every user or only the ones
+    # it holds tokens for, about itself (HOST_SELF_SYNC_FIELDS). The
+    # client and the node carry it too, see there.
+    config.register_index_attribute("logins_limited", sync=True,
+                                    object_types=host_types)
+    # Whose home directory this host syncs. The role and the group name
+    # sync users as well, see there.
+    config.register_index_attribute("sync_user", sync=["node:untrusted"],
+                                    object_types=host_types)
+    # The system a host (or node) runs, as its confd reports it. The
+    # packages are not here but in host_inventory, see there why.
+    # Reported to, and acted on by, the site the host belongs to.
+    # Written by OTPmeHost.update_os(), which a node runs as well, see
+    # node.py.
+    config.register_index_attribute("os", sync=[],
+                                    object_types=["host"])
+    config.register_index_attribute("os_version", sync=[],
+                                    object_types=["host"])
     config.register_recursive_default_acl("site", "+host")
     config.register_default_acl("unit", "+host")
     config.register_recursive_default_acl("unit", "+host")
@@ -1120,6 +1205,8 @@ class Host(OTPmeHost, OTPmeDevice):
                             "JOIN_TOKEN_CACHE",
                             "DYNAMIC_GROUPS",
                             "CONFIG_PARAMS:backupd_max_conn",
+                            "CONFIG_PARAMS:socket_backlog",
+                            "CONFIG_PARAMS:max_decompressed_size",
                             ],
                         'sso_host'  : [
                                 "CONFIG_PARAMS:httpd_workers",
@@ -1194,6 +1281,25 @@ class Host(OTPmeHost, OTPmeDevice):
         token_uuids = []
         include_uuids = {}
         checksum_only_types = []
+        # The one access group a host reads: authorize_token() asks the
+        # REALM group of our own site which login interfaces a token may
+        # use. It is named here instead of registered as an object type,
+        # so the host gets that group and not all of them, and gets it
+        # again whenever it changes.
+        if realm == self.realm and site == self.site:
+            realm_ag_uuids = backend.search(object_type="accessgroup",
+                                            attribute="name",
+                                            value=config.realm_access_group,
+                                            return_type="uuid",
+                                            realm=self.realm,
+                                            site=self.site)
+            if realm_ag_uuids:
+                include_uuids['accessgroup'] = list(realm_ag_uuids)
+                # Named objects arrive outside object_types, and the
+                # receiving side drops a type it does not know.
+                valid_object_types = sync_params['valid_object_types']
+                if "accessgroup" not in valid_object_types:
+                    valid_object_types.append("accessgroup")
         # Sync token/users by login token: only the ones that can log in
         # here. With logins limited those assigned to the host (directly
         # or via roles), otherwise those of the REALM accessgroup. Without

@@ -2520,15 +2520,35 @@ class EncryptedFS(OTPmeFS):
                 raise
             return self.removexattr(path, name, use_diriv_cache=False)
 
-def get_mount_point(username, share_site, share_name):
+def get_share_realm(share_data):
+    """ The realm a share belongs to, as the server named it.
+
+    A server that does not name it yet leaves only one realm it can be:
+    ours. Keeps a session that was made before the realm was part of
+    the mount path mountable and unmountable. """
+    try:
+        share_realm = share_data['realm']
+    except (TypeError, KeyError):
+        share_realm = None
+    if not share_realm:
+        share_realm = config.realm
+    return share_realm
+
+def get_mount_point(username, share_realm, share_site, share_name):
+    """ Where a share is mounted.
+
+    The realm is part of the path: two realms may well have a site of
+    the same name, and their shares would otherwise want the same
+    directory. """
     mount_point = os.path.join(config.mount_root_dir,
                                 username,
+                                share_realm,
                                 share_site,
                                 share_name)
     return mount_point
 
-def prepare_mount_point(username, share_site, share):
-    mount_point = get_mount_point(username, share_site, share)
+def prepare_mount_point(username, share_realm, share_site, share):
+    mount_point = get_mount_point(username, share_realm, share_site, share)
     if stuff.is_mounted(mount_point):
         msg = _("Already mounted: {mount_point}")
         msg = msg.format(mount_point=mount_point)
@@ -2555,26 +2575,39 @@ def prepare_mount_point(username, share_site, share):
         filetools.set_fs_ownership(path=path, user=username, group=True)
     return mount_point
 
-def remove_mount_dirs(mountpoints):
+def remove_mount_dir(mount_dir):
+    """ Remove one directory a mount left behind.
+
+    An empty one: another share of the same site, or another site of the
+    same realm, may still be mounted below it, and that one keeps its
+    way there. """
     logger = config.logger
-    user_dir = None
+    if not os.path.exists(mount_dir):
+        return
+    try:
+        if os.listdir(mount_dir):
+            return
+    except OSError as e:
+        log_msg = _("Failed to read mountpoint dir: {mount_dir}: {error}", log=True)[1]
+        log_msg = log_msg.format(mount_dir=mount_dir, error=e)
+        logger.warning(log_msg)
+        return
+    try:
+        os.rmdir(mount_dir)
+    except Exception as e:
+        log_msg = _("Failed to rmdir mountpoint dir: {mount_dir}: {error}", log=True)[1]
+        log_msg = log_msg.format(mount_dir=mount_dir, error=e)
+        logger.warning(log_msg)
+
+def remove_mount_dirs(mountpoints):
+    """ Remove what is left of a mount: the directory of its site, of
+    its realm, and of the user, in that order. """
     for mount_point in mountpoints:
         site_dir = os.path.dirname(mount_point)
-        if os.path.exists(site_dir):
-            try:
-                os.rmdir(site_dir)
-            except Exception as e:
-                log_msg = _("Failed to rmdir mountpoint dir: {site_dir}: {error}", log=True)[1]
-                log_msg = log_msg.format(site_dir=site_dir, error=e)
-                logger.warning(log_msg)
-        user_dir = os.path.dirname(site_dir)
-    if user_dir and os.path.exists(user_dir):
-        try:
-            os.rmdir(user_dir)
-        except Exception as e:
-            log_msg = _("Failed to rmdir user mountpoint dir: {user_dir}: {error}", log=True)[1]
-            log_msg = log_msg.format(user_dir=user_dir, error=e)
-            logger.warning(log_msg)
+        realm_dir = os.path.dirname(site_dir)
+        user_dir = os.path.dirname(realm_dir)
+        for x_dir in (site_dir, realm_dir, user_dir):
+            remove_mount_dir(x_dir)
 
 def mount_share_proc(share, share_site, mount, nodes, encrypted, sotp_signing, **kwargs):
     logger = config.logger

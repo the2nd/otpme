@@ -512,10 +512,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -786,10 +786,14 @@ class Unit(OTPmeObject):
                     'host'  : {
                         'trusted'  : [
                             "EXTENSIONS",
-                            "EXTENSION_ATTRIBUTES",
+                            # Only the LDIF is built from them, and a
+                            # host has no LDIF, see _base_sync_fields.
+                            #"EXTENSION_ATTRIBUTES",
                             "OBJECT_CLASSES",
                             "ou",
                             "CONFIG_PARAMS:backupd_max_conn",
+                            "CONFIG_PARAMS:socket_backlog",
+                            "CONFIG_PARAMS:max_decompressed_size",
                             ],
                         'sso_host'  : [
                                 "CONFIG_PARAMS:httpd_workers",

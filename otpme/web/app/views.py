@@ -2011,11 +2011,20 @@ def _show_login_button(parameter):
     a different parameter (sso_allow_fido2 / sso_allow_tiqr), decided
     ssod-side once the user is known. Defaults to showing the button:
     an unreadable site object should not silently remove a way in.
+
+    Fail-open like the sso_allow_* resolvers in auth1: a site created
+    before the parameter existed has no value for it, and the cascade
+    comes back None. Only an explicit False hides the button -- the
+    registered default is True, and an upgrade must not take a way in
+    off the login mask.
     """
     try:
         site = backend.get_object(object_type="site", uuid=config.site_uuid)
         if site is not None:
-            return bool(site.get_config_parameter(parameter))
+            value = site.get_config_parameter(parameter)
+            if value is None:
+                return True
+            return bool(value)
     except Exception as e:
         log_msg = _("{parameter} lookup failed: {error}", log=True)[1]
         log_msg = log_msg.format(parameter=parameter, error=e)

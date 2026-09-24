@@ -242,53 +242,36 @@ class ObjectConfig(object):
         self.encrypted_config['SYNC_CHECKSUM'] = new_sync_checksum
         self.decrypted_config['SYNC_CHECKSUM'] = new_sync_checksum
 
-    def update_checksums(self, force=False):
-        """ Update object config checksum. """
-        if not force:
-            if not self.modified_attributes:
-                if not self.deleted_attributes:
-                    return
+    def get_checksum_data(self):
+        """ The config as a checksum is taken over it.
 
-        # Get copy of object config.
-        temp_oc = stuff.copy_object(self.decrypted_config)
+        Without the bookkeeping a checksum must not depend on, and
+        without any checksum at all: one checksum never covers another,
+        or the two would chase each other.
 
-        # Remove old checksum before generating new one.
-        try:
-            temp_oc.pop('CHECKSUM')
-        except Exception:
-            pass
-        # Remove sync checksum before generating new checksum.
-        try:
-            temp_oc.pop('SYNC_CHECKSUM')
-        except Exception:
-            pass
-        # Remove modified attributes before generating new checksum.
-        try:
-            temp_oc.pop('MODIFIED_ATTRIBUTES')
-        except Exception:
-            pass
-        # Remove deleted attributes before generating new checksum.
-        try:
-            temp_oc.pop('DELETED_ATTRIBUTES')
-        except Exception:
-            pass
-        # Remove incremental stuff before generating new checksum.
-        try:
-            temp_oc.pop('INCREMENT_IDS')
-        except Exception:
-            pass
-        try:
-            temp_oc.pop('INCREMENTAL_UPDATES')
-        except Exception:
-            pass
-        try:
-            temp_oc.pop('INCREMENTAL_CHECKSUM')
-        except Exception:
-            pass
-        try:
-            temp_oc.pop('INDEX_JOURNAL')
-        except Exception:
-            pass
+        Used for the checksum of the whole object and, one reduced copy
+        at a time, for the checksum of each view of it (see
+        OTPmeObject.update_sync_checksums()), so both are taken over
+        the same thing.
+        """
+        checksum_data = stuff.copy_object(self.decrypted_config)
+
+        volatile_attributes = [
+                            'CHECKSUM',
+                            'SYNC_CHECKSUM',
+                            'SYNC_CHECKSUMS',
+                            'MODIFIED_ATTRIBUTES',
+                            'DELETED_ATTRIBUTES',
+                            'INCREMENT_IDS',
+                            'INCREMENTAL_UPDATES',
+                            'INCREMENTAL_CHECKSUM',
+                            'INDEX_JOURNAL',
+                            ]
+        for attribute in volatile_attributes:
+            try:
+                checksum_data.pop(attribute)
+            except KeyError:
+                pass
 
         # Add object salt. This salt is added to each object config to make
         # brute force attacks against the checksum harder on hosts/nodes where
@@ -298,32 +281,62 @@ class ObjectConfig(object):
             self.salt = stuff.gen_secret(len=32)
 
         # Set salt to temp object config.
-        temp_oc['SALT'] = self.salt
+        checksum_data['SALT'] = self.salt
+
+        return checksum_data
+
+    def is_authoritative(self):
+        """ Whether this host decides what this object is.
+
+        Only the site that owns an object says what its checksums are.
+        Everywhere else the object is a copy, and a reduced one at that:
+        recomputing a checksum there would give a different answer than
+        the one the owner gave, and every peer would go downloading.
+        """
+        if config.realm_init:
+            return True
+        if config.site_init:
+            return True
+        if config.host_data['type'] != "node":
+            return False
+        if self.object_id.site == config.site:
+            return True
+        # A realm and a site have no site of their own, so they are
+        # answered for by the master node of the realm.
+        if self.object_id.object_type == "realm":
+            if self.object_id.name == config.realm:
+                if config.realm_master_node:
+                    return True
+        if self.object_id.object_type == "site":
+            if config.realm_master_node:
+                return True
+        return False
+
+    def gen_checksum(self, checksum_data):
+        """ The checksum of a config, or of a reduced copy of one.
+
+        Here and nowhere else, so the checksum of a view and the one of
+        the whole object are built by the same code down to the JSON
+        module they are serialized with.
+        """
+        checksum = json.dumps(checksum_data, sort_keys=True)
+        return stuff.gen_sha512(checksum)
+
+    def update_checksums(self, force=False):
+        """ Update object config checksum. """
+        if not force:
+            if not self.modified_attributes:
+                if not self.deleted_attributes:
+                    return
+
+        temp_oc = self.get_checksum_data()
 
         # Gen new checksum.
-        object_checksum = json.dumps(temp_oc, sort_keys=True)
-        object_checksum = stuff.gen_sha512(object_checksum)
+        object_checksum = self.gen_checksum(temp_oc)
         # Add checksum.
         self.checksum = object_checksum
 
-        handle_sync_checksum = False
-        if not config.realm_init:
-            if self.object_id.site == config.site:
-                if config.host_data['type'] == "node":
-                    handle_sync_checksum = True
-            if self.object_id.object_type == "realm":
-                if self.object_id.name == config.realm:
-                    if config.host_data['type'] == "node":
-                        if config.realm_master_node:
-                            handle_sync_checksum = True
-            if self.object_id.object_type == "site":
-                if config.host_data['type'] == "node":
-                    if config.realm_master_node:
-                        handle_sync_checksum = True
-        if config.realm_init:
-            handle_sync_checksum = True
-        if config.site_init:
-            handle_sync_checksum = True
+        handle_sync_checksum = self.is_authoritative()
 
         # Set sync checksum.
         if handle_sync_checksum:

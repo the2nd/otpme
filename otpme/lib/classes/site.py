@@ -244,6 +244,7 @@ commands = {
                                             'site_key_len',
                                             'site_valid',
                                             'no_dicts',
+                                            'trusted_sites',
                                             ],
                     'job_type'          : 'process',
                     },
@@ -265,6 +266,7 @@ commands = {
                                             'site_key_len',
                                             'site_valid',
                                             'no_dicts',
+                                            'trusted_sites',
                                         ],
                     'job_type'          : 'process',
                     },
@@ -964,10 +966,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -1131,9 +1133,42 @@ def register_dn():
 
 def register_config():
     """ Register config stuff. """
-    config.register_index_attribute("backup_enabled")
+    site_types = ["site"]
+    # Whether this site backs itself up, which only it acts on.
+    config.register_index_attribute("backup_enabled", sync=[],
+                                    object_types=site_types)
+    # Searched by the management interface only. What a host needs of a
+    # site -- the FQDN it connects to -- it reads off the object, not
+    # out of the index (connections.get(), OTPmeHost.join()).
+    site_sync = ["node:untrusted"]
+    # A realm carries both as well and registers them for itself, see
+    # realm.py.
+    config.register_index_attribute("auth_enabled", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("sync_enabled", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("auth_fqdn", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("mgmt_fqdn", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("sso_fqdn", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("sso_host", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("sub", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("trusted_site", sync=site_sync,
+                                    object_types=site_types)
+    config.register_index_attribute("oidc_enabled", sync=site_sync,
+                                    object_types=site_types)
+    # Where the site is reached. Everyone that talks to it needs it, so
+    # it is part of every view. client.py registers the attribute for a
+    # client of its own, which is read on the site that owns the client
+    # and nowhere else.
+    config.register_index_attribute("address", sync=True,
+                                    object_types=site_types)
     config.register_config_var("default_site_validity", int, 5475)
-    config.register_config_var("default_site_key_len", int, 2048)
+    config.register_config_var("default_site_key_len", int, 3072)
     # Register SSO base client and accessgroup.
     config.register_config_var("sso_client_name", str, SSO_CLIENT_NAME)
     config.register_config_var("sso_access_group", str, SSO_ACCESSGROUP)
@@ -1160,7 +1195,7 @@ def register_config():
         from otpme.lib.encoding.base import encode
         key_len = config_object.get_config_parameter("private_key_backup_key_len")
         if key_len is None:
-            key_len = 2048
+            key_len = 4096
         key_name = f"{config_object.type}-{config_object.name}-{config_object.uuid}"
         public_key = callback.gen_backup_rsa_key(key_name=key_name,
                                                 key_len=key_len)
@@ -1188,7 +1223,7 @@ def register_config():
                                     object_types=object_types)
 
     def key_len_setter(key_len, callback=JobCallback, **kwargs):
-        if key_len not in [2048, 4096]:
+        if key_len not in [2048, 3072, 4096]:
             msg = _("Invalid key length")
             raise ValueError(msg)
         return key_len
@@ -1196,7 +1231,7 @@ def register_config():
     config.register_config_parameter(name="private_key_backup_key_len",
                                     ctype=int,
                                     setter=key_len_setter,
-                                    default_value=2048,
+                                    default_value=4096,
                                     object_types=object_types)
     # Object types our config parameter is valid for.
     object_types = [
@@ -1398,13 +1433,19 @@ def register_config():
     config.register_config_parameter(name="backup_report_mail_to",
                                     ctype=str,
                                     object_types=object_types)
-    # From: address for SSO-token recovery mails. Resolved on the
-    # user's home site (the site that emits the mail via smtp_relay_*).
+    # From: address for SSO-token recovery mails. Read from the user
+    # (user -> unit -> site), so it gets its own object types instead of
+    # the ones of the backup parameters above -- on a node or a share
+    # nothing would ever read it.
     # No default -- mails are only sent when the admin has explicitly
     # configured a sender, otherwise recovery is silently disabled.
     config.register_config_parameter(name="sso_recovery_mail_from",
                                     ctype=str,
-                                    object_types=object_types)
+                                    object_types=[
+                                                'site',
+                                                'unit',
+                                                'user',
+                                                ])
 
     # Shared outbound SMTP relay used by every OTPme notification feature
     # (backup reports, password reset, future alerts). Feature-specific
@@ -1633,6 +1674,17 @@ def register_config():
                                     setter=sso_rate_limit_setter,
                                     default_value="20/minute",
                                     object_types=['site'])
+    # Per-IP cap on the routes the tiqr apps call (/tiqr/metadata,
+    # /tiqr/enroll, /tiqr/auth). The auth route takes a six digit
+    # response and there is no per-challenge attempt counter -- one
+    # would mean unauthenticated writes of cluster-visible state -- so
+    # this limit and tiqr_challenge_expiry are what bound guessing.
+    # See the note at _RATE_LIMIT_TIQR in otpme/web/app/tiqr/views.py.
+    config.register_config_parameter(name="sso_rate_limit_tiqr",
+                                    ctype=str,
+                                    setter=sso_rate_limit_setter,
+                                    default_value="30/minute",
+                                    object_types=['site'])
     # Hosts accessgroup.
     def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
         """ Resolve the hosts accessgroup to its UUID.
@@ -1715,12 +1767,19 @@ def register_config():
     def get_role_object(role):
         """ Resolve a role path to the role object.
 
-        Roles are often kept on the master site only, so the role may be
-        given as "<site>/<name>". Role names are uniq per site only.
+        Only a role of our own site. The host or device is added to the
+        role object itself, and an object of another site is only synced
+        in here -- the change would be gone with the next sync. The site
+        may still be written ("<site>/<name>"), because that is how a
+        role is shown, but it has to be ours.
         """
         if "/" in role:
             role_site = role.split("/")[0]
             role_name = role.split("/")[1]
+            if role_site != config.site:
+                msg = _("Role must be a role of this site: {role}")
+                msg = msg.format(role=role)
+                raise ValueError(msg)
         else:
             role_site = config.site
             role_name = role
@@ -1896,6 +1955,7 @@ def register_config():
         return _sites
     config.register_config_parameter(name="vlan_trusts",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=vlan_trusts_setter,
                                     getter=vlan_trusts_getter,
                                     object_types=['site'])
@@ -1995,6 +2055,7 @@ def register_config():
         return vlan_paths
     config.register_config_parameter(name="vlans",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=vlans_setter,
                                     getter=vlans_getter,
                                     object_types=object_types)
@@ -2051,6 +2112,7 @@ def register_config():
         return roles_paths
     config.register_config_parameter(name="device_token_roles",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=device_token_roles_setter,
                                     getter=device_token_roles_getter,
                                     object_types=object_types)
@@ -2139,6 +2201,7 @@ def register_config():
         return _sites
     config.register_config_parameter(name="device_token_roles_trusts",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=trust_device_tokens_roles_setter,
                                     getter=trust_device_tokens_roles_getter,
                                     object_types=['site'])
@@ -2178,6 +2241,7 @@ def register_config():
         return _sites
     config.register_config_parameter(name="admin_access_trusts",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=admin_access_trusts_setter,
                                     getter=admin_access_trusts_getter,
                                     object_types=['site'])
@@ -2217,6 +2281,7 @@ def register_config():
         return _sites
     config.register_config_parameter(name="sso_allow_passkeys_trusts",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
                                     object_types=['site'])
@@ -2227,6 +2292,7 @@ def register_config():
     # so the same setter/getter.
     config.register_config_parameter(name="sso_allow_tiqr_trusts",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
                                     object_types=['site'])
@@ -2234,6 +2300,7 @@ def register_config():
     # new TOTP token to the browser, so it sees both.
     config.register_config_parameter(name="sso_allow_totp_trusts",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=sso_allow_passkeys_trusts_setter,
                                     getter=sso_allow_passkeys_trusts_getter,
                                     object_types=['site'])
@@ -2246,9 +2313,9 @@ def register_config():
     # and managing them on the settings page, the same span
     # sso_allow_passkeys covers for passkeys.
     #
-    # Unlike that one this resolves fail-open: FIDO2 login has always
-    # worked and is not something an upgrade may switch off. Turning it
-    # off is a deliberate act, and it takes the deploy page with it --
+    # Resolves fail-open like that one: FIDO2 login has always worked
+    # and is not something an upgrade may switch off. Turning it off is
+    # a deliberate act, and it takes the deploy page with it --
     # sso_allow_fido2_deploy only narrows what this allows.
     config.register_config_parameter(name="sso_allow_fido2",
                                     ctype=bool,
@@ -2356,6 +2423,7 @@ def register_config():
         return _attributes
     config.register_config_parameter(name="sso_profile_attributes",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=profile_attributes_setter,
                                     default_value=SSO_PROFILE_ATTRIBUTES,
                                     object_types=object_types)
@@ -2364,6 +2432,7 @@ def register_config():
     # them out -- something to change has to be seen first.
     config.register_config_parameter(name="sso_allow_profile_edit",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=profile_attributes_setter,
                                     object_types=object_types)
     # Let a user re-deploy their login token from the settings page, i.e.
@@ -2508,6 +2577,7 @@ def register_config():
         return object_ids
     config.register_config_parameter(name="site_admin_blacklist",
                                     ctype=list,
+                                    warn_if_exists=True,
                                     setter=site_admin_blacklist_setter,
                                     getter=site_admin_blacklist_getter,
                                     object_types=['site'])
@@ -2737,8 +2807,8 @@ def register_config():
                                     ctype=bool,
                                     default_value=False,
                                     object_types=['site', 'unit', 'user', 'token'])
-    # Site-level UI toggle for the "Lost access to your SSO token?"
-    # link on the SSO portal's /login page. Independent of the
+    # Site-level UI toggle for the "Can't sign in?" link on the SSO
+    # portal's /login page. Independent of the
     # per-user ``allow_sso_account_recovery`` cascade: this one hides
     # the entry point (link + /recover route) entirely at site scope,
     # so admins on a site that opts out of recovery altogether do not
@@ -2921,9 +2991,11 @@ def register_config():
                                     object_types=['site', 'unit', 'node', 'host'])
     # Hard cap on a single request's size AFTER decompression (zip-bomb
     # guard). Accepts human sizes (e.g. "256M", "1G"); stored as bytes.
-    # Each daemon reads this from its own host object at startup
+    # Each daemon reads this from its own node or host object at startup
     # (inherited from unit/site) into config.max_decompressed_size, which
-    # the decompress path enforces.
+    # the decompress path enforces. Synced to the hosts with the site,
+    # unit and host objects -- without that a host never sees a value
+    # and the built-in default stays.
     def max_decompressed_size_setter(value, **kwargs):
         from otpme.lib.humanize import units
         value = units.size2int(value)
@@ -2946,7 +3018,12 @@ def register_config():
     # daemon worker accepts them. This is what carries a login storm
     # while every worker is busy: a client whose connection waits in
     # there notices nothing but the delay. Read by each daemon from its
-    # own host object at startup, before it starts listening.
+    # own node or host object at startup, before it starts listening.
+    #
+    # Settable on a host because a backup host listens (backupd), and
+    # so does hostd on its unix socket. It is synced to the hosts with
+    # the site, unit and host objects -- without that the cascade ends
+    # at the host and the built-in default stays.
     def socket_backlog_setter(value, **kwargs):
         value = int(value)
         if value < 1:
@@ -2957,7 +3034,7 @@ def register_config():
                                     ctype=int,
                                     default_value=1024,
                                     setter=socket_backlog_setter,
-                                    object_types=['site', 'unit', 'node'])
+                                    object_types=['site', 'unit', 'node', 'host'])
     # Allow otpme-tool who from hosts.
     config.register_config_parameter(name="allow_who_from_hosts",
                                     ctype=bool,
@@ -3242,6 +3319,8 @@ class Site(OTPmeObject):
                             "SSO_FQDN",
                             "ou",
                             "CONFIG_PARAMS:backupd_max_conn",
+                            "CONFIG_PARAMS:socket_backlog",
+                            "CONFIG_PARAMS:max_decompressed_size",
                             ],
                         'sso_host'  : [
                                 "SSO_KEY",
@@ -3257,6 +3336,7 @@ class Site(OTPmeObject):
                                 "CONFIG_PARAMS:sso_rate_limit_login_user",
                                 "CONFIG_PARAMS:sso_rate_limit_settings",
                                 "CONFIG_PARAMS:sso_rate_limit_recover",
+                                "CONFIG_PARAMS:sso_rate_limit_tiqr",
                                 "CONFIG_PARAMS:sso_show_recover_link",
                                 # Read locally when the login mask is
                                 # rendered, like sso_show_recover_link
@@ -5160,9 +5240,15 @@ class Site(OTPmeObject):
             msg = _("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
 
+        # Of this site and no other. A host syncs with a node of its own
+        # site, so one from elsewhere would never get what being an SSO
+        # host is about -- see get_sync_audience(), which has no view
+        # for a host of another site at all.
         result = backend.search(object_type="host",
                                 attribute="name",
                                 value=host_name,
+                                realm=self.realm,
+                                site=self.name,
                                 return_type="uuid")
         if not result:
             msg = _("Unknown host: {host_name}")
@@ -5555,6 +5641,7 @@ class Site(OTPmeObject):
         dictionaries: Union[List,None]=None,
         no_dicts: bool=False,
         id_ranges: Union[str,None]=None,
+        trusted_sites: Union[List,None]=None,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -5583,6 +5670,30 @@ class Site(OTPmeObject):
                     msg = _("Only master site can add new sites: {master_site}")
                     msg = msg.format(master_site=master_site.name)
                     return callback.error(msg)
+
+        # The sites the new one trusts. add_trust() does the adding, but
+        # only once the site object exists -- the names are checked here
+        # so a misspelled one does not leave half a site behind.
+        trusted_sites_checked = []
+        if trusted_sites:
+            for x_site in trusted_sites:
+                x_site = x_site.strip()
+                if not x_site:
+                    continue
+                if x_site in trusted_sites_checked:
+                    continue
+                if x_site == self.name:
+                    msg = _("Cannot add trust relationship with site itself.")
+                    return callback.error(msg)
+                result = backend.search(object_type="site",
+                                        attribute="name",
+                                        value=x_site,
+                                        return_type="uuid")
+                if not result:
+                    msg = _("Unknown site: {site_name}")
+                    msg = msg.format(site_name=x_site)
+                    return callback.error(msg)
+                trusted_sites_checked.append(x_site)
 
         if not site_address:
             # Try to get site address from DNS.
@@ -5664,6 +5775,18 @@ class Site(OTPmeObject):
                         verbose_level=verbose_level,
                         callback=callback,
                         **kwargs)
+
+        # Trust the sites we were given, now that the object exists.
+        # config.set_site() above made this site the one we are running
+        # as, which is what add_trust() insists on.
+        for x_site in trusted_sites_checked:
+            if not self.add_trust(site_name=x_site,
+                                force=True,
+                                verify_acls=False,
+                                callback=callback):
+                msg = _("Unable to add trust relationship: {site_name}")
+                msg = msg.format(site_name=x_site)
+                return callback.error(msg)
 
         no_cert = True
         if config.realm_init:

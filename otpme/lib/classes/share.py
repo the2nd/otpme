@@ -75,7 +75,6 @@ read_value_acls = {
                                     "hosts",
                                     "pools",
                                     "groups",
-                                    "policy",
                                     "root_dir",
                                     "encrypted",
                                     "sotp_signing",
@@ -902,10 +901,10 @@ commands = {
                     },
                 },
             },
-    'show_acls'   : {
+    'list_acls'   : {
             'default'    : {
                 'exists'    : {
-                    'method'            : 'get_acls',
+                    'method'            : 'list_acls',
                     'job_type'          : 'thread',
                     },
                 },
@@ -992,11 +991,64 @@ def register():
     register_config_parameters()
     register_commands("share", commands)
     # Register index attributes.
-    config.register_index_attribute("share")
-    config.register_index_attribute("pool")
-    config.register_index_attribute("root_dir")
-    config.register_index_attribute("root_mount_token")
-    config.register_index_attribute("no_mount_token")
+    # What a share is mounted as. The node builds the share list the
+    # client mounts from (stuff.get_shares()), so a node of another site
+    # needs them; a host does not mount by itself.
+    # sotp_signing is registered with the access group, which also sets it.
+    share_sync = ["node:untrusted"]
+    share_types = ["share"]
+    # Which host may mount this share, and whether the SOTP has to be
+    # signed. Both are read off the object (Share.is_assigned_host(),
+    # stuff.get_shares()), so the index stays on the owning site.
+    config.register_index_attribute("host", sync=[],
+                                    object_types=share_types)
+    config.register_index_attribute("sotp_signing", sync=[],
+                                    object_types=share_types)
+    # Which node serves this share. Asked where the mount is answered,
+    # which is a node. A pool names its nodes as well, see pool.py.
+    config.register_index_attribute("node", sync=share_sync,
+                                    object_types=share_types)
+    # Stamped by every backup run of this share, read by backupd on the
+    # master node. A node is backed up too, see node.py.
+    config.register_index_attribute("last_backup", sync=[],
+                                    object_types=share_types)
+    # Which group may mount this share. The node builds the share list
+    # from it, like the rest above. The scope and the user name groups
+    # as well, see there.
+    config.register_index_attribute("group", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("share", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("pool", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("root_dir", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("root_mount_token", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("no_mount_token", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("block_size", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("create_mode", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("directory_mode", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("encrypted", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("force_group_uuid", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("limit_by_hosts", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("mount_script_enabled", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("mount_timeout", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("read_only", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("add_script", sync=share_sync,
+                                    object_types=share_types)
+    config.register_index_attribute("mount_script", sync=share_sync,
+                                    object_types=share_types)
     config.register_recursive_default_acl("site", "+share")
     config.register_default_acl("unit", "+share")
     config.register_recursive_default_acl("unit", "+share")
@@ -1150,12 +1202,12 @@ def register_backend():
                                 path_getter=path_getter)
 
 def register_config():
-    # Object types our config parameters are valid for.
+    # Object types our config parameters are valid for. A share reads
+    # the parameter (Share.share_root), and a share resolves through its
+    # unit and its site -- on a user or a token nothing would read it.
     object_types = [
                     'site',
                     'unit',
-                    'user',
-                    'token',
                     ]
     def share_root_setter(share_root, **kwargs):
         if not os.path.isdir(share_root):
@@ -2466,6 +2518,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
@@ -3010,6 +3063,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
@@ -3157,6 +3211,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
@@ -3255,6 +3310,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
@@ -3367,6 +3423,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
@@ -4763,6 +4820,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
@@ -4860,6 +4918,7 @@ class Share(OTPmeObject):
             share_id = self.share_id
             shares[share_id] = {}
             shares[share_id]['name'] = self.name
+            shares[share_id]['realm'] = self.realm
             shares[share_id]['site'] = self.site
             shares[share_id]['nodes'] = node_fqdns
             shares[share_id]['limit_hosts'] = self.limit_by_hosts
